@@ -1,0 +1,146 @@
+{
+  "input": {
+    "base_url": "relay.acme.dev",
+    "api_key": "sk-test-0123456789abcdefABCD"
+  },
+  "budget_override": 6,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "",
+        "data": {
+          "version": "0.9.7",
+          "system_name": "Acme Relay",
+          "quota_per_unit": 500000,
+          "display_in_currency": true,
+          "quota_display_type": "USD",
+          "usd_exchange_rate": 7.2
+        }
+      },
+      "headers": {
+        "x-new-api-version": "0.9.7"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "gpt-4o"
+          },
+          {
+            "id": "gemini-3.2-pro"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1beta/models/gemini-3.2-pro:generateContent",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "bad",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/token/",
+      "status": 200,
+      "body": {
+        "code": true,
+        "data": {
+          "total_available": 6200000,
+          "unlimited_quota": false
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "new_api",
+    "models": 2,
+    "max_requests": 6,
+    "requests": 6,
+    "key_status": "accepted",
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "gemini": 400,
+      "responses": 400
+    },
+    "warnings": [],
+    "skipped": [
+      [
+        "route:embeddings",
+        "budget"
+      ],
+      [
+        "balance",
+        "budget"
+      ]
+    ],
+    "never_requested": [
+      "/v1/embeddings",
+      "/api/usage/token/"
+    ]
+  },
+  "name": "forced-budget-6"
+}

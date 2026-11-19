@@ -1,0 +1,243 @@
+{
+  "version": 1,
+  "adapters": [
+    {
+      "id": "moonshot",
+      "evidence": "documented",
+      "verified_on": "2026-11-07",
+      "match": {
+        "preset_ids": [
+          "moonshot"
+        ],
+        "host_suffixes": [
+          "moonshot.cn",
+          "moonshot.ai"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/v1/users/me/balance",
+        "auth": "bearer"
+      },
+      "extract": {
+        "scope": "account",
+        "remaining": "$.data.available_balance",
+        "unit": {
+          "by_host": {
+            "moonshot.cn": "CNY"
+          }
+        },
+        "labels": [
+          {
+            "name": "voucher_balance",
+            "path": "$.data.voucher_balance"
+          },
+          {
+            "name": "cash_balance",
+            "path": "$.data.cash_balance"
+          }
+        ]
+      },
+      "unverified_units": {
+        "moonshot.ai": "USD"
+      },
+      "notes": "available_balance can be 0 while a voucher remains; the voucher is kept in the labels. .cn and .ai keys are not interchangeable. Only the documented .cn unit is applied; the .ai unit (USD) is an inference kept in unverified_units until it is verified on a live key, so .ai shows Unit unknown with the raw number.",
+      "recorded": {
+        "host": "api.moonshot.cn",
+        "body": {
+          "code": 0,
+          "data": {
+            "available_balance": 49.59,
+            "voucher_balance": 46.59,
+            "cash_balance": 3.0
+          },
+          "scode": "0x0",
+          "status": true
+        },
+        "expect_remaining": 49.59,
+        "expect_unit": "cny"
+      }
+    },
+    {
+      "id": "siliconflow",
+      "evidence": "documented",
+      "verified_on": "2026-11-07",
+      "match": {
+        "preset_ids": [
+          "siliconflow"
+        ],
+        "host_suffixes": [
+          "siliconflow.cn",
+          "siliconflow.com"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/v1/user/info",
+        "auth": "bearer"
+      },
+      "extract": {
+        "scope": "account",
+        "remaining": "$.data.totalBalance",
+        "unit": {
+          "by_host": {
+            "siliconflow.cn": "CNY"
+          }
+        },
+        "envelope": {
+          "ok_path": "$.code",
+          "ok_equals": 20000,
+          "message_path": "$.message"
+        },
+        "labels": [
+          {
+            "name": "balance",
+            "path": "$.data.balance"
+          },
+          {
+            "name": "chargeBalance",
+            "path": "$.data.chargeBalance"
+          }
+        ]
+      },
+      "unverified_units": {
+        "siliconflow.com": "USD"
+      },
+      "notes": "Envelope code 20000 is success; totalBalance is a decimal string and includes granted credit. Only the documented .cn unit is applied; the .com unit (USD) is an inference kept in unverified_units until verified on a live key.",
+      "recorded": {
+        "host": "api.siliconflow.cn",
+        "body": {
+          "code": 20000,
+          "message": "OK",
+          "status": true,
+          "data": {
+            "id": "u-1",
+            "name": "ann",
+            "email": "a@b.c",
+            "balance": "0.88",
+            "status": "normal",
+            "chargeBalance": "88.00",
+            "totalBalance": "88.88"
+          }
+        },
+        "expect_remaining": 88.88,
+        "expect_unit": "cny"
+      }
+    },
+    {
+      "id": "stepfun",
+      "evidence": "inferred",
+      "verified_on": "unverified",
+      "match": {
+        "preset_ids": [
+          "stepfun"
+        ],
+        "host_suffixes": [
+          "stepfun.com",
+          "stepfun.ai"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/v1/accounts",
+        "auth": "bearer"
+      },
+      "extract": {
+        "scope": "account",
+        "remaining": "$.balance",
+        "unit": {
+          "by_host": {}
+        },
+        "labels": [
+          {
+            "name": "total_cash_balance",
+            "path": "$.total_cash_balance"
+          },
+          {
+            "name": "total_voucher_balance",
+            "path": "$.total_voucher_balance"
+          }
+        ]
+      },
+      "unverified_units": {
+        "stepfun.com": "CNY",
+        "stepfun.ai": "USD"
+      },
+      "notes": "Release gate: the currency is not confirmed by research. Until the unit is verified on a live key no host is mapped, so the card shows Unit unknown with the raw number. After verification move unverified_units into extract.unit.by_host and set verified_on.",
+      "recorded": {
+        "host": "api.stepfun.com",
+        "body": {
+          "object": "account",
+          "type": "credit",
+          "balance": 123.45,
+          "total_cash_balance": 100.0,
+          "total_voucher_balance": 23.45
+        },
+        "expect_remaining": 123.45,
+        "expect_unit": "unsupported"
+      }
+    },
+    {
+      "id": "zhipu",
+      "evidence": "third_party_source",
+      "verified_on": "2026-11-07",
+      "match": {
+        "preset_ids": [
+          "zhipu"
+        ],
+        "host_suffixes": [
+          "bigmodel.cn",
+          "z.ai"
+        ]
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/biz/account/query-customer-account-report",
+        "auth": "raw"
+      },
+      "extract": {
+        "scope": "account",
+        "remaining": "$.data.availableBalance",
+        "unit": {
+          "by_host": {
+            "bigmodel.cn": "CNY"
+          }
+        },
+        "envelope": {
+          "ok_path": "$.success",
+          "ok_equals": true,
+          "message_path": "$.msg"
+        },
+        "labels": [
+          {
+            "name": "balance",
+            "path": "$.data.balance"
+          },
+          {
+            "name": "frozenBalance",
+            "path": "$.data.frozenBalance"
+          }
+        ]
+      },
+      "unverified_units": {
+        "z.ai": "USD"
+      },
+      "notes": "The key goes in Authorization with no Bearer, deliberately. success=false is a schema mismatch that shows msg. The endpoint looks like a console endpoint and is undocumented (cc-switch). Only the bigmodel.cn unit is applied; the z.ai unit (USD) is an inference kept in unverified_units until verified on a live key.",
+      "recorded": {
+        "host": "open.bigmodel.cn",
+        "body": {
+          "code": 200,
+          "msg": "操作成功",
+          "success": true,
+          "data": {
+            "availableBalance": 128.5,
+            "balance": 128.5,
+            "frozenBalance": 0
+          }
+        },
+        "expect_remaining": 128.5,
+        "expect_unit": "cny"
+      }
+    }
+  ]
+}

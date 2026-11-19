@@ -1,0 +1,204 @@
+{
+  "cases": [
+    {
+      "expected": "a",
+      "mode": "FirstMatch",
+      "name": "a rule matches before the default",
+      "query": "x=1",
+      "responses": [
+        {
+          "default": false,
+          "id": "a",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": true,
+          "id": "b",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": "b",
+      "mode": "FirstMatch",
+      "name": "no match answers with the default",
+      "query": "x=2",
+      "responses": [
+        {
+          "default": false,
+          "id": "a",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": true,
+          "id": "b",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": "b",
+      "mode": "FirstMatch",
+      "name": "a response without rules never matches",
+      "query": "x=2",
+      "responses": [
+        {
+          "default": false,
+          "id": "a",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": false,
+          "id": "c",
+          "rule": null
+        },
+        {
+          "default": true,
+          "id": "b",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": "d",
+      "mode": "FirstMatch",
+      "name": "the default's rules take part in order",
+      "query": "y=1",
+      "responses": [
+        {
+          "default": true,
+          "id": "d",
+          "rule": [
+            "y",
+            "1"
+          ]
+        },
+        {
+          "default": false,
+          "id": "e",
+          "rule": [
+            "y",
+            "1"
+          ]
+        }
+      ]
+    },
+    {
+      "expected": "n1",
+      "mode": "FirstMatch",
+      "name": "no default answers with the first response",
+      "query": "x=2",
+      "responses": [
+        {
+          "default": false,
+          "id": "n1",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": false,
+          "id": "n2",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": "b",
+      "mode": "DisableRules",
+      "name": "rules off answer with the default",
+      "query": "x=1",
+      "responses": [
+        {
+          "default": false,
+          "id": "a",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": true,
+          "id": "b",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": "f",
+      "mode": "DisableRules",
+      "name": "rules off without a default answer with the first",
+      "query": "x=2",
+      "responses": [
+        {
+          "default": false,
+          "id": "f",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": false,
+          "id": "g",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": "a",
+      "mode": "Fallback",
+      "name": "fall through serves a match",
+      "query": "x=1",
+      "responses": [
+        {
+          "default": false,
+          "id": "a",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": true,
+          "id": "b",
+          "rule": null
+        }
+      ]
+    },
+    {
+      "expected": null,
+      "mode": "Fallback",
+      "name": "fall through yields when nothing matches",
+      "query": "x=2",
+      "responses": [
+        {
+          "default": false,
+          "id": "a",
+          "rule": [
+            "x",
+            "1"
+          ]
+        },
+        {
+          "default": true,
+          "id": "b",
+          "rule": null
+        }
+      ]
+    }
+  ],
+  "note": "The response (by id) a route in `mode` serves for a GET with `query`, its `responses` in order, each with an optional query rule `[key, equals value]`; null when the route yields (404).",
+  "rule": "mock-select",
+  "setup": null
+}

@@ -1,0 +1,569 @@
+//! Rendering & probe-test mapping helpers for `BenchView`:
+//! pinned header & filter toolbar, sticky-header scrollable 7-column probe matrix,
+//! and zero-layout-shift bottom-docked progress/status/cell-detail bar.
+
+use gpui_kit::{
+    Context, Div, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString,
+    Styled as _, div, px,
+};
+use pingdeck_desktop::core::llm::probe::ProbeStatus;
+use pingdeck_desktop::core::llm::probe::plan::CheckSet;
+
+use crate::ui::{
+    Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary,
+    btn_secondary, card, checkbox, filter_chip, h_row, icon_xs, list_row, palette, popover,
+    progress_bar, search_input, select_pill, tab_bar_segmented, tab_item, to_hsla, v_col,
+};
+
+use super::bench::{BenchFilter, BenchView};
+use super::format::{format_probe_status, format_probe_test};
+
+pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div {
+    let p = palette(cx);
+    let zh = view.zh;
+    let ent = cx.entity().clone();
+
+    let cur_prov_name = view
+        .selected_provider_id
+        .as_ref()
+        .and_then(|id| view.providers.iter().find(|pr| &pr.id == id))
+        .map(|pr| pr.name.clone())
+        .unwrap_or_else(|| {
+            if zh {
+                "选择服务商".into()
+            } else {
+                "Pick provider".into()
+            }
+        });
+
+    let provs_clone = view.providers.clone();
+    let ent_p = ent.clone();
+    let prov_picker = popover("bench-prov-pop")
+        .anchor(Anchor::TopLeft)
+        .trigger(select_pill(
+            "bench-prov-trig",
+            cur_prov_name,
+            view.selected_provider_id.is_some(),
+            cx,
+        ))
+        .content(move |_, _, cx| {
+            let mut col = v_col().w(px(230.0)).gap(px(2.0)).p(px(6.0));
+            for (i, pr) in provs_clone.iter().enumerate() {
+                let pid = pr.id.clone();
+                let ent = ent_p.clone();
+                col = col.child(
+                    list_row(
+                        SharedString::from(format!("bp-{i}")),
+                        false,
+                        cx,
+                        move |_, _, cx| {
+                            ent.update(cx, |this, cx| {
+                                this.selected_provider_id = Some(pid.clone());
+                                this.selected_key_id = None;
+                                this.selected_models.clear();
+                                this.reload(cx);
+                            });
+                        },
+                    )
+                    .child(div().text_xs().child(SharedString::from(pr.name.clone()))),
+                );
+            }
+            col
+        });
+
+    let set_idx = match view.check_set {
+        CheckSet::Quick => 0,
+        CheckSet::Standard => 1,
+        CheckSet::Full => 2,
+    };
+    let set_seg = tab_bar_segmented("bench-check-set")
+        .selected_index(set_idx)
+        .child(tab_item(if zh { "快速" } else { "Quick" }))
+        .child(tab_item(if zh { "标准" } else { "Standard" }))
+        .child(tab_item(if zh { "完整" } else { "Full" }))
+        .on_click(move |idx, _, cx| {
+            let next = match *idx {
+                1 => CheckSet::Standard,
+                2 => CheckSet::Full,
+                _ => CheckSet::Quick,
+            };
+            ent.update(cx, |this, cx| {
+                this.check_set = next;
+                this.recompute_estimate(cx);
+                cx.notify();
+            });
+        });
+
+    let run_label = if view.selected_models.is_empty() {
+        if zh {
+            "运行全部".to_owned()
+        } else {
+            "Run all".to_owned()
+        }
+    } else if zh {
+        format!("运行所选 ({})", view.selected_models.len())
+    } else {
+        format!("Run selected ({})", view.selected_models.len())
+    };
+
+    let header = h_row()
+        .flex_shrink_0()
+        .justify_between()
+        .gap(px(10.0))
+        .px(px(20.0))
+        .py(px(12.0))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(
+            h_row()
+                .flex_shrink_0()
+                .gap(px(10.0))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink))
+                        .child(if zh {
+                            "模型测试台"
+                        } else {
+                            "Model Test Bench"
+                        }),
+                )
+                .child(prov_picker)
+                .child(set_seg),
+        )
+        .child(
+            h_row()
+                .flex_shrink_0()
+                .gap(px(6.0))
+                .child(if view.running {
+                    btn_secondary("bench-stop", if zh { "停止运行" } else { "Stop" })
+                        .icon(icon_xs(UiIcon::Stop))
+                        .on_click(cx.listener(|this, _, _, cx| this.stop_run(cx)))
+                } else {
+                    btn_primary("bench-run", run_label)
+                        .icon(icon_xs(UiIcon::Play))
+                        .on_click(cx.listener(|this, _, _, cx| this.start_run(None, cx)))
+                })
+                .children(view.run_id.clone().filter(|_| !view.running).map(|rid| {
+                    btn_secondary("bench-retry", if zh { "重试失败" } else { "Retry failed" })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.start_run(Some(rid.clone()), cx);
+                        }))
+                }))
+                .children((view.run_id.is_some() && !view.running).then(|| {
+                    btn_secondary(
+                        "bench-apply",
+                        if zh {
+                            "应用实测结果"
+                        } else {
+                            "Apply results"
+                        },
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.apply_results(cx)))
+                }))
+                .children(view.last_apply_id.is_some().then(|| {
+                    btn_ghost("bench-undo", if zh { "撤销应用" } else { "Undo apply" })
+                        .on_click(cx.listener(|this, _, _, cx| this.undo_apply(cx)))
+                })),
+        );
+
+    let q = view.search_input.read(cx).value().trim().to_lowercase();
+    let pid = view.selected_provider_id.as_deref().unwrap_or("");
+    let prov_models: Vec<_> = view
+        .models
+        .iter()
+        .filter(|m| {
+            m.provider_id == pid
+                && (view.include_disabled || m.enabled)
+                && (q.is_empty() || m.model_id.to_lowercase().contains(&q))
+        })
+        .filter(|m| match view.filter {
+            BenchFilter::All => true,
+            BenchFilter::Failed => view.cells.iter().any(|((mid, _), c)| {
+                mid == &m.model_id
+                    && matches!(
+                        c.status,
+                        ProbeStatus::Rejected
+                            | ProbeStatus::Unreachable
+                            | ProbeStatus::InvalidResponse
+                            | ProbeStatus::TimedOut
+                            | ProbeStatus::RateLimited
+                    )
+            }),
+            BenchFilter::Slow => view
+                .cells
+                .get(&(m.model_id.clone(), "chat".into()))
+                .is_some_and(|c| {
+                    c.result
+                        .as_ref()
+                        .and_then(|r| r.ttft_ms)
+                        .is_some_and(|ms| ms >= 2000)
+                }),
+        })
+        .collect();
+
+    let toolbar = h_row()
+        .flex_shrink_0()
+        .justify_between()
+        .gap(px(8.0))
+        .px(px(20.0))
+        .pt(px(14.0))
+        .pb(px(10.0))
+        .child(
+            h_row()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .w(px(240.0))
+                        .child(search_input(&view.search_input, cx)),
+                )
+                .child(
+                    filter_chip(
+                        "bf-all",
+                        if zh { "全部" } else { "All" },
+                        None,
+                        view.filter == BenchFilter::All,
+                        cx,
+                    )
+                    .h(px(26.0))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter = BenchFilter::All;
+                        cx.notify();
+                    })),
+                )
+                .child(
+                    filter_chip(
+                        "bf-fail",
+                        if zh { "失败" } else { "Failed" },
+                        None,
+                        view.filter == BenchFilter::Failed,
+                        cx,
+                    )
+                    .h(px(26.0))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter = BenchFilter::Failed;
+                        cx.notify();
+                    })),
+                )
+                .child(
+                    filter_chip(
+                        "bf-slow",
+                        if zh { "较慢" } else { "Slow" },
+                        None,
+                        view.filter == BenchFilter::Slow,
+                        cx,
+                    )
+                    .h(px(26.0))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter = BenchFilter::Slow;
+                        cx.notify();
+                    })),
+                )
+                .child(
+                    filter_chip(
+                        "bf-inc-dis",
+                        if zh {
+                            "含停用模型"
+                        } else {
+                            "Include disabled"
+                        },
+                        None,
+                        view.include_disabled,
+                        cx,
+                    )
+                    .h(px(26.0))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.include_disabled = !this.include_disabled;
+                        this.recompute_estimate(cx);
+                        cx.notify();
+                    })),
+                ),
+        )
+        .children(
+            view.estimate
+                .as_ref()
+                .map(|e| badge(SharedString::from(e.summary.clone()), Tone::Neutral, cx)),
+        );
+
+    let cols: [(&str, &str); 7] = [
+        ("chat", if zh { "对话" } else { "Chat" }),
+        ("stream", if zh { "流式首字" } else { "TTFT" }),
+        ("tools", if zh { "工具" } else { "Tools" }),
+        ("json_schema", "JSON"),
+        ("vision", if zh { "视觉" } else { "Vision" }),
+        ("reasoning", if zh { "推理" } else { "Reason" }),
+        ("cache", if zh { "缓存" } else { "Cache" }),
+    ];
+
+    let mut thead = h_row()
+        .flex_shrink_0()
+        .px(px(12.0))
+        .py(px(8.0))
+        .gap(px(8.0))
+        .bg(to_hsla(p.pane))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .text_xs()
+        .font_weight(gpui_kit::FontWeight::MEDIUM)
+        .text_color(to_hsla(p.muted))
+        .child(div().w(px(22.0)))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(180.0))
+                .child(if zh { "模型" } else { "Model" }),
+        );
+    for (_, title) in cols {
+        thead = thead.child(div().w(px(82.0)).flex().justify_center().child(title));
+    }
+
+    let mut tbody = v_col();
+    if prov_models.is_empty() {
+        tbody = tbody.child(
+            div()
+                .p(px(24.0))
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(if zh {
+                    "该服务商暂无可测试的模型。请先添加服务商并刷新或启用模型。"
+                } else {
+                    "No models to test for this provider."
+                }),
+        );
+    } else {
+        let shown = prov_models.len().min(60);
+        for (ri, m) in prov_models.iter().take(shown).enumerate() {
+            let mid = m.model_id.clone();
+            let mid_chk = mid.clone();
+            let checked = view.selected_models.contains(&mid);
+            let row_bg = to_hsla(if checked { p.accent_soft } else { p.surface });
+            let hover_bg = to_hsla(if checked { p.accent_soft } else { p.pane });
+            let mut row = h_row()
+                .px(px(12.0))
+                .py(px(7.0))
+                .gap(px(8.0))
+                .bg(row_bg)
+                .hover(move |s| s.bg(hover_bg))
+                .child(
+                    div()
+                        .w(px(22.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            checkbox(SharedString::from(format!("bm-chk-{mid}")), checked)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if this.selected_models.contains(&mid_chk) {
+                                        this.selected_models.remove(&mid_chk);
+                                    } else {
+                                        this.selected_models.insert(mid_chk.clone());
+                                    }
+                                    this.recompute_estimate(cx);
+                                    cx.notify();
+                                })),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(180.0))
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(to_hsla(p.ink))
+                        .truncate()
+                        .child(SharedString::from(mid.clone())),
+                );
+            for (ci, (col_key, _)) in cols.iter().enumerate() {
+                let cell_opt = view.cells.get(&(mid.clone(), (*col_key).to_owned()));
+                let cell_mid = mid.clone();
+                let cell_ck = (*col_key).to_owned();
+                let el: gpui_kit::AnyElement = match cell_opt {
+                    Some(cell) => {
+                        let (lbl, tone) = format_probe_status(cell.status, zh);
+                        let txt = if cell.status == ProbeStatus::Ready {
+                            if *col_key == "stream" {
+                                cell.result
+                                    .as_ref()
+                                    .and_then(|r| r.ttft_ms.or(r.latency_ms))
+                                    .map_or_else(|| lbl.to_owned(), |ms| format!("{ms}ms"))
+                            } else if *col_key == "chat" {
+                                cell.result
+                                    .as_ref()
+                                    .and_then(|r| r.latency_ms)
+                                    .map_or_else(|| lbl.to_owned(), |ms| format!("{ms}ms"))
+                            } else {
+                                lbl.to_owned()
+                            }
+                        } else {
+                            lbl.to_owned()
+                        };
+                        btn_ghost(SharedString::from(format!("bc-{ri}-{ci}")), "")
+                            .px(px(2.0))
+                            .child(badge(txt, tone, cx))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.selected_cell = Some((cell_mid.clone(), cell_ck.clone()));
+                                cx.notify();
+                            }))
+                            .into_any_element()
+                    }
+                    None => div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.faint))
+                        .child("—")
+                        .into_any_element(),
+                };
+                row = row.child(div().w(px(82.0)).flex().justify_center().child(el));
+            }
+            if ri + 1 < shown {
+                row = row
+                    .border_b_1()
+                    .border_color(to_hsla(p.line.composite_over(p.surface)));
+            }
+            tbody = tbody.child(row);
+        }
+    }
+
+    let table_card = div().flex_1().min_h_0().px(px(20.0)).pb(px(14.0)).child(
+        card(cx)
+            .size_full()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .child(thead)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scrollbar()
+                    .id(SharedString::from(format!("bench-scroll-{pid}")))
+                    .child(tbody),
+            ),
+    );
+
+    let mut root = v_col()
+        .size_full()
+        .child(header)
+        .child(toolbar)
+        .child(table_card);
+
+    // Bottom-docked progress, flash & cell detail bars (0.0px layout shift on the matrix above).
+    if view.running || view.progress_total > 0 || view.flash.is_some() {
+        let pct = if view.progress_total > 0 {
+            (view.progress_done as f32 / view.progress_total as f32) * 100.0
+        } else {
+            0.0
+        };
+        let mut status_bar = v_col()
+            .flex_shrink_0()
+            .gap(px(6.0))
+            .px(px(20.0))
+            .py(px(9.0))
+            .bg(to_hsla(p.pane))
+            .border_t_1()
+            .border_color(to_hsla(p.line.composite_over(p.pane)));
+        status_bar = status_bar.child(
+            h_row()
+                .justify_between()
+                .gap(px(8.0))
+                .child(
+                    h_row()
+                        .gap(px(8.0))
+                        .children((view.running || view.progress_total > 0).then(|| {
+                            div().text_xs().child(SharedString::from(format!(
+                                "{} {}/{}",
+                                if view.running {
+                                    if zh { "探测进度" } else { "Progress" }
+                                } else if zh {
+                                    "上次运行"
+                                } else {
+                                    "Last run"
+                                },
+                                view.progress_done,
+                                view.progress_total
+                            )))
+                        }))
+                        .children(
+                            view.flash
+                                .as_ref()
+                                .map(|(tone, msg)| badge(msg.clone(), *tone, cx)),
+                        ),
+                )
+                .children(view.last_summary.as_ref().map(|s| {
+                    badge(
+                        format!("{} ok · {} err", s.passed, s.failed),
+                        if s.failed == 0 {
+                            Tone::Success
+                        } else {
+                            Tone::Warning
+                        },
+                        cx,
+                    )
+                })),
+        );
+        if view.running || view.progress_total > 0 {
+            status_bar = status_bar.child(progress_bar("bench-prog", pct));
+        }
+        root = root.child(status_bar);
+    }
+
+    if let Some((mid, ck)) = &view.selected_cell
+        && let Some(cell) = view.cells.get(&(mid.clone(), ck.clone()))
+    {
+        let (lbl, tone) = format_probe_status(cell.status, zh);
+        let detail_line = cell
+            .result
+            .as_ref()
+            .map(|r| {
+                format!(
+                    "HTTP {:?} · {}ms · TTFT {:?}ms · {}",
+                    r.status,
+                    r.latency_ms.unwrap_or(0),
+                    r.ttft_ms,
+                    if r.message.is_empty() {
+                        &cell.reason
+                    } else {
+                        &r.message
+                    }
+                )
+            })
+            .unwrap_or_else(|| cell.reason.clone());
+        root = root.child(
+            h_row()
+                .flex_shrink_0()
+                .justify_between()
+                .gap(px(8.0))
+                .px(px(20.0))
+                .py(px(9.0))
+                .bg(to_hsla(p.pane))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(
+                    h_row()
+                        .gap(px(8.0))
+                        .flex_1()
+                        .min_w_0()
+                        .child(badge(SharedString::from(mid.clone()), Tone::Accent, cx))
+                        .child(badge(format_probe_test(cell.test, zh), Tone::Neutral, cx))
+                        .child(badge(lbl, tone, cx))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .truncate()
+                                .child(SharedString::from(detail_line)),
+                        ),
+                )
+                .child(
+                    btn_icon("bc-detail-close", UiIcon::Close).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.selected_cell = None;
+                            cx.notify();
+                        },
+                    )),
+                ),
+        );
+    }
+
+    root
+}

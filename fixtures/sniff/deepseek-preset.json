@@ -1,0 +1,106 @@
+{
+  "name": "deepseek-preset",
+  "input": {
+    "base_url": "api.deepseek.com",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "preset_id": "deepseek",
+    "region_id": "global"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "deepseek-chat",
+            "object": "model",
+            "owned_by": "x"
+          },
+          {
+            "id": "deepseek-reasoner",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/anthropic/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/user/balance",
+      "status": 200,
+      "body": {
+        "is_available": true,
+        "balance_infos": [
+          {
+            "currency": "CNY",
+            "total_balance": "86.40",
+            "granted_balance": "0.00",
+            "topped_up_balance": "86.40"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "family": "official",
+    "label": "preset",
+    "confirmed": false,
+    "models": 2,
+    "key_status": "accepted",
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "responses": "absent"
+    },
+    "max_requests": 12,
+    "requests": 5,
+    "warnings": [
+      "preset_route_mismatch"
+    ],
+    "balance": {
+      "unit": "cny",
+      "value": 86.4
+    },
+    "never_requested": [
+      "/api/status"
+    ],
+    "suggested_preset_id": "deepseek",
+    "models_endpoint": "/models"
+  }
+}

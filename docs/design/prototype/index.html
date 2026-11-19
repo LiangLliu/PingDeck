@@ -1,0 +1,1794 @@
+<!doctype html>
+<html lang="zh-CN" data-mode="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PingDeck — UI 与交互设计高保真原型</title>
+  <link rel="stylesheet" href="./styles/tokens.css" />
+  <link rel="stylesheet" href="./styles/base.css" />
+  <link rel="stylesheet" href="./styles/components.css" />
+  <link rel="stylesheet" href="./styles/modules.css" />
+  <link rel="stylesheet" href="./styles/overlays.css" />
+</head>
+<body>
+  <!-- ── Prototype Review Bar (outside the app window) ── -->
+  <header id="proto-bar" class="proto-bar">
+    <div class="proto-brand">
+      <span>PingDeck</span>
+      <span class="proto-pill">交互原型</span>
+    </div>
+    <span class="proto-sep"></span>
+
+    <div class="proto-group">
+      <span class="proto-label">色彩主题</span>
+      <div class="proto-swatches">
+        <button class="proto-swatch active" data-set-palette="slate"><span class="swatch-dot" data-palette-preview="slate"></span>靛蓝板岩</button>
+        <button class="proto-swatch" data-set-palette="ocean"><span class="swatch-dot" data-palette-preview="ocean"></span>深海青岚</button>
+        <button class="proto-swatch" data-set-palette="nord"><span class="swatch-dot" data-palette-preview="nord"></span>极光冰蓝</button>
+        <button class="proto-swatch" data-set-palette="sage"><span class="swatch-dot" data-palette-preview="sage"></span>青瓷护眼</button>
+        <button class="proto-swatch" data-set-palette="emerald"><span class="swatch-dot" data-palette-preview="emerald"></span>松石翠绿</button>
+        <button class="proto-swatch" data-set-palette="amber"><span class="swatch-dot" data-palette-preview="amber"></span>暖砂护眼</button>
+        <button class="proto-swatch" data-set-palette="violet"><span class="swatch-dot" data-palette-preview="violet"></span>星云靛紫</button>
+        <button class="proto-swatch" data-set-palette="graphite"><span class="swatch-dot" data-palette-preview="graphite"></span>极简石墨</button>
+      </div>
+    </div>
+
+    <span class="proto-sep"></span>
+    <div class="proto-seg" role="group" aria-label="明暗模式">
+      <button class="active" data-set-mode="light">浅色</button>
+      <button data-set-mode="dark">深色</button>
+    </div>
+
+    <div class="proto-seg" role="group" aria-label="界面密度">
+      <button class="active" data-set-density="comfortable">舒适</button>
+      <button data-set-density="compact">紧凑</button>
+    </div>
+
+    <span class="proto-spacer"></span>
+    <span class="proto-hint"><span class="kbd">⌘K</span> 命令面板 · <span class="kbd">⌘B</span> 折叠侧栏</span>
+    <button class="btn btn-sm" data-action="toggle-frameless">纯净全屏 (Esc 退出)</button>
+  </header>
+
+  <!-- ── Desktop Application Window ── -->
+  <div id="stage" class="stage">
+    <div id="app-window" class="app-window">
+      <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+
+      <!-- ── Left Sidebar ── -->
+      <aside class="sidebar" aria-label="主导航">
+        <div class="sidebar-top"></div>
+
+        <div class="nav-head">
+          <div class="nav-brand" aria-hidden="true">
+            <span class="nav-ico">
+              <svg viewBox="270 224 458 576" width="12" height="15" class="pingmark">
+                <rect x="282" y="236" width="104" height="552" rx="52" />
+                <path fill-rule="evenodd" d="M520 236a196 196 0 1 1 0 392a196 196 0 1 1 0-392zm0 98a98 98 0 1 0 0 196a98 98 0 1 0 0-196z" />
+                <circle class="pingmark-dot" cx="520" cy="432" r="54" />
+              </svg>
+            </span>
+            <span class="nav-brand-name">PingDeck</span>
+          </div>
+          <button class="nav-toggle" data-action="toggle-rail" aria-expanded="true" title="收起/展开侧边栏 (⌘B)">
+            <svg class="icon icon-collapse" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg>
+            <svg class="icon icon-expand" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>
+          </button>
+        </div>
+
+        <button class="nav-search" data-action="open-cmd">
+          <span class="nav-ico"><svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <span class="nav-search-text">搜索或跳转</span>
+          <span class="kbd nav-kbd">⌘K</span>
+        </button>
+
+        <button class="ws-btn" data-popover="workspace" title="切换工作区">
+          <span class="nav-ico"><span class="ws-badge">B</span></span>
+          <span class="ws-name">Billing platform</span>
+          <svg class="icon icon-sm ws-chev" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+        </button>
+
+        <nav class="nav-scroll">
+          <button class="nav-item active" data-nav-to="requests">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg></span>
+            <span class="nav-item-label">请求</span>
+          </button>
+          <button class="nav-item" data-nav-to="mock">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg></span>
+            <span class="nav-item-label">Mock 服务</span>
+            <span class="dot dot-live nav-badge"></span>
+            <span class="nav-badge-count">2</span>
+          </button>
+          <button class="nav-item" data-nav-to="flows">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg></span>
+            <span class="nav-item-label">流程</span>
+          </button>
+          <button class="nav-item" data-nav-to="history">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span>
+            <span class="nav-item-label">历史</span>
+          </button>
+          <button class="nav-item" data-nav-to="environments">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
+            <span class="nav-item-label">环境</span>
+          </button>
+
+          <div class="nav-group-label"><span class="nav-group-label-text">AI · 所有工作区共用</span></div>
+          <button class="nav-item" data-nav-to="chat">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M13 8H7"/><path d="M17 12H7"/></svg></span>
+            <span class="nav-item-label">对话</span>
+            <span class="nav-badge-warn">1 待批</span>
+          </button>
+          <button class="nav-item" data-nav-to="providers">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></span>
+            <span class="nav-item-label">服务商</span>
+            <span class="dot dot-ok nav-badge"></span>
+          </button>
+          <button class="nav-item" data-nav-to="usage">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg></span>
+            <span class="nav-item-label">用量与日志</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <button class="foot-row" data-popover="running" title="查看后台运行工作与待处理事项">
+            <span class="nav-ico"><span class="dot dot-warn"></span></span>
+            <span class="foot-row-text">需要关注的服务商</span>
+            <span class="foot-row-meta">1</span>
+          </button>
+          <button class="foot-row" data-nav-to="providers" data-sub-view="gateway" title="本地网关运行中">
+            <span class="nav-ico"><span class="dot dot-live"></span></span>
+            <span class="foot-row-text">网关运行中</span>
+            <span class="foot-row-meta">:4141</span>
+          </button>
+          <button class="nav-item" data-nav-to="settings" style="margin-top:2px">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg></span>
+            <span class="nav-item-label">设置</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ── Main Page Surface ── -->
+      <div class="main-wrap">
+        <main class="page-card">
+
+          <!-- ================================================================ -->
+          <!-- MODULE 1: REQUESTS (HTTP & AI)                                   -->
+          <!-- ================================================================ -->
+          <section class="module-view active" data-module="requests">
+            <div class="pane">
+              <div class="pane-head">
+                <span class="pane-title">请求</span>
+                <button class="btn btn-sm" data-modal="new-request">+ 新建</button>
+              </div>
+              <div class="pane-search">
+                <div class="input-box sunken">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input data-filter-rows="#req-tree-list .tree-item" placeholder="筛选请求…" />
+                  <span class="kbd">⌘F</span>
+                </div>
+              </div>
+              <div id="req-tree-list" class="pane-body">
+                <div class="tree-folder">▾ Billing API <span class="ml-auto text-faint">17</span></div>
+                <div class="tree-folder" style="padding-left:16px">▾ Invoices <span class="ml-auto text-faint">5</span></div>
+                <button class="tree-item selected" data-req-mode="http" data-req-primary="http"><span class="tree-m m-get">GET</span><span>List invoices</span></button>
+                <button class="tree-item" data-req-mode="http"><span class="tree-m m-post">POST</span><span class="flex-1">Create invoice</span><span class="dirty-dot"></span></button>
+                <button class="tree-item" data-req-mode="http"><span class="tree-m m-get">GET</span><span>Get invoice by ID</span></button>
+                <button class="tree-item" data-req-mode="http"><span class="tree-m m-patch">PATCH</span><span>Finalize draft</span></button>
+                <button class="tree-item" data-req-mode="http"><span class="tree-m m-delete">DELETE</span><span>Void invoice</span></button>
+                <div class="tree-folder" style="padding-left:16px">▸ Customers <span class="ml-auto text-faint">4</span></div>
+                <div class="tree-folder" style="padding-left:16px">▸ Refunds <span class="ml-auto text-faint">4</span></div>
+                <div class="tree-folder" style="padding-left:16px">▸ Webhooks <span class="ml-auto text-faint">4</span></div>
+                <div class="list-group-head"><span>AI 调试请求</span><span>1</span></div>
+                <button class="tree-item" data-req-mode="ai" data-req-primary="ai"><span class="tree-m mono text-accent fw-600 fs-2xs">AI</span><span>Ping test (DeepSeek)</span></button>
+              </div>
+              <div class="pane-foot">
+                <span>1 个集合 · 17 个请求</span>
+                <button class="text-accent" data-modal="import-export">导入 / 导出</button>
+              </div>
+            </div>
+
+            <div class="work">
+              <div class="doc-tabbar">
+                <button class="doc-tab active" data-req-mode="http" data-req-primary="http"><span class="m-get">GET</span> List invoices <span class="doc-tab-x">×</span></button>
+                <button class="doc-tab" data-req-mode="http"><span class="m-post">POST</span> Create invoice <span class="dirty-dot"></span></button>
+                <button class="doc-tab" data-req-mode="http"><span class="m-get">GET</span> Get invoice by ID</button>
+                <button class="doc-tab" data-req-mode="ai" data-req-primary="ai"><span class="tag tag-accent" style="height:17px;padding:0 5px">AI</span> Ping test <span class="doc-tab-x">×</span></button>
+                <button class="btn-icon ml-auto" data-modal="new-request" title="新建标签页">+</button>
+              </div>
+
+              <!-- HTTP REQUEST SUB-VIEW -->
+              <div id="req-http-view" class="work">
+                <div class="url-strip">
+                  <div class="url-field">
+                    <button class="url-method" data-popover="method"><span id="req-method-label" class="m-get">GET</span><span class="text-faint fs-2xs">▾</span></button>
+                    <div class="url-text"><span class="url-var">{{base_url}}</span>/invoices?status=open&amp;limit=25</div>
+                  </div>
+                  <button class="select-pill" data-popover="env-pick"><span id="req-env-dot" class="dot dot-ok"></span> <span id="req-env-label">Staging</span> <span class="text-faint">▾</span></button>
+                  <button class="btn" data-modal="code-snippets" title="生成 cURL / fetch / Python / Rust 代码">代码</button>
+                  <button class="btn" data-toast="已保存请求「List invoices」">保存</button>
+                  <button class="btn btn-primary" data-action="send-http">发送</button>
+                </div>
+
+                <div class="req-split">
+                  <div class="req-top">
+                    <div class="tabs-row" data-tab-group="req-ed">
+                      <button class="tab-btn active" data-tab="params">参数 <span class="tab-cnt">2</span></button>
+                      <button class="tab-btn" data-tab="headers">请求头 <span class="tab-cnt">3</span></button>
+                      <button class="tab-btn" data-tab="auth">认证</button>
+                      <button class="tab-btn" data-tab="body">请求体</button>
+                      <button class="tab-btn" data-tab="assert">断言 <span class="dirty-dot"></span></button>
+                      <button class="tab-btn" data-tab="scripts">脚本</button>
+                      <button class="tab-btn" data-tab="net">网络</button>
+                      <button class="tab-btn" data-tab="docs">文档</button>
+                      <span class="ml-auto fs-2xs text-muted">认证：继承集合 Bearer</span>
+                    </div>
+                    <div id="req-ed-body" class="kv-wrap">
+                      <table class="kv-table">
+                        <thead><tr><th style="width:36px"></th><th style="width:28%">键</th><th style="width:36%">值</th><th>说明</th></tr></thead>
+                        <tbody>
+                          <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">status</td><td class="mono">open</td><td class="kv-ph">按账单状态过滤 (open / paid / void)</td></tr>
+                          <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">limit</td><td class="mono">25</td><td class="kv-ph">单页返回条数上限 (1–100)</td></tr>
+                          <tr class="kv-off"><td class="text-center"><span class="check-box"></span></td><td class="mono">starting_after</td><td class="mono">inv_01J9X3K2P8</td><td class="kv-ph">分页游标起点</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="req-divider"></div>
+
+                  <div class="req-bottom">
+                    <div class="resp-head">
+                      <span class="tag tag-ok"><span class="dot dot-ok"></span> 200 OK</span>
+                      <button class="wire-inline-btn" data-action="toggle-wire" title="点击查看耗时瀑布明细">
+                        <span class="wire-mini">
+                          <i style="width:8%;background:var(--ph-dns)"></i>
+                          <i style="width:26%;background:var(--ph-connect)"></i>
+                          <i style="width:54%;background:var(--ph-wait)"></i>
+                          <i style="width:12%;background:var(--ph-recv)"></i>
+                        </span>
+                        <b id="req-resp-ms" class="mono">184 ms</b>
+                        <span class="text-faint">▾</span>
+                      </button>
+                      <span class="resp-stat">大小 <b class="mono">4.2 KB</b></span>
+                      <span class="resp-stat">HTTP/2</span>
+                      <span id="req-resp-age" class="ml-auto text-faint">2 分钟前</span>
+                      <button class="btn btn-sm" data-nav-to="chat">询问智能体</button>
+                      <button class="btn-icon" data-toast="已复制响应正文到剪贴板" title="复制响应">⧉</button>
+                    </div>
+
+                    <div class="tabs-row" data-tab-group="req-resp">
+                      <button class="tab-btn active" data-tab="body">正文</button>
+                      <button class="tab-btn" data-tab="headers">响应头 <span class="tab-cnt">11</span></button>
+                      <button class="tab-btn" data-tab="cookies">Cookie <span class="tab-cnt">1</span></button>
+                      <button class="tab-btn" data-tab="trace">追踪 <span class="tab-cnt">5</span></button>
+                      <button class="tab-btn" data-tab="tests">测试 <span class="tag tag-ok" style="height:17px;padding:0 5px">2/2</span></button>
+                      <div class="ml-auto row-center">
+                        <div class="seg"><button class="active" data-action="seg-pick">格式化</button><button data-action="seg-pick">原文</button></div>
+                        <span class="tag">JSON ▾</span>
+                      </div>
+                    </div>
+
+                    <div id="req-resp-body" class="work">
+                      <!-- JSONPath & Content Search Filter Bar -->
+                      <div class="resp-filter-bar">
+                        <div class="input-box sm sunken" style="width:250px">
+                          <span class="mono text-accent fw-600">$</span>
+                          <input id="resp-jsonpath-input" placeholder="JSONPath（如 $.data[0].id）或查找文本…" />
+                        </div>
+                        <button class="tag clickable" data-jsonpath-pick="$.data[0]">$.data[0]</button>
+                        <button class="tag clickable" data-jsonpath-pick="$.next_cursor">$.next_cursor</button>
+                        <button class="tag clickable" data-jsonpath-pick="">全部</button>
+                        <span id="resp-filter-count" class="tag tag-accent">15 行 · UTF-8</span>
+                        <button class="btn btn-sm btn-ghost ml-auto" data-toast="已将 $.data[0].id 提取写入 Staging.invoice_id">提取为环境变量</button>
+                      </div>
+                      <div id="req-resp-code" class="code-view">
+                        <div class="code-line"><span class="code-ln">1</span><span>{</span></div>
+                        <div class="code-line"><span class="code-ln">2</span><span>  <span class="tk-key">"object"</span>: <span class="tk-str">"list"</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">3</span><span>  <span class="tk-key">"request_id"</span>: <span class="tk-str">"req_01J9X3K2P8"</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">4</span><span>  <span class="tk-key">"url"</span>: <span class="tk-str">"/v1/invoices?status=open&amp;limit=25"</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">5</span><span>  <span class="tk-key">"livemode"</span>: <span class="tk-kw">false</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">6</span><span>  <span class="tk-key">"api_version"</span>: <span class="tk-str">"2026-10-01"</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">7</span><span>  <span class="tk-key">"has_more"</span>: <span class="tk-kw">true</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">8</span><span>  <span class="tk-key">"next_cursor"</span>: <span class="tk-str">"inv_01J9X0M4R2"</span>,</span></div>
+                        <div class="code-line"><span class="code-ln">9</span><span>  <span class="tk-key">"data"</span>: [</span></div>
+                        <div class="code-line"><span class="code-ln">10</span><span>    { <span class="tk-key">"id"</span>: <span class="tk-str">"inv_01J9X3K2P8"</span>, <span class="tk-key">"customer"</span>: <span class="tk-str">"cus_acme_01"</span>, <span class="tk-key">"status"</span>: <span class="tk-str">"open"</span>, <span class="tk-key">"amount_due"</span>: <span class="tk-num">12400</span>, <span class="tk-key">"currency"</span>: <span class="tk-str">"usd"</span> },</span></div>
+                        <div class="code-line"><span class="code-ln">11</span><span>    { <span class="tk-key">"id"</span>: <span class="tk-str">"inv_01J9X1A9C4"</span>, <span class="tk-key">"customer"</span>: <span class="tk-str">"cus_globex_2"</span>, <span class="tk-key">"status"</span>: <span class="tk-str">"open"</span>, <span class="tk-key">"amount_due"</span>: <span class="tk-num">8900</span>, <span class="tk-key">"currency"</span>: <span class="tk-str">"usd"</span> },</span></div>
+                        <div class="code-line"><span class="code-ln">12</span><span>    { <span class="tk-key">"id"</span>: <span class="tk-str">"inv_01J9X0M4R2"</span>, <span class="tk-key">"customer"</span>: <span class="tk-str">"cus_initech_9"</span>, <span class="tk-key">"status"</span>: <span class="tk-str">"open"</span>, <span class="tk-key">"amount_due"</span>: <span class="tk-num">34000</span>, <span class="tk-key">"currency"</span>: <span class="tk-str">"usd"</span> }</span></div>
+                        <div class="code-line"><span class="code-ln">13</span><span>  ],</span></div>
+                        <div class="code-line"><span class="code-ln">14</span><span>  <span class="tk-key">"total_count"</span>: <span class="tk-num">42</span></span></div>
+                        <div class="code-line"><span class="code-ln">15</span><span>}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- AI REQUEST SUB-VIEW -->
+              <div id="req-ai-view" hidden class="work">
+                <div class="url-strip" style="flex-wrap:wrap;row-gap:6px">
+                  <div class="url-field">
+                    <button class="url-method" data-popover="ai-protocol"><span id="req-ai-proto-label" class="fw-600 fs-xs">Chat Completions</span><span class="text-faint fs-2xs">▾</span></button>
+                    <div class="url-text row-center clickable" data-popover="chat-model">
+                      <span class="tag">D DeepSeek</span>
+                      <span class="text-faint">/</span>
+                      <b class="mono fs-xs">deepseek-v4-flash</b>
+                      <span class="ml-auto fs-2xs text-ok">● 密钥自动注入</span>
+                    </div>
+                  </div>
+                  <div class="seg"><button class="active" data-action="seg-pick">服务商</button><button data-action="seg-pick">自定义 URL</button></div>
+                  <button class="btn" data-toast="已保存 AI 请求草稿">保存</button>
+                  <button class="btn btn-primary" data-toast="已收到流式响应（首字 228 ms，共 7 帧）">发送</button>
+                </div>
+
+                <div class="req-split">
+                  <div class="req-top">
+                    <div class="tabs-row" data-tab-group="ai-ed">
+                      <button class="tab-btn active" data-tab="messages">消息 <span class="tab-cnt">2</span></button>
+                      <button class="tab-btn" data-tab="params">参数</button>
+                      <button class="tab-btn" data-tab="tools">工具</button>
+                      <button class="tab-btn" data-tab="raw">Raw JSON</button>
+                      <button class="tab-btn" data-tab="assert">断言 <span class="tab-cnt">1</span></button>
+                      <button class="tab-btn" data-tab="scripts">脚本</button>
+                      <span class="ml-auto fs-2xs text-muted">约 15 输入 Token · 流式输出已开</span>
+                    </div>
+                    <div id="ai-ed-body" class="ai-msg-list">
+                      <div class="ai-msg-card">
+                        <span class="tag">system ▾</span>
+                        <span class="mono" style="font-size:12.5px">You are a terse assistant.</span>
+                        <span class="text-faint">⋮</span>
+                      </div>
+                      <div class="ai-msg-card">
+                        <span class="tag tag-accent">user ▾</span>
+                        <span class="mono" style="font-size:12.5px">Reply with the single word pong.</span>
+                        <span class="text-faint">⋮</span>
+                      </div>
+                      <div><button class="btn btn-sm" data-action="add-ai-msg">+ 添加消息</button></div>
+                    </div>
+                  </div>
+
+                  <div class="req-divider"></div>
+
+                  <div class="req-bottom">
+                    <div class="resp-head">
+                      <span class="tag tag-ok">● 200 OK</span>
+                      <span class="resp-stat">首字 <b class="mono">233 ms</b></span>
+                      <span class="resp-stat">总耗时 <b class="mono">612 ms</b></span>
+                      <span class="resp-stat">Token <b class="mono">9 / 2</b></span>
+                      <span class="resp-stat">费用 <b class="mono">¥0.00002</b></span>
+                      <span class="ml-auto tag">SSE · 7 帧</span>
+                      <button class="btn btn-sm" data-drawer="usage-call">在日志中打开 ↗</button>
+                    </div>
+                    <div class="tabs-row" data-tab-group="ai-resp">
+                      <button class="tab-btn active" data-tab="merged">合并回复</button>
+                      <button class="tab-btn" data-tab="events">事件 <span class="tab-cnt">7</span></button>
+                      <button class="tab-btn" data-tab="raw">Raw</button>
+                      <button class="tab-btn" data-tab="headers">响应头</button>
+                      <button class="tab-btn" data-tab="timing">耗时</button>
+                      <button class="tab-btn" data-tab="tests">测试 <span class="dot dot-ok" style="width:6px;height:6px"></span></button>
+                      <button class="tab-btn" data-tab="usage">用量与费用</button>
+                    </div>
+                    <div id="ai-resp-body" style="flex:1;overflow-y:auto">
+                      <div class="ai-reply-box">
+                        <div class="row-between fs-2xs text-muted">
+                          <div class="row-center">
+                            <span class="tag">assistant</span>
+                            <span>deepseek-v4-flash · finish_reason: <b class="mono text-ink2">stop</b></span>
+                          </div>
+                          <span class="tag tag-ok">断言通过：reply == "pong"</span>
+                        </div>
+                        <div class="code-box fw-600" style="font-size:14px">pong</div>
+                      </div>
+                      <div class="ai-frames-strip">
+                        <span class="text-muted fw-600">SSE 帧（点击查看单帧载荷）</span>
+                        <button class="ai-frame-chip active" data-sse-frame="1"><b>#1</b> role +233ms</button>
+                        <button class="ai-frame-chip" data-sse-frame="2"><b>#2</b> "p" +241ms</button>
+                        <button class="ai-frame-chip" data-sse-frame="3"><b>#3</b> "ong" +318ms</button>
+                        <button class="ai-frame-chip" data-sse-frame="5"><b>#5</b> stop +590ms</button>
+                        <button class="ai-frame-chip" data-sse-frame="6"><b>#6</b> usage 9/2</button>
+                        <button class="ai-frame-chip" data-sse-frame="7"><b>#7</b> [DONE] +612ms</button>
+                      </div>
+                      <div id="ai-frame-inspector" class="ai-frame-detail">
+                        <span class="text-accent fw-600">帧 #1 · +233 ms · role_delta</span>
+                        <code class="truncate">{"id":"chatcmpl-01J9","choices":[{"index":0,"delta":{"role":"assistant"}}]}</code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Collapsible Console Drawer (⌘J) -->
+              <div id="console-drawer" class="console-drawer" hidden>
+                <div class="console-head">
+                  <b class="text-ink1">&gt;_ 控制台</b>
+                  <span class="tag">2 条记录</span>
+                  <button class="btn btn-sm btn-ghost ml-auto" data-toast="已清空控制台日志">清空</button>
+                  <button class="btn-icon" data-action="toggle-console">×</button>
+                </div>
+                <div class="console-body">
+                  <div class="console-row"><span class="text-faint">14:26:12.104</span><span class="tag tag-ok" style="height:17px">HTTP</span><span>GET https://billing.staging.acme.dev/invoices?status=open&amp;limit=25 → 200 OK (184 ms)</span></div>
+                  <div class="console-row"><span class="text-faint">14:26:12.290</span><span class="tag tag-accent" style="height:17px">SCRIPT</span><span>post-script: 2/2 assertions passed (status == 200, $.data.length &gt; 0)</span></div>
+                </div>
+              </div>
+
+              <div class="footbar">
+                <button data-action="toggle-console" class="row-center text-ink2 fw-600">&gt;_ 控制台 2 <span class="kbd">⌘J</span></button>
+                <span class="mono flex-1 truncate">GET https://billing.staging.acme.dev/invoices?status=open&amp;limit=25</span>
+                <button class="text-muted" data-nav-to="settings" data-set-page="network">系统代理</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 2: MOCK SERVERS (2-Level Pane + 2-Col Route Editor)       -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="mock">
+            <div class="pane">
+              <div class="pane-head">
+                <span class="pane-title">Mock 服务</span>
+                <button class="btn btn-sm" data-modal="new-mock">+ 新建</button>
+              </div>
+              <div class="server-switcher">
+                <button class="server-chip active" data-mock-server="Billing stub" data-mock-port="4010">
+                  <span class="dot dot-live"></span>
+                  <span class="flex-1">Billing stub</span>
+                  <span class="mono text-muted">:4010</span>
+                </button>
+                <button class="server-chip" data-mock-server="Webhook sink" data-mock-port="4011">
+                  <span class="dot dot-live"></span>
+                  <span class="flex-1">Webhook sink</span>
+                  <span class="mono text-muted">:4011</span>
+                </button>
+                <button class="server-chip" data-mock-server="Legacy v1" data-mock-port="4012">
+                  <span class="dot dot-idle"></span>
+                  <span class="flex-1">Legacy v1</span>
+                  <span class="mono text-faint">:4012</span>
+                </button>
+              </div>
+              <div class="pane-search">
+                <div class="input-box sunken">
+                  <input data-filter-rows="#mock-route-list .list-row" placeholder="筛选路由 (7)…" />
+                  <button class="btn-icon" style="width:20px;height:20px" data-toast="已新增草稿路由 GET /new-route" title="新增路由">+</button>
+                </div>
+              </div>
+              <div id="mock-route-list" class="pane-body" data-select-list="mock-routes">
+                <button class="list-row"><span class="m-get" style="width:42px">GET</span><span class="mono flex-1 fs-xs">/invoices</span><span class="dot dot-ok"></span></button>
+                <button class="list-row"><span class="m-get" style="width:42px">GET</span><span class="mono flex-1 fs-xs">/invoices/{id}</span><span class="dot dot-ok"></span></button>
+                <button class="list-row"><span class="m-post" style="width:42px">POST</span><span class="mono flex-1 fs-xs">/invoices</span><span class="dot dot-ok"></span></button>
+                <button class="list-row selected"><span class="m-post" style="width:42px">POST</span><span class="mono flex-1 fs-xs">/refunds</span><span class="tag tag-accent" style="height:17px;padding:0 5px">回调</span></button>
+                <button class="list-row"><span class="m-get" style="width:42px">GET</span><span class="mono flex-1 fs-xs">/refunds/{id}</span><span class="dot dot-ok"></span></button>
+                <button class="list-row"><span class="m-get" style="width:42px">GET</span><span class="mono flex-1 fs-xs">/customers</span><span class="dot dot-ok"></span></button>
+                <button class="list-row text-faint"><span class="m-delete" style="width:42px">DEL</span><span class="mono flex-1 fs-xs">/invoices/{id}</span><span class="dot dot-idle"></span></button>
+              </div>
+              <div class="pane-foot">
+                <span>仅监听 127.0.0.1</span>
+                <span>已启用 6/7</span>
+              </div>
+            </div>
+
+            <div class="work">
+              <div class="work-head">
+                <span id="mock-srv-title" class="work-title">Billing stub</span>
+                <span class="status-mark"><span class="dot dot-live"></span>运行中</span>
+                <span id="mock-srv-url" class="tag mono clickable" data-toast="已复制 Mock 地址 http://127.0.0.1:4010/v1">http://127.0.0.1:4010/v1</span>
+                <span class="tag tag-ok">✓ CORS 已开启</span>
+                <span class="work-meta">延迟 0 ms · 128 次命中 · 已保存</span>
+                <div class="work-actions">
+                  <button class="btn btn-sm" data-drawer="mock-try">试一下</button>
+                  <button class="btn btn-sm" data-toast="已停止 Mock 服务 Billing stub (:4010)">停止服务</button>
+                </div>
+              </div>
+              <div class="tabs-row" data-tab-group="mock-main">
+                <button class="tab-btn active" data-tab="routes">路由 <span class="tab-cnt">7</span></button>
+                <button class="tab-btn" data-tab="data">数据桶 <span class="tab-cnt">2</span></button>
+                <button class="tab-btn" data-tab="headers">响应头 <span class="tab-cnt">1</span></button>
+                <button class="tab-btn" data-tab="callbacks">回调 <span class="tab-cnt">1</span></button>
+                <button class="tab-btn" data-tab="traffic">流量日志 <span class="tab-cnt">12</span></button>
+                <button class="tab-btn" data-tab="proxy">代理</button>
+                <button class="tab-btn" data-tab="settings">服务设置</button>
+              </div>
+
+              <!-- Spacious 2-Column Route Editor (Interactive Rule Branches + Lower Match/Bucket Detail) -->
+              <div id="mock-tab-body" class="mock-editor-grid">
+                <div class="card-panel">
+                  <div class="card-panel-head">
+                    <span>匹配条件与规则分支（点击切换分支）</span>
+                    <button class="btn btn-sm" data-toast="已新增规则分支">+ 添加分支</button>
+                  </div>
+                  <div class="url-field">
+                    <span class="url-method"><span class="m-post">POST</span></span>
+                    <span class="url-text">/refunds</span>
+                  </div>
+                  <div class="col-stack-sm">
+                    <button class="list-row" style="border-color:var(--border-subtle);background:var(--bg-surface)" data-mock-branch="422">
+                      <span class="tag tag-warn">422</span>
+                      <span class="flex-1 fs-xs">1 · 422 Invalid（缺 invoice_id）</span>
+                    </button>
+                    <button class="list-row" style="border-color:var(--border-subtle);background:var(--bg-surface)" data-mock-branch="409">
+                      <span class="tag tag-warn">409</span>
+                      <span class="flex-1 fs-xs">2 · 409 Duplicate（Idempotency-Key: dup-1）</span>
+                    </button>
+                    <button class="list-row selected" style="background:var(--bg-surface)" data-mock-branch="201">
+                      <span class="tag tag-ok">201</span>
+                      <span class="flex-1 fs-xs">3 · 201 Created ★ 默认命中</span>
+                    </button>
+                  </div>
+
+                  <div class="field-col" style="padding-top:4px;border-top:1px solid var(--border-subtle)">
+                    <span class="field-label">当前分支命中表达式</span>
+                    <div id="mock-branch-expr" class="code-box fs-2xs">Body JSONPath: <code>$.invoice_id</code> 存在 且 Header <code>Idempotency-Key != dup-1</code></div>
+                  </div>
+                  <div class="field-col">
+                    <span class="field-label">命中有序动作 · 异步 Webhook 回调</span>
+                    <div class="list-row" style="background:var(--bg-surface);border-color:var(--border-subtle)">
+                      <span class="m-post">POST</span>
+                      <span class="mono fs-2xs flex-1 truncate">:4011/hooks/refund-created（延迟 500 ms）</span>
+                      <button class="text-accent fs-2xs" data-tab-jump="mock-main:callbacks">配置</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card-panel">
+                  <div class="card-panel-head">
+                    <span id="mock-branch-title">返回内容（3 · 201 Created ★ 默认命中）</span>
+                    <span class="tag tag-ok">JSON 有效</span>
+                  </div>
+                  <div class="field-grid">
+                    <div class="field-col"><span class="field-label">状态码</span><div class="input-box"><input id="mock-branch-status" value="201" /></div></div>
+                    <div class="field-col"><span class="field-label">延迟 (毫秒)</span><div class="input-box"><input id="mock-branch-delay" value="120" /></div></div>
+                  </div>
+                  <div class="field-col">
+                    <span class="field-label">响应体模板（支持 <code>{{$guid}}</code>、<code>{{$timestamp}}</code>、<code>{{req.body.*}}</code>）</span>
+                    <div id="mock-branch-body" class="code-box" style="height:142px">
+                      <div>{</div>
+                      <div>  <span class="tk-key">"id"</span>: <span class="tk-str">"{{$guid}}"</span>,</div>
+                      <div>  <span class="tk-key">"object"</span>: <span class="tk-str">"refund"</span>,</div>
+                      <div>  <span class="tk-key">"status"</span>: <span class="tk-str">"succeeded"</span>,</div>
+                      <div>  <span class="tk-key">"invoice_id"</span>: <span class="tk-str">"{{req.body.invoice_id}}"</span>,</div>
+                      <div>  <span class="tk-key">"amount"</span>: <span class="tk-num">{{req.body.amount}}</span>,</div>
+                      <div>  <span class="tk-key">"route"</span>: <span class="tk-str">"refunds.create"</span></div>
+                      <div>}</div>
+                    </div>
+                  </div>
+                  <div class="field-grid">
+                    <div class="field-col"><span class="field-label">分支附加响应头</span><div id="mock-branch-headers" class="code-box fs-2xs truncate">Location: /v1/refunds/{{$guid}} · X-Mock-Branch: created-default</div></div>
+                    <div class="field-col"><span class="field-label">数据桶联动</span><div id="mock-branch-bucket" class="code-box fs-2xs truncate">向数据桶 <code>refunds</code> 写入响应对象（主键 <code>id</code>）</div></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Fixed Non-Overlapping Live Traffic Strip (Click any row for Hit Detail Drawer!) -->
+              <div class="mock-traffic">
+                <div class="mock-traffic-head">
+                  <span class="status-mark"><span class="dot dot-live"></span><b class="text-ink1">实时流量</b></span>
+                  <span>启动后共 128 个请求（点击任意命中行查看请求与回调载荷）</span>
+                  <button class="ml-auto text-accent" data-tab-jump="mock-main:traffic">打开完整日志</button>
+                </div>
+                <div id="mock-traffic-list">
+                  <div class="mock-hit-row" data-drawer="mock-hit-detail">
+                    <span class="mono text-muted">14:32:11</span>
+                    <span class="m-post">POST</span>
+                    <span class="mono">/refunds</span>
+                    <span class="status-mark"><span class="dot dot-ok"></span><b class="text-ok">201</b><span class="dot dot-ok" style="margin-left:6px"></span><span>回调 200</span></span>
+                    <span class="text-muted truncate">路由 POST /refunds（分支 3 · 写入 refunds 桶）</span>
+                    <span class="mono text-right text-ink2">128 ms</span>
+                    <div class="prog-track"><div class="prog-fill" style="width:72%"></div></div>
+                  </div>
+                  <div class="mock-hit-row" data-drawer="mock-hit-detail">
+                    <span class="mono text-muted">14:32:04</span>
+                    <span class="m-get">GET</span>
+                    <span class="mono">/invoices?status=open</span>
+                    <span class="status-mark"><span class="dot dot-ok"></span><b class="text-ok">200</b></span>
+                    <span class="text-muted truncate">路由 GET /invoices（读取数据桶 invoices · 14 条）</span>
+                    <span class="mono text-right text-ink2">3 ms</span>
+                    <div class="prog-track"><div class="prog-fill" style="width:6%"></div></div>
+                  </div>
+                  <div class="mock-hit-row" data-drawer="mock-hit-detail">
+                    <span class="mono text-muted">14:31:58</span>
+                    <span class="m-post">POST</span>
+                    <span class="mono">/refunds</span>
+                    <span class="status-mark"><span class="dot dot-warn"></span><b class="text-warn">422</b></span>
+                    <span class="text-muted truncate">路由 POST /refunds（分支 1 · 缺少 invoice_id）</span>
+                    <span class="mono text-right text-ink2">121 ms</span>
+                    <div class="prog-track"><div class="prog-fill" style="width:68%"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 3: FLOWS (Visual Step Pipeline + Interactive Inspector)   -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="flows">
+            <div class="pane">
+              <div class="pane-head">
+                <span class="pane-title">流程</span>
+                <button class="btn btn-sm" data-modal="new-flow">+ 新建流程</button>
+              </div>
+              <div class="pane-search">
+                <div class="input-box sunken"><input placeholder="搜索流程…" /></div>
+              </div>
+              <div class="pane-body" data-select-list="flows">
+                <button class="list-row">
+                  <div class="list-row-col">
+                    <span class="list-row-title">Create invoice then refund</span>
+                    <span class="list-row-sub"><span>3 个步骤</span><span>·</span><span class="text-bad">◆ 未通过</span><span>2 分钟前</span></span>
+                  </div>
+                </button>
+                <button class="list-row selected">
+                  <div class="list-row-col">
+                    <span class="list-row-title">Nightly billing smoke</span>
+                    <span class="list-row-sub"><span>6 个步骤</span><span>·</span><span class="text-accent">↻ 运行中 2/6</span></span>
+                  </div>
+                </button>
+                <button class="list-row">
+                  <div class="list-row-col">
+                    <span class="list-row-title">Webhook replay</span>
+                    <span class="list-row-sub"><span>2 个步骤</span><span>·</span><span class="text-ok">● 通过</span><span>昨天</span></span>
+                  </div>
+                </button>
+                <button class="list-row">
+                  <div class="list-row-col">
+                    <span class="list-row-title">Customer onboarding</span>
+                    <span class="list-row-sub"><span>3 个步骤</span><span>·</span><span class="text-ok">● 通过</span><span>昨天</span></span>
+                  </div>
+                </button>
+              </div>
+              <div class="pane-foot"><span>按顺序执行集合请求或内联请求</span></div>
+            </div>
+
+            <div class="work">
+              <div class="work-head">
+                <span class="work-title">Nightly billing smoke</span>
+                <span class="status-mark"><span class="dot dot-run"></span>运行中</span>
+                <span class="work-meta">6 个步骤</span>
+                <div class="work-actions">
+                  <button class="select-pill" data-popover="env-pick"><span class="dot dot-ok"></span> Staging ▾</button>
+                  <button class="btn btn-sm" data-action="show-flow-inputs">流程输入</button>
+                  <button class="btn btn-sm" data-action="toggle-flow-inspector">检查器</button>
+                  <button class="btn btn-sm btn-danger" data-toast="已停止流程「Nightly billing smoke」（已发出 2 个请求）" data-toast-tone="warn">■ 停止流程</button>
+                </div>
+              </div>
+              <div class="flow-run-bar">
+                <span class="fw-600 text-ink1">正在执行第 3 步 / 6</span>
+                <div class="prog-track"><div class="prog-fill" style="width:45%"></div></div>
+                <span class="mono text-muted">312 ms</span>
+                <span class="tag ml-auto">整次运行 · 隔离 Cookie 会话</span>
+              </div>
+
+              <div class="flow-canvas">
+                <div class="flow-step is-ok" data-flow-step="1">
+                  <div class="flow-rail"><span class="flow-num">✓</span><span class="flow-line"></span></div>
+                  <div class="flow-card">
+                    <span class="m-get">GET</span>
+                    <div class="flex-1"><b>Health</b> <span class="mono text-muted fs-2xs">/healthz · 断言 status == 200</span></div>
+                    <span class="tag tag-ok">200 · 42 ms</span>
+                  </div>
+                </div>
+                <div class="flow-step is-ok" data-flow-step="2">
+                  <div class="flow-rail"><span class="flow-num">✓</span><span class="flow-line"></span></div>
+                  <div class="flow-card">
+                    <span class="m-post">POST</span>
+                    <div class="flex-1"><b>Login</b> <span class="mono text-muted fs-2xs">/auth/token · 提取 token ← $.access_token</span></div>
+                    <span class="tag tag-ok">200 · 118 ms</span>
+                  </div>
+                </div>
+                <div class="flow-step is-run selected" data-flow-step="3">
+                  <div class="flow-rail"><span class="flow-num">3</span><span class="flow-line"></span></div>
+                  <div class="flow-card">
+                    <span class="m-get">GET</span>
+                    <div class="flex-1"><b>List invoices</b> <span class="mono text-muted fs-2xs">/invoices?status=open · 提取 invoice_id ← $.data[0].id</span></div>
+                    <span class="status-mark"><span class="dot dot-run"></span>请求中…</span>
+                  </div>
+                </div>
+                <div class="flow-step" data-flow-step="4">
+                  <div class="flow-rail"><span class="flow-num">4</span><span class="flow-line"></span></div>
+                  <div class="flow-card">
+                    <span class="m-post">POST</span>
+                    <div class="flex-1"><b>Create invoice</b> <span class="mono text-muted fs-2xs">/invoices · 断言 201 · 使用 {{amount}}</span></div>
+                    <span class="status-mark"><span class="dot dot-idle"></span>等待</span>
+                  </div>
+                </div>
+                <div class="flow-step" data-flow-step="5">
+                  <div class="flow-rail"><span class="flow-num">5</span><span class="flow-line"></span></div>
+                  <div class="flow-card">
+                    <span class="m-post">POST</span>
+                    <div class="flex-1"><b>Cleanup</b> <span class="mono text-muted fs-2xs">/refunds · 失败自动重试 2 次</span></div>
+                    <span class="status-mark"><span class="dot dot-idle"></span>等待</span>
+                  </div>
+                </div>
+                <div class="flow-step last-step" data-flow-step="6">
+                  <div class="flow-rail"><span class="flow-num">6</span><span class="flow-line"></span></div>
+                  <div class="flow-card">
+                    <span class="m-get">GET</span>
+                    <div class="flex-1"><b>Verify</b> <span class="mono text-muted fs-2xs">/invoices/{{invoice_id}} · 断言 $.status == "refunded"</span></div>
+                    <span class="status-mark"><span class="dot dot-idle"></span>等待</span>
+                  </div>
+                </div>
+
+                <!-- Lower Action & Execution Contract Strip -->
+                <div class="card-panel" style="margin-top:8px;margin-left:36px">
+                  <div class="row-between">
+                    <div class="row-center">
+                      <button class="btn btn-sm" data-toast="已打开集合请求选择器">+ 从集合添加步骤…</button>
+                      <button class="btn btn-sm" data-toast="已添加内联 HTTP 请求步骤">+ 新建内联步骤</button>
+                    </div>
+                    <span class="fs-2xs text-muted">持久化模式：<code>HistoryOnly</code>（写历史记录，不污染工作区 Cookie 罐）</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside id="flow-inspector" class="inspector">
+              <div class="pane-head">
+                <span id="flow-insp-title" class="pane-title" style="font-size:13.5px">List invoices · 第 3 步</span>
+                <button class="btn btn-sm btn-ghost" data-action="show-flow-inputs">输入</button>
+                <button class="btn-icon" data-action="toggle-flow-inspector" title="收起检查器">×</button>
+              </div>
+
+              <!-- Step Inspector View (matches src/features/flows/inspector/Inspector.tsx) -->
+              <div id="flow-insp-step" class="pad-pane col-stack fs-xs" style="overflow-y:auto">
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>请求来源</span><button class="text-accent" data-nav-to="requests">打开原请求 ↗</button></div>
+                  <div id="flow-step-src"><span class="m-get">GET</span> <code class="text-ink1">/invoices?status=open</code></div>
+                  <span class="fs-2xs text-muted">集合：Billing API / Invoices / List invoices</span>
+                </div>
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>提取变量 (Extract)</span><span class="tag">JSONPath</span></div>
+                  <div id="flow-step-extract" class="mono fs-2xs text-ink2">invoice_id ← $.data[0].id（等待响应）</div>
+                </div>
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>步骤断言与校验</span><span class="tag tag-ok">继承开启</span></div>
+                  <div id="flow-step-assert" class="fs-2xs text-ink2">继承原请求 2 条断言 + status == 200</div>
+                </div>
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>运行控制与当前结果</span></div>
+                  <div id="flow-step-retry" class="fs-2xs text-muted">重试 2 次 · 间隔 500 ms</div>
+                  <div id="flow-step-status" class="tag tag-accent" style="align-self:flex-start">运行中 · 已耗时 312 ms</div>
+                  <div id="flow-step-body" class="code-box fs-2xs">// 正在等待 billing.staging.acme.dev 响应...</div>
+                </div>
+              </div>
+
+              <!-- Flow Inputs View (when "流程输入" is clicked) -->
+              <div id="flow-insp-inputs" hidden class="pad-pane col-stack fs-xs">
+                <div class="field-col">
+                  <span class="field-label">运行输入变量（优先于当前环境）</span>
+                  <div class="code-box" style="height:88px;white-space:pre-wrap">amount=1290
+currency=USD</div>
+                </div>
+                <div class="card-panel">
+                  <div class="row-between"><b>运行内 Cookie 会话</b><span class="tag tag-accent">已开启</span></div>
+                  <p class="set-row-desc">前置步骤收到的 Set-Cookie 自动传递到后续步骤，结束后自动丢弃。</p>
+                </div>
+                <div class="field-col">
+                  <span class="field-label">已提取变量（实时）</span>
+                  <div class="list-row" style="background:var(--bg-surface);border-color:var(--border-subtle)">
+                    <span class="mono text-accent">token</span>
+                    <span class="mono ml-auto text-muted">eyJhbG…9kQ</span>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 4: HISTORY (Origin Strip + Exchange + Snapshot Grid)      -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="history">
+            <div class="pane">
+              <div class="pane-head"><span class="pane-title">历史</span><button class="btn btn-sm btn-ghost" data-modal="clear-history">清空…</button></div>
+              <div class="pane-search col-stack-sm">
+                <div class="input-box sunken"><input data-filter-rows="#hist-list .list-row" placeholder="筛选 URL、状态码或来源…" /></div>
+                <div class="row-wrap" data-pill-group="hist-filter">
+                  <button class="tag tag-accent" data-pill-pick>全部</button><button class="tag" data-pill-pick>仅失败</button><button class="tag" data-pill-pick>Flow</button><button class="tag" data-pill-pick>AI 请求</button>
+                </div>
+              </div>
+              <div id="hist-list" class="pane-body" data-select-list="history">
+                <div class="list-group-head"><span>今天</span><span>4 条</span></div>
+                <button class="list-row selected">
+                  <div class="list-row-col">
+                    <div class="row-center"><span class="m-post">POST</span><span class="list-row-title">/refunds</span><span class="mono ml-auto text-bad fs-2xs">202</span></div>
+                    <span class="list-row-sub"><span>Flow · 断言未通过</span><span>·</span><span>512 ms</span><span>·</span><span>14:28</span></span>
+                  </div>
+                </button>
+                <button class="list-row">
+                  <div class="list-row-col">
+                    <div class="row-center"><span class="m-get">GET</span><span class="list-row-title">/invoices?status=open</span><span class="mono ml-auto text-ok fs-2xs">200</span></div>
+                    <span class="list-row-sub"><span>手动发送</span><span>·</span><span>184 ms</span><span>·</span><span>14:26</span></span>
+                  </div>
+                </button>
+                <button class="list-row">
+                  <div class="list-row-col">
+                    <div class="row-center"><span class="tag tag-accent" style="height:17px;padding:0 5px">AI</span><span class="list-row-title">deepseek-v4-flash</span><span class="mono ml-auto text-ok fs-2xs">200</span></div>
+                    <span class="list-row-sub"><span>Ping test</span><span>·</span><span>612 ms</span><span>·</span><span>14:18</span></span>
+                  </div>
+                </button>
+                <button class="list-row">
+                  <div class="list-row-col">
+                    <div class="row-center"><span class="m-post">POST</span><span class="list-row-title">/invoices</span><span class="mono ml-auto text-ok fs-2xs">201</span></div>
+                    <span class="list-row-sub"><span>Staging</span><span>·</span><span>245 ms</span><span>·</span><span>14:15</span></span>
+                  </div>
+                </button>
+              </div>
+              <div class="pane-foot"><span>本地保留 30 天</span><span>48 条记录</span></div>
+            </div>
+
+            <div class="work">
+              <div class="work-head">
+                <span class="m-post" style="font-size:13px">POST</span>
+                <span class="work-title mono" style="font-size:13.5px">https://billing.staging.acme.dev/refunds</span>
+                <span class="tag tag-bad">◆ 202 · 断言失败</span>
+                <div class="work-actions">
+                  <button class="btn btn-sm" data-nav-to="chat">交给智能体排查</button>
+                  <button class="btn btn-sm btn-primary" data-nav-to="requests">在请求中重放</button>
+                </div>
+              </div>
+              <div class="hist-origin-strip">
+                <span class="tag tag-warn">202 Accepted</span>
+                <span class="mono fw-600 text-ink1">512 ms</span>
+                <span>·</span>
+                <span>大小 <b class="mono text-ink1">1.8 KB</b></span>
+                <span>·</span>
+                <span>HTTP/2</span>
+                <span>·</span>
+                <span>环境：<b class="text-ink1">Staging</b></span>
+                <span>·</span>
+                <span>来源：Flow <b class="text-ink1">Create invoice then refund</b>（第 3 步）</span>
+                <span class="ml-auto">今天 14:28:09</span>
+              </div>
+              <div class="tabs-row" data-tab-group="hist-resp">
+                <button class="tab-btn active" data-tab="body">响应正文</button>
+                <button class="tab-btn" data-tab="headers">响应头 <span class="tab-cnt">4</span></button>
+                <button class="tab-btn" data-tab="req">发送的请求</button>
+                <button class="tab-btn" data-tab="def">请求定义（快照）</button>
+                <button class="tab-btn" data-tab="trace">耗时追踪</button>
+                <button class="tab-btn" data-tab="tests">断言与测试 <span class="tag tag-bad" style="height:17px;padding:0 5px">1/2</span></button>
+              </div>
+              <div id="hist-resp-body" class="code-view">
+                <div class="code-line"><span class="code-ln">1</span><span>{</span></div>
+                <div class="code-line"><span class="code-ln">2</span><span>  <span class="tk-key">"refund_id"</span>: <span class="tk-str">"re_01J9X7Q2W1"</span>,</span></div>
+                <div class="code-line"><span class="code-ln">3</span><span>  <span class="tk-key">"object"</span>: <span class="tk-str">"refund"</span>,</span></div>
+                <div class="code-line"><span class="code-ln">4</span><span>  <span class="tk-key">"invoice_id"</span>: <span class="tk-str">"inv_01J9X3K2P8"</span>,</span></div>
+                <div class="code-line"><span class="code-ln">5</span><span>  <span class="tk-key">"amount"</span>: <span class="tk-num">12400</span>,</span></div>
+                <div class="code-line"><span class="code-ln">6</span><span>  <span class="tk-key">"status"</span>: <span class="tk-str">"pending_settlement"</span>,</span></div>
+                <div class="code-line"><span class="code-ln">7</span><span>  <span class="tk-key">"retry_after_s"</span>: <span class="tk-num">5</span>,</span></div>
+                <div class="code-line"><span class="code-ln">8</span><span>  <span class="tk-key">"webhook_queued"</span>: <span class="tk-kw">true</span></span></div>
+                <div class="code-line"><span class="code-ln">9</span><span>}</span></div>
+              </div>
+
+              <!-- Lower Assertion Failure Diagnosis & Variable Snapshot Cards -->
+              <div class="hist-lower-grid">
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>断言校验明细（1 项未通过 · 1 项通过）</span><button class="btn btn-sm" data-toast="已将原集合请求断言更新为 status in [200, 202]">用 202 更新原断言</button></div>
+                  <div class="list-row" style="background:var(--bad-soft);border-color:var(--bad-border)">
+                    <span class="tag tag-bad">未通过</span>
+                    <span class="mono fs-xs">status == 200</span>
+                    <span class="ml-auto fs-2xs text-bad">实际收到 202 Accepted</span>
+                  </div>
+                  <div class="list-row" style="background:var(--ok-soft);border-color:var(--ok-border)">
+                    <span class="tag tag-ok">通过</span>
+                    <span class="mono fs-xs">$.refund_id 存在</span>
+                    <span class="ml-auto fs-2xs text-muted">"re_01J9X7Q2W1"</span>
+                  </div>
+                </div>
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>发送时已解析变量快照</span><span class="tag">秘密自动脱敏</span></div>
+                  <table class="kv-table">
+                    <thead><tr><th>变量</th><th>当时求值结果</th><th>来源</th></tr></thead>
+                    <tbody>
+                      <tr><td class="mono">{{base_url}}</td><td class="mono">https://billing.staging.acme.dev</td><td>Staging</td></tr>
+                      <tr><td class="mono">{{token}}</td><td class="mono text-muted">••••••••••••</td><td>保险库 0600</td></tr>
+                      <tr><td class="mono">{{amount}}</td><td class="mono">12400</td><td>Flow 提取</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 5: ENVIRONMENTS                                           -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="environments">
+            <div class="pane">
+              <div class="pane-head"><span class="pane-title">环境</span><button class="btn btn-sm" data-modal="new-env">+ 新建</button></div>
+              <div class="pane-body" style="padding-top:8px" data-select-list="env-pane">
+                <button class="list-row" data-env-pick="Local"><div class="list-row-col"><span class="list-row-title">Local</span><span class="list-row-sub">无变量覆盖</span></div></button>
+                <button class="list-row selected" data-env-pick="Staging"><div class="list-row-col"><span class="list-row-title">Staging</span><span class="list-row-sub"><span class="text-ok">● 当前生效</span><span>·</span><span>10 个变量</span></span></div></button>
+                <button class="list-row" data-env-pick="Production"><div class="list-row-col"><span class="list-row-title">Production</span><span class="list-row-sub"><span class="text-warn">▲ 发送确认</span><span>·</span><span>8 个变量</span></span></div></button>
+                <div class="list-group-head"><span>工作区共享</span></div>
+                <button class="list-row" data-env-tab="globals"><span class="list-row-title">全局变量</span><span class="ml-auto text-faint fs-2xs">3</span></button>
+                <button class="list-row" data-env-tab="cookies"><span class="list-row-title">Cookie 罐</span><span class="ml-auto text-faint fs-2xs">6</span></button>
+                <button class="list-row" data-env-tab="certs"><span class="list-row-title">客户端证书</span><span class="ml-auto text-faint fs-2xs">1</span></button>
+              </div>
+            </div>
+
+            <div class="work">
+              <div class="work-head">
+                <span id="env-work-title" class="work-title">Staging</span>
+                <span id="env-work-badge" class="tag tag-ok">● 当前生效</span>
+                <span id="env-work-meta" class="work-meta">10 个变量（2 个秘密）</span>
+                <div class="work-actions">
+                  <div class="seg">
+                    <button class="active" data-env-tab="vars">变量</button>
+                    <button data-env-tab="compare">对比</button>
+                    <button data-env-tab="resolved">已解析</button>
+                    <button data-env-tab="protect">保护设置</button>
+                  </div>
+                  <button class="btn btn-sm btn-primary" data-toast="已保存环境变量「Staging」">保存</button>
+                </div>
+              </div>
+
+              <div id="env-vars-view" class="kv-wrap">
+                <table class="kv-table">
+                  <thead><tr><th style="width:36px"></th><th style="width:24%">变量名</th><th style="width:16%">类型</th><th>当前值</th></tr></thead>
+                  <tbody id="env-vars-tbody">
+                    <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">base_url</td><td><span class="tag">文本</span></td><td class="mono">https://billing.staging.acme.dev</td></tr>
+                    <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">api_version</td><td><span class="tag">文本</span></td><td class="mono">2026-10-01</td></tr>
+                    <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">token</td><td><span class="tag tag-warn">秘密</span></td><td class="mono text-muted">•••••••••••• <span style="font-family:var(--font-ui);font-size:11px">（本地明文保险库，0600 权限）</span></td></tr>
+                    <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">webhook_secret</td><td><span class="tag tag-warn">秘密</span></td><td class="mono text-muted">•••••••••••• <span style="font-family:var(--font-ui);font-size:11px">（本地明文保险库，0600 权限）</span></td></tr>
+                    <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">tenant_id</td><td><span class="tag">文本</span></td><td class="kv-ph">未填写（引用时提示未解析）</td></tr>
+                    <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">mock_base_url</td><td><span class="tag">文本</span></td><td class="mono">http://127.0.0.1:4010/v1</td></tr>
+                    <tr class="kv-off"><td class="text-center"><span class="check-box"></span></td><td class="mono">idempotency_prefix</td><td><span class="tag">文本</span></td><td class="mono">stg-</td></tr>
+                    <tr>
+                      <td class="text-center">+</td>
+                      <td><div class="input-box sm sunken"><input id="new-env-key" placeholder="新增变量名…" /></div></td>
+                      <td><span class="tag">文本 ▾</span></td>
+                      <td>
+                        <div class="row-center">
+                          <div class="input-box sm sunken flex-1"><input id="new-env-val" placeholder="输入变量值…" /></div>
+                          <button class="btn btn-sm" data-action="add-env-var">+ 添加变量</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <!-- Lower Resolution Order & Vault Boundary Cards -->
+                <div class="grid-2col">
+                  <div class="card-panel">
+                    <div class="card-panel-head"><span>变量解析优先级与引用检查</span><button class="text-accent" data-env-tab="resolved">查看完整求值表 →</button></div>
+                    <div class="fs-xs text-muted">覆盖顺序：<b class="text-ink1">Flow 运行输入</b> &gt; <b class="text-ink1">当前环境 (Staging)</b> &gt; <b class="text-ink1">工作区全局变量</b></div>
+                    <div class="fs-2xs text-warn">▲ 未解析提醒：<code>{{tenant_id}}</code> 当前为空，在 <code>POST Create invoice</code> 等 2 个请求中被引用。</div>
+                  </div>
+                  <div class="card-panel">
+                    <div class="card-panel-head"><span>秘密保险库与文件夹同步边界</span><span class="tag tag-ok">Unix 0600</span></div>
+                    <div class="fs-xs text-muted">秘密类型变量存储在主库旁的 <code>&lt;db&gt;.secrets</code>（以 <code>vault</code> 附着，本地明文 SQLite，文件权限 0600）。</div>
+                    <div class="fs-2xs text-muted">导出 JSON 或启用 Git 文件夹同步时，秘密值自动剥离，仅同步变量名与类型声明。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="env-compare-view" hidden class="kv-wrap">
+                <table class="kv-table">
+                  <thead><tr><th style="width:22%">变量名</th><th style="width:39%">Staging</th><th style="width:39%">Production</th></tr></thead>
+                  <tbody>
+                    <tr><td class="mono">base_url</td><td class="mono">https://billing.staging.acme.dev</td><td class="mono" style="background:var(--warn-soft)">https://billing.acme.dev</td></tr>
+                    <tr><td class="mono">timeout_ms</td><td class="mono">8000</td><td class="mono" style="background:var(--warn-soft)">15000</td></tr>
+                    <tr><td class="mono">mock_base_url</td><td class="mono">http://127.0.0.1:4010/v1</td><td class="kv-ph">未定义</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="env-extra-view" hidden class="kv-wrap"></div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 6: CHAT / AGENT (Timeline Trace + Assistant Reply + Gate) -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="chat">
+            <div class="pane">
+              <div class="pane-head"><span class="pane-title">对话</span><button class="btn btn-sm" data-toast="已新建空白对话草稿">+ 新建对话</button></div>
+              <div class="pane-search">
+                <div class="input-box sunken"><input placeholder="搜索对话…" /></div>
+              </div>
+              <div class="pane-body" data-select-list="chat-threads">
+                <div class="list-group-head"><span class="text-warn">▲ 需要你</span><span>1</span></div>
+                <button class="list-row selected">
+                  <div class="list-row-col">
+                    <span class="list-row-title">429s from the gateway</span>
+                    <span class="list-row-sub"><span class="text-warn">等待批准 · cargo clippy</span></span>
+                  </div>
+                </button>
+                <div class="list-group-head"><span>已固定</span></div>
+                <button class="list-row"><div class="list-row-col"><span class="list-row-title">Gateway failover rules</span><span class="list-row-sub">Never switch after first token…</span></div></button>
+                <div class="list-group-head"><span>今天</span></div>
+                <button class="list-row"><div class="list-row-col"><span class="list-row-title">Compare TTFT across relays</span><span class="list-row-sub"><span class="dot dot-run" style="width:6px;height:6px"></span>运行中 · 2 分</span></div></button>
+                <button class="list-row"><div class="list-row-col"><span class="list-row-title">Summarise today's trace</span><span class="list-row-sub">1,284 requests · 37 failed</span></div></button>
+              </div>
+              <div class="pane-foot"><button class="text-muted" data-toast="已归档对话：0 条">已归档</button><button class="text-muted" data-toast="回收站：2 条（14 天内可恢复）">最近删除</button></div>
+            </div>
+
+            <div class="work chat-main">
+              <div class="work-head">
+                <span class="work-title">429s from the gateway</span>
+                <button class="tag tag-accent" data-popover="chat-ws">工作区：Billing platform ▾</button>
+                <button class="tag mono" data-popover="chat-ws">~/me/PingDeck · main</button>
+                <div class="work-actions">
+                  <button class="btn btn-sm btn-ghost" data-toast="已导出对话 Markdown">导出</button>
+                  <button class="btn btn-sm" data-action="toggle-chat-details">详情栏</button>
+                </div>
+              </div>
+
+              <div class="chat-thread">
+                <div class="chat-col">
+                  <div class="user-bubble">网关遇到上游 429 时直接熔断了 60 秒，帮我查下 router.rs 并改成优先遵循一次 Retry-After 头。</div>
+
+                  <div class="trace-card">
+                    <div class="trace-head">
+                      <span class="dot dot-ok"></span>
+                      <span>已执行 3 步 · 11.4 秒</span>
+                      <button class="tag ml-auto" data-action="toggle-chat-details">+18 -4 · 1 个文件</button>
+                    </div>
+                    <div class="trace-body">
+                      <div class="trace-step">
+                        <div class="trace-step-rail"><span class="dot dot-ok"></span></div>
+                        <div class="flex-1">已搜索网页 <span class="text-ink2">DeepSeek API 429 Retry-After header rate limit</span> <span class="text-faint">· 3 个来源 · 1.8 s</span></div>
+                      </div>
+                      <div class="trace-step">
+                        <div class="trace-step-rail"><span class="dot dot-ok"></span></div>
+                        <div class="flex-1">
+                          <div>已编辑 <b class="mono">crates/pingdeck-core/src/llm/router.rs</b></div>
+                          <div class="diff-box">
+                            <div class="diff-head"><span>@@ -212,7 +212,8 @@ impl Router</span><button class="text-accent" data-action="toggle-chat-details">在改动页审阅</button></div>
+                            <div class="diff-row">  214   match status {</div>
+                            <div class="diff-row del">- 215     429 | 500..=599 =&gt; breaker.trip(target, Duration::from_secs(60)),</div>
+                            <div class="diff-row add">+ 215     429 =&gt; honor_retry_after(&amp;headers, MAX_RETRY_WAIT),</div>
+                            <div class="diff-row add">+ 216     500..=599 =&gt; breaker.record_failure(target, FAILURES_BEFORE_TRIP),</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="trace-step">
+                        <div class="trace-step-rail"><span class="dot dot-ok"></span></div>
+                        <div class="flex-1">已运行 <code class="text-ink1">cargo test -p pingdeck-core router</code> <span class="text-ok">· 14 项通过 · 9.2 s</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Assistant Intermediate Explanation (connects trace to the gate card below!) -->
+                  <div class="assistant-msg">
+                    <div class="row-between">
+                      <b>根因定位与修复说明</b>
+                      <span class="tag mono">deepseek-v4-pro</span>
+                    </div>
+                    <p class="fs-xs text-ink2">原先 <code>router.rs</code> 将 <code>429 Too Many Requests</code> 与 <code>500..=599</code> 服务端故障合并处理，单次 429 即直接触发 60 秒熔断。现已拆分为：</p>
+                    <div class="fs-xs text-ink2" style="padding-left:10px;border-left:2px solid var(--accent-line)">
+                      1. 收到 <code>429</code> 时优先解析上游 <code>Retry-After</code> 头（受设置页单次退避上限 <code>15s</code> 约束）；<br/>
+                      2. 若等待后重试仍失败或未携带该头，在首个内容事件发出前按网关备用规则平滑切换下一目标；<code>router</code> 模块 14 项单测均已通过。<br/>
+                      3. 接下来我需要运行一次 <code>cargo clippy</code> 检查无新增编译警告，请在下方确认执行。
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Separated Floating Action-Required Gate Card + Composer -->
+              <div class="chat-dock">
+                <div id="chat-gate-card" class="gate-card">
+                  <div class="gate-head">
+                    <span class="dot dot-warn"></span>
+                    <b class="text-ink1">需要在 ~/me/PingDeck 运行命令</b>
+                    <span class="tag tag-warn ml-auto">中风险 · 命令执行</span>
+                    <span class="text-muted">已等待 1 分钟</span>
+                  </div>
+                  <div class="gate-body">
+                    <div class="gate-cmd"><span class="text-faint">$</span><span>cargo clippy -p pingdeck-core -- -D warnings</span></div>
+                    <div class="gate-actions">
+                      <span class="fs-2xs text-muted">OS 沙箱已开启 · 仅限当前仓库目录</span>
+                      <div class="row-center">
+                        <button class="btn btn-sm" data-action="deny-gate">拒绝</button>
+                        <button class="btn btn-sm" data-modal="allow-scope">允许范围…</button>
+                        <button class="btn btn-sm btn-primary" data-action="approve-gate">允许一次</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="chat-gate-resolved" hidden style="max-width:780px;width:100%;margin:0 auto;padding:8px 14px;border-radius:var(--r-md);background:var(--ok-soft);border:1px solid var(--ok-border);font-size:12px;color:var(--ok);display:flex;align-items:center;justify-content:space-between">
+                  <span id="chat-gate-resolved-text">✓ 已批准执行命令，智能体继续运行中…</span>
+                  <button class="btn btn-sm" data-action="reset-gate">还原审批演示</button>
+                </div>
+
+                <div class="composer-card">
+                  <textarea id="chat-composer-input" class="composer-input" rows="2" placeholder="输入后续指令…（审批等待期间发送将自动排队）"></textarea>
+                  <div class="composer-bar">
+                    <button class="btn-icon" data-toast="选择本地附件或图片（仅桌面端）">+</button>
+                    <button id="chat-perm-chip" class="tag tag-ok" data-popover="chat-perm">自动批准只读 ▾</button>
+                    <button class="tag tag-accent" data-action="toggle-web-pill">联网 ×</button>
+                    <button id="chat-model-label" class="btn btn-sm btn-ghost mono ml-auto" data-popover="chat-model">38% · deepseek-v4-pro ▾</button>
+                    <button class="send-circle" data-action="send-chat" title="发送 / 排队">↑</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Toggleable Chat Right Details Panel -->
+            <aside id="chat-details-panel" class="chat-details" hidden>
+              <div class="pane-head">
+                <span class="pane-title" style="font-size:13.5px">对话详情</span>
+                <button class="btn-icon" data-action="toggle-chat-details">×</button>
+              </div>
+              <div class="tabs-row" style="padding:0 10px" data-tab-group="chat-det">
+                <button class="tab-btn active" data-tab="changes">改动 <span class="tab-cnt">1</span></button>
+                <button class="tab-btn" data-tab="progress">进展 3/5</button>
+                <button class="tab-btn" data-tab="context">上下文</button>
+                <button class="tab-btn" data-tab="opts">设置</button>
+              </div>
+              <div id="chat-det-body" class="pad-pane col-stack fs-xs" style="flex:1;overflow-y:auto">
+                <div class="card-panel">
+                  <div class="row-between"><b>router.rs</b><span class="mono"><span class="text-ok">+18</span> <span class="text-bad">-4</span></span></div>
+                  <span class="mono text-muted fs-2xs">crates/pingdeck-core/src/llm/router.rs</span>
+                  <div><button class="btn btn-sm" data-toast="已从编辑前快照撤销 router.rs 改动">撤销改动</button></div>
+                </div>
+              </div>
+            </aside>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 7: PROVIDERS & LOCAL GATEWAY (Complete OverviewTab!)      -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="providers">
+            <div class="pane">
+              <div class="pane-head"><span class="pane-title">服务商</span><button class="btn btn-sm" data-modal="add-provider">+ 添加</button></div>
+              <div class="pane-body" style="padding-top:8px">
+                <button class="list-row selected" data-prov-view="gateway">
+                  <span class="dot dot-live"></span>
+                  <div class="list-row-col">
+                    <span class="list-row-title">本地网关</span>
+                    <span class="list-row-sub">127.0.0.1:4141 · 3 客户端</span>
+                  </div>
+                </button>
+                <div class="list-group-head"><span>已配置服务商</span><span>6</span></div>
+                <button class="list-row" data-prov-view="relay" data-prov-primary="relay">
+                  <span class="dot dot-warn"></span>
+                  <div class="list-row-col">
+                    <span class="list-row-title">relay.acme.dev</span>
+                    <span class="list-row-sub">$12.40 · 2/34 模型失败</span>
+                  </div>
+                </button>
+                <button class="list-row" data-prov-view="relay"><span class="dot dot-ok"></span><div class="list-row-col"><span class="list-row-title">DeepSeek</span><span class="list-row-sub">¥86.40 · 412 ms</span></div></button>
+                <button class="list-row" data-prov-view="relay"><span class="dot dot-ok"></span><div class="list-row-col"><span class="list-row-title">Anthropic</span><span class="list-row-sub">Messages · 690 ms</span></div></button>
+                <button class="list-row" data-prov-view="relay"><span class="dot dot-ok"></span><div class="list-row-col"><span class="list-row-title">OpenAI</span><span class="list-row-sub">Chat / Responses · 540 ms</span></div></button>
+                <button class="list-row" data-prov-view="relay"><span class="dot dot-ok"></span><div class="list-row-col"><span class="list-row-title">Moonshot</span><span class="list-row-sub">¥49.59 · 520 ms</span></div></button>
+                <button class="list-row" data-prov-view="relay"><span class="dot dot-ok"></span><div class="list-row-col"><span class="list-row-title">Ollama（本地）</span><span class="list-row-sub">127.0.0.1:11434 · 38 ms</span></div></button>
+              </div>
+            </div>
+
+            <!-- Gateway Overview: Hero + TodayPanel + BaseUrls + Clients + Routing Rules Preview -->
+            <div id="prov-gateway-view" class="work">
+              <div class="work-head">
+                <span class="work-title">本地网关</span>
+                <div class="tabs-row" style="border:0;padding:0;margin-left:10px;height:100%" data-tab-group="gw-main">
+                  <button class="tab-btn active" data-tab="overview">概览</button>
+                  <button class="tab-btn" data-tab="clients">客户端 <span class="tab-cnt">3</span></button>
+                  <button class="tab-btn" data-tab="access">访问控制</button>
+                  <button class="tab-btn" data-tab="rules">备用路由 <span class="tab-cnt">4</span></button>
+                </div>
+                <div class="work-actions">
+                  <button class="btn btn-sm" data-toast="正在平滑重启本地网关 :4141…">重启</button>
+                  <button class="btn btn-sm" data-toast="已停止本地网关 :4141" data-toast-tone="warn">停止网关</button>
+                </div>
+              </div>
+
+              <div id="gw-tab-body" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto">
+                <div class="gw-hero">
+                  <div class="gw-hero-left">
+                    <div class="gw-hero-title">
+                      <span class="dot dot-live"></span>
+                      <span>正在监听</span>
+                      <code class="clickable" style="font-size:14px;padding:2px 8px;border-radius:6px;background:var(--bg-surface);border:1px solid var(--border-subtle)" data-toast="已复制 http://127.0.0.1:4141">http://127.0.0.1:4141</code>
+                      <span class="tag tag-ok">令牌鉴权已开启</span>
+                    </div>
+                    <div class="gw-hero-sub">
+                      <span>已运行 3 小时 12 分</span><span>·</span><span>仅本机回环（LAN 关闭）</span><span>·</span><span>Host / Origin 防重绑定保护已启用</span>
+                    </div>
+                  </div>
+                  <button class="btn btn-primary" data-modal="connect-client">接入编码工具…</button>
+                </div>
+
+                <div class="gw-body">
+                  <!-- TodayPanel (matches src/features/providers/gateway/TodayPanel.tsx) -->
+                  <div class="kpi-grid">
+                    <div class="kpi-card"><span class="kpi-label">今日网关转发</span><span class="kpi-val">412</span><span class="kpi-sub">12 次经备用链自动恢复</span></div>
+                    <div class="kpi-card"><span class="kpi-label">转发成功率</span><span class="kpi-val">91.0%</span><span class="kpi-sub"><button class="text-warn" data-nav-to="usage">37 次失败（查看日志 ↗）</button></span></div>
+                    <div class="kpi-card"><span class="kpi-label">直通 vs 协议转码</span><span class="kpi-val">318 / 94</span><span class="kpi-sub">同协议零损耗直通优先</span></div>
+                    <div class="kpi-card"><span class="kpi-label">网关中位首字延迟</span><span class="kpi-val">412 ms</span><span class="kpi-sub">网关自身转发开销 &lt; 1.2 ms</span></div>
+                  </div>
+
+                  <div class="card-panel">
+                    <div class="card-panel-head"><span>协议入口地址（自动转码或同协议直通）</span><button class="text-accent" data-nav-to="usage">查看调用日志 ↗</button></div>
+                    <table class="kv-table">
+                      <thead><tr><th>协议族</th><th>Base URL</th><th>支持路径</th><th style="width:72px">操作</th></tr></thead>
+                      <tbody>
+                        <tr><td><b>OpenAI 兼容</b></td><td class="mono">http://127.0.0.1:4141/v1</td><td class="mono text-muted">/chat/completions, /responses, /embeddings</td><td><button class="btn btn-sm" data-toast="已复制 OpenAI Base URL">复制</button></td></tr>
+                        <tr><td><b>Anthropic Messages</b></td><td class="mono">http://127.0.0.1:4141/anthropic</td><td class="mono text-muted">/v1/messages</td><td><button class="btn btn-sm" data-toast="已复制 Anthropic Base URL">复制</button></td></tr>
+                        <tr><td><b>Gemini</b></td><td class="mono">http://127.0.0.1:4141/gemini</td><td class="mono text-muted">/v1beta/models/*</td><td><button class="btn btn-sm" data-toast="已复制 Gemini Base URL">复制</button></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="grid-2col">
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>已接入客户端（3 个令牌有效）</span><button class="text-accent" data-tab-jump="gw-main:clients">管理令牌 →</button></div>
+                      <table class="kv-table">
+                        <thead><tr><th>客户端</th><th>令牌前缀</th><th>默认模型</th><th>最近活跃</th></tr></thead>
+                        <tbody>
+                          <tr><td><b>Claude Code</b></td><td class="mono">pdk_c_••••9d2f</td><td><span class="tag mono">DeepSeek/v4-pro</span></td><td class="text-muted">2 分钟前</td></tr>
+                          <tr><td><b>Codex CLI</b></td><td class="mono">pdk_c_••••41ab</td><td><span class="tag mono">Anthropic/sonnet-5-5</span></td><td class="text-muted">18 分钟前</td></tr>
+                          <tr><td><b>Zed Editor</b></td><td class="mono">pdk_c_••••c07e</td><td><span class="tag mono">DeepSeek/v4-flash</span></td><td class="text-muted">1 小时前</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>网关备用规则（首个内容事件后不切换）</span><button class="text-accent" data-tab-jump="gw-main:rules">配置规则 →</button></div>
+                      <table class="kv-table">
+                        <thead><tr><th>主模型</th><th>有序备用链</th><th class="text-right">今日命中</th></tr></thead>
+                        <tbody>
+                          <tr><td class="mono"><b>DeepSeek/v4-pro</b></td><td class="mono fs-2xs">Moonshot/kimi-k2.6 → Anthropic/sonnet-5-5</td><td class="mono text-right">214</td></tr>
+                          <tr><td class="mono"><b>Anthropic/sonnet-5-5</b></td><td class="mono fs-2xs">OpenAI/gpt-6.1</td><td class="mono text-right">78</td></tr>
+                          <tr><td class="mono"><b>DeepSeek/v4-flash</b></td><td class="mono fs-2xs">Moonshot/kimi-k2.6 → Ollama/qwen3</td><td class="mono text-right">104</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Provider Detail View (Complete OverviewTab: Drift Banner + Keys + Capabilities + Balance + Health + RecentCalls!) -->
+            <div id="prov-relay-view" hidden class="work">
+              <div class="work-head">
+                <span class="work-title">relay.acme.dev</span>
+                <span class="tag tag-warn">▲ 2/34 模型测试失败</span>
+                <span class="work-meta mono">https://relay.acme.dev · new-api 0.9.7</span>
+                <div class="work-actions">
+                  <button class="btn btn-sm" data-modal="add-provider">重新嗅探…</button>
+                  <button class="btn btn-sm btn-primary" data-modal="benchmark-cost">基准测试…</button>
+                </div>
+              </div>
+              <div class="tabs-row" data-tab-group="prov-detail">
+                <button class="tab-btn active" data-tab="overview">概览</button>
+                <button class="tab-btn" data-tab="models">模型 <span class="tab-cnt">38</span></button>
+                <button class="tab-btn" data-tab="config">配置</button>
+              </div>
+              <div id="prov-detail-body" class="gw-body">
+                <div class="inline-banner">
+                  <span><b>模型目录飘移提醒：</b>上次嗅探发现上游新增 <b>3 个模型</b>（<code>deepseek-v4-lite</code>、<code>gpt-6.2</code> 等），另有 2 个模型探针未通过。</span>
+                  <button class="btn btn-sm" data-tab-jump="prov-detail:models">审阅模型列表 →</button>
+                </div>
+
+                <div class="prov-grid">
+                  <!-- Main Column: KeysSection + CapabilitiesSection -->
+                  <div class="col-stack">
+                    <div class="card-panel">
+                      <div class="card-panel-head">
+                        <span>密钥池（2 把密钥 · 轮询与故障隔离）</span>
+                        <button class="btn btn-sm" data-toast="已展开新增 API 密钥输入行">+ 添加密钥</button>
+                      </div>
+                      <div class="list-row" style="background:var(--bg-surface);border-color:var(--border-subtle)">
+                        <span class="dot dot-ok"></span>
+                        <div class="list-row-col">
+                          <span class="list-row-title">key_relay_main <span class="mono text-muted" style="font-weight:400">sk-…7f3c</span></span>
+                          <span class="list-row-sub">上次探测 12 分钟前 · Chat / Messages / Gemini / Embeddings</span>
+                        </div>
+                        <span class="mono fw-600">$12.40</span>
+                        <button class="btn btn-sm" data-toast="key_relay_main 连通性探测正常（200 OK · 380 ms）">探测</button>
+                      </div>
+                      <div class="list-row" style="background:var(--bg-surface);border-color:var(--border-subtle)">
+                        <span class="dot dot-idle"></span>
+                        <div class="list-row-col">
+                          <span class="list-row-title">key_relay_backup <span class="mono text-muted" style="font-weight:400">sk-…2a91</span></span>
+                          <span class="list-row-sub">备用密钥 · 主密钥触发 429 时自动接管</span>
+                        </div>
+                        <span class="mono text-muted">$5.00</span>
+                        <button class="btn btn-sm" data-toast="key_relay_backup 连通性探测正常（200 OK · 410 ms）">探测</button>
+                      </div>
+                    </div>
+
+                    <div class="card-panel">
+                      <div class="card-panel-head">
+                        <span>协议能力与端点探测矩阵（Capabilities &amp; Sniff Evidence）</span>
+                        <span class="tag tag-ok">支持 4 / 5 协议族</span>
+                      </div>
+                      <table class="kv-table">
+                        <thead><tr><th>协议族</th><th>上游探测路径</th><th>状态证据</th><th>流式 / 工具</th><th>最近验证</th></tr></thead>
+                        <tbody>
+                          <tr><td><b>OpenAI Chat</b></td><td class="mono">/v1/chat/completions</td><td><span class="tag tag-ok">● 200 OK</span></td><td>SSE · Tools</td><td class="text-muted">12 分钟前</td></tr>
+                          <tr><td><b>Anthropic Messages</b></td><td class="mono">/v1/messages</td><td><span class="tag tag-ok">● 200 OK</span></td><td>SSE · Tools</td><td class="text-muted">12 分钟前</td></tr>
+                          <tr><td><b>Google Gemini</b></td><td class="mono">/v1beta/models/*</td><td><span class="tag tag-ok">● 200 OK</span></td><td>SSE</td><td class="text-muted">12 分钟前</td></tr>
+                          <tr><td><b>Embeddings</b></td><td class="mono">/v1/embeddings</td><td><span class="tag tag-ok">● 200 OK</span></td><td>向量 1536 维</td><td class="text-muted">12 分钟前</td></tr>
+                          <tr class="kv-off"><td><b>OpenAI Responses</b></td><td class="mono">/v1/responses</td><td><span class="tag">404 不支持</span></td><td>网关自动转码</td><td class="text-muted">12 分钟前</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- Side Column (296px): BalanceCard + HealthCard + RecentCalls -->
+                  <aside class="prov-side-col">
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>账户余额</span><button class="btn btn-sm btn-ghost" data-toast="已刷新 relay.acme.dev 余额：$12.40 USD">刷新 ↻</button></div>
+                      <div class="kpi-val">$12.40 <span class="fs-xs text-muted" style="font-weight:500">USD</span></div>
+                      <div class="prog-track" style="max-width:none;height:6px"><div class="prog-fill" style="width:25%"></div></div>
+                      <div class="fs-2xs text-muted">总额度 $50.00 · 已用 $37.60 · 来源 <code>/api/status</code></div>
+                    </div>
+
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>健康与熔断状态</span><span class="tag tag-warn">需关注</span></div>
+                      <div class="fs-xs"><b>32 / 34</b> 个已启用模型探针正常</div>
+                      <div class="col-stack-sm fs-2xs">
+                        <div class="list-row" style="background:var(--bad-soft);border-color:var(--bad-border);padding:5px 8px">
+                          <span class="mono text-bad">gemini-3.2-pro</span>
+                          <span class="ml-auto text-bad">403 无权限</span>
+                        </div>
+                        <div class="list-row" style="background:var(--warn-soft);border-color:var(--warn-border);padding:5px 8px">
+                          <span class="mono text-warn">glm-5</span>
+                          <span class="ml-auto text-warn">探针超时 &gt;10s</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>最近调用</span><button class="text-accent" data-nav-to="usage">全部 ↗</button></div>
+                      <div class="col-stack-sm fs-2xs">
+                        <div class="row-between"><span class="mono">deepseek-v4-pro</span><span class="tag tag-ok">200 · 412ms</span></div>
+                        <div class="row-between"><span class="mono">claude-sonnet-5-5</span><span class="tag tag-ok">200 · 690ms</span></div>
+                        <div class="row-between"><span class="mono">gemini-3.2-pro</span><span class="tag tag-bad">403 · 118ms</span></div>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 8: USAGE & LOGS (ScopePane + Stats/Calls + 6-Dim Table)   -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="usage">
+            <div class="pane">
+              <div class="pane-head"><span class="pane-title">用量与日志</span></div>
+              <div class="pane-body" style="padding-top:8px">
+                <button class="list-row selected" data-usage-scope="全部服务商">
+                  <div class="list-row-col">
+                    <span class="list-row-title">全部服务商</span>
+                    <span class="list-row-sub">1,284次调用 · 4.82M token</span>
+                  </div>
+                </button>
+                <div class="list-group-head"><span>服务商</span><span>3</span></div>
+                <button class="list-row" data-usage-scope="DeepSeek">
+                  <span class="dot dot-ok"></span>
+                  <div class="list-row-col">
+                    <span class="list-row-title">DeepSeek</span>
+                    <span class="list-row-sub">952次调用 · 3.50M token</span>
+                  </div>
+                </button>
+                <button class="list-row" data-usage-scope="Anthropic">
+                  <span class="dot dot-ok"></span>
+                  <div class="list-row-col">
+                    <span class="list-row-title">Anthropic</span>
+                    <span class="list-row-sub">218次调用 · 1.14M token</span>
+                  </div>
+                </button>
+                <button class="list-row" data-usage-scope="Moonshot">
+                  <span class="dot dot-ok"></span>
+                  <div class="list-row-col">
+                    <span class="list-row-title">Moonshot</span>
+                    <span class="list-row-sub">114次调用 · 180K token</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div class="work">
+              <div class="work-head">
+                <span id="usage-title" class="work-title">全部服务商</span>
+                <div class="tabs-row" style="border:0;padding:0;margin-left:10px;height:100%" id="usage-view-tabs">
+                  <button class="tab-btn active" data-usage-view="overview">统计</button>
+                  <button class="tab-btn" data-usage-view="calls">调用</button>
+                </div>
+                <div class="work-actions">
+                  <span class="work-meta">更新于 14:32:08</span>
+                  <button class="btn btn-sm" data-toast="已导出最近 7 天用量明细 CSV">导出 CSV</button>
+                </div>
+              </div>
+
+              <div id="usage-overview-view" class="gw-body">
+                <div class="row-center" style="flex-wrap:wrap">
+                  <button id="usage-range-btn" class="select-pill" data-popover="usage-range">时间范围 7d ▾</button>
+                  <button class="select-pill" data-toast="筛选来源：全部（网关 / 对话 / AI 请求 / 探针）">来源 全部 ▾</button>
+                  <button class="select-pill" data-toast="筛选模型：全部">模型 全部 ▾</button>
+                  <button class="select-pill" data-toast="筛选密钥：全部">密钥 全部 ▾</button>
+                  <button class="select-pill" data-toast="筛选客户端：全部">客户端 全部 ▾</button>
+                  <span class="ml-auto fs-xs text-muted mono">2026-11-13 至 2026-11-19</span>
+                </div>
+
+                <div class="kpi-grid">
+                  <div class="kpi-card"><span class="kpi-label">调用</span><span class="kpi-val">1,284</span><span class="kpi-sub">失败 37 · 2.9% · 已取消 4</span></div>
+                  <div class="kpi-card"><span class="kpi-label">费用</span><span class="kpi-val">~¥42.18</span><span class="kpi-sub">按本地目录单价估算</span></div>
+                  <div class="kpi-card"><span class="kpi-label">token</span><span class="kpi-val">4.82M</span><span class="kpi-sub">输入 3.91M · 输出 910K · 缓存 1.34M</span></div>
+                  <div class="kpi-card"><span class="kpi-label">延迟</span><span class="kpi-val">418 ms</span><span class="kpi-sub">流式平均首 token · 端到端 1.24 s</span></div>
+                </div>
+
+                <div class="chart-box">
+                  <div class="row-between">
+                    <div><b class="fs-xs">每日趋势</b> <span class="fs-2xs text-muted">按本地时区聚合（仅计已路由至服务商的调用）</span></div>
+                    <div class="seg">
+                      <button class="active" data-action="seg-pick">调用</button>
+                      <button data-action="seg-pick">token</button>
+                      <button data-action="seg-pick">费用</button>
+                      <button data-action="seg-pick">失败率</button>
+                      <button data-action="seg-pick">延迟</button>
+                    </div>
+                  </div>
+                  <div class="chart-bars" aria-label="近 7 天请求趋势">
+                    <div class="chart-col"><div class="chart-bar" style="height:48%"></div><span class="chart-day">11-13</span></div>
+                    <div class="chart-col"><div class="chart-bar" style="height:64%"></div><span class="chart-day">11-14</span></div>
+                    <div class="chart-col"><div class="chart-bar" style="height:42%"></div><span class="chart-day">11-15</span></div>
+                    <div class="chart-col"><div class="chart-bar" style="height:82%"></div><span class="chart-day">11-16</span></div>
+                    <div class="chart-col"><div class="chart-bar" style="height:95%"></div><span class="chart-day">11-17</span></div>
+                    <div class="chart-col"><div class="chart-bar" style="height:71%"></div><span class="chart-day">11-18</span></div>
+                    <div class="chart-col"><div class="chart-bar" style="height:58%"></div><span class="chart-day">今天</span></div>
+                  </div>
+                </div>
+
+                <!-- 6-Dimension Breakdown Table (matches src/features/usage/BreakdownTable.tsx) -->
+                <div class="card-panel" style="padding:0;overflow:hidden">
+                  <div class="tabs-row" data-tab-group="usage-dim">
+                    <button class="tab-btn active" data-tab="model">模型 <span class="tab-cnt">4</span></button>
+                    <button class="tab-btn" data-tab="provider">服务商 <span class="tab-cnt">3</span></button>
+                    <button class="tab-btn" data-tab="source">来源 <span class="tab-cnt">3</span></button>
+                    <button class="tab-btn" data-tab="client">客户端 <span class="tab-cnt">3</span></button>
+                    <button class="tab-btn" data-tab="key">密钥 <span class="tab-cnt">3</span></button>
+                    <button class="tab-btn" data-tab="failure">失败原因 <span class="tag tag-warn" style="height:17px;padding:0 5px">37</span></button>
+                    <button class="ml-auto text-accent fs-2xs" data-nav-to="settings" data-set-page="ai/catalog">设置价格 ↗</button>
+                  </div>
+                  <div id="usage-dim-body" style="padding:10px 12px">
+                    <table class="kv-table">
+                      <thead><tr><th>模型（点击下钻调用日志）</th><th>服务商</th><th class="text-right">调用次数</th><th class="text-right">失败</th><th class="text-right">平均首字</th><th class="text-right">总 token（含缓存）</th><th class="text-right">估算费用</th></tr></thead>
+                      <tbody>
+                        <tr class="clickable" data-usage-view="calls"><td class="mono text-accent">deepseek-v4-pro</td><td>DeepSeek</td><td class="mono text-right">540</td><td class="mono text-right text-muted">9</td><td class="mono text-right">412 ms</td><td class="mono text-right">2.31M (38%)</td><td class="mono text-right">¥18.60</td></tr>
+                        <tr class="clickable" data-usage-view="calls"><td class="mono text-accent">claude-sonnet-5-5</td><td>Anthropic</td><td class="mono text-right">218</td><td class="mono text-right text-warn">18</td><td class="mono text-right">690 ms</td><td class="mono text-right">1.14M (29%)</td><td class="mono text-right">¥19.40</td></tr>
+                        <tr class="clickable" data-usage-view="calls"><td class="mono text-accent">deepseek-v4-flash</td><td>DeepSeek</td><td class="mono text-right">412</td><td class="mono text-right text-muted">2</td><td class="mono text-right">233 ms</td><td class="mono text-right">1.19M (35%)</td><td class="mono text-right">¥3.62</td></tr>
+                        <tr class="clickable" data-usage-view="calls"><td class="mono text-accent">kimi-k2.6</td><td>Moonshot</td><td class="mono text-right">114</td><td class="mono text-right text-warn">8</td><td class="mono text-right">520 ms</td><td class="mono text-right">0.18M (18%)</td><td class="mono text-right">¥0.56</td></tr>
+                      </tbody>
+                      <tfoot><tr><td>合计（4 个模型）</td><td>3 个服务商</td><td class="mono text-right">1,284</td><td class="mono text-right">37 (2.9%)</td><td class="mono text-right">418 ms</td><td class="mono text-right">4.82M (34.2%)</td><td class="mono text-right">¥42.18</td></tr></tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Call Log View (click any row to open Slide-Over Call Detail Drawer!) -->
+              <div id="usage-calls-view" hidden class="gw-body">
+                <div class="row-center">
+                  <div class="input-box sunken flex-1"><input data-filter-rows="#usage-calls-tbody tr" placeholder="筛选查询：例如 is:failed source:gateway model:deepseek run:<id>…" /></div>
+                  <div class="row-wrap" data-pill-group="calls-filter">
+                    <button class="tag tag-accent" data-pill-pick>全部</button>
+                    <button class="tag" data-pill-pick>仅失败</button>
+                    <button class="tag" data-pill-pick>故障转移</button>
+                    <button class="tag" data-pill-pick>含工具调用</button>
+                  </div>
+                </div>
+                <table class="kv-table">
+                  <thead><tr><th>时间</th><th>来源 / 客户端</th><th>模型与路由</th><th>状态</th><th class="text-right">首字 / 总耗时</th><th class="text-right">输入 / 输出 token</th><th class="text-right">费用</th></tr></thead>
+                  <tbody id="usage-calls-tbody">
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:32:08</td><td>网关 · Claude Code</td><td class="mono">deepseek-v4-pro</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">412ms / 2.8s</td><td class="mono text-right">6,420 / 840</td><td class="mono text-right">¥0.0184</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:29:41</td><td>网关 · Codex CLI</td><td class="mono">claude-sonnet-5-5 → v4-pro</td><td><span class="tag tag-warn">429 → 故障转移</span></td><td class="mono text-right">680ms / 3.4s</td><td class="mono text-right">4,100 / 512</td><td class="mono text-right">¥0.0420</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:25:12</td><td>对话 · 主智能体</td><td class="mono">deepseek-v4-pro</td><td><span class="tag tag-ok">200 · 3 工具</span></td><td class="mono text-right">390ms / 1.9s</td><td class="mono text-right">8,910 / 620</td><td class="mono text-right">¥0.0210</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:24:03</td><td>对话 · 子智能体 Explore</td><td class="mono">deepseek-v4-flash</td><td><span class="tag tag-ok">200 · 只读</span></td><td class="mono text-right">218ms / 740ms</td><td class="mono text-right">3,200 / 310</td><td class="mono text-right">¥0.0022</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:18:04</td><td>AI 请求工作台</td><td class="mono">deepseek-v4-flash</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">233ms / 612ms</td><td class="mono text-right">9 / 2</td><td class="mono text-right">¥0.00002</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:12:49</td><td>网关 · Zed Editor</td><td class="mono">DeepSeek/deepseek-v4-flash</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">205ms / 520ms</td><td class="mono text-right">1,840 / 190</td><td class="mono text-right">¥0.0013</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:09:11</td><td>网关 · 未知客户端</td><td class="mono text-muted">gpt-unknown（路由前拒绝）</td><td><span class="tag tag-bad">401 鉴权失败</span></td><td class="mono text-right">— / 1ms</td><td class="mono text-right">0 / 0</td><td class="mono text-right text-faint">—</td></tr>
+                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:04:19</td><td>服务商探针 · relay.acme.dev</td><td class="mono">gemini-3.2-pro</td><td><span class="tag tag-bad">403 无权限</span></td><td class="mono text-right">118ms / 118ms</td><td class="mono text-right">12 / 0</td><td class="mono text-right">¥0.0000</td></tr>
+                  </tbody>
+                </table>
+                <div class="row-between fs-2xs text-muted">
+                  <span>调用日志保留全部请求（含网关路由前拒绝）；用量统计仅计已路由至服务商的调用</span>
+                  <button class="text-accent" data-nav-to="settings" data-set-page="ai/usage">日志保留策略：90 天 ↗</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 9: SETTINGS (Complete 5 Groups / 20 Real Pages)           -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="settings">
+            <div class="pane">
+              <div class="pane-head">
+                <button class="btn btn-sm btn-ghost" data-nav-to="requests">‹ 返回请求</button>
+                <span class="pane-title text-right text-muted" style="font-size:13px">20 页</span>
+              </div>
+              <div class="pane-search">
+                <div class="input-box sunken">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input id="set-search-input" placeholder="搜索设置…" />
+                  <span class="kbd">⌘F</span>
+                </div>
+              </div>
+              <div id="set-nav-list" class="pane-body">
+                <div class="list-group-head" data-set-group="general"><span>通用</span><span>3</span></div>
+                <button class="list-row" data-set-page="general"><span class="list-row-title">通用</span></button>
+                <button class="list-row selected" data-set-page="appearance"><span class="list-row-title">外观</span><span class="tag ml-auto" style="height:18px">已更改 1</span></button>
+                <button class="list-row" data-set-page="shortcuts"><span class="list-row-title">快捷键</span></button>
+
+                <div class="list-group-head" data-set-group="workspace"><span>请求与数据</span><span>4</span></div>
+                <button class="list-row" data-set-page="requests"><span class="list-row-title">请求默认值</span></button>
+                <button class="list-row" data-set-page="network"><span class="list-row-title">网络</span></button>
+                <button class="list-row" data-set-page="mock"><span class="list-row-title">Mock 服务</span></button>
+                <button class="list-row" data-set-page="data"><span class="list-row-title">数据与同步</span></button>
+
+                <div class="list-group-head" data-set-group="agent"><span>智能体</span><span>8</span></div>
+                <button class="list-row" data-set-page="ai/agent"><span class="list-row-title">默认</span></button>
+                <button class="list-row" data-set-page="ai/personalization"><span class="list-row-title">个性化</span></button>
+                <button class="list-row" data-set-page="ai/memory"><span class="list-row-title">项目指令与信任</span></button>
+                <button class="list-row" data-set-page="ai/subagents"><span class="list-row-title">子智能体</span></button>
+                <button class="list-row" data-set-page="ai/tools"><span class="list-row-title">工具</span></button>
+                <button class="list-row" data-set-page="ai/permissions"><span class="list-row-title">权限</span></button>
+                <button class="list-row" data-set-page="ai/mcp"><span class="list-row-title">MCP 服务器</span><span class="set-nav-badge"><span class="dot dot-warn"></span>需要处理</span></button>
+                <button class="list-row" data-set-page="ai/skills"><span class="list-row-title">技能</span></button>
+
+                <div class="list-group-head" data-set-group="ai"><span>模型</span><span>3</span></div>
+                <button class="list-row" data-set-page="ai/routing"><span class="list-row-title">重试与故障转移</span></button>
+                <button class="list-row" data-set-page="ai/catalog"><span class="list-row-title">模型与价格</span></button>
+                <button class="list-row" data-set-page="ai/usage"><span class="list-row-title">用量统计</span></button>
+
+                <div class="list-group-head" data-set-group="system"><span>系统</span><span>2</span></div>
+                <button class="list-row" data-set-page="advanced"><span class="list-row-title">高级</span></button>
+                <button class="list-row" data-set-page="about"><span class="list-row-title">关于</span></button>
+              </div>
+            </div>
+
+            <div class="work">
+              <div class="work-head">
+                <span id="set-crumb-group" class="work-meta">通用 ›</span>
+                <span id="set-crumb-page" class="work-title">外观</span>
+                <div class="work-actions">
+                  <button class="btn btn-sm" id="set-changed-btn" data-toast="当前显示本页已修改的 1 项设置">已更改 1</button>
+                  <span class="status-mark"><span class="dot dot-ok"></span>已保存</span>
+                  <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本页默认值…</button>
+                </div>
+              </div>
+
+              <div class="set-body">
+                <!-- Appearance Page -->
+                <div id="set-page-appearance" class="set-col">
+                  <p class="set-lede">没有标注的设置立即生效，并随同步文件夹同步。只有例外才标出来。</p>
+
+                  <div>
+                    <div class="set-section-head">
+                      <span class="set-section-title">主题与外观</span>
+                      <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-label">主题</span>
+                        <span class="set-row-desc">跟随系统时随系统外观切换；系统的“增强对比度”也会生效。</span>
+                      </div>
+                      <div class="seg">
+                        <button data-set-mode="system">跟随系统</button>
+                        <button class="active" data-set-mode="light">浅色</button>
+                        <button data-set-mode="dark">深色</button>
+                      </div>
+                    </div>
+
+                    <div style="padding:14px 0;border-bottom:1px solid var(--border-subtle)">
+                      <div class="set-row-info">
+                        <span class="set-row-label">色彩主题 <span class="set-meta-pill">仅这台电脑</span></span>
+                        <span class="set-row-desc">全局统一切换浅色与深色模式下的低眩光护眼底色、文字层级与主题强调色。</span>
+                      </div>
+                      <div class="palette-cards">
+                        <button class="palette-card active" data-set-palette="slate">
+                          <span class="palette-mini" data-palette-preview="slate" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="slate"></span><span class="palette-name">靛蓝板岩</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">精密冷灰默认</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="ocean">
+                          <span class="palette-mini" data-palette-preview="ocean" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="ocean"></span><span class="palette-name">深海青岚</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">清晰科技青蓝</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="nord">
+                          <span class="palette-mini" data-palette-preview="nord" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="nord"></span><span class="palette-name">极光冰蓝</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">低眩光极夜护眼</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="sage">
+                          <span class="palette-mini" data-palette-preview="sage" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="sage"></span><span class="palette-name">青瓷护眼</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">柔和豆沙绿护眼</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="emerald">
+                          <span class="palette-mini" data-palette-preview="emerald" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="emerald"></span><span class="palette-name">松石翠绿</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">清爽终端绿</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="amber">
+                          <span class="palette-mini" data-palette-preview="amber" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="amber"></span><span class="palette-name">暖砂护眼</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">滤蓝光暖纸阅读</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="violet">
+                          <span class="palette-mini" data-palette-preview="violet" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="violet"></span><span class="palette-name">星云靛紫</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">现代 AI 科技紫</span>
+                          </span>
+                        </button>
+                        <button class="palette-card" data-set-palette="graphite">
+                          <span class="palette-mini" data-palette-preview="graphite" aria-hidden="true">
+                            <span class="palette-mini-rail"><span class="palette-mini-nav"></span><span class="palette-mini-nav palette-mini-nav-dim"></span></span>
+                            <span class="palette-mini-pane"><span class="palette-mini-active"></span><span class="palette-mini-bar"></span><span class="palette-mini-bar palette-mini-bar-dim"></span></span>
+                            <span class="palette-mini-work"><span class="palette-mini-head"><span class="palette-mini-title"></span><span class="palette-mini-cta"></span></span><span class="palette-mini-line"></span><span class="palette-mini-line palette-mini-line-short"></span></span>
+                          </span>
+                          <span class="palette-meta">
+                            <span class="palette-title"><span class="palette-dot" data-palette-preview="graphite"></span><span class="palette-name">极简石墨</span><span class="palette-check">✓</span></span>
+                            <span class="palette-sub">零色偏纯灰</span>
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-label">减少动态效果</span>
+                        <span class="set-row-desc">跟随系统时使用系统的辅助功能设置。开启后不播放任何过渡，包括跳转链接后的高亮。</span>
+                      </div>
+                      <div class="seg">
+                        <button class="active" data-action="seg-pick">跟随系统</button>
+                        <button data-action="seg-pick">开启</button>
+                        <button data-action="seg-pick">关闭</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="set-section-head">
+                      <span class="set-section-title">文字与密度</span>
+                      <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-label">密度</span>
+                        <span class="set-row-desc">紧凑会把表格、日志和列表的行高从 30 px 收紧到 26 px。</span>
+                      </div>
+                      <div class="seg">
+                        <button class="active" data-set-density="comfortable">舒适</button>
+                        <button data-set-density="compact">紧凑</button>
+                      </div>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-label">界面字号</span>
+                        <span class="set-row-desc">同时缩放标签、表格和对话文字（10–26 px）。</span>
+                      </div>
+                      <div class="set-slider-wrap">
+                        <input id="slider-ui-fs" type="range" min="10" max="26" value="13" />
+                        <span id="val-ui-fs" class="set-slider-val">13 px</span>
+                      </div>
+                    </div>
+                    <div class="set-row">
+                      <div class="set-row-info">
+                        <span class="set-row-label">代码字号</span>
+                        <span class="set-row-desc">用于请求体、响应、日志和代码块，行高随之变化（10–24 px）。</span>
+                      </div>
+                      <div class="set-slider-wrap">
+                        <input id="slider-mono-fs" type="range" min="10" max="24" value="12" />
+                        <span id="val-mono-fs" class="set-slider-val">12 px</span>
+                      </div>
+                    </div>
+
+                    <div class="card-panel" style="margin-top:12px">
+                      <div class="row-center" id="sample-ui-row">
+                        <span class="m-get">GET</span>
+                        <span class="mono flex-1">/invoices?status=open</span>
+                        <span class="tag tag-ok">✓ 200</span>
+                        <span class="text-muted fs-xs">184 ms</span>
+                      </div>
+                      <div class="wire-mini" style="width:100%;height:7px" title="示例耗时：共 184 ms">
+                        <i style="width:5%;background:var(--ph-dns)"></i>
+                        <i style="width:8%;background:var(--ph-connect)"></i>
+                        <i style="width:10%;background:var(--ph-tls)"></i>
+                        <i style="width:58%;background:var(--ph-wait)"></i>
+                        <i style="width:19%;background:var(--ph-recv)"></i>
+                      </div>
+                      <div id="sample-code-box" class="code-box" style="background:var(--bg-sunken)">{ <span class="tk-key">"id"</span>: <span class="tk-str">"inv_2f9"</span>, <span class="tk-key">"total"</span>: <span class="tk-num">12400</span> }</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Dynamic container for all other 19 real Settings pages -->
+                <div id="set-page-dynamic" class="set-col" hidden></div>
+              </div>
+            </div>
+          </section>
+
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Inline Waterfall Timing Popover ── -->
+  <div id="wire-popover" class="wire-popover" hidden>
+    <div class="row-between fw-600"><span>耗时瀑布明细</span><span class="mono">共 184 ms</span></div>
+    <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-dns)"></span><span style="width:52px">DNS</span><div class="wire-pop-bar"><i style="width:8%;background:var(--ph-dns)"></i></div><span class="mono">8 ms</span></div>
+    <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-connect)"></span><span style="width:52px">TCP/TLS</span><div class="wire-pop-bar"><i style="width:30%;background:var(--ph-connect)"></i></div><span class="mono">55 ms</span></div>
+    <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-wait)"></span><span style="width:52px">等待首包</span><div class="wire-pop-bar"><i style="width:58%;background:var(--ph-wait)"></i></div><span class="mono">109 ms</span></div>
+    <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-recv)"></span><span style="width:52px">接收正文</span><div class="wire-pop-bar"><i style="width:12%;background:var(--ph-recv)"></i></div><span class="mono">12 ms</span></div>
+  </div>
+
+  <!-- ── Command Palette Modal (⌘K) ── -->
+  <div id="cmd-modal" class="modal-scrim" hidden>
+    <div class="palette-dialog" role="dialog" aria-label="命令面板">
+      <div class="palette-input-row">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="cmd-input" placeholder="跳转到请求、服务商、设置项，或输入命令…" />
+        <span class="kbd">Esc</span>
+      </div>
+      <div id="cmd-list" class="palette-list">
+        <div class="list-group-head"><span>快速跳转</span></div>
+        <button class="palette-item active" data-nav-to="requests" data-sub-view="http"><span class="m-get">GET</span><span class="flex-1">List invoices</span><span class="text-faint fs-2xs">请求</span></button>
+        <button class="palette-item" data-nav-to="requests" data-sub-view="ai"><span class="tag tag-accent">AI</span><span class="flex-1">Ping test (deepseek-v4-flash)</span><span class="text-faint fs-2xs">AI 请求</span></button>
+        <button class="palette-item" data-nav-to="chat"><span class="dot dot-warn"></span><span class="flex-1">429s from the gateway（待审批）</span><span class="text-faint fs-2xs">对话</span></button>
+        <button class="palette-item" data-nav-to="providers" data-sub-view="gateway"><span class="dot dot-live"></span><span class="flex-1">本地网关 :4141</span><span class="text-faint fs-2xs">服务商</span></button>
+        <button class="palette-item" data-nav-to="settings"><span class="flex-1">外观与多主题设置</span><span class="kbd">⌘,</span></button>
+        <div class="list-group-head"><span>快捷向导与弹窗</span></div>
+        <button class="palette-item" data-modal="add-provider" data-action="close-cmd"><span class="tag tag-accent">向导</span><span class="flex-1">添加 AI 服务商（智能嗅探）…</span></button>
+        <button class="palette-item" data-modal="connect-client" data-action="close-cmd"><span class="tag">网关</span><span class="flex-1">接入编码工具（Claude Code / Codex / Zed）…</span></button>
+        <button class="palette-item" data-modal="import-export" data-action="close-cmd"><span class="tag">数据</span><span class="flex-1">导入 / 导出工作区（OpenAPI / Postman / cURL）…</span></button>
+        <button class="palette-item" data-modal="code-snippets" data-action="close-cmd"><span class="tag">代码</span><span class="flex-1">生成请求代码片段（cURL / fetch / Python / Rust）…</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Unified Overlay Roots ── -->
+  <div id="popover-root"></div>
+  <div id="drawer-root"></div>
+  <div id="dialog-root"></div>
+  <div id="toast-root" class="toast-stack" aria-live="polite"></div>
+
+  <script src="./js/data-settings.js"></script>
+  <script src="./js/data-subtabs.js"></script>
+  <script src="./js/data-overlays.js"></script>
+  <script src="./js/overlays.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

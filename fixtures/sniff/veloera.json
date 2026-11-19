@@ -1,0 +1,77 @@
+{
+  "name": "veloera",
+  "input": {
+    "base_url": "vel.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "version": "1.2.3",
+          "system_name": "Veloera Hub",
+          "quota_per_unit": 500000
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "gpt-4o",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/token/",
+      "status": 200,
+      "body": {
+        "code": true,
+        "data": {
+          "total_available": 500000,
+          "unlimited_quota": false
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "veloera",
+    "brand": "Veloera",
+    "confirmed": true,
+    "protocols": {
+      "chat": 400
+    },
+    "models": 1,
+    "max_requests": 12,
+    "requests": 4,
+    "warnings": [
+      "brand_third_party"
+    ],
+    "user_id_header_only_on": []
+  }
+}

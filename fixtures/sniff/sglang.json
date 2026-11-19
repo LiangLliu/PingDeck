@@ -1,0 +1,95 @@
+{
+  "name": "sglang",
+  "input": {
+    "base_url": "http://127.0.0.1:30000"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/get_model_info",
+      "status": 200,
+      "body": {
+        "model_path": "Qwen/Qwen3-8B",
+        "is_generation": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "Qwen/Qwen3-8B",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1beta/models/Qwen%2FQwen3-8B:generateContent",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "Invalid JSON payload received",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    }
+  ],
+  "expect": {
+    "family": "sglang",
+    "confirmed": true,
+    "models": 1,
+    "max_requests": 8,
+    "requests": 8,
+    "warnings": [],
+    "local_requests": 8
+  }
+}

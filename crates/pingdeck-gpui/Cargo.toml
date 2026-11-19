@@ -1,0 +1,30 @@
+[package]
+name = "pingdeck-gpui"
+description = "Pure-Rust GPU-accelerated desktop shell for PingDeck built on GPUI + gpui-kit, strictly isolated from core domain logic."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "pingdeck"
+path = "src/main.rs"
+test = false
+
+[features]
+default = []
+test-support = ["gpui-kit/test-support"]
+
+[lints]
+workspace = true
+
+[dependencies]
+gpui-kit.workspace = true
+pingdeck-desktop = { path = "../pingdeck-desktop" }
+serde_json.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+tray-icon.workspace = true

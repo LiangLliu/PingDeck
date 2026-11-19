@@ -1,0 +1,99 @@
+{
+  "name": "cliproxyapi",
+  "input": {
+    "base_url": "http://localhost:8317"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "headers": {
+        "x-cpa-version": "6.1.0",
+        "x-cpa-commit": "abc1234"
+      },
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "claude-sonnet-5",
+            "object": "model",
+            "owned_by": "x"
+          },
+          {
+            "id": "gpt-5",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "headers": {
+        "x-cpa-version": "6.1.0"
+      },
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "headers": {
+        "x-cpa-version": "6.1.0"
+      },
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1beta/models/claude-sonnet-5:generateContent",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "Invalid JSON payload received",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    }
+  ],
+  "expect": {
+    "family": "cli_proxy_api",
+    "version": "6.1.0",
+    "confirmed": true,
+    "models": 2,
+    "max_requests": 8,
+    "requests": 8,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "responses": "absent",
+      "embeddings": "absent"
+    },
+    "warnings": [],
+    "local_requests": 8
+  }
+}

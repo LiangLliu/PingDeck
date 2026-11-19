@@ -1,0 +1,123 @@
+{
+  "name": "slow-server",
+  "input": {
+    "base_url": "slow.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 404,
+      "text": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "gpt-4o",
+            "object": "model",
+            "owned_by": "x"
+          },
+          {
+            "id": "gemini-3.2-pro",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      },
+      "delay_ms": 6000
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      },
+      "delay_ms": 6000
+    },
+    {
+      "method": "POST",
+      "path": "/v1beta/models/gemini-3.2-pro:generateContent",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "Invalid JSON payload received",
+          "status": "INVALID_ARGUMENT"
+        }
+      },
+      "delay_ms": 6000
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      },
+      "delay_ms": 6000
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      },
+      "delay_ms": 6000
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "models": 2,
+    "max_requests": 12,
+    "requests": 10,
+    "warnings": [],
+    "protocols": {
+      "chat": "timeout",
+      "messages": "timeout",
+      "gemini": "timeout",
+      "responses": "timeout",
+      "embeddings": "timeout"
+    }
+  }
+}

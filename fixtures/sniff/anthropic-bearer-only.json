@@ -1,0 +1,102 @@
+{
+  "name": "anthropic-bearer-only",
+  "input": {
+    "base_url": "claude.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "anthropic_messages"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 404,
+      "text": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "when": [
+        {
+          "header_present": "authorization"
+        }
+      ],
+      "status": 200,
+      "body": {
+        "data": [
+          {
+            "id": "claude-sonnet-5"
+          }
+        ],
+        "has_more": false
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 401,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "authentication_error",
+          "message": "x-api-key header is required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "when": [
+        {
+          "header_present": "authorization"
+        }
+      ],
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 401,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "authentication_error",
+          "message": "unauthorized"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "key_status": "accepted",
+    "protocols": {
+      "messages": 400
+    },
+    "models": 1,
+    "max_requests": 12,
+    "requests": 5,
+    "warnings": [],
+    "endpoint_auth": {
+      "messages": "bearer"
+    },
+    "rescan_requests": 4,
+    "status_counts": {
+      "401": 1
+    }
+  }
+}

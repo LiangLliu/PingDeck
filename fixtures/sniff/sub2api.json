@@ -1,0 +1,84 @@
+{
+  "name": "sub2api",
+  "input": {
+    "base_url": "sub.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401,
+      "body": {
+        "code": "UNAUTHORIZED",
+        "message": "Authorization header is required"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "claude-sonnet-5",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/usage",
+      "status": 200,
+      "body": {
+        "mode": "unrestricted",
+        "isValid": true,
+        "remaining": 12.4,
+        "balance": 12.4,
+        "unit": "USD",
+        "planName": "Wallet"
+      }
+    }
+  ],
+  "expect": {
+    "family": "sub2_api",
+    "confirmed": true,
+    "protocols": {
+      "chat": 400
+    },
+    "models": 1,
+    "max_requests": 12,
+    "requests": 5,
+    "warnings": [],
+    "balance": {
+      "unit": "usd",
+      "value": 12.4,
+      "remaining_usd": 12.4
+    }
+  }
+}

@@ -1,0 +1,45 @@
+[package]
+name = "pingdeck-executor"
+description = "The request pipeline (render, auth, body, client, retry, redirect, cookies, trace, assertions), the Boa scripting sandbox and OAuth2 token handling."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Exposes `test_server` to other crates' tests; never enabled by a release build.
+test-support = []
+[dependencies]
+pingdeck-base = { path = "../pingdeck-base" }
+pingdeck-response = { path = "../pingdeck-response" }
+pingdeck-model = { path = "../pingdeck-model" }
+base64.workspace = true
+boa_engine.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+cookie.workspace = true
+encoding_rs.workspace = true
+futures-util.workspace = true
+getrandom.workspace = true
+jsonschema.workspace = true
+p12-keystore.workspace = true
+pkcs8.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+tower.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+# In-process CA, server and client certificates for the TLS tests; the system trust store is never touched.
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+time = "0.3"
+
+[lib]
+doctest = false

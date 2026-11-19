@@ -1,0 +1,30 @@
+[package]
+name = "pingdeck-llm-domain"
+description = "Persisted LLM vocabulary and the pure rules on it: gateway and provider records, provider validation, presets, probe planning and apply rules, health, failure and status rules, usage pricing, catalog grouping, models.dev parsing, and the stored shapes of balance readings, captures and scan summaries."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Exposes the HealthBook test clock and probes (`advance`, skew, `acquire`, `is_blocked`,
+# `failure_rate`) to other crates' tests; never enabled by a release build.
+test-support = []
+[dependencies]
+pingdeck-base = { path = "../pingdeck-base" }
+pingdeck-client-config = { path = "../pingdeck-client-config" }
+pingdeck-model = { path = "../pingdeck-model" }
+pingdeck-response = { path = "../pingdeck-response" }
+chrono.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lib]
+doctest = false

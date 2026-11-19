@@ -1,0 +1,205 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "ok": "saved"
+      },
+      "fields": [],
+      "name": "valid",
+      "patch": []
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "name"
+      ],
+      "name": "blank name",
+      "patch": [
+        [
+          "name",
+          "  "
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "port"
+      ],
+      "name": "port 0",
+      "patch": [
+        [
+          "port",
+          0
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "latency_ms"
+      ],
+      "name": "latency over 60 s",
+      "patch": [
+        [
+          "latency_ms",
+          60001
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "routes[0].path"
+      ],
+      "name": "route path without a slash",
+      "patch": [
+        [
+          "routes.0.path",
+          "users"
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "routes[0].method"
+      ],
+      "name": "unsupported method",
+      "patch": [
+        [
+          "routes.0.method",
+          "FETCH"
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "ok": "saved"
+      },
+      "fields": [],
+      "name": "lower-case method",
+      "patch": [
+        [
+          "routes.0.method",
+          "get"
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "ok": "saved"
+      },
+      "fields": [],
+      "name": "wildcard method",
+      "patch": [
+        [
+          "routes.0.method",
+          "*"
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "routes[0].data_bucket_id"
+      ],
+      "name": "CRUD route without a bucket",
+      "patch": [
+        [
+          "routes.0.route_type",
+          "Crud"
+        ],
+        [
+          "routes.0.data_bucket_id",
+          ""
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "routes[0].responses[0].status_code"
+      ],
+      "name": "status 99",
+      "patch": [
+        [
+          "routes.0.responses.0.status_code",
+          99
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "routes[0].responses[0].status_code"
+      ],
+      "name": "status 600",
+      "patch": [
+        [
+          "routes.0.responses.0.status_code",
+          600
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "routes[0].responses[0].latency_ms"
+      ],
+      "name": "response latency over 60 s",
+      "patch": [
+        [
+          "routes.0.responses.0.latency_ms",
+          60001
+        ]
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fields": [
+        "name",
+        "routes[0].path",
+        "routes[0].responses[0].status_code"
+      ],
+      "name": "every issue, in order",
+      "patch": [
+        [
+          "routes.0.responses.0.status_code",
+          42
+        ],
+        [
+          "routes.0.path",
+          ""
+        ],
+        [
+          "name",
+          ""
+        ]
+      ]
+    }
+  ],
+  "note": "Save a valid server with one HTTP route and one response after applying `patch` ([dotted path, value] pairs). Outcome: saved or error kind; `fields` lists the issue fields in core order.",
+  "rule": "mock-validation",
+  "setup": null
+}

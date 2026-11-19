@@ -1,0 +1,50 @@
+name: Run release smoke test
+description: Start an isolated Xvfb/openbox session on Linux, run scripts/smoke.sh against a release binary, and upload app.log on failure.
+
+inputs:
+  binary:
+    description: Path to the PingDeck release binary to smoke-test.
+    required: true
+  artifact-suffix:
+    description: Suffix for the uploaded failure log artifact name.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Start virtual display and window manager (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
+        for _ in $(seq 1 50); do
+          [ -S /tmp/.X11-unix/X99 ] && break
+          sleep 0.2
+        done
+        [ -S /tmp/.X11-unix/X99 ] || { echo "FAIL: Xvfb :99 did not start" >&2; exit 1; }
+        export DISPLAY=:99
+        echo "DISPLAY=:99" >> "$GITHUB_ENV"
+        openbox >/dev/null 2>&1 &
+        for _ in $(seq 1 50); do
+          wmctrl -m >/dev/null 2>&1 && break
+          sleep 0.2
+        done
+        wmctrl -m >/dev/null 2>&1 || { echo "FAIL: openbox did not become ready" >&2; exit 1; }
+
+    # smoke.sh creates its own mktemp HOME (and CFFIXED_USER_HOME, XDG_*), drops PINGDECK_DATA_DIR
+    # and client config env vars, and copies app.log to PINGDECK_SMOKE_LOG before cleanup.
+    - name: Execute release smoke test
+      shell: bash
+      env:
+        PINGDECK_SMOKE_LOG: ${{ runner.temp }}/smoke-app.log
+      run: scripts/smoke.sh "${{ inputs.binary }}"
+
+    - name: Upload smoke app log on failure
+      if: failure()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: smoke-app-log-${{ inputs.artifact-suffix }}
+        path: ${{ runner.temp }}/smoke-app.log
+        retention-days: 7
+        if-no-files-found: ignore

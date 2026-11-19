@@ -1,0 +1,151 @@
+name: Release
+
+# Tier 4 of 4 (docs/development.md §2.4): 100% pure-Rust desktop packaging & draft release CD pipeline.
+# Uses `cargo build --release -p pingdeck-gpui` + `cargo xtask bundle` (zero Node / zero Tauri CLI).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build, smoke-test, and upload artifacts without creating a GitHub Release
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-version:
+    name: Verify manifest & tag versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: xtask
+      - name: Check version consistency (xtask)
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            out=$(cargo xtask check-version --tag "${GITHUB_REF_NAME}")
+          else
+            out=$(cargo xtask check-version)
+          fi
+          echo "$out"
+          ver=$(printf '%s\n' "$out" | sed -E 's/^version ok: v([^ ]+).*$/\1/')
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: Package (${{ matrix.label }})
+    needs: [verify-version]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            smoke: true
+            binary: target/aarch64-apple-darwin/release/bundle/PingDeck.app/Contents/MacOS/pingdeck
+          - label: macos-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            smoke: false
+            binary: target/x86_64-apple-darwin/release/bundle/PingDeck.app/Contents/MacOS/pingdeck
+          - label: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            smoke: true
+            binary: target/x86_64-unknown-linux-gnu/release/bundle/pingdeck-linux/bin/pingdeck
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-linux-deps
+        with:
+          gpui: "true"
+          smoke: "true"
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: release-${{ matrix.label }}
+          target: ${{ matrix.target }}
+      - name: Build pure-Rust GPUI release binary
+        run: cargo build --release --target "${{ matrix.target }}" -p pingdeck-gpui --locked
+      - name: Assemble OS bundle (xtask bundle)
+        run: cargo xtask bundle --target "${{ matrix.target }}"
+      - name: Smoke-test packaged binary
+        if: matrix.smoke
+        uses: ./.github/actions/run-smoke
+        with:
+          binary: ${{ matrix.binary }}
+          artifact-suffix: release-${{ matrix.label }}
+      - name: Collect distributable artifacts & checksums
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release-assets"
+          mkdir -p "$out"
+          bundle_dir="target/${TARGET}/release/bundle"
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            tar -C "${bundle_dir}" -czf "${out}/PingDeck-${VERSION}-${LABEL}.app.tar.gz" PingDeck.app
+          else
+            tar -C "${bundle_dir}" -czf "${out}/PingDeck-${VERSION}-${LABEL}.tar.gz" pingdeck-linux
+          fi
+          (
+            cd "$out"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum * > "SHA256SUMS-${LABEL}.txt"
+            else
+              shasum -a 256 * > "SHA256SUMS-${LABEL}.txt"
+            fi
+          )
+          ls -lh "$out"
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bundle-${{ matrix.label }}
+          path: ${{ runner.temp }}/release-assets/*
+          retention-days: 14
+
+  publish-release:
+    name: Create draft GitHub Release
+    needs: [verify-version, package]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download all platform bundles
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-bundle-*
+          path: ${{ runner.temp }}/dist
+          merge-multiple: true
+      - name: Merge SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/dist"
+          cat SHA256SUMS-*.txt | sort -k2 > SHA256SUMS.txt
+          rm -f SHA256SUMS-*.txt
+          cat SHA256SUMS.txt
+      - name: Publish draft release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: ${{ runner.temp }}/dist/*

@@ -1,0 +1,180 @@
+{
+  "app": {
+    "arch": "aarch64",
+    "language": "en",
+    "os": "macos",
+    "version": "1.0.0"
+  },
+  "capture": {
+    "client_frames": null,
+    "client_request": {
+      "elided": false,
+      "text": "{\"model\":\"claude-code\",\"max_tokens\":64,\"top_k\":5,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+      "truncated": false
+    },
+    "client_response": null,
+    "notice": "This includes prompts and replies.",
+    "request_log_id": 7,
+    "upstream_frames": null,
+    "upstream_request": {
+      "elided": false,
+      "text": "{\"model\":\"deepseek-v4-pro\",\"max_tokens\":64,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+      "truncated": false
+    },
+    "upstream_response": {
+      "elided": false,
+      "text": "{\"id\":\"c1\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"pong\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1}}",
+      "truncated": false
+    }
+  },
+  "clients": [
+    {
+      "allow_summary": "all models",
+      "created_at_ms": 1,
+      "last_used_at_ms": 2,
+      "name": "Claude Code",
+      "revoked": false
+    }
+  ],
+  "fallbacks": [
+    {
+      "fallbacks": [
+        "p2/deepseek-v4-pro"
+      ],
+      "model": "p1/deepseek-v4-pro"
+    }
+  ],
+  "gateway": {
+    "allowed_hosts": 1,
+    "auth_failures": 2,
+    "bind_scope": "loopback",
+    "capture_policy": "errors_only",
+    "captures_dropped": 0,
+    "in_flight": 1,
+    "lan": false,
+    "last_start_error": "upstream timeout",
+    "port": 4141,
+    "rows_dropped": 0,
+    "state": "running",
+    "token_required": true,
+    "uptime_s": 3600
+  },
+  "health": [
+    {
+      "consecutive_failures": 0,
+      "cooldown_s": 30,
+      "failure_rate": 0.0,
+      "key_id": "k1",
+      "label": "Healthy",
+      "latency_ms": 800.0,
+      "model_id": "deepseek-v4-pro",
+      "open_until_ms": null,
+      "opened_for_ms": null,
+      "retry_in_s": null,
+      "state": "closed",
+      "total": 12
+    }
+  ],
+  "log_summary": {
+    "by_provider": {
+      "DeepSeek": 42
+    },
+    "by_source": {
+      "gateway": 42
+    },
+    "by_status_class": {
+      "2xx": 40,
+      "4xx": 2
+    },
+    "latency_p50_ms": 800,
+    "latency_p95_ms": 2000,
+    "ttft_p50_ms": 400,
+    "ttft_p95_ms": 900
+  },
+  "providers": [
+    {
+      "enabled_keys": 1,
+      "enabled_models": 4,
+      "id": "p1",
+      "name": "DeepSeek",
+      "probe_status": "ready",
+      "protocols": [
+        "openai_chat"
+      ]
+    }
+  ],
+  "recent_rows": [
+    {
+      "alias": "claude-code",
+      "client_name": "Claude Code",
+      "cost_currency": "USD",
+      "cost_micro": 23100,
+      "error": null,
+      "failure_kind": null,
+      "input_tokens": 18204,
+      "latency_ms": 880,
+      "outcome": "success",
+      "output_tokens": 912,
+      "protocol_in": "anthropic_messages",
+      "protocol_out": "openai_chat",
+      "provider_name": "DeepSeek",
+      "request_id": "rq_00000000",
+      "requested_model": "claude-code",
+      "source": "gateway",
+      "status": 200,
+      "stream": true,
+      "translated": true,
+      "ts_ms": 1000000,
+      "ttft_ms": 412,
+      "upstream_model": "deepseek-v4-pro"
+    },
+    {
+      "alias": "claude-code",
+      "client_name": "Claude Code",
+      "cost_currency": "USD",
+      "cost_micro": 23100,
+      "error": null,
+      "failure_kind": null,
+      "input_tokens": 18204,
+      "latency_ms": 880,
+      "outcome": "success",
+      "output_tokens": 912,
+      "protocol_in": "anthropic_messages",
+      "protocol_out": "openai_chat",
+      "provider_name": "DeepSeek",
+      "request_id": "rq_00000001",
+      "requested_model": "claude-code",
+      "source": "gateway",
+      "status": 200,
+      "stream": true,
+      "translated": true,
+      "ts_ms": 999999,
+      "ttft_ms": 412,
+      "upstream_model": "deepseek-v4-pro"
+    },
+    {
+      "alias": "claude-code",
+      "client_name": "Claude Code",
+      "cost_currency": "USD",
+      "cost_micro": 23100,
+      "error": null,
+      "failure_kind": null,
+      "input_tokens": 18204,
+      "latency_ms": 880,
+      "outcome": "success",
+      "output_tokens": 912,
+      "protocol_in": "anthropic_messages",
+      "protocol_out": "openai_chat",
+      "provider_name": "DeepSeek",
+      "request_id": "rq_00000002",
+      "requested_model": "claude-code",
+      "source": "gateway",
+      "status": 200,
+      "stream": true,
+      "translated": true,
+      "ts_ms": 999998,
+      "ttft_ms": 412,
+      "upstream_model": "deepseek-v4-pro"
+    }
+  ]
+}

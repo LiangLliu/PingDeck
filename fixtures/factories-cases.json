@@ -1,0 +1,3936 @@
+{
+  "assertion_new": {
+    "StatusEquals": {
+      "StatusEquals": {
+        "value": 200
+      }
+    },
+    "StatusIn": {
+      "StatusIn": {
+        "values": [
+          200
+        ]
+      }
+    },
+    "HeaderExists": {
+      "HeaderExists": {
+        "key": "content-type"
+      }
+    },
+    "HeaderEquals": {
+      "HeaderEquals": {
+        "key": "content-type",
+        "value": "application/json"
+      }
+    },
+    "JsonPathExists": {
+      "JsonPathExists": {
+        "path": "$.id"
+      }
+    },
+    "JsonPathEquals": {
+      "JsonPathEquals": {
+        "path": "$.id",
+        "value": ""
+      }
+    },
+    "BodyContains": {
+      "BodyContains": {
+        "value": ""
+      }
+    },
+    "ResponseTimeLessThanMs": {
+      "ResponseTimeLessThanMs": {
+        "value": 1000
+      }
+    },
+    "BodySizeLessThanBytes": {
+      "BodySizeLessThanBytes": {
+        "value": 1000000
+      }
+    },
+    "Check": {
+      "Check": {
+        "target": {
+          "kind": "status"
+        },
+        "op": "less_than",
+        "value": 400
+      }
+    },
+    "JsonSchemaValid": {
+      "JsonSchemaValid": {
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    "AiReplyContains": {
+      "AiReplyContains": {
+        "value": ""
+      }
+    },
+    "AiReplyMatches": {
+      "AiReplyMatches": {
+        "pattern": ""
+      }
+    },
+    "AiJsonSchemaValid": {
+      "AiJsonSchemaValid": {
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    "AiTtftLessThanMs": {
+      "AiTtftLessThanMs": {
+        "value": 1000
+      }
+    },
+    "AiTokensLessThan": {
+      "AiTokensLessThan": {
+        "value": 1000
+      }
+    },
+    "AiNoError": {
+      "AiNoError": {}
+    }
+  },
+  "mock_route_new": [
+    {
+      "kind": "GET",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "GET",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "GET",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "GET",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "POST",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "POST",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "POST",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "POST",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "PUT",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "PUT",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "PUT",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "PUT",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "PATCH",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "PATCH",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "PATCH",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "PATCH",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "DELETE",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "DELETE",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "DELETE",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "DELETE",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "HEAD",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "HEAD",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "HEAD",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "HEAD",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "OPTIONS",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "OPTIONS",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "OPTIONS",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "OPTIONS",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "ANY",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "ANY",
+        "path": "/route-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "ANY",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "ANY",
+        "path": "/route-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    },
+    {
+      "kind": "CRUD",
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "method": "ANY",
+        "path": "/crud-1",
+        "enabled": true,
+        "description": "",
+        "route_type": "Crud",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "kind": "CRUD",
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "method": "ANY",
+        "path": "/crud-4",
+        "enabled": true,
+        "description": "",
+        "route_type": "Crud",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 3
+      }
+    }
+  ],
+  "mock_response_new": [
+    {
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "label": "200 OK",
+        "status_code": 200,
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "{\n  \"ok\": true\n}",
+        "latency_ms": 0,
+        "is_default": true,
+        "rules_operator": "And",
+        "rules": [],
+        "callback_ids": [],
+        "position": 0
+      }
+    },
+    {
+      "position": 1,
+      "expected": {
+        "id": "<new>",
+        "label": "Response 2",
+        "status_code": 200,
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "{\n  \"ok\": true\n}",
+        "latency_ms": 0,
+        "is_default": false,
+        "rules_operator": "And",
+        "rules": [],
+        "callback_ids": [],
+        "position": 1
+      }
+    },
+    {
+      "position": 4,
+      "expected": {
+        "id": "<new>",
+        "label": "Response 5",
+        "status_code": 200,
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "{\n  \"ok\": true\n}",
+        "latency_ms": 0,
+        "is_default": false,
+        "rules_operator": "And",
+        "rules": [],
+        "callback_ids": [],
+        "position": 4
+      }
+    }
+  ],
+  "mock_callback_new": [
+    {
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "name": "Callback 1",
+        "documentation": "",
+        "method": "Post",
+        "url": "https://example.com/webhook",
+        "delay_ms": 0,
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "{\n  \"event\": \"delivered\"\n}"
+      }
+    },
+    {
+      "position": 2,
+      "expected": {
+        "id": "<new>",
+        "name": "Callback 3",
+        "documentation": "",
+        "method": "Post",
+        "url": "https://example.com/webhook",
+        "delay_ms": 0,
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "body": "{\n  \"event\": \"delivered\"\n}"
+      }
+    }
+  ],
+  "mock_rule_new": [
+    {
+      "position": 0,
+      "expected": {
+        "id": "<new>",
+        "target": "Query",
+        "modifier": "page",
+        "operator": "Equals",
+        "value": "",
+        "invert": false,
+        "position": 0
+      }
+    },
+    {
+      "position": 3,
+      "expected": {
+        "id": "<new>",
+        "target": "Query",
+        "modifier": "page",
+        "operator": "Equals",
+        "value": "",
+        "invert": false,
+        "position": 3
+      }
+    }
+  ],
+  "mock_bucket_new": [
+    {
+      "name": "items",
+      "expected": {
+        "id": "<new>",
+        "name": "items",
+        "documentation": "",
+        "value_json": "[]"
+      }
+    },
+    {
+      "name": "Users",
+      "expected": {
+        "id": "<new>",
+        "name": "Users",
+        "documentation": "",
+        "value_json": "[]"
+      }
+    }
+  ],
+  "flow_step_new": [
+    {
+      "steps": 0,
+      "expected": {
+        "id": "<new>",
+        "name": "Step 1",
+        "request_id": "",
+        "delay_ms": 0,
+        "extractions": [],
+        "assertions": [],
+        "continue_on_error": false,
+        "position": 0,
+        "method_override": null,
+        "url_override": null,
+        "headers_override": [],
+        "query_override": [],
+        "body_override": null,
+        "condition_expression": "",
+        "retries": 0,
+        "retry_wait_ms": 0,
+        "retry_on": [],
+        "timeout_ms": null
+      }
+    },
+    {
+      "steps": 2,
+      "expected": {
+        "id": "<new>",
+        "name": "Step 3",
+        "request_id": "",
+        "delay_ms": 0,
+        "extractions": [],
+        "assertions": [],
+        "continue_on_error": false,
+        "position": 2,
+        "method_override": null,
+        "url_override": null,
+        "headers_override": [],
+        "query_override": [],
+        "body_override": null,
+        "condition_expression": "",
+        "retries": 0,
+        "retry_wait_ms": 0,
+        "retry_on": [],
+        "timeout_ms": null
+      }
+    }
+  ],
+  "mock_route_duplicate": [
+    {
+      "routes": [
+        {
+          "id": "a",
+          "method": "GET",
+          "path": "/a",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "a_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 0
+        },
+        {
+          "id": "b",
+          "method": "POST",
+          "path": "/b",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "b_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            },
+            {
+              "id": "b_resp2",
+              "label": "Response 2",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": false,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 1
+            }
+          ],
+          "position": 1
+        },
+        {
+          "id": "c",
+          "method": "ANY",
+          "path": "/c",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "c_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 2
+        }
+      ],
+      "id": "a",
+      "expected": [
+        {
+          "id": "a",
+          "method": "GET",
+          "path": "/a",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "a_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 0
+        },
+        {
+          "id": "b",
+          "method": "POST",
+          "path": "/b",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "b_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            },
+            {
+              "id": "b_resp2",
+              "label": "Response 2",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": false,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 1
+            }
+          ],
+          "position": 1
+        },
+        {
+          "id": "c",
+          "method": "ANY",
+          "path": "/c",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "c_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 2
+        },
+        {
+          "id": "<new>",
+          "method": "GET",
+          "path": "/a-copy",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "<new>",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 3
+        }
+      ]
+    },
+    {
+      "routes": [
+        {
+          "id": "a",
+          "method": "GET",
+          "path": "/a",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "a_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 0
+        },
+        {
+          "id": "b",
+          "method": "POST",
+          "path": "/b",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "b_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            },
+            {
+              "id": "b_resp2",
+              "label": "Response 2",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": false,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 1
+            }
+          ],
+          "position": 1
+        },
+        {
+          "id": "c",
+          "method": "ANY",
+          "path": "/c",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "c_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 2
+        }
+      ],
+      "id": "b",
+      "expected": [
+        {
+          "id": "a",
+          "method": "GET",
+          "path": "/a",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "a_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 0
+        },
+        {
+          "id": "b",
+          "method": "POST",
+          "path": "/b",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "b_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            },
+            {
+              "id": "b_resp2",
+              "label": "Response 2",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": false,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 1
+            }
+          ],
+          "position": 1
+        },
+        {
+          "id": "c",
+          "method": "ANY",
+          "path": "/c",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "c_resp1",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            }
+          ],
+          "position": 2
+        },
+        {
+          "id": "<new>",
+          "method": "POST",
+          "path": "/b-copy",
+          "enabled": true,
+          "description": "",
+          "route_type": "Http",
+          "data_bucket_id": "",
+          "crud_id_key": "id",
+          "response_mode": "FirstMatch",
+          "responses": [
+            {
+              "id": "<new>",
+              "label": "200 OK",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": true,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 0
+            },
+            {
+              "id": "<new>",
+              "label": "Response 2",
+              "status_code": 200,
+              "headers": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "enabled": true
+                }
+              ],
+              "body": "{\n  \"ok\": true\n}",
+              "latency_ms": 0,
+              "is_default": false,
+              "rules_operator": "And",
+              "rules": [],
+              "callback_ids": [],
+              "position": 1
+            }
+          ],
+          "position": 3
+        }
+      ]
+    }
+  ],
+  "mock_response_duplicate": [
+    {
+      "route": {
+        "id": "r",
+        "method": "GET",
+        "path": "/r",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          },
+          {
+            "id": "r_resp2",
+            "label": "Response 2",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 1
+          },
+          {
+            "id": "r_resp3",
+            "label": "Response 3",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 2
+          }
+        ],
+        "position": 0
+      },
+      "id": "r_resp1",
+      "expected": {
+        "id": "r",
+        "method": "GET",
+        "path": "/r",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          },
+          {
+            "id": "r_resp2",
+            "label": "Response 2",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 1
+          },
+          {
+            "id": "r_resp3",
+            "label": "Response 3",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 2
+          },
+          {
+            "id": "<new>",
+            "label": "200 OK copy",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 3
+          }
+        ],
+        "position": 0
+      }
+    },
+    {
+      "route": {
+        "id": "r",
+        "method": "GET",
+        "path": "/r",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          },
+          {
+            "id": "r_resp2",
+            "label": "Response 2",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 1
+          },
+          {
+            "id": "r_resp3",
+            "label": "Response 3",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 2
+          }
+        ],
+        "position": 0
+      },
+      "id": "r_resp2",
+      "expected": {
+        "id": "r",
+        "method": "GET",
+        "path": "/r",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          },
+          {
+            "id": "r_resp2",
+            "label": "Response 2",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 1
+          },
+          {
+            "id": "r_resp3",
+            "label": "Response 3",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 2
+          },
+          {
+            "id": "<new>",
+            "label": "Response 2 copy",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": false,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 3
+          }
+        ],
+        "position": 0
+      }
+    }
+  ],
+  "flow_steps_reorder": [
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "from": 0,
+      "to": 2,
+      "expected": [
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "from": 2,
+      "to": 0,
+      "expected": [
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "from": 1,
+      "to": 0,
+      "expected": [
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    }
+  ],
+  "flow_step_duplicate": [
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "id": "a",
+      "expected": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "<new>",
+          "name": "Step a copy",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 3,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "id": "b",
+      "expected": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "<new>",
+          "name": "Step b copy",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 3,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "id": "c",
+      "expected": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "<new>",
+          "name": "Step c copy",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 3,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    }
+  ],
+  "flow_step_remove": [
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "id": "a",
+      "expected": [
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "id": "b",
+      "expected": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    },
+    {
+      "steps": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "c",
+          "name": "Step c",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 2,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ],
+      "id": "c",
+      "expected": [
+        {
+          "id": "a",
+          "name": "Step a",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 0,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        },
+        {
+          "id": "b",
+          "name": "Step b",
+          "request_id": "",
+          "delay_ms": 0,
+          "extractions": [],
+          "assertions": [],
+          "continue_on_error": false,
+          "position": 1,
+          "method_override": null,
+          "url_override": null,
+          "headers_override": [],
+          "query_override": [],
+          "body_override": null,
+          "condition_expression": "",
+          "retries": 0,
+          "retry_wait_ms": 0,
+          "retry_on": [],
+          "timeout_ms": null
+        }
+      ]
+    }
+  ],
+  "mock_route_from_log": [
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [
+          {
+            "id": "x",
+            "method": "GET",
+            "path": "/x",
+            "enabled": true,
+            "description": "",
+            "route_type": "Http",
+            "data_bucket_id": "",
+            "crud_id_key": "id",
+            "response_mode": "FirstMatch",
+            "responses": [
+              {
+                "id": "x_resp1",
+                "label": "200 OK",
+                "status_code": 200,
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "enabled": true
+                  }
+                ],
+                "body": "{\n  \"ok\": true\n}",
+                "latency_ms": 0,
+                "is_default": true,
+                "rules_operator": "And",
+                "rules": [],
+                "callback_ids": [],
+                "position": 0
+              }
+            ],
+            "position": 0
+          }
+        ],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "log": {
+        "id": "log_1",
+        "server_id": "mock_1",
+        "timestamp_ms": 3723000,
+        "method": "post",
+        "path": "/users/1",
+        "query": "a=1",
+        "request_headers": [],
+        "request_body": "",
+        "request_body_truncated": false,
+        "matched_route_id": null,
+        "matched_response_id": null,
+        "status_code": 418,
+        "response_headers": [
+          {
+            "key": "X-Tea",
+            "value": "pot",
+            "enabled": true
+          }
+        ],
+        "response_body": "short and stout",
+        "response_body_truncated": false,
+        "proxied": false,
+        "elapsed_ms": 3
+      },
+      "expected": {
+        "id": "<new>",
+        "method": "POST",
+        "path": "/users/1",
+        "enabled": true,
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "418 from log",
+            "status_code": 418,
+            "headers": [
+              {
+                "key": "X-Tea",
+                "value": "pot",
+                "enabled": true
+              }
+            ],
+            "body": "short and stout",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 1
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "/api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [
+          {
+            "id": "x",
+            "method": "GET",
+            "path": "/x",
+            "enabled": true,
+            "description": "",
+            "route_type": "Http",
+            "data_bucket_id": "",
+            "crud_id_key": "id",
+            "response_mode": "FirstMatch",
+            "responses": [
+              {
+                "id": "x_resp1",
+                "label": "200 OK",
+                "status_code": 200,
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "enabled": true
+                  }
+                ],
+                "body": "{\n  \"ok\": true\n}",
+                "latency_ms": 0,
+                "is_default": true,
+                "rules_operator": "And",
+                "rules": [],
+                "callback_ids": [],
+                "position": 0
+              }
+            ],
+            "position": 0
+          }
+        ],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "log": {
+        "id": "log_1",
+        "server_id": "mock_1",
+        "timestamp_ms": 3723000,
+        "method": "post",
+        "path": "/api/users/1",
+        "query": "a=1",
+        "request_headers": [],
+        "request_body": "",
+        "request_body_truncated": false,
+        "matched_route_id": null,
+        "matched_response_id": null,
+        "status_code": 418,
+        "response_headers": [
+          {
+            "key": "X-Tea",
+            "value": "pot",
+            "enabled": true
+          }
+        ],
+        "response_body": "short and stout",
+        "response_body_truncated": false,
+        "proxied": false,
+        "elapsed_ms": 3
+      },
+      "expected": {
+        "id": "<new>",
+        "method": "POST",
+        "path": "/users/1",
+        "enabled": true,
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "418 from log",
+            "status_code": 418,
+            "headers": [
+              {
+                "key": "X-Tea",
+                "value": "pot",
+                "enabled": true
+              }
+            ],
+            "body": "short and stout",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 1
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "/api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [
+          {
+            "id": "x",
+            "method": "GET",
+            "path": "/x",
+            "enabled": true,
+            "description": "",
+            "route_type": "Http",
+            "data_bucket_id": "",
+            "crud_id_key": "id",
+            "response_mode": "FirstMatch",
+            "responses": [
+              {
+                "id": "x_resp1",
+                "label": "200 OK",
+                "status_code": 200,
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "enabled": true
+                  }
+                ],
+                "body": "{\n  \"ok\": true\n}",
+                "latency_ms": 0,
+                "is_default": true,
+                "rules_operator": "And",
+                "rules": [],
+                "callback_ids": [],
+                "position": 0
+              }
+            ],
+            "position": 0
+          }
+        ],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "log": {
+        "id": "log_1",
+        "server_id": "mock_1",
+        "timestamp_ms": 3723000,
+        "method": "get",
+        "path": "/api",
+        "query": "a=1",
+        "request_headers": [],
+        "request_body": "",
+        "request_body_truncated": false,
+        "matched_route_id": null,
+        "matched_response_id": null,
+        "status_code": 418,
+        "response_headers": [
+          {
+            "key": "X-Tea",
+            "value": "pot",
+            "enabled": true
+          }
+        ],
+        "response_body": "short and stout",
+        "response_body_truncated": false,
+        "proxied": false,
+        "elapsed_ms": 3
+      },
+      "expected": {
+        "id": "<new>",
+        "method": "GET",
+        "path": "/",
+        "enabled": true,
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "418 from log",
+            "status_code": 418,
+            "headers": [
+              {
+                "key": "X-Tea",
+                "value": "pot",
+                "enabled": true
+              }
+            ],
+            "body": "short and stout",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 1
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "/api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [
+          {
+            "id": "x",
+            "method": "GET",
+            "path": "/x",
+            "enabled": true,
+            "description": "",
+            "route_type": "Http",
+            "data_bucket_id": "",
+            "crud_id_key": "id",
+            "response_mode": "FirstMatch",
+            "responses": [
+              {
+                "id": "x_resp1",
+                "label": "200 OK",
+                "status_code": 200,
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "enabled": true
+                  }
+                ],
+                "body": "{\n  \"ok\": true\n}",
+                "latency_ms": 0,
+                "is_default": true,
+                "rules_operator": "And",
+                "rules": [],
+                "callback_ids": [],
+                "position": 0
+              }
+            ],
+            "position": 0
+          }
+        ],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "log": {
+        "id": "log_1",
+        "server_id": "mock_1",
+        "timestamp_ms": 3723000,
+        "method": "TRACE",
+        "path": "/other",
+        "query": "a=1",
+        "request_headers": [],
+        "request_body": "",
+        "request_body_truncated": false,
+        "matched_route_id": null,
+        "matched_response_id": null,
+        "status_code": 418,
+        "response_headers": [
+          {
+            "key": "X-Tea",
+            "value": "pot",
+            "enabled": true
+          }
+        ],
+        "response_body": "short and stout",
+        "response_body_truncated": false,
+        "proxied": false,
+        "elapsed_ms": 3
+      },
+      "expected": {
+        "id": "<new>",
+        "method": "ANY",
+        "path": "/other",
+        "enabled": true,
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "418 from log",
+            "status_code": 418,
+            "headers": [
+              {
+                "key": "X-Tea",
+                "value": "pot",
+                "enabled": true
+              }
+            ],
+            "body": "short and stout",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 1
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [
+          {
+            "id": "x",
+            "method": "GET",
+            "path": "/x",
+            "enabled": true,
+            "description": "",
+            "route_type": "Http",
+            "data_bucket_id": "",
+            "crud_id_key": "id",
+            "response_mode": "FirstMatch",
+            "responses": [
+              {
+                "id": "x_resp1",
+                "label": "200 OK",
+                "status_code": 200,
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "enabled": true
+                  }
+                ],
+                "body": "{\n  \"ok\": true\n}",
+                "latency_ms": 0,
+                "is_default": true,
+                "rules_operator": "And",
+                "rules": [],
+                "callback_ids": [],
+                "position": 0
+              }
+            ],
+            "position": 0
+          }
+        ],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "log": {
+        "id": "log_1",
+        "server_id": "mock_1",
+        "timestamp_ms": 3723000,
+        "method": "delete",
+        "path": "/api/x",
+        "query": "a=1",
+        "request_headers": [],
+        "request_body": "",
+        "request_body_truncated": false,
+        "matched_route_id": null,
+        "matched_response_id": null,
+        "status_code": 418,
+        "response_headers": [
+          {
+            "key": "X-Tea",
+            "value": "pot",
+            "enabled": true
+          }
+        ],
+        "response_body": "short and stout",
+        "response_body_truncated": false,
+        "proxied": false,
+        "elapsed_ms": 3
+      },
+      "expected": {
+        "id": "<new>",
+        "method": "DELETE",
+        "path": "/x",
+        "enabled": true,
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "<new>",
+            "label": "418 from log",
+            "status_code": 418,
+            "headers": [
+              {
+                "key": "X-Tea",
+                "value": "pot",
+                "enabled": true
+              }
+            ],
+            "body": "short and stout",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 1
+      }
+    }
+  ],
+  "mock_route_test_request": [
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "route": {
+        "id": "r",
+        "method": "GET",
+        "path": "/users",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      },
+      "expected": {
+        "method": "GET",
+        "url": "http://127.0.0.1:3001/users"
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3105,
+        "endpoint_prefix": "/api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "route": {
+        "id": "r",
+        "method": "post",
+        "path": "users",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      },
+      "expected": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3105/api/users"
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3002,
+        "endpoint_prefix": "api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "route": {
+        "id": "r",
+        "method": "ANY",
+        "path": "/a",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      },
+      "expected": {
+        "method": "GET",
+        "url": "http://127.0.0.1:3002/api/a"
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3003,
+        "endpoint_prefix": "/",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "route": {
+        "id": "r",
+        "method": "DELETE",
+        "path": "/d",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      },
+      "expected": {
+        "method": "DELETE",
+        "url": "http://127.0.0.1:3003/d"
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3004,
+        "endpoint_prefix": "/api",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "route": {
+        "id": "r",
+        "method": "PUT",
+        "path": "/p",
+        "enabled": true,
+        "description": "",
+        "route_type": "Http",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "r_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      },
+      "expected": {
+        "method": "PUT",
+        "url": "http://127.0.0.1:3004/api/p"
+      }
+    },
+    {
+      "server": {
+        "id": "mock_1",
+        "workspace_id": "ws_a",
+        "name": "Local mock",
+        "port": 3001,
+        "endpoint_prefix": "",
+        "latency_ms": 0,
+        "cors_enabled": true,
+        "headers": [],
+        "routes": [],
+        "data_buckets": [],
+        "callbacks": [],
+        "proxy_enabled": false,
+        "proxy_base_url": "",
+        "proxy_remove_prefix": true,
+        "proxy_req_headers": [],
+        "proxy_res_headers": [],
+        "updated_at_ms": 0
+      },
+      "route": {
+        "id": "c",
+        "method": "DELETE",
+        "path": "/c",
+        "enabled": true,
+        "description": "",
+        "route_type": "Crud",
+        "data_bucket_id": "",
+        "crud_id_key": "id",
+        "response_mode": "FirstMatch",
+        "responses": [
+          {
+            "id": "c_resp1",
+            "label": "200 OK",
+            "status_code": 200,
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "enabled": true
+              }
+            ],
+            "body": "{\n  \"ok\": true\n}",
+            "latency_ms": 0,
+            "is_default": true,
+            "rules_operator": "And",
+            "rules": [],
+            "callback_ids": [],
+            "position": 0
+          }
+        ],
+        "position": 0
+      },
+      "expected": {
+        "method": "GET",
+        "url": "http://127.0.0.1:3001/c"
+      }
+    }
+  ]
+}

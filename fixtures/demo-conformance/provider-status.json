@@ -1,0 +1,33 @@
+{
+  "cases": [
+    {
+      "disable_failed": 0,
+      "expected": {
+        "failed": 2,
+        "total": 34
+      },
+      "name": "seeded relay"
+    },
+    {
+      "disable_failed": 1,
+      "expected": {
+        "failed": 1,
+        "total": 33
+      },
+      "name": "1 failing model(s) switched off"
+    },
+    {
+      "disable_failed": 2,
+      "expected": null,
+      "name": "2 failing model(s) switched off"
+    }
+  ],
+  "note": "Provider with `stored` models, `disabled` of them off and `failed` enabled models whose newest test failed; switch off the first `disable_failed` failing models, then read the `models_failed` reason params (null = no reason).",
+  "rule": "provider-status",
+  "setup": {
+    "disabled": 4,
+    "failed": 2,
+    "name": "relay.acme.dev",
+    "stored": 38
+  }
+}

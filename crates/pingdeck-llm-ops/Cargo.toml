@@ -1,0 +1,37 @@
+[package]
+name = "pingdeck-llm-ops"
+description = "Provider sniffing, balance adapters, capture redaction and the SSRF-guarded HTTP transport."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Exposes test doubles and fixtures to other crates' tests: `safe_http::scripted` and
+# `ca_bundle::TEST_CA_PEM`; never enabled by a release build.
+test-support = []
+# release build.
+[dependencies]
+pingdeck-base = { path = "../pingdeck-base" }
+pingdeck-llm-domain = { path = "../pingdeck-llm-domain" }
+pingdeck-llm-protocol = { path = "../pingdeck-llm-protocol" }
+pingdeck-response = { path = "../pingdeck-response" }
+pingdeck-model = { path = "../pingdeck-model" }
+bytes.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+memchr.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false

@@ -1,0 +1,54 @@
+{
+  "events": [
+    {
+      "kind": "RunStarted",
+      "seq": 1
+    },
+    {
+      "kind": "UserMessage",
+      "seq": 2
+    },
+    {
+      "kind": "QueuedUpdated",
+      "seq": 3
+    },
+    {
+      "kind": "TextDelta",
+      "seq": 4
+    },
+    {
+      "kind": "TextDelta",
+      "seq": 5
+    },
+    {
+      "kind": "MessageSaved",
+      "seq": 6
+    },
+    {
+      "kind": "Error",
+      "seq": 7
+    }
+  ],
+  "name": "cancel",
+  "note": "The user stops the run while the model is mid-answer.",
+  "script": {
+    "approvals": [],
+    "cancel": true,
+    "tools": [],
+    "turns": [
+      {
+        "calls": [],
+        "hang": true,
+        "text": [
+          "Part",
+          "ial"
+        ],
+        "usage": [
+          0,
+          0
+        ]
+      }
+    ],
+    "user": "hi"
+  }
+}

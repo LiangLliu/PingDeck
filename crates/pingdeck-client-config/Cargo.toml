@@ -1,0 +1,24 @@
+[package]
+name = "pingdeck-client-config"
+description = "Writers that point AI coding tools (Claude Code, Codex CLI, OpenCode, Gemini CLI) at the local gateway: preview, apply, inspect, restore and re-token their user-level config files, plus the snippets of snippet-only clients."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+[dependencies]
+pingdeck-base = { path = "../pingdeck-base" }
+chrono.workspace = true
+jsonc-parser.workspace = true
+memchr.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml_edit.workspace = true
+url.workspace = true
+
+[lib]
+doctest = false

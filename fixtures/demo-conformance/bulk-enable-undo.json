@@ -1,0 +1,144 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "changed": [
+          "m1",
+          "m2"
+        ]
+      },
+      "name": "switch off; repeats count once, unchanged and unknown rows are skipped",
+      "steps": [
+        {
+          "set": [
+            [
+              "m1",
+              false
+            ],
+            [
+              "m2",
+              false
+            ],
+            [
+              "m2",
+              true
+            ],
+            [
+              "m3",
+              true
+            ],
+            [
+              "nope",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "expected": {
+        "ok": {
+          "kept": [
+            "m2"
+          ],
+          "restored": [
+            "m1"
+          ]
+        }
+      },
+      "name": "undo keeps a row edited since",
+      "steps": [
+        {
+          "set": [
+            [
+              "m1",
+              false
+            ],
+            [
+              "m2",
+              false
+            ]
+          ]
+        },
+        {
+          "set": [
+            [
+              "m2",
+              true
+            ]
+          ]
+        },
+        {
+          "undo": 0
+        }
+      ]
+    },
+    {
+      "expected": {
+        "error": "NotFound"
+      },
+      "name": "an operation undoes once",
+      "steps": [
+        {
+          "set": [
+            [
+              "m1",
+              false
+            ]
+          ]
+        },
+        {
+          "undo": 0
+        },
+        {
+          "undo": 0
+        }
+      ]
+    },
+    {
+      "expected": {
+        "error": "NotFound"
+      },
+      "name": "only the newest five operations undo",
+      "steps": [
+        {
+          "times": 6,
+          "toggle": "m3"
+        },
+        {
+          "undo": 0
+        }
+      ]
+    },
+    {
+      "expected": {
+        "ok": {
+          "kept": [],
+          "restored": [
+            "m3"
+          ]
+        }
+      },
+      "name": "the newest operation still undoes",
+      "steps": [
+        {
+          "times": 6,
+          "toggle": "m3"
+        },
+        {
+          "undo": 5
+        }
+      ]
+    }
+  ],
+  "note": "Provider Bulk with enabled models m1..m3. Steps: `set` switches models (one operation), `toggle` switches a model off and on `times` operations, `undo` names an operation by index in step order. `expected` is the last outcome; `changed` lists the model ids the first operation reports.",
+  "rule": "bulk-enable-undo",
+  "setup": {
+    "models": [
+      "m1",
+      "m2",
+      "m3"
+    ],
+    "provider": "Bulk"
+  }
+}

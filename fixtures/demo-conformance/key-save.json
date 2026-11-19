@@ -1,0 +1,115 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "ok": {
+          "group_name": null,
+          "name": "Main"
+        }
+      },
+      "input": {
+        "name": "Main"
+      },
+      "name": "plain"
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "input": {
+        "name": "  "
+      },
+      "name": "blank name"
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "input": {
+        "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "name": "61-character name"
+    },
+    {
+      "expected": {
+        "ok": {
+          "group_name": null,
+          "name": "Main"
+        }
+      },
+      "input": {
+        "name": "Main",
+        "notes": "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  "
+      },
+      "name": "200-character notes inside spaces"
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "input": {
+        "name": "Main",
+        "notes": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "name": "201-character notes"
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "input": {
+        "group_name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "name": "Main"
+      },
+      "name": "61-character group"
+    },
+    {
+      "expected": {
+        "ok": {
+          "group_name": "team",
+          "name": "Main"
+        }
+      },
+      "input": {
+        "group_name": "  team  ",
+        "name": "Main"
+      },
+      "name": "group inside spaces"
+    },
+    {
+      "cooldown": {
+        "last_error_status": 429,
+        "new_secret": true
+      },
+      "expected": {
+        "cooling": false
+      },
+      "name": "cooling after HTTP 429, new secret"
+    },
+    {
+      "cooldown": {
+        "last_error_status": 403,
+        "new_secret": true
+      },
+      "expected": {
+        "cooling": false
+      },
+      "name": "cooling after HTTP 403, new secret"
+    },
+    {
+      "cooldown": {
+        "last_error_status": 429,
+        "new_secret": false
+      },
+      "expected": {
+        "cooling": true
+      },
+      "name": "cooling after HTTP 429, secret unchanged"
+    }
+  ],
+  "note": "Provider Keys. `input` cases save a new key with a secret and these fields (outcome: stored name and group, or error kind). `cooldown` cases save an existing key cooling down after `last_error_status`, with or without a new secret.",
+  "rule": "key-save",
+  "setup": {
+    "provider": "Keys"
+  }
+}

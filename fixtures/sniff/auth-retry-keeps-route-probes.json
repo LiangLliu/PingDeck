@@ -1,0 +1,131 @@
+{
+  "input": {
+    "base_url": "retry.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "",
+        "data": {
+          "version": "0.9.7",
+          "system_name": "Acme Relay",
+          "quota_per_unit": 500000,
+          "display_in_currency": true,
+          "quota_display_type": "USD",
+          "usd_exchange_rate": 7.2
+        }
+      },
+      "headers": {
+        "x-new-api-version": "0.9.7"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 404,
+      "text": "404 page not found",
+      "headers": {
+        "content-type": "text/plain"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "gpt-4o"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      },
+      "when": [
+        {
+          "header_present": "authorization"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 401,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "authentication_error",
+          "message": "x-api-key header is required"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/token/",
+      "status": 200,
+      "body": {
+        "code": true,
+        "data": {
+          "total_available": 6200000,
+          "unlimited_quota": false
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "new_api",
+    "models": 1,
+    "key_status": "accepted",
+    "max_requests": 12,
+    "requests": 12,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "gemini": "absent",
+      "responses": "absent",
+      "embeddings": "absent"
+    },
+    "endpoint_auth": {
+      "messages": "bearer"
+    },
+    "warnings": [],
+    "balance": {
+      "unit": "quota",
+      "value": 6200000,
+      "remaining_usd": 12.4
+    },
+    "status_counts": {
+      "401": 1
+    },
+    "skipped": []
+  },
+  "name": "auth-retry-keeps-route-probes"
+}

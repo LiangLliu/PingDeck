@@ -1,0 +1,130 @@
+{
+  "name": "lm-studio-v1",
+  "input": {
+    "base_url": "http://localhost:1234"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/models",
+      "status": 200,
+      "body": {
+        "models": [
+          {
+            "key": "qwen2.5-7b-instruct",
+            "type": "llm",
+            "max_context_length": 32768,
+            "capabilities": {
+              "vision": false,
+              "trained_for_tool_use": true,
+              "reasoning": {
+                "allowed_options": [
+                  "off",
+                  "low",
+                  "high"
+                ],
+                "default": "low"
+              }
+            }
+          },
+          {
+            "key": "nomic-embed-text",
+            "type": "embedding",
+            "max_context_length": 2048,
+            "capabilities": {
+              "vision": false,
+              "trained_for_tool_use": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "qwen2.5-7b-instruct",
+            "object": "model",
+            "owned_by": "x"
+          },
+          {
+            "id": "nomic-embed-text",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "lm_studio",
+    "confirmed": true,
+    "models": 2,
+    "max_requests": 8,
+    "requests": 6,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "embeddings": 400
+    },
+    "warnings": [
+      "preset_route_mismatch"
+    ],
+    "model_context": {
+      "qwen2.5-7b-instruct": 32768
+    },
+    "model_kinds": {
+      "nomic-embed-text": "embedding"
+    },
+    "local_requests": 5
+  }
+}

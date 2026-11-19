@@ -1,0 +1,69 @@
+{
+  "name": "sub2api-extra-keys",
+  "input": {
+    "base_url": "sub.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401,
+      "body": {
+        "code": "UNAUTHORIZED",
+        "message": "Authorization header is required",
+        "request_id": "x"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "claude-sonnet-5",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "label": "compatible_unidentified",
+    "confirmed": false,
+    "protocols": {
+      "chat": 400
+    },
+    "models": 1,
+    "max_requests": 12,
+    "requests": 4,
+    "warnings": [],
+    "balance_finding": "no_endpoint"
+  }
+}

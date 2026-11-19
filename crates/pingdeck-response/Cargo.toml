@@ -1,0 +1,20 @@
+[package]
+name = "pingdeck-response"
+description = "Response bodies: the bounded in-memory store of large bodies behind an opaque handle, the native body views (JSON, XML, HTML, YAML, Hex, Base64) and the one JSONPath dialect."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+pingdeck-base = { path = "../pingdeck-base" }
+base64.workspace = true
+bytes.workspace = true
+memchr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lib]
+doctest = false

@@ -1,0 +1,27 @@
+# cargo-nextest configuration (developer tool; `cargo test` ignores this file).
+
+[profile.default.junit]
+# Written to target/nextest/<profile>/junit.xml
+path = "junit.xml"
+
+[test-groups]
+# Each nextest test runs in its own process, so the in-process caps
+# (gateway MAX_LIVE_HARNESSES, mock CONNECTION_BURST) no longer bound concurrency.
+# This group bounds CPU, loopback ports and SQLite WAL contention instead.
+gateway-harness = { max-threads = 4 }
+
+[[profile.default.overrides]]
+filter = "(package(pingdeck-llm) & test(/^llm::gateway::tests/)) | (package(pingdeck-workbench) & test(/^mock::tests::/)) | (package(pingdeck-core) & ((binary(demo_conformance) & test(/^gateway_smoke::/)) | binary(gateway_latency)))"
+test-group = "gateway-harness"
+
+# CI (.github/workflows): run everything, report every failure, write JUnit to
+# target/nextest/ci/junit.xml. A test still running after 5 x 60 s is killed and
+# reported, so a hang fails fast instead of eating the job's timeout-minutes.
+# The default profile's overrides (the test group above) still apply.
+[profile.ci]
+fail-fast = false
+failure-output = "immediate-final"
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[profile.ci.junit]
+path = "junit.xml"

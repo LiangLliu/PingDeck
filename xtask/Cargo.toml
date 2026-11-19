@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+description = "UI-agnostic repository automation: docs/limits checks, version verification, SQLite schema fingerprint, and models.dev snapshot generation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+regex.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha1.workspace = true
+toml_edit.workspace = true

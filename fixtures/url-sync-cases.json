@@ -1,0 +1,2058 @@
+{
+  "description": "Language-neutral cases for the request URL sync (crates/pingdeck-core/src/app/request_model_service/url_sync.rs). Each case: inputs plus `expected`. Rows are {key,value,enabled}. Generated from the Rust core, cross-checked against the former TypeScript (src/state/tabs/draft.ts); the module docs list the deliberate differences. Consumed by crates/pingdeck-core/tests/url_sync_fixture.rs and src/api/logic/requestModel.test.ts.",
+  "merge_path_variables": [
+    {
+      "url": "https://x/:id/:name",
+      "existing": [
+        {
+          "key": "name",
+          "value": "bob",
+          "enabled": false
+        },
+        {
+          "key": "id",
+          "value": "7",
+          "enabled": true
+        }
+      ],
+      "expected": [
+        {
+          "key": "id",
+          "value": "7",
+          "enabled": true
+        },
+        {
+          "key": "name",
+          "value": "bob",
+          "enabled": false
+        }
+      ],
+      "name": "reuses value and enabled flag by key"
+    },
+    {
+      "url": "https://x/:id",
+      "existing": [
+        {
+          "key": "id",
+          "value": "7",
+          "enabled": true
+        },
+        {
+          "key": "gone",
+          "value": "x",
+          "enabled": true
+        }
+      ],
+      "expected": [
+        {
+          "key": "id",
+          "value": "7",
+          "enabled": true
+        }
+      ],
+      "name": "drops variables absent from url"
+    },
+    {
+      "url": "https://x/:id/{slug}",
+      "existing": [],
+      "expected": [
+        {
+          "key": "id",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "slug",
+          "value": "",
+          "enabled": true
+        }
+      ],
+      "name": "new names start empty and enabled"
+    },
+    {
+      "url": "https://x/:b/:a",
+      "existing": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "2",
+          "enabled": true
+        }
+      ],
+      "expected": [
+        {
+          "key": "b",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ],
+      "name": "order follows url"
+    },
+    {
+      "url": "https://x/:id",
+      "existing": [
+        {
+          "key": "id",
+          "value": "first",
+          "enabled": true
+        },
+        {
+          "key": "id",
+          "value": "second",
+          "enabled": true
+        }
+      ],
+      "expected": [
+        {
+          "key": "id",
+          "value": "first",
+          "enabled": true
+        }
+      ],
+      "name": "first duplicate wins"
+    },
+    {
+      "url": "https://x/plain",
+      "existing": [
+        {
+          "key": "id",
+          "value": "7",
+          "enabled": true
+        }
+      ],
+      "expected": [],
+      "name": "no variables"
+    }
+  ],
+  "path_variable_names": [
+    {
+      "url": "https://x/users/:id/posts/:postId",
+      "expected": [
+        "id",
+        "postId"
+      ],
+      "name": "colon variables"
+    },
+    {
+      "url": "https://x/users/{id}/posts/{postId}",
+      "expected": [
+        "id",
+        "postId"
+      ],
+      "name": "brace variables"
+    },
+    {
+      "url": "https://x/{a}/:b/{c}/:d",
+      "expected": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "name": "mixed forms keep url order"
+    },
+    {
+      "url": "https://x/:id/items/:id/{id}",
+      "expected": [
+        "id"
+      ],
+      "name": "duplicates collapse"
+    },
+    {
+      "url": "https://x/a?x=:y&z={w}#:v",
+      "expected": [],
+      "name": "query and fragment ignored"
+    },
+    {
+      "url": "{{baseUrl}}/users/:id/{{other}}",
+      "expected": [
+        "id"
+      ],
+      "name": "variable tokens ignored"
+    },
+    {
+      "url": "{{baseUrl}}/{{userId}}",
+      "expected": [],
+      "name": "only variable tokens"
+    },
+    {
+      "url": "http://localhost:3000/users/:id",
+      "expected": [
+        "id"
+      ],
+      "name": "port is not a variable"
+    },
+    {
+      "url": "http://localhost:port/users",
+      "expected": [],
+      "name": "host port name is not a variable"
+    },
+    {
+      "url": "http://{{host}}:8080/:id",
+      "expected": [
+        "id"
+      ],
+      "name": "token host with port"
+    },
+    {
+      "url": "http://{{host}}:port/x",
+      "expected": [],
+      "name": "token host with port name"
+    },
+    {
+      "url": "https://x/:user_id/:a1/:_",
+      "expected": [
+        "user_id",
+        "a1",
+        "_"
+      ],
+      "name": "underscore and digits"
+    },
+    {
+      "url": "https://x/:1abc/{1a}",
+      "expected": [
+        "1abc"
+      ],
+      "name": "a :name may start with a digit but a {name} may not"
+    },
+    {
+      "url": "https://x/:a-b/:c.json",
+      "expected": [
+        "a",
+        "c"
+      ],
+      "name": "name stops at non word"
+    },
+    {
+      "url": "https://x/{a b}/{}/{a-b}",
+      "expected": [],
+      "name": "invalid brace names"
+    },
+    {
+      "url": "https://x/{{a}}/{{{b}}}",
+      "expected": [],
+      "name": "double braces never a path variable"
+    },
+    {
+      "url": "https://x/{{a}}{b}",
+      "expected": [
+        "b"
+      ],
+      "name": "brace after token"
+    },
+    {
+      "url": "https://x/用户/:id/é/{name}",
+      "expected": [
+        "id",
+        "name"
+      ],
+      "name": "unicode path"
+    },
+    {
+      "url": "https://x/a:b/c",
+      "expected": [],
+      "name": "colon not after slash"
+    },
+    {
+      "url": "localhost:3001/:id",
+      "expected": [
+        "id"
+      ],
+      "name": "scheme-less"
+    },
+    {
+      "url": "",
+      "expected": [],
+      "name": "empty url"
+    },
+    {
+      "url": "https://x/{{p?q}}/:id/items",
+      "expected": [
+        "id"
+      ],
+      "name": "a ? inside a token does not end the path"
+    },
+    {
+      "url": "https://x/{{p#q}}/:id?x=:no",
+      "expected": [
+        "id"
+      ],
+      "name": "a # inside a token does not end the path, the real ? does"
+    },
+    {
+      "url": "https://x/:1/:a_1/:9b",
+      "expected": [
+        "1",
+        "a_1",
+        "9b"
+      ],
+      "name": "a :name is [A-Za-z0-9_]+ and may start with a digit, like the executor"
+    },
+    {
+      "url": "https://x/a:b/:c-d/:e.f",
+      "expected": [
+        "c",
+        "e"
+      ],
+      "name": "a colon only counts right after a slash, and the name stops at the first other character"
+    },
+    {
+      "url": "https://x/{1a}/{ok}",
+      "expected": [
+        "ok"
+      ],
+      "name": "a {name} still needs an identifier"
+    }
+  ],
+  "query_params_from_url": [
+    {
+      "url": "https://x/p",
+      "expected": [],
+      "name": "no query"
+    },
+    {
+      "url": "https://x/p?",
+      "expected": [],
+      "name": "empty query"
+    },
+    {
+      "url": "https://x/p?#f",
+      "expected": [],
+      "name": "empty query with fragment"
+    },
+    {
+      "url": "https://x/p?a=1&b=2",
+      "expected": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "2",
+          "enabled": true
+        }
+      ],
+      "name": "basic pairs"
+    },
+    {
+      "url": "https://x/p?a=b+c&d=e%20f&g=h%2Bi",
+      "expected": [
+        {
+          "key": "a",
+          "value": "b c",
+          "enabled": true
+        },
+        {
+          "key": "d",
+          "value": "e f",
+          "enabled": true
+        },
+        {
+          "key": "g",
+          "value": "h+i",
+          "enabled": true
+        }
+      ],
+      "name": "plus and percent decoding"
+    },
+    {
+      "url": "https://api.test/items?encoded=a%26b%3Dc%23d%25&dup=a%2Bb&dup=x%2Fy&literal=%252F&template=%7B%7Bid%7D%7D#section",
+      "expected": [
+        {
+          "key": "encoded",
+          "value": "a&b=c#d%",
+          "enabled": true
+        },
+        {
+          "key": "dup",
+          "value": "a+b",
+          "enabled": true
+        },
+        {
+          "key": "dup",
+          "value": "x/y",
+          "enabled": true
+        },
+        {
+          "key": "literal",
+          "value": "%2F",
+          "enabled": true
+        },
+        {
+          "key": "template",
+          "value": "{{id}}",
+          "enabled": true
+        }
+      ],
+      "name": "encoded editor url"
+    },
+    {
+      "url": "https://x/p?flag&x=",
+      "expected": [
+        {
+          "key": "flag",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "x",
+          "value": "",
+          "enabled": true
+        }
+      ],
+      "name": "key without equals"
+    },
+    {
+      "url": "https://x/p?&&a=1&&",
+      "expected": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ],
+      "name": "empty pairs skipped"
+    },
+    {
+      "url": "https://x/p?=v&a=b=c",
+      "expected": [
+        {
+          "key": "",
+          "value": "v",
+          "enabled": true
+        },
+        {
+          "key": "a",
+          "value": "b=c",
+          "enabled": true
+        }
+      ],
+      "name": "empty key and extra equals"
+    },
+    {
+      "url": "https://x/p?d=1&d=2&d=1",
+      "expected": [
+        {
+          "key": "d",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "d",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "d",
+          "value": "1",
+          "enabled": true
+        }
+      ],
+      "name": "duplicate keys"
+    },
+    {
+      "url": "https://x/p?名前=日本語",
+      "expected": [
+        {
+          "key": "名前",
+          "value": "日本語",
+          "enabled": true
+        }
+      ],
+      "name": "raw unicode"
+    },
+    {
+      "url": "https://x/p?%E5%90%8D=%F0%9F%98%80",
+      "expected": [
+        {
+          "key": "名",
+          "value": "😀",
+          "enabled": true
+        }
+      ],
+      "name": "percent encoded utf8"
+    },
+    {
+      "url": "https://x/p?a=%zz&b=%E0%A4%A&c=%4",
+      "expected": [
+        {
+          "key": "a",
+          "value": "%zz",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "�%A",
+          "enabled": true
+        },
+        {
+          "key": "c",
+          "value": "%4",
+          "enabled": true
+        }
+      ],
+      "name": "invalid percent sequences"
+    },
+    {
+      "url": "https://x/p?a=1#b=2",
+      "expected": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ],
+      "name": "fragment ends query"
+    },
+    {
+      "url": "https://x/p?a=1?b=2",
+      "expected": [
+        {
+          "key": "a",
+          "value": "1?b=2",
+          "enabled": true
+        }
+      ],
+      "name": "second question mark belongs to value"
+    },
+    {
+      "url": "{{baseUrl}}/p?x={{y}}&{{k}}=v",
+      "expected": [
+        {
+          "key": "x",
+          "value": "{{y}}",
+          "enabled": true
+        },
+        {
+          "key": "{{k}}",
+          "value": "v",
+          "enabled": true
+        }
+      ],
+      "name": "variable tokens"
+    },
+    {
+      "url": "https://x/p?a={{x+y}}&b=c+d",
+      "expected": [
+        {
+          "key": "a",
+          "value": "{{x+y}}",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "c d",
+          "enabled": true
+        }
+      ],
+      "name": "plus inside variable token is kept"
+    },
+    {
+      "url": "https://x/p?a={{x=y}}&b={{p&q}}&c=1",
+      "expected": [
+        {
+          "key": "a",
+          "value": "{{x=y}}",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "{{p&q}}",
+          "enabled": true
+        },
+        {
+          "key": "c",
+          "value": "1",
+          "enabled": true
+        }
+      ],
+      "name": "equals and ampersand inside variable token"
+    },
+    {
+      "url": "https://x/p?a={{x%20y}}",
+      "expected": [
+        {
+          "key": "a",
+          "value": "{{x%20y}}",
+          "enabled": true
+        }
+      ],
+      "name": "percent inside variable token is kept"
+    },
+    {
+      "url": "https://x/p#a?b=1",
+      "expected": [],
+      "name": "question mark only in fragment"
+    },
+    {
+      "url": "",
+      "expected": [],
+      "name": "empty url"
+    },
+    {
+      "url": "https://api.test/items?k={{a?b#c}}",
+      "expected": [
+        {
+          "key": "k",
+          "value": "{{a?b#c}}",
+          "enabled": true
+        }
+      ],
+      "name": "token holding ? and # is one value"
+    },
+    {
+      "url": "https://api.test/{{p?q}}/items?x=1",
+      "expected": [
+        {
+          "key": "x",
+          "value": "1",
+          "enabled": true
+        }
+      ],
+      "name": "a ? inside a path token does not start the query"
+    },
+    {
+      "url": "https://api.test/{{p?q}}/items",
+      "expected": [],
+      "name": "a ? only inside a token means no query"
+    },
+    {
+      "url": "https://api.test/x?a={{h#1}}&b=2#frag",
+      "expected": [
+        {
+          "key": "a",
+          "value": "{{h#1}}",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "2",
+          "enabled": true
+        }
+      ],
+      "name": "a # inside a query token does not start the fragment"
+    }
+  ],
+  "sync_request_url": [
+    {
+      "expected": {
+        "url": "https://x/users/:id?limit=5&q=a+b",
+        "query_params": [
+          {
+            "key": "limit",
+            "value": "5",
+            "enabled": true
+          },
+          {
+            "key": "q",
+            "value": "a b",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "",
+            "enabled": true
+          }
+        ]
+      },
+      "input": {
+        "url": "https://x/users/:id?limit=5&q=a+b",
+        "query_params": [],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit adds query rows and path variables"
+    },
+    {
+      "expected": {
+        "url": "https://x/users/:id/{slug}",
+        "query_params": [],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          },
+          {
+            "key": "slug",
+            "value": "",
+            "enabled": true
+          }
+        ]
+      },
+      "input": {
+        "url": "https://x/users/:id/{slug}",
+        "query_params": [],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          },
+          {
+            "key": "old",
+            "value": "z",
+            "enabled": true
+          }
+        ],
+        "edited": "Url"
+      },
+      "name": "url edit keeps path variable values"
+    },
+    {
+      "expected": {
+        "url": "https://x/p?a=1",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          },
+          {
+            "key": "off",
+            "value": "1",
+            "enabled": false
+          }
+        ],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p?a=1",
+        "query_params": [
+          {
+            "key": "off",
+            "value": "1",
+            "enabled": false
+          },
+          {
+            "key": "a",
+            "value": "old",
+            "enabled": true
+          }
+        ],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit keeps disabled rows after the url rows"
+    },
+    {
+      "expected": {
+        "url": "https://x/p",
+        "query_params": [
+          {
+            "key": "off",
+            "value": "2",
+            "enabled": false
+          }
+        ],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          },
+          {
+            "key": "off",
+            "value": "2",
+            "enabled": false
+          }
+        ],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit without query drops enabled rows"
+    },
+    {
+      "expected": {
+        "url": "https://x/p?a=1",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          },
+          {
+            "key": "",
+            "value": "draft",
+            "enabled": true
+          }
+        ],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p?a=1",
+        "query_params": [
+          {
+            "key": "",
+            "value": "draft",
+            "enabled": true
+          }
+        ],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit keeps blank key rows"
+    },
+    {
+      "expected": {
+        "url": "https://x/p?a=&b",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "",
+            "enabled": true
+          },
+          {
+            "key": "b",
+            "value": "",
+            "enabled": true
+          }
+        ],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p?a=&b",
+        "query_params": [],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit leaves the url text untouched"
+    },
+    {
+      "expected": {
+        "url": "https://x/p?page=12&page=3&q=a",
+        "query_params": [
+          {
+            "key": "page",
+            "value": "12",
+            "enabled": true,
+            "description": "页码"
+          },
+          {
+            "key": "page",
+            "value": "3",
+            "enabled": true,
+            "description": "second page"
+          },
+          {
+            "key": "q",
+            "value": "a",
+            "enabled": true
+          },
+          {
+            "key": "off",
+            "value": "1",
+            "enabled": false,
+            "description": "kept"
+          }
+        ],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p?page=12&page=3&q=a",
+        "query_params": [
+          {
+            "key": "page",
+            "value": "1",
+            "enabled": true,
+            "description": "页码"
+          },
+          {
+            "key": "off",
+            "value": "1",
+            "enabled": false,
+            "description": "kept"
+          },
+          {
+            "key": "page",
+            "value": "2",
+            "enabled": true,
+            "description": "second page"
+          },
+          {
+            "key": "q",
+            "value": "a",
+            "enabled": true
+          }
+        ],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit keeps descriptions by key, first come first served"
+    },
+    {
+      "expected": {
+        "url": "",
+        "query_params": [
+          {
+            "key": "page",
+            "value": "1",
+            "enabled": false,
+            "description": "页码"
+          },
+          {
+            "key": "off",
+            "value": "1",
+            "enabled": false
+          }
+        ],
+        "path_variables": []
+      },
+      "input": {
+        "url": "",
+        "query_params": [
+          {
+            "key": "page",
+            "value": "1",
+            "enabled": true,
+            "description": "页码"
+          },
+          {
+            "key": "off",
+            "value": "1",
+            "enabled": false
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          }
+        ],
+        "edited": "Url"
+      },
+      "name": "url edit clearing the url disables the rows instead of dropping them"
+    },
+    {
+      "expected": {
+        "url": "https://x/p#f?a=1",
+        "query_params": [],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p#f?a=1",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          }
+        ],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "name": "url edit with fragment containing question mark"
+    },
+    {
+      "expected": {
+        "url": "https://x/p?a=1&b=x%20y#frag",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          },
+          {
+            "key": "b",
+            "value": "x y",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          }
+        ]
+      },
+      "input": {
+        "url": "https://x/p?old=1#frag",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          },
+          {
+            "key": "b",
+            "value": "x y",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          }
+        ],
+        "edited": "Query"
+      },
+      "name": "query edit rebuilds the url and keeps the fragment"
+    },
+    {
+      "expected": {
+        "url": "https://x/p/:id?c=3",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": false
+          },
+          {
+            "key": "",
+            "value": "2",
+            "enabled": true
+          },
+          {
+            "key": "c",
+            "value": "3",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          }
+        ]
+      },
+      "input": {
+        "url": "https://x/p/:id",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": false
+          },
+          {
+            "key": "",
+            "value": "2",
+            "enabled": true
+          },
+          {
+            "key": "c",
+            "value": "3",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "7",
+            "enabled": true
+          }
+        ],
+        "edited": "Query"
+      },
+      "name": "query edit skips disabled and blank rows"
+    },
+    {
+      "expected": {
+        "url": "https://x/p/:id?a=1",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "stale",
+            "value": "s",
+            "enabled": true
+          },
+          {
+            "key": "id",
+            "value": "",
+            "enabled": true
+          }
+        ]
+      },
+      "input": {
+        "url": "https://x/p/:id",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "1",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "stale",
+            "value": "s",
+            "enabled": true
+          },
+          {
+            "key": "id",
+            "value": "",
+            "enabled": true
+          }
+        ],
+        "edited": "Query"
+      },
+      "name": "query edit leaves path variables as they are"
+    },
+    {
+      "expected": {
+        "url": "https://x/p",
+        "query_params": [],
+        "path_variables": []
+      },
+      "input": {
+        "url": "https://x/p?a=1",
+        "query_params": [],
+        "path_variables": [],
+        "edited": "Query"
+      },
+      "name": "query edit clearing all rows removes the question mark"
+    },
+    {
+      "input": {
+        "url": "https://x/{{p?q}}/:id?a={{b#c}}",
+        "query_params": [],
+        "path_variables": [],
+        "edited": "Url"
+      },
+      "expected": {
+        "url": "https://x/{{p?q}}/:id?a={{b#c}}",
+        "query_params": [
+          {
+            "key": "a",
+            "value": "{{b#c}}",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "",
+            "enabled": true
+          }
+        ]
+      },
+      "name": "url edit with ? and # inside tokens"
+    },
+    {
+      "input": {
+        "url": "https://x/{{p?q}}/:id",
+        "query_params": [
+          {
+            "key": "k",
+            "value": "{{a?b#c}}",
+            "enabled": true
+          }
+        ],
+        "path_variables": [],
+        "edited": "Query"
+      },
+      "expected": {
+        "url": "https://x/{{p?q}}/:id?k={{a?b#c}}",
+        "query_params": [
+          {
+            "key": "k",
+            "value": "{{a?b#c}}",
+            "enabled": true
+          }
+        ],
+        "path_variables": []
+      },
+      "name": "query edit with ? and # inside tokens"
+    }
+  ],
+  "url_with_query_params": [
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?a=1&b=2",
+      "name": "basic",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "b",
+          "value": "2",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items?old=1",
+      "expected": "https://api.test/items?new=2",
+      "name": "replaces existing query",
+      "params": [
+        {
+          "key": "new",
+          "value": "2",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items?x=1#frag",
+      "expected": "https://api.test/items?a=1#frag",
+      "name": "keeps fragment",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items?x=1#f",
+      "expected": "https://api.test/items#f",
+      "name": "no params removes question mark keeps fragment",
+      "params": []
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?b=2",
+      "name": "disabled rows skipped",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": false
+        },
+        {
+          "key": "b",
+          "value": "2",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?c=3",
+      "name": "blank key skipped",
+      "params": [
+        {
+          "key": "  ",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "",
+          "value": "2",
+          "enabled": true
+        },
+        {
+          "key": "c",
+          "value": "3",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?flag&x",
+      "name": "empty value renders key only",
+      "params": [
+        {
+          "key": "flag",
+          "value": "",
+          "enabled": true
+        },
+        {
+          "key": "x",
+          "value": "",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?{{k}}={{v}}&p=pre-{{v}}-post",
+      "name": "variable tokens untouched",
+      "params": [
+        {
+          "key": "{{k}}",
+          "value": "{{v}}",
+          "enabled": true
+        },
+        {
+          "key": "p",
+          "value": "pre-{{v}}-post",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?t={{token}}%20%2B%20%C3%A9%26%3D%23",
+      "name": "token next to text and specials",
+      "params": [
+        {
+          "key": "t",
+          "value": "{{token}} + é&=#",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?%E5%90%8D%E5%89%8D=%E6%97%A5%E6%9C%AC%E8%AA%9E%20%E3%83%86%E3%82%B9%E3%83%88",
+      "name": "unicode",
+      "params": [
+        {
+          "key": "名前",
+          "value": "日本語 テスト",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?e=%F0%9F%98%80",
+      "name": "astral char",
+      "params": [
+        {
+          "key": "e",
+          "value": "😀",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?dup=a&dup=b&x=1&dup=c",
+      "name": "duplicate keys kept in order",
+      "params": [
+        {
+          "key": "dup",
+          "value": "a",
+          "enabled": true
+        },
+        {
+          "key": "dup",
+          "value": "b",
+          "enabled": true
+        },
+        {
+          "key": "x",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "dup",
+          "value": "c",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?k=a%20b%2Bc%2Fd%3Fe%3Df%26g%23h%25i",
+      "name": "reserved characters encoded",
+      "params": [
+        {
+          "key": "k",
+          "value": "a b+c/d?e=f&g#h%i",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?k=!*'()~-_.AZaz09",
+      "name": "unreserved characters kept",
+      "params": [
+        {
+          "key": "k",
+          "value": "!*'()~-_.AZaz09",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?a%3Db=c",
+      "name": "equals sign in key",
+      "params": [
+        {
+          "key": "a=b",
+          "value": "c",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://x/?",
+      "expected": "https://x/",
+      "name": "trailing question mark no params",
+      "params": []
+    },
+    {
+      "url": "https://x/?",
+      "expected": "https://x/?a=1",
+      "name": "trailing question mark with params",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "{{baseUrl}}/p/:id?z=1",
+      "expected": "{{baseUrl}}/p/:id?a=1",
+      "name": "variable base with path variable",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://x#f",
+      "expected": "https://x?a=1#f",
+      "name": "fragment only",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://x/#a?b",
+      "expected": "https://x/?c=1#a?b",
+      "name": "question mark inside fragment",
+      "params": [
+        {
+          "key": "c",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?a=%7B%7Bb",
+      "name": "unterminated token is encoded",
+      "params": [
+        {
+          "key": "a",
+          "value": "{{b",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?a={{ b c }}",
+      "name": "token with spaces kept",
+      "params": [
+        {
+          "key": "a",
+          "value": "{{ b c }}",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "",
+      "expected": "?a=1",
+      "name": "empty url",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?a=%252F",
+      "name": "percent sign encoded not double encoded",
+      "params": [
+        {
+          "key": "a",
+          "value": "%2F",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/items",
+      "expected": "https://api.test/items?k={{a?b#c}}",
+      "name": "token holding ? and # is written verbatim",
+      "params": [
+        {
+          "key": "k",
+          "value": "{{a?b#c}}",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/{{p?q}}/items?old=1#frag",
+      "expected": "https://api.test/{{p?q}}/items?a=1#frag",
+      "name": "a ? inside a path token does not start the query",
+      "params": [
+        {
+          "key": "a",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "url": "https://api.test/x?old=1#{{h#2}}",
+      "expected": "https://api.test/x#{{h#2}}",
+      "name": "a # inside a fragment token stays with the fragment",
+      "params": []
+    }
+  ],
+  "new_request_draft": [
+    {
+      "name": "http_get template",
+      "workspace_id": "ws",
+      "collection_id": null,
+      "folder_id": null,
+      "template": "http_get",
+      "overrides": null,
+      "expected": {
+        "id": "<new>",
+        "workspace_id": "ws",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "Untitled Request",
+        "protocol": "HttpRest",
+        "method": "Get",
+        "url": "{{baseUrl}}/path",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": [],
+          "inherit": [
+            "timeout_ms",
+            "retry_count",
+            "http_version",
+            "follow_redirects",
+            "max_redirects",
+            "verify_tls",
+            "proxy_url"
+          ]
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    },
+    {
+      "name": "http_post_json template placed in a collection and folder",
+      "workspace_id": "ws",
+      "collection_id": "col",
+      "folder_id": "fold",
+      "template": "http_post_json",
+      "overrides": null,
+      "expected": {
+        "id": "<new>",
+        "workspace_id": "ws",
+        "collection_id": "col",
+        "folder_id": "fold",
+        "name": "Create resource",
+        "protocol": "HttpRest",
+        "method": "Post",
+        "url": "{{baseUrl}}/path",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": {
+          "Json": {
+            "content": "{\n  \"name\": \"example\"\n}"
+          }
+        },
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": [],
+          "inherit": [
+            "timeout_ms",
+            "retry_count",
+            "http_version",
+            "follow_redirects",
+            "max_redirects",
+            "verify_tls",
+            "proxy_url"
+          ]
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    },
+    {
+      "name": "graphql template",
+      "workspace_id": "ws",
+      "collection_id": null,
+      "folder_id": null,
+      "template": "graphql",
+      "overrides": null,
+      "expected": {
+        "id": "<new>",
+        "workspace_id": "ws",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "GraphQL Query",
+        "protocol": "Graphql",
+        "method": "Post",
+        "url": "{{baseUrl}}/graphql",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [],
+        "auth": "Inherit",
+        "body": {
+          "Graphql": {
+            "query": "query PingDeck {\n  __typename\n}",
+            "variables_json": null,
+            "operation_name": null
+          }
+        },
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": [],
+          "inherit": [
+            "timeout_ms",
+            "retry_count",
+            "http_version",
+            "follow_redirects",
+            "max_redirects",
+            "verify_tls",
+            "proxy_url"
+          ]
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    },
+    {
+      "name": "a url override names the request and derives rows and variables",
+      "workspace_id": "ws",
+      "collection_id": null,
+      "folder_id": null,
+      "template": "http_get",
+      "overrides": {
+        "method": "Post",
+        "url": "http://127.0.0.1:3000/users/:id?limit=5"
+      },
+      "expected": {
+        "id": "<new>",
+        "workspace_id": "ws",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "http://127.0.0.1:3000/users/:id?limit=5",
+        "protocol": "HttpRest",
+        "method": "Post",
+        "url": "http://127.0.0.1:3000/users/:id?limit=5",
+        "query_params": [
+          {
+            "key": "limit",
+            "value": "5",
+            "enabled": true
+          }
+        ],
+        "path_variables": [
+          {
+            "key": "id",
+            "value": "",
+            "enabled": true
+          }
+        ],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": [],
+          "inherit": [
+            "timeout_ms",
+            "retry_count",
+            "http_version",
+            "follow_redirects",
+            "max_redirects",
+            "verify_tls",
+            "proxy_url"
+          ]
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    },
+    {
+      "name": "explicit name and rows win over the url",
+      "workspace_id": "ws",
+      "collection_id": null,
+      "folder_id": null,
+      "template": "http_get",
+      "overrides": {
+        "name": "Mine",
+        "url": "http://x/:a?b=1",
+        "query_params": [],
+        "path_variables": [
+          {
+            "key": "a",
+            "value": "9",
+            "enabled": true
+          }
+        ]
+      },
+      "expected": {
+        "id": "<new>",
+        "workspace_id": "ws",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "Mine",
+        "protocol": "HttpRest",
+        "method": "Get",
+        "url": "http://x/:a?b=1",
+        "query_params": [],
+        "path_variables": [
+          {
+            "key": "a",
+            "value": "9",
+            "enabled": true
+          }
+        ],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": [],
+          "inherit": [
+            "timeout_ms",
+            "retry_count",
+            "http_version",
+            "follow_redirects",
+            "max_redirects",
+            "verify_tls",
+            "proxy_url"
+          ]
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    }
+  ],
+  "draft_normalize": [
+    {
+      "name": "blank id and name are filled and the workspace is assigned",
+      "workspace_id": "new",
+      "request": {
+        "id": "  ",
+        "workspace_id": "old",
+        "collection_id": null,
+        "folder_id": null,
+        "name": " ",
+        "protocol": "HttpRest",
+        "method": "Get",
+        "url": "{{baseUrl}}/path",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": []
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      },
+      "expected": {
+        "id": "<new>",
+        "workspace_id": "new",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "Untitled Request",
+        "protocol": "HttpRest",
+        "method": "Get",
+        "url": "{{baseUrl}}/path",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": []
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    },
+    {
+      "name": "a complete request only changes workspace",
+      "workspace_id": "new",
+      "request": {
+        "id": "req_keep",
+        "workspace_id": "old",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "Keep",
+        "protocol": "HttpRest",
+        "method": "Get",
+        "url": "{{baseUrl}}/path",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": []
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      },
+      "expected": {
+        "id": "req_keep",
+        "workspace_id": "new",
+        "collection_id": null,
+        "folder_id": null,
+        "name": "Keep",
+        "protocol": "HttpRest",
+        "method": "Get",
+        "url": "{{baseUrl}}/path",
+        "query_params": [],
+        "path_variables": [],
+        "headers": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "enabled": true
+          }
+        ],
+        "auth": "Inherit",
+        "body": "None",
+        "network_options": {
+          "timeout_ms": 30000,
+          "follow_redirects": true,
+          "retry_count": 0,
+          "send_cookies": true,
+          "verify_tls": true,
+          "proxy_url": null,
+          "http_version": "Auto",
+          "follow_original_method": false,
+          "follow_auth_header": false,
+          "remove_referer_on_redirect": false,
+          "encode_url_automatically": true,
+          "max_redirects": 10,
+          "disabled_tls_versions": []
+        },
+        "assertions": [],
+        "description": "",
+        "pre_request_script": "",
+        "test_script": "",
+        "position": 0,
+        "mode": "http",
+        "ai": null
+      }
+    }
+  ]
+}

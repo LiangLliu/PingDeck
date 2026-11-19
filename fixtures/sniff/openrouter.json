@@ -1,0 +1,130 @@
+{
+  "name": "openrouter",
+  "input": {
+    "base_url": "https://openrouter.ai/api/v1"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/models",
+      "status": 200,
+      "body": {
+        "data": [
+          {
+            "id": "openai/gpt-5",
+            "name": "OpenAI: GPT-5",
+            "context_length": 400000,
+            "pricing": {
+              "prompt": "0.00000125",
+              "completion": "0.00001"
+            },
+            "architecture": {
+              "input_modalities": [
+                "text",
+                "image"
+              ],
+              "output_modalities": [
+                "text"
+              ]
+            },
+            "supported_parameters": [
+              "tools",
+              "reasoning"
+            ]
+          },
+          {
+            "id": "anthropic/claude-sonnet-5",
+            "name": "Anthropic: Claude Sonnet 5",
+            "context_length": 1000000,
+            "pricing": {
+              "prompt": "0.000003",
+              "completion": "0.000015"
+            },
+            "architecture": {
+              "input_modalities": [
+                "text",
+                "image"
+              ],
+              "output_modalities": [
+                "text"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "open_router",
+    "brand": "OpenRouter",
+    "confirmed": true,
+    "models": 2,
+    "max_requests": 8,
+    "requests": 6,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "responses": "absent",
+      "embeddings": 400
+    },
+    "warnings": [
+      "preset_route_mismatch"
+    ],
+    "balance_finding": "not_attempted",
+    "model_context": {
+      "openai/gpt-5": 400000
+    },
+    "model_input_cost": {
+      "openai/gpt-5": 1.25
+    },
+    "never_requested": [
+      "/api/status"
+    ],
+    "suggested_preset_id": "openrouter"
+  }
+}

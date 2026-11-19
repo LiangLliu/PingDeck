@@ -1,0 +1,97 @@
+{
+  "name": "moonshot-cn",
+  "input": {
+    "base_url": "https://api.moonshot.cn/v1/",
+    "api_key": "sk-test-0123456789abcdefABCD"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "kimi-k3",
+            "object": "model",
+            "owned_by": "x"
+          },
+          {
+            "id": "moonshot-v1-128k",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "POST",
+      "path": "/anthropic/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/users/me/balance",
+      "status": 200,
+      "body": {
+        "code": 0,
+        "data": {
+          "available_balance": 49.59,
+          "voucher_balance": 46.59,
+          "cash_balance": 3.0
+        },
+        "scode": "0x0",
+        "status": true
+      }
+    }
+  ],
+  "expect": {
+    "family": "official",
+    "label": "preset",
+    "models": 2,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "responses": "absent"
+    },
+    "max_requests": 12,
+    "requests": 5,
+    "warnings": [
+      "preset_route_mismatch"
+    ],
+    "balance": {
+      "unit": "cny",
+      "value": 49.59
+    },
+    "suggested_preset_id": "moonshot"
+  }
+}

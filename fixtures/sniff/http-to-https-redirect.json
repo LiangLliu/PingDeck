@@ -1,0 +1,68 @@
+{
+  "name": "http-to-https-redirect",
+  "input": {
+    "base_url": "http://relay.acme.dev",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 301,
+      "headers": {
+        "location": "https://relay.acme.dev/api/status"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 301,
+      "headers": {
+        "location": "https://relay.acme.dev/api/v1/auth/me"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 301,
+      "headers": {
+        "location": "https://relay.acme.dev/v1/models"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/models",
+      "status": 301,
+      "headers": {
+        "location": "https://relay.acme.dev/models"
+      },
+      "text": ""
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 301,
+      "headers": {
+        "location": "https://relay.acme.dev/v1/chat/completions"
+      },
+      "text": ""
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "max_requests": 8,
+    "requests": 3,
+    "warnings": [
+      "plain_http_public",
+      "redirect_ignored"
+    ],
+    "models": 0,
+    "suggested_url": "https://relay.acme.dev",
+    "protocols": {
+      "chat": "unclear"
+    }
+  }
+}

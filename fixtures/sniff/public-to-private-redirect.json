@@ -1,0 +1,58 @@
+{
+  "name": "public-to-private-redirect",
+  "input": {
+    "base_url": "relay.acme.dev",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 302,
+      "headers": {
+        "location": "http://127.0.0.1:4141/api/status"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 302,
+      "headers": {
+        "location": "http://127.0.0.1:4141/api/v1/auth/me"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 302,
+      "headers": {
+        "location": "http://127.0.0.1:4141/v1/models"
+      },
+      "text": ""
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 302,
+      "headers": {
+        "location": "http://169.254.169.254/latest/meta-data/"
+      },
+      "text": ""
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "max_requests": 8,
+    "requests": 3,
+    "warnings": [
+      "redirect_ignored"
+    ],
+    "models": 0,
+    "no_suggested_url": true,
+    "protocols": {
+      "chat": "unclear"
+    }
+  }
+}

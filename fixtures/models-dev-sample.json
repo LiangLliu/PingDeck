@@ -1,0 +1,125 @@
+{
+  "alpha": {
+    "id": "alpha",
+    "name": "Alpha Labs",
+    "env": ["ALPHA_API_KEY"],
+    "npm": "@ai-sdk/openai-compatible",
+    "doc": "https://alpha.example/docs",
+    "models": {
+      "alpha-pro": {
+        "id": "alpha-pro",
+        "name": "Alpha Pro",
+        "family": "alpha",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2026-01",
+        "release_date": "2026-03-01",
+        "last_updated": "2026-03-01",
+        "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+        "open_weights": false,
+        "limit": { "context": 200000, "output": 64000, "input": 190000 },
+        "cost": { "input": 3, "output": 15, "cache_read": 0.3, "cache_write": 3.75, "reasoning": 15 }
+      },
+      "alpha-tiered": {
+        "id": "alpha-tiered",
+        "name": "Alpha Tiered",
+        "release_date": "2026-03",
+        "family": "alpha",
+        "reasoning": false,
+        "tool_call": true,
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "limit": { "context": 1000000, "output": 32000 },
+        "cost": {
+          "input": 3,
+          "output": 15,
+          "cache_read": 0.3,
+          "tiers": [{ "tier": { "type": "context", "size": 200000 }, "input": 6, "output": 22.5 }],
+          "context_over_200k": { "input": 6, "output": 22.5, "cache_read": 0.6 }
+        }
+      },
+      "alpha-free": {
+        "id": "alpha-free",
+        "name": "Alpha Free",
+        "release_date": "2025-11-20",
+        "family": "alpha",
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "limit": { "context": 32768, "output": 4096 },
+        "cost": { "input": 0, "output": 0 }
+      },
+      "alpha-nocost": {
+        "id": "alpha-nocost",
+        "name": "Alpha Preview",
+        "release_date": "2026-03-01",
+        "family": "alpha",
+        "reasoning": true,
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "limit": { "context": 128000, "output": 8192 },
+        "status": "beta"
+      },
+      "alpha-embed": {
+        "id": "alpha-embed",
+        "name": "Alpha Embed",
+        "release_date": 20260101,
+        "family": "alpha-embed",
+        "type": "embedding",
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "limit": { "context": 8192, "output": 1536 },
+        "cost": { "input": 0.02, "output": 0 }
+      },
+      "alpha-bare": {
+        "name": "Bare",
+        "limit": { "context": 0, "output": 0 }
+      },
+      "alpha-old": {
+        "id": "alpha-old",
+        "name": "Alpha Old",
+        "release_date": "2024-02",
+        "status": "deprecated",
+        "limit": { "context": 8192, "output": 2048 },
+        "cost": { "input": 10, "output": 30 }
+      },
+      "alpha-weird": {
+        "name": "Alpha Weird",
+        "release_date": "2026-13-01",
+        "limit": { "context": "big", "output": 1024 },
+        "cost": { "input": "free", "output": 1 }
+      },
+      "alpha-image": { "id": "alpha-image", "name": "Alpha Image", "type": "image", "cost": { "input": 5, "output": 0 } },
+      "alpha-video": { "id": "alpha-video", "name": "Alpha Video", "type": "video" },
+      "alpha-speech": { "id": "alpha-speech", "name": "Alpha Speech", "type": "speech" },
+      "alpha-listen": { "id": "alpha-listen", "name": "Alpha Listen", "type": "transcription" },
+      "alpha-rerank": { "id": "alpha-rerank", "name": "Alpha Rerank", "type": "reranking" },
+      "alpha-live": { "id": "alpha-live", "name": "Alpha Live", "type": "realtime" },
+      "alpha-broken": "not a model"
+    }
+  },
+  "beta": {
+    "id": "beta",
+    "name": "Beta Hub",
+    "models": {
+      "alpha-pro": {
+        "id": "alpha-pro",
+        "name": "Alpha Pro (via Beta)",
+        "release_date": "2026-03-01",
+        "reasoning": true,
+        "tool_call": true,
+        "modalities": { "input": ["text", "image"], "output": ["text"] },
+        "limit": { "context": 200000, "output": 64000 },
+        "cost": { "input": 3.3, "output": 16.5 },
+        "canonical_model_id": "alpha/alpha-pro"
+      },
+      "beta-own": {
+        "id": "beta-own",
+        "name": "Beta Own",
+        "release_date": "2025-07-15",
+        "limit": { "context": 65536, "output": 8192 },
+        "cost": { "input": 1, "output": 4, "cache_read": 0.1 }
+      }
+    }
+  },
+  "empty": { "id": "empty", "name": "No Models", "models": {} },
+  "gamma": "not a provider"
+}

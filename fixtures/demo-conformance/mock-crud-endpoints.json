@@ -1,0 +1,112 @@
+{
+  "cases": [
+    {
+      "endpoint_prefix": "api",
+      "expected": {
+        "ok": [
+          "GET /api/users",
+          "GET /api/users/:id",
+          "POST /api/users",
+          "PUT /api/users/:id",
+          "PATCH /api/users/:id",
+          "DELETE /api/users/:id"
+        ]
+      },
+      "name": "prefix \"api\", path \"/users\"",
+      "route_path": "/users",
+      "route_type": "Crud"
+    },
+    {
+      "endpoint_prefix": "/api/",
+      "expected": {
+        "ok": [
+          "GET /api/users",
+          "GET /api/users/:id",
+          "POST /api/users",
+          "PUT /api/users/:id",
+          "PATCH /api/users/:id",
+          "DELETE /api/users/:id"
+        ]
+      },
+      "name": "prefix \"/api/\", path \"/users\"",
+      "route_path": "/users",
+      "route_type": "Crud"
+    },
+    {
+      "endpoint_prefix": "",
+      "expected": {
+        "ok": [
+          "GET /users",
+          "GET /users/:id",
+          "POST /users",
+          "PUT /users/:id",
+          "PATCH /users/:id",
+          "DELETE /users/:id"
+        ]
+      },
+      "name": "prefix \"\", path \"/users\"",
+      "route_path": "/users",
+      "route_type": "Crud"
+    },
+    {
+      "endpoint_prefix": "api",
+      "expected": {
+        "ok": [
+          "GET /api/resource",
+          "GET /api/resource/:id",
+          "POST /api/resource",
+          "PUT /api/resource/:id",
+          "PATCH /api/resource/:id",
+          "DELETE /api/resource/:id"
+        ]
+      },
+      "name": "prefix \"api\", path \"\"",
+      "route_path": "",
+      "route_type": "Crud"
+    },
+    {
+      "endpoint_prefix": "api",
+      "expected": {
+        "ok": [
+          "GET /api/users",
+          "GET /api/users/:id",
+          "POST /api/users",
+          "PUT /api/users/:id",
+          "PATCH /api/users/:id",
+          "DELETE /api/users/:id"
+        ]
+      },
+      "name": "prefix \"api\", path \"users\"",
+      "route_path": "users",
+      "route_type": "Crud"
+    },
+    {
+      "endpoint_prefix": " v1 ",
+      "expected": {
+        "ok": [
+          "GET /v1/orders",
+          "GET /v1/orders/:id",
+          "POST /v1/orders",
+          "PUT /v1/orders/:id",
+          "PATCH /v1/orders/:id",
+          "DELETE /v1/orders/:id"
+        ]
+      },
+      "name": "prefix \" v1 \", path \"/orders\"",
+      "route_path": "/orders",
+      "route_type": "Crud"
+    },
+    {
+      "endpoint_prefix": "api",
+      "expected": {
+        "error": "Validation"
+      },
+      "name": "not a CRUD route",
+      "route_path": "/users",
+      "route_type": "Http"
+    }
+  ],
+  "note": "The endpoints (`METHOD path`) a route of `route_type` at `route_path` answers on a server whose prefix is `endpoint_prefix`.",
+  "rule": "mock-crud-endpoints",
+  "setup": null
+}

@@ -1,0 +1,105 @@
+{
+  "name": "vllm",
+  "input": {
+    "base_url": "http://localhost:8000"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": ""
+    },
+    {
+      "method": "GET",
+      "path": "/version",
+      "status": 200,
+      "body": {
+        "version": "0.11.0"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "Qwen/Qwen3-8B",
+            "object": "model",
+            "owned_by": "vllm",
+            "max_model_len": 40960
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "vllm",
+    "confirmed": true,
+    "models": 1,
+    "max_requests": 8,
+    "requests": 5,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "embeddings": 400
+    },
+    "warnings": [
+      "preset_route_mismatch"
+    ],
+    "model_context": {
+      "Qwen/Qwen3-8B": 40960
+    },
+    "local_requests": 8
+  }
+}

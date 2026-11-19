@@ -1,0 +1,114 @@
+{
+  "events": [
+    {
+      "kind": "RunStarted",
+      "seq": 1
+    },
+    {
+      "kind": "UserMessage",
+      "seq": 2
+    },
+    {
+      "kind": "QueuedUpdated",
+      "seq": 3
+    },
+    {
+      "kind": "TextDelta",
+      "seq": 4
+    },
+    {
+      "kind": "ToolCallStarted",
+      "seq": 5
+    },
+    {
+      "kind": "ToolCallArgsDelta",
+      "seq": 6
+    },
+    {
+      "kind": "Usage",
+      "seq": 7
+    },
+    {
+      "kind": "MessageSaved",
+      "seq": 8
+    },
+    {
+      "kind": "MessageSaved",
+      "seq": 9
+    },
+    {
+      "kind": "ToolApprovalRequired",
+      "seq": 10
+    },
+    {
+      "kind": "ToolApprovalResolved",
+      "seq": 11
+    },
+    {
+      "kind": "ToolResult",
+      "seq": 12
+    },
+    {
+      "kind": "TextDelta",
+      "seq": 13
+    },
+    {
+      "kind": "Usage",
+      "seq": 14
+    },
+    {
+      "kind": "MessageSaved",
+      "seq": 15
+    },
+    {
+      "kind": "Done",
+      "seq": 16
+    }
+  ],
+  "name": "tool-approval",
+  "note": "A shell call the user allows once, then the answer.",
+  "script": {
+    "approvals": [
+      "allow"
+    ],
+    "cancel": false,
+    "tools": [
+      {
+        "ask": true,
+        "name": "shell",
+        "output": "14 passed"
+      }
+    ],
+    "turns": [
+      {
+        "calls": [
+          {
+            "arguments": "{\"command\":\"cargo test\"}",
+            "id": "c1",
+            "name": "shell"
+          }
+        ],
+        "hang": false,
+        "text": [
+          "Running the tests."
+        ],
+        "usage": [
+          20,
+          8
+        ]
+      },
+      {
+        "calls": [],
+        "hang": false,
+        "text": [
+          "All 14 passed."
+        ],
+        "usage": [
+          30,
+          6
+        ]
+      }
+    ],
+    "user": "run the tests"
+  }
+}

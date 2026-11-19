@@ -1,0 +1,60 @@
+{
+  "name": "models-blocked",
+  "input": {
+    "base_url": "blocked.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 404,
+      "text": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 401,
+      "body": {
+        "error": {
+          "message": "models list requires an admin key",
+          "type": "invalid_request_error"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "key_status": "models_blocked_but_chat_works",
+    "protocols": {
+      "chat": 400
+    },
+    "models": 0,
+    "max_requests": 12,
+    "requests": 5,
+    "warnings": [],
+    "models_status": 401
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "about": "Error answers of vendors in the provider presets (Chinese wording and vendor codes), each with the failure kind and scope the rules must give. Read by the failure-rule tests of pingdeck-llm-domain.",
+  "cases": [
+    {"vendor": "zhipu", "status": 429, "body": "{\"error\":{\"code\":\"1113\",\"message\":\"余额不足或无可用资源包,请充值。\"}}", "kind": "quota", "scope": "key"},
+    {"vendor": "zhipu", "status": 429, "body": "{\"error\":{\"code\":\"1302\",\"message\":\"您当前使用该API的并发数过高，请降低并发，或联系客服增加限额。\"}}", "kind": "rate_limit", "scope": "key"},
+    {"vendor": "zhipu", "status": 429, "body": "{\"error\":{\"code\":\"1303\",\"message\":\"您当前使用该API的频率过高，请降低频率。\"}}", "kind": "rate_limit", "scope": "key"},
+    {"vendor": "zhipu", "status": 400, "body": "{\"error\":{\"code\":\"1301\",\"message\":\"系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语，感谢您的配合。\"}}", "kind": "policy_blocked", "scope": "request"},
+    {"vendor": "zhipu", "status": 400, "body": "{\"error\":{\"code\":\"1261\",\"message\":\"Prompt 超长\"}}", "kind": "context_limit", "scope": "model"},
+    {"vendor": "zhipu", "status": 401, "body": "{\"error\":{\"code\":\"1000\",\"message\":\"身份验证失败。\"}}", "kind": "auth", "scope": "key"},
+    {"vendor": "zhipu", "status": 400, "body": "{\"error\":{\"code\":\"1211\",\"message\":\"模型不存在，请检查模型代码。\"}}", "kind": "bad_request", "scope": "request"},
+    {"vendor": "new-api", "status": 403, "body": "{\"error\":{\"message\":\"该令牌无权使用模型：gpt-4o (request id: 2025)\",\"type\":\"new_api_error\"}}", "kind": "model_unavailable", "scope": "model"},
+    {"vendor": "new-api", "status": 403, "body": "{\"error\":{\"message\":\"用户额度不足, 剩余额度: ＄0.0012\",\"type\":\"new_api_error\"}}", "kind": "quota", "scope": "key"},
+    {"vendor": "new-api", "status": 401, "body": "{\"error\":{\"message\":\"无效的令牌 (request id: 2025)\",\"type\":\"new_api_error\"}}", "kind": "auth", "scope": "key"},
+    {"vendor": "new-api", "status": 404, "body": "{\"error\":{\"message\":\"当前分组 default 下对于模型 gpt-x 无可用渠道\",\"type\":\"new_api_error\"}}", "kind": "model_unavailable", "scope": "model"},
+    {"vendor": "one-api", "status": 403, "body": "{\"error\":{\"message\":\"该令牌额度已用尽\",\"type\":\"one_api_error\"}}", "kind": "quota", "scope": "key"},
+    {"vendor": "deepseek", "status": 402, "body": "{\"error\":{\"message\":\"Insufficient Balance\",\"type\":\"unknown_error\"}}", "kind": "quota", "scope": "key"},
+    {"vendor": "deepseek", "status": 400, "body": "{\"error\":{\"message\":\"Invalid max_tokens value, the valid range of max_tokens is [1, 8192]\",\"type\":\"invalid_request_error\"}}", "kind": "context_limit", "scope": "model"},
+    {"vendor": "moonshot", "status": 429, "body": "{\"error\":{\"message\":\"Your account org-x is suspended, please check your plan and billing details\",\"type\":\"exceeded_current_quota_error\"}}", "kind": "quota", "scope": "key"},
+    {"vendor": "moonshot", "status": 429, "body": "{\"error\":{\"message\":\"Your account org-x request reached organization max RPM: 3\",\"type\":\"rate_limit_reached_error\"}}", "kind": "rate_limit", "scope": "key"},
+    {"vendor": "dashscope", "status": 400, "body": "{\"code\":\"Arrearage\",\"message\":\"Access denied, please make sure your account is in good standing.\"}", "kind": "quota", "scope": "key"},
+    {"vendor": "dashscope", "status": 400, "body": "{\"code\":\"DataInspectionFailed\",\"message\":\"Input data may contain inappropriate content.\"}", "kind": "policy_blocked", "scope": "request"},
+    {"vendor": "dashscope", "status": 429, "body": "{\"code\":\"Throttling.RateQuota\",\"message\":\"Requests rate limit exceeded, please try again later.\"}", "kind": "rate_limit", "scope": "key"},
+    {"vendor": "volcengine-ark", "status": 403, "body": "{\"error\":{\"code\":\"AccountOverdueError\",\"message\":\"The request failed because your account has an overdue balance.\"}}", "kind": "quota", "scope": "key"},
+    {"vendor": "volcengine-ark", "status": 400, "body": "{\"error\":{\"code\":\"InputTextSensitiveContentDetected\",\"message\":\"The request failed because the input text may contain sensitive information.\"}}", "kind": "policy_blocked", "scope": "request"},
+    {"vendor": "volcengine-ark", "status": 404, "body": "{\"error\":{\"code\":\"InvalidEndpointOrModel.NotFound\",\"message\":\"The model or endpoint doubao-x does not exist or you do not have access to it.\"}}", "kind": "model_unavailable", "scope": "model"},
+    {"vendor": "minimax", "status": 200, "body": "{\"base_resp\":{\"status_code\":1026,\"status_msg\":\"input new_sensitive\"}}", "kind": "policy_blocked", "scope": "request"},
+    {"vendor": "baidu-qianfan", "status": 429, "body": "{\"error_code\":18,\"error_msg\":\"Open api qps request limit reached\"}", "kind": "rate_limit", "scope": "key"},
+    {"vendor": "relay", "status": 400, "body": "{\"error\":{\"message\":\"内容审核未通过：输入包含违规内容\"}}", "kind": "policy_blocked", "scope": "request"},
+    {"vendor": "anthropic", "status": 400, "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"max_tokens: 64000 > 32000, which is the maximum allowed number of output tokens for claude-x\"}}", "kind": "context_limit", "scope": "model"},
+    {"vendor": "openai", "status": 400, "body": "{\"error\":{\"message\":\"max_tokens must be a positive integer\",\"type\":\"invalid_request_error\"}}", "kind": "bad_request", "scope": "request"}
+  ]
+}

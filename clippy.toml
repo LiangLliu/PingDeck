@@ -1,0 +1,7 @@
+# Production code must not panic; tests may assert freely.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+# `print_stderr` is denied outside tests: production code logs through `log_line`.
+allow-print-in-tests = true

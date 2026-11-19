@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "others_equal": true,
+        "thin": [
+          "call_chain",
+          "request_snapshot",
+          "response_headers",
+          "sent_request"
+        ]
+      },
+      "name": "a page row of an entry with every heavy field"
+    }
+  ],
+  "note": "A page row (`listHistoryPage`) leaves out the heavy fields `thin` that the entry by id (`getHistoryEntry`) has; every other field equals the entry's.",
+  "rule": "history-row-shape",
+  "setup": null
+}

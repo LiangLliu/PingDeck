@@ -1,0 +1,32 @@
+{
+  "input": {
+    "base_url": "relay.example.com",
+    "api_key": "sk-ant-api03-AbCdEfGhIjKlMnOpQrSt"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "data": [
+          {
+            "id": "x"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "max_requests": 12,
+    "requests": 0,
+    "warnings": [
+      "vendor_key_on_other_host"
+    ],
+    "needs_key_confirmation": true,
+    "key_status": "untested",
+    "models": 0,
+    "protocols": {}
+  },
+  "name": "vendor-key-wrong-host"
+}

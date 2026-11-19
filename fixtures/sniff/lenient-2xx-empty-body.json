@@ -1,0 +1,73 @@
+{
+  "input": {
+    "base_url": "lenient.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "text": "nope",
+      "headers": {
+        "content-type": "text/plain"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 404,
+      "text": "nope",
+      "headers": {
+        "content-type": "text/plain"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "data": [
+          {
+            "id": "gpt-4o"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 200,
+      "body": {
+        "id": "chatcmpl-1",
+        "choices": [
+          {
+            "message": {
+              "role": "assistant",
+              "content": "Hello"
+            }
+          }
+        ],
+        "usage": {
+          "total_tokens": 12
+        }
+      }
+    }
+  ],
+  "expect": {
+    "models": 1,
+    "key_status": "accepted",
+    "max_requests": 12,
+    "requests": 4,
+    "protocols": {
+      "chat": 200
+    },
+    "warnings": [],
+    "lenient_2xx": [
+      "chat"
+    ],
+    "tokens_spent_unknown": true
+  },
+  "name": "lenient-2xx-empty-body"
+}

@@ -1,0 +1,453 @@
+{
+  "name": "new-api-with-user-id",
+  "input": {
+    "base_url": "relay.acme.dev",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "management_token": "console-token-abcdef0123456789",
+    "api_user_id": "42"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 200,
+      "headers": {
+        "x-new-api-version": "0.9.7"
+      },
+      "body": {
+        "success": true,
+        "message": "",
+        "data": {
+          "version": "0.9.7",
+          "system_name": "Acme Relay",
+          "quota_per_unit": 500000,
+          "display_in_currency": true,
+          "quota_display_type": "USD",
+          "usd_exchange_rate": 7.2
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "gpt-4o",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "gpt-4o-mini",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "gpt-4.1",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "gpt-4.1-mini",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "o3",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "o4-mini",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "claude-sonnet-5",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "claude-opus-5",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "claude-haiku-5",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "gemini-3.2-pro",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "gemini-3.2-flash",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "deepseek-chat",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "deepseek-reasoner",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "qwen3-max",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "qwen3-coder",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "glm-5",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "kimi-k3",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "grok-5",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "mistral-large-3",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "llama-4-maverick",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-21",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-22",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-23",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-24",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-25",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-26",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-27",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-28",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-29",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-30",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "vendor-model-31",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "text-embedding-3-large",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "text-embedding-3-small",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "bge-m3-embed",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "dall-e-3",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "gpt-image-1",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "imagen-4",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          },
+          {
+            "id": "flux-pro",
+            "object": "model",
+            "owned_by": "x",
+            "supported_endpoint_types": [
+              "openai"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1beta/models/gemini-3.2-pro:generateContent",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "Invalid JSON payload received",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/self",
+      "when": [
+        {
+          "header_present": "new-api-user"
+        }
+      ],
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "",
+        "data": {
+          "id": 42,
+          "quota": 6200000,
+          "used_quota": 100000
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "new_api",
+    "brand": "Acme Relay",
+    "version": "0.9.7",
+    "confirmed": true,
+    "label": "confirmed",
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "gemini": 400,
+      "responses": "absent",
+      "embeddings": 400
+    },
+    "models": 38,
+    "key_status": "accepted",
+    "quota_per_unit": 500000,
+    "max_requests": 12,
+    "requests": 10,
+    "warnings": [],
+    "primary": "chat",
+    "event_pairs": 10,
+    "balance": {
+      "unit": "quota",
+      "value": 6200000,
+      "remaining_usd": 12.4
+    },
+    "user_id_header_only_on": [
+      "/api/user/self"
+    ],
+    "models_enabled": 34,
+    "models_disabled": 4
+  }
+}

@@ -1,0 +1,46 @@
+name: Set up Rust
+description: Activate rust-toolchain.toml, optionally add a target, restore scoped rust-cache, and install CLI tools.
+
+inputs:
+  cache-key:
+    description: Shared key segment to isolate Rust caches across distinct job types.
+    required: false
+    default: default
+  use-cache:
+    description: Whether to restore/save Swatinem/rust-cache.
+    required: false
+    default: "true"
+  target:
+    description: Optional Rust target triple to install via rustup.
+    required: false
+    default: ""
+  tools:
+    description: Optional comma-separated tools for taiki-e/install-action (e.g. cargo-nextest).
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # rust-toolchain.toml is the single source of truth for the pinned toolchain and components.
+    - name: Activate pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup show active-toolchain || rustup toolchain install
+        if [ -n "${{ inputs.target }}" ]; then
+          rustup target add "${{ inputs.target }}"
+        fi
+
+    - name: Restore Rust cache
+      if: inputs.use-cache == 'true'
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        shared-key: "${{ inputs.cache-key }}"
+        cache-on-failure: true
+
+    - name: Install Rust CLI tools
+      if: inputs.tools != ''
+      uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+      with:
+        tool: "${{ inputs.tools }}"

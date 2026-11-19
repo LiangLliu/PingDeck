@@ -1,0 +1,98 @@
+{
+  "name": "one-api-currency-off",
+  "input": {
+    "base_url": "oneapi.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 200,
+      "headers": {
+        "x-oneapi-request-id": "2026110712345"
+      },
+      "body": {
+        "success": true,
+        "message": "",
+        "data": {
+          "version": "v0.6.10",
+          "system_name": "",
+          "quota_per_unit": 500000,
+          "display_in_currency": false
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "id": "gpt-4o-mini",
+            "object": "model",
+            "owned_by": "x"
+          },
+          {
+            "id": "gpt-4o",
+            "object": "model",
+            "owned_by": "x"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard/billing/subscription",
+      "status": 200,
+      "body": {
+        "object": "billing_subscription",
+        "has_payment_method": true,
+        "hard_limit_usd": 5000000.0,
+        "access_until": 0
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard/billing/usage",
+      "status": 200,
+      "body": {
+        "object": "list",
+        "total_usage": 50000000.0
+      }
+    }
+  ],
+  "expect": {
+    "family": "one_api",
+    "version": "v0.6.10",
+    "confirmed": true,
+    "protocols": {
+      "chat": 400
+    },
+    "models": 2,
+    "key_status": "accepted",
+    "balance": {
+      "unit": "quota",
+      "value": 4500000,
+      "remaining_usd": 9.0
+    },
+    "quota_per_unit": 500000,
+    "max_requests": 12,
+    "requests": 11,
+    "warnings": []
+  }
+}

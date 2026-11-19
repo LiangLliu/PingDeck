@@ -1,0 +1,237 @@
+name: CI
+
+# Tier 1 of 4 (docs/development.md §2.4): 100% pure-Rust parallel PR & main CI.
+#   changes -> fast-checks | supply-chain | rust-clippy (Linux, macOS)
+#              | rust-nextest (Linux+bwrap, macOS) | gpui-ui-tests (macOS, Linux)
+#           -> ci-gate (single required status check for branch protection).
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs: ${{ steps.resolve.outputs.docs }}
+      assets: ${{ steps.resolve.outputs.assets }}
+      rust: ${{ steps.resolve.outputs.rust }}
+      rust_lock: ${{ steps.resolve.outputs.rust_lock }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: github.event_name == 'pull_request'
+      - name: Classify pull request changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - '*.md'
+              - 'xtask/**'
+              - 'crates/pingdeck-agent/src/agent/limits.rs'
+            assets:
+              - 'tokens/**'
+              - 'locales/**'
+              - 'assets/**'
+              - 'fixtures/**'
+              - '.github/**'
+            rust:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'clippy.toml'
+              - 'deny.toml'
+              - 'about.*'
+              - '.config/nextest.toml'
+              - '.cargo/**'
+              - 'xtask/**'
+              - 'crates/**'
+              - 'tokens/**'
+              - 'locales/**'
+              - 'fixtures/**'
+              - '.github/**'
+            rust_lock:
+              - 'Cargo.lock'
+              - 'about.toml'
+              - 'about.hbs'
+              - 'assets/licenses/rust.txt'
+      - name: Resolve final flags
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            echo "assets=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "rust_lock=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=${{ steps.filter.outputs.docs }}" >> "$GITHUB_OUTPUT"
+            echo "assets=${{ steps.filter.outputs.assets }}" >> "$GITHUB_OUTPUT"
+            echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
+            echo "rust_lock=${{ steps.filter.outputs.rust_lock }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  fast-checks:
+    name: Fast static & architectural checks
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Set up Rust (xtask & fmt)
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key: xtask
+      - name: Check Rust formatting
+        if: needs.changes.outputs.rust == 'true'
+        run: cargo fmt --all -- --check
+      - name: Check manifest versions (xtask)
+        run: cargo xtask check-version
+      - name: Check 4-layer UI/core isolation (xtask)
+        if: needs.changes.outputs.rust == 'true'
+        run: cargo xtask check-arch
+      - name: Check bilingual locales parity & rules (xtask)
+        if: needs.changes.outputs.assets == 'true' || needs.changes.outputs.rust == 'true'
+        run: cargo xtask check-i18n
+      - name: Check OKLCH design tokens gamut & WCAG contrast (xtask)
+        if: needs.changes.outputs.assets == 'true' || needs.changes.outputs.rust == 'true'
+        run: cargo xtask check-tokens
+      - name: Check docs links, limits & style (xtask)
+        if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.rust == 'true'
+        run: cargo xtask docs
+      - name: Run xtask self-tests
+        if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.rust == 'true'
+        run: cargo test -p xtask --locked
+
+  supply-chain:
+    name: Supply-chain & license audit
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Rust dependency policy (cargo-deny)
+        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        with:
+          command: check advisories bans sources
+
+  rust-clippy:
+    name: Rust clippy (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-linux-deps
+        with:
+          gpui: "true"
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: clippy
+      - name: Workspace clippy (all targets)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  rust-nextest:
+    name: Rust tests (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bubblewrap: "true"
+            nextest: --workspace
+          - os: macos-latest
+            bubblewrap: "false"
+            nextest: -p pingdeck-agent -p pingdeck-base -p pingdeck-executor -p pingdeck-desktop
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-linux-deps
+        with:
+          gpui: "true"
+          bubblewrap: ${{ matrix.bubblewrap }}
+      - name: Verify python3 for MCP stdio tests
+        run: python3 --version
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: nextest
+          tools: cargo-nextest
+      - name: Run cargo-nextest
+        run: cargo nextest run --locked --profile ci ${{ matrix.nextest }}
+      - name: Upload JUnit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nextest-junit-${{ matrix.os }}
+          path: target/nextest/ci/junit.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  gpui-ui-tests:
+    name: Headless GPUI UI tests (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.assets == 'true'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-linux-deps
+        with:
+          gpui: "true"
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: gpui-ui-tests
+      - name: Run headless GPUI integration suite
+        run: cargo test -p pingdeck-gpui --features test-support --locked
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - changes
+      - fast-checks
+      - supply-chain
+      - rust-clippy
+      - rust-nextest
+      - gpui-ui-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all upstream jobs passed or were legitimately skipped
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          python3 -c '
+          import json, os, sys
+          results = json.loads(os.environ["RESULTS"])
+          print("Job results:", results)
+          bad = [r for r in results if r not in ("success", "skipped")]
+          if bad:
+              print("CI Gate failed; non-passing results:", bad, file=sys.stderr)
+              sys.exit(1)
+          '

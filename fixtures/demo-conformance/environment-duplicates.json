@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "ok": "saved"
+      },
+      "keys": [
+        "token",
+        "region"
+      ],
+      "name": "distinct keys"
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "keys": [
+        "token",
+        "token"
+      ],
+      "name": "same key twice"
+    },
+    {
+      "expected": {
+        "ok": "saved"
+      },
+      "keys": [
+        "token",
+        "Token"
+      ],
+      "name": "keys differing in case"
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "keys": [
+        "token",
+        " token "
+      ],
+      "name": "same key after trimming"
+    }
+  ],
+  "note": "Save a new environment whose variables have `keys`. Outcome: saved or error kind.",
+  "rule": "environment-duplicates",
+  "setup": null
+}

@@ -1,0 +1,59 @@
+{
+  "name": "key-rejected",
+  "input": {
+    "base_url": "rejected.example.org",
+    "api_key": "sk-test-0123456789abcdefABCD",
+    "protocol_override": "openai_chat"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 404,
+      "text": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 401,
+      "body": {
+        "error": {
+          "message": "Invalid API key",
+          "type": "authentication_error"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 401,
+      "body": {
+        "error": {
+          "message": "Invalid API key",
+          "type": "authentication_error"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "unknown_compatible",
+    "key_status": "rejected",
+    "protocols": {
+      "chat": 401
+    },
+    "models": 0,
+    "max_requests": 12,
+    "requests": 5,
+    "warnings": [],
+    "models_status": 401
+  }
+}

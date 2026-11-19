@@ -1,0 +1,58 @@
+{
+  "events": [
+    {
+      "kind": "RunStarted",
+      "seq": 1
+    },
+    {
+      "kind": "UserMessage",
+      "seq": 2
+    },
+    {
+      "kind": "QueuedUpdated",
+      "seq": 3
+    },
+    {
+      "kind": "TextDelta",
+      "seq": 4
+    },
+    {
+      "kind": "TextDelta",
+      "seq": 5
+    },
+    {
+      "kind": "Usage",
+      "seq": 6
+    },
+    {
+      "kind": "MessageSaved",
+      "seq": 7
+    },
+    {
+      "kind": "Done",
+      "seq": 8
+    }
+  ],
+  "name": "plain-answer",
+  "note": "One model call that answers in two fragments.",
+  "script": {
+    "approvals": [],
+    "cancel": false,
+    "tools": [],
+    "turns": [
+      {
+        "calls": [],
+        "hang": false,
+        "text": [
+          "Hel",
+          "lo."
+        ],
+        "usage": [
+          10,
+          5
+        ]
+      }
+    ],
+    "user": "hi"
+  }
+}

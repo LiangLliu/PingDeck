@@ -1,0 +1,19 @@
+{
+  "field.err.range": "Enter a value from {min} to {max}",
+  "field.err.rangeOrOff": "Enter {off} or a value from {min} to {max}",
+  "field.err.above": "Enter a value above {min}",
+  "field.err.atLeast": "Enter a value of {min} or more",
+  "field.err.whole": "Enter a whole number",
+  "field.err.number": "Enter a number",
+  "field.err.values": "Choose one of: {values}",
+  "field.err.option": "Choose one of the listed options",
+  "field.err.maxLen": "Use at most {max} bytes",
+  "field.err.blank": "Enter some text",
+  "field.err.maxItems": "Add at most {max} entries",
+  "field.needs": "Needs {name}",
+  "field.noValue": "Not loaded",
+  "field.value.seconds": "{value} s",
+  "field.unit.s": "s",
+  "field.list.duplicate": "{item} is already in the list",
+  "field.readOnly": "Settings are read-only until they load"
+}

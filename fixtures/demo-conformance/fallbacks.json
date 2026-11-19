@@ -1,0 +1,245 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "ok": {
+          "warnings": 0
+        }
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "chat-b"
+        ]
+      ],
+      "name": "chat to chat on another provider",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fallbacks": [
+        [
+          "Alpha",
+          "chat-a"
+        ]
+      ],
+      "name": "itself",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "text-embedding-3-small"
+        ]
+      ],
+      "name": "chat to an embedding model",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "ok": {
+          "warnings": 0
+        }
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "text-embedding-3-small"
+        ]
+      ],
+      "name": "same embedding model elsewhere",
+      "primary": [
+        "Alpha",
+        "text-embedding-3-small"
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "text-embedding-3-large"
+        ]
+      ],
+      "name": "another embedding model",
+      "primary": [
+        "Alpha",
+        "text-embedding-3-small"
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "chat-b"
+        ],
+        [
+          "Beta",
+          "chat-b"
+        ]
+      ],
+      "name": "listed twice",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "chat-b"
+        ],
+        [
+          "Beta",
+          "chat-b1"
+        ],
+        [
+          "Beta",
+          "chat-b2"
+        ],
+        [
+          "Beta",
+          "chat-b3"
+        ],
+        [
+          "Beta",
+          "chat-b4"
+        ],
+        [
+          "Beta",
+          "chat-b5"
+        ]
+      ],
+      "name": "six fallbacks",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "error": "Validation"
+      },
+      "fallbacks": [
+        [
+          "Gamma",
+          "chat-g"
+        ]
+      ],
+      "name": "unknown provider",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "ok": {
+          "warnings": 0
+        }
+      },
+      "fallbacks": [
+        [
+          "Beta",
+          "chat-unlisted"
+        ]
+      ],
+      "name": "model not stored",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    },
+    {
+      "expected": {
+        "ok": {
+          "warnings": 0
+        }
+      },
+      "fallbacks": [],
+      "name": "clear the chain",
+      "primary": [
+        "Alpha",
+        "chat-a"
+      ]
+    }
+  ],
+  "note": "Providers Alpha and Beta with the `setup` models (no capabilities known); set the fallbacks of `primary`, each `[provider name, model]`. Outcome: warning count or error kind.",
+  "rule": "fallbacks",
+  "setup": [
+    {
+      "kind": "chat",
+      "model": "chat-a",
+      "provider": "Alpha"
+    },
+    {
+      "kind": "embedding",
+      "model": "text-embedding-3-small",
+      "provider": "Alpha"
+    },
+    {
+      "kind": "chat",
+      "model": "chat-b",
+      "provider": "Beta"
+    },
+    {
+      "kind": "embedding",
+      "model": "text-embedding-3-small",
+      "provider": "Beta"
+    },
+    {
+      "kind": "embedding",
+      "model": "text-embedding-3-large",
+      "provider": "Beta"
+    },
+    {
+      "kind": "chat",
+      "model": "chat-b1",
+      "provider": "Beta"
+    },
+    {
+      "kind": "chat",
+      "model": "chat-b2",
+      "provider": "Beta"
+    },
+    {
+      "kind": "chat",
+      "model": "chat-b3",
+      "provider": "Beta"
+    },
+    {
+      "kind": "chat",
+      "model": "chat-b4",
+      "provider": "Beta"
+    },
+    {
+      "kind": "chat",
+      "model": "chat-b5",
+      "provider": "Beta"
+    }
+  ]
+}

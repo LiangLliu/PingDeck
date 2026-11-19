@@ -1,0 +1,81 @@
+{
+  "name": "gemini-official",
+  "input": {
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.2-flash:generateContent?key=AIzaSyFixtureKey0000000000000000000",
+    "api_key": "AIzaSyTypedKey11111111111111111111111"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/v1beta/models",
+      "status": 200,
+      "body": {
+        "models": [
+          {
+            "name": "models/gemini-3.2-flash",
+            "displayName": "Gemini 3.2 Flash",
+            "inputTokenLimit": 1048576,
+            "outputTokenLimit": 65536,
+            "supportedGenerationMethods": [
+              "generateContent",
+              "countTokens"
+            ]
+          }
+        ],
+        "nextPageToken": "page2"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1beta/models",
+      "status": 200,
+      "body": {
+        "models": [
+          {
+            "name": "models/text-embedding-9",
+            "supportedGenerationMethods": [
+              "embedContent"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1beta/models/gemini-3.2-flash:generateContent",
+      "status": 400,
+      "body": {
+        "error": {
+          "code": 400,
+          "message": "Invalid JSON payload received",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "official",
+    "label": "preset",
+    "models": 2,
+    "key_status": "accepted",
+    "protocols": {
+      "gemini": 400
+    },
+    "max_requests": 12,
+    "requests": 3,
+    "warnings": [
+      "key_in_url_ignored"
+    ],
+    "endpoint_auth": {
+      "gemini": "x_goog_api_key"
+    },
+    "model_context": {
+      "gemini-3.2-flash": 1048576
+    },
+    "model_kinds": {
+      "text-embedding-9": "embedding"
+    },
+    "primary": "gemini",
+    "balance_finding": "no_endpoint"
+  }
+}

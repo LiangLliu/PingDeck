@@ -1,0 +1,31 @@
+{
+  "_note": "Hand-built from OpenAI's documented Responses API and Codex CLI's public behaviour; not recorded traffic.",
+  "headers": {
+    "originator": "codex_cli_rs",
+    "session_id": "5b1f0e0a-0000-4000-8000-000000000001",
+    "user-agent": "codex_cli_rs/0.40.0"
+  },
+  "body": {
+    "model": "codex",
+    "instructions": "You are Codex, a coding agent.",
+    "input": [
+      {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Run the tests"}]}
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "name": "shell",
+        "description": "Runs a shell command.",
+        "strict": false,
+        "parameters": {"type": "object", "properties": {"command": {"type": "array", "items": {"type": "string"}}}, "required": ["command"]}
+      }
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": {"effort": "medium", "summary": "auto"},
+    "store": false,
+    "stream": true,
+    "include": ["reasoning.encrypted_content"],
+    "prompt_cache_key": "5b1f0e0a-0000-4000-8000-000000000001"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "name": "typesafe-decision",
+  "input": {
+    "base_url": "https://api.typesafe.ai",
+    "api_key": "sk-test-0123456789abcdefABCD"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "status": 200,
+      "body": {
+        "models": [
+          {
+            "name": "jev-latest",
+            "description": "Alias, currently jev-1.14.0.",
+            "release_date": "2026-10-14"
+          },
+          {
+            "name": "jev-preview",
+            "description": "Alias, currently the same as jev-latest.",
+            "release_date": "2026-10-14"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/systemone",
+      "status": 422,
+      "body": {
+        "detail": [
+          {
+            "type": "missing",
+            "loc": ["body", "model"],
+            "msg": "Field required",
+            "input": {}
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "models": 2,
+    "models_enabled": 2,
+    "key_status": "accepted",
+    "protocols": {
+      "systemone": 422
+    },
+    "primary": "systemone",
+    "balance_finding": "no_endpoint",
+    "models_endpoint": "/v1/models",
+    "max_requests": 12,
+    "requests": 2,
+    "warnings": [],
+    "never_requested": [
+      "/api/status",
+      "/v1/chat/completions",
+      "/v1/messages",
+      "/v1/responses",
+      "/v1/embeddings",
+      "/v1/decisions"
+    ]
+  }
+}

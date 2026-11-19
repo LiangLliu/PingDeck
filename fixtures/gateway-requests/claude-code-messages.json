@@ -1,0 +1,35 @@
+{
+  "_note": "Hand-built from Anthropic's documented Messages API and Claude Code's public behaviour; not recorded traffic.",
+  "headers": {
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+    "x-app": "cli",
+    "user-agent": "claude-cli/2.0.0 (external, cli)"
+  },
+  "body": {
+    "model": "claude-code",
+    "max_tokens": 32000,
+    "stream": true,
+    "temperature": 1,
+    "top_k": 40,
+    "thinking": {"type": "enabled", "budget_tokens": 16000},
+    "metadata": {"user_id": "user_0f3a_account__session_7c1d"},
+    "system": [
+      {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude.", "cache_control": {"type": "ephemeral"}},
+      {"type": "text", "text": "Use the tools to help with software engineering tasks."}
+    ],
+    "messages": [
+      {"role": "user", "content": [
+        {"type": "text", "text": "<system-reminder>Today is 2026-01-01.</system-reminder>"},
+        {"type": "text", "text": "List the files in src", "cache_control": {"type": "ephemeral"}}
+      ]}
+    ],
+    "tools": [
+      {
+        "name": "Bash",
+        "description": "Runs a shell command.",
+        "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}
+      }
+    ]
+  }
+}

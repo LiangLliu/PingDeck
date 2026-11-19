@@ -1,0 +1,502 @@
+//! Model Test Bench (`BenchView` entity):
+//! State management, streaming `ChannelSink<ProbeEvent>` runner, live cost estimation,
+//! stop/retry, and Apply Results + Undo. Rendering lives in `bench_table.rs`.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use gpui_kit::{AppContext as _, Context, Entity, IntoElement, Render, Subscription, Task, Window};
+use pingdeck_desktop::core::app::{
+    ProbeCellDto, ProbeEstimateDto, ProbeEvent, ProbeItem, ProbeRunInput, ProbeSummary,
+    llm_key_list_impl, llm_model_list_impl, llm_probe_apply_impl, llm_probe_apply_preview_impl,
+    llm_probe_apply_undo_impl, llm_probe_estimate_impl, llm_probe_results_impl, llm_probe_run_impl,
+    llm_provider_list_impl,
+};
+use pingdeck_desktop::core::llm::probe::plan::{CheckSelection, CheckSet};
+use pingdeck_desktop::core::llm::probe::{ProbeStatus, ProbeTest};
+use pingdeck_desktop::core::llm::store::{ProbeResult, Provider, ProviderKey, ProviderModel};
+use pingdeck_desktop::streams::ChannelSink;
+
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
+use crate::ui::{InputEvent, InputState, Tone};
+
+use super::ProvidersView;
+use super::bench_table::render_bench;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum BenchFilter {
+    #[default]
+    All,
+    Failed,
+    Slow,
+}
+
+pub struct BenchView {
+    parent: Entity<ProvidersView>,
+    pub(super) zh: bool,
+    pub(super) providers: Vec<Provider>,
+    pub(super) keys: Vec<ProviderKey>,
+    pub(super) models: Vec<ProviderModel>,
+    pub(super) selected_provider_id: Option<String>,
+    pub(super) selected_key_id: Option<String>,
+    pub(super) check_set: CheckSet,
+    concurrency: u8,
+    pub(super) include_disabled: bool,
+    pub(super) filter: BenchFilter,
+    pub(super) search_input: Entity<InputState>,
+    pub(super) selected_models: BTreeSet<String>,
+    /// `(model_id, test_name) -> ProbeCellDto` for the active or loaded run.
+    pub(super) cells: BTreeMap<(String, String), ProbeCellDto>,
+    pub(super) estimate: Option<ProbeEstimateDto>,
+    pub(super) running: bool,
+    cancel_token: Option<String>,
+    pub(super) run_id: Option<String>,
+    pub(super) progress_done: u32,
+    pub(super) progress_total: u32,
+    pub(super) last_summary: Option<ProbeSummary>,
+    pub(super) last_apply_id: Option<String>,
+    pub(super) selected_cell: Option<(String, String)>,
+    pub(super) flash: Option<(Tone, String)>,
+    _subscriptions: Vec<Subscription>,
+    _stream_task: Option<Task<()>>,
+    _tasks: Vec<Task<()>>,
+}
+
+impl BenchView {
+    pub fn new(
+        parent: Entity<ProvidersView>,
+        initial_provider: Option<String>,
+        initial_models: Vec<String>,
+        zh: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(if zh {
+                "搜索模型…"
+            } else {
+                "Search models…"
+            })
+        });
+        let sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        });
+        let mut view = Self {
+            parent,
+            zh,
+            providers: Vec::new(),
+            keys: Vec::new(),
+            models: Vec::new(),
+            selected_provider_id: initial_provider,
+            selected_key_id: None,
+            check_set: CheckSet::Quick,
+            concurrency: 4,
+            include_disabled: false,
+            filter: BenchFilter::All,
+            search_input,
+            selected_models: initial_models.into_iter().collect(),
+            cells: BTreeMap::new(),
+            estimate: None,
+            running: false,
+            cancel_token: None,
+            run_id: None,
+            progress_done: 0,
+            progress_total: 0,
+            last_summary: None,
+            last_apply_id: None,
+            selected_cell: None,
+            flash: None,
+            _subscriptions: vec![sub],
+            _stream_task: None,
+            _tasks: Vec::new(),
+        };
+        view.reload(cx);
+        view
+    }
+
+    pub fn focus_provider(
+        &mut self,
+        provider_id: Option<String>,
+        models: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(pid) = provider_id {
+            self.selected_provider_id = Some(pid);
+            self.selected_key_id = None;
+        }
+        if !models.is_empty() {
+            self.selected_models = models.into_iter().collect();
+        }
+        self.reload(cx);
+    }
+
+    pub fn reload(&mut self, cx: &mut Context<Self>) {
+        let task = spawn_blocking_into(
+            cx,
+            |state| {
+                let providers = llm_provider_list_impl(state).unwrap_or_default();
+                let keys = llm_key_list_impl(state, None).unwrap_or_default();
+                let models = llm_model_list_impl(state, None).unwrap_or_default();
+                let results = llm_probe_results_impl(state, None).unwrap_or_default();
+                (providers, keys, models, results)
+            },
+            |this, (providers, keys, models, results), cx| {
+                if this.selected_provider_id.is_none() {
+                    this.selected_provider_id = providers.first().map(|p| p.id.clone());
+                }
+                this.providers = providers;
+                this.keys = keys;
+                this.models = models;
+                this.hydrate_stored_results(&results);
+                this.recompute_estimate(cx);
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    fn hydrate_stored_results(&mut self, results: &[ProbeResult]) {
+        let Some(pid) = &self.selected_provider_id else {
+            return;
+        };
+        let key_ids: BTreeSet<&str> = self
+            .keys
+            .iter()
+            .filter(|k| &k.provider_id == pid)
+            .map(|k| k.id.as_str())
+            .collect();
+        if self.running {
+            return;
+        }
+        self.cells.clear();
+        for res in results {
+            if !key_ids.contains(res.key_id.as_str()) {
+                continue;
+            }
+            let Some(test) = parse_probe_test(&res.test) else {
+                continue;
+            };
+            let status = if res.ok {
+                ProbeStatus::Ready
+            } else {
+                match res.status_word.as_str() {
+                    "rejected" => ProbeStatus::Rejected,
+                    "rate_limited" => ProbeStatus::RateLimited,
+                    "unreachable" => ProbeStatus::Unreachable,
+                    "unsupported" => ProbeStatus::Unsupported,
+                    "not_observed" => ProbeStatus::NotObserved,
+                    "skipped" => ProbeStatus::Skipped,
+                    "timed_out" => ProbeStatus::TimedOut,
+                    _ => ProbeStatus::InvalidResponse,
+                }
+            };
+            let entry_key = (res.model_id.clone(), res.test.clone());
+            let should_replace = self
+                .cells
+                .get(&entry_key)
+                .and_then(|c| c.result.as_ref())
+                .is_none_or(|old| res.checked_at_ms >= old.checked_at_ms);
+            if should_replace {
+                self.cells.insert(
+                    entry_key,
+                    ProbeCellDto {
+                        provider_id: pid.clone(),
+                        key_id: res.key_id.clone(),
+                        model_id: res.model_id.clone(),
+                        test,
+                        status,
+                        reason: res.message.clone(),
+                        skip: None,
+                        result: Some(res.clone()),
+                    },
+                );
+            }
+        }
+    }
+
+    fn build_run_input(
+        &self,
+        retry_of: Option<String>,
+        confirmed_cost: bool,
+    ) -> Option<ProbeRunInput> {
+        let pid = self.selected_provider_id.as_ref()?;
+        let active_keys: Vec<&ProviderKey> = self
+            .keys
+            .iter()
+            .filter(|k| {
+                &k.provider_id == pid
+                    && k.enabled
+                    && self
+                        .selected_key_id
+                        .as_deref()
+                        .is_none_or(|sel| sel == k.id)
+            })
+            .collect();
+        let first_key = active_keys.first()?;
+        let target_models: Vec<String> = if !self.selected_models.is_empty() {
+            self.selected_models.iter().cloned().collect()
+        } else {
+            self.models
+                .iter()
+                .filter(|m| &m.provider_id == pid && (self.include_disabled || m.enabled))
+                .map(|m| m.model_id.clone())
+                .collect()
+        };
+        let items: Vec<ProbeItem> = if retry_of.is_some() {
+            Vec::new()
+        } else {
+            target_models
+                .into_iter()
+                .take(100)
+                .map(|model_id| ProbeItem {
+                    key_id: first_key.id.clone(),
+                    model_id,
+                })
+                .collect()
+        };
+        if retry_of.is_none() && items.is_empty() {
+            return None;
+        }
+        Some(ProbeRunInput {
+            items,
+            checks: CheckSelection::Set {
+                set: self.check_set,
+            },
+            protocol: None,
+            concurrency: Some(self.concurrency),
+            retry_of,
+            remaining_of: None,
+            alias: None,
+            confirmed_cost,
+        })
+    }
+
+    pub(super) fn recompute_estimate(&mut self, cx: &mut Context<Self>) {
+        let Some(input) = self.build_run_input(None, false) else {
+            self.estimate = None;
+            return;
+        };
+        let task = spawn_async_into(
+            cx,
+            move |state| async move { llm_probe_estimate_impl(&state, input).await.ok() },
+            |this, est, cx| {
+                this.estimate = est;
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub(super) fn start_run(&mut self, retry_of: Option<String>, cx: &mut Context<Self>) {
+        let Some(input) = self.build_run_input(retry_of, true) else {
+            self.flash = Some((
+                Tone::Warning,
+                if self.zh {
+                    "请先确保该服务商有已启用的密钥和模型".into()
+                } else {
+                    "Ensure the provider has at least one enabled key and model".into()
+                },
+            ));
+            cx.notify();
+            return;
+        };
+        let tok = format!("probe-{}", super::format::now_ms());
+        self.running = true;
+        self.cancel_token = Some(tok.clone());
+        self.progress_done = 0;
+        self.progress_total = 0;
+        self.last_summary = None;
+        self.flash = None;
+        cx.notify();
+
+        let (sink, rx) = ChannelSink::<ProbeEvent>::pair();
+        self._stream_task = Some(subscribe_stream_into(cx, rx, 24, |this, batch, cx| {
+            for ev in batch {
+                match ev {
+                    ProbeEvent::RunStarted { run_id, total, .. } => {
+                        this.run_id = Some(run_id);
+                        this.progress_total = total;
+                    }
+                    ProbeEvent::Cell { cell, .. } => {
+                        let key = (cell.model_id.clone(), test_key_name(cell.test).to_owned());
+                        this.cells.insert(key, cell);
+                    }
+                    ProbeEvent::Progress { done, total } => {
+                        this.progress_done = done;
+                        this.progress_total = total;
+                    }
+                    ProbeEvent::RunFinished { summary } => {
+                        this.run_id = Some(summary.run_id.clone());
+                        this.last_summary = Some(summary);
+                    }
+                }
+            }
+            cx.notify();
+        }));
+
+        let parent = self.parent.clone();
+        let zh = self.zh;
+        let task = spawn_async_into(
+            cx,
+            move |state| async move { llm_probe_run_impl(&state, input, Some(tok), &sink).await },
+            move |this, res, cx| {
+                this.running = false;
+                this.cancel_token = None;
+                this._stream_task = None;
+                match res {
+                    Ok(summary) => {
+                        this.run_id = Some(summary.run_id.clone());
+                        this.flash = Some((
+                            Tone::Success,
+                            if zh {
+                                format!(
+                                    "测试完成：{} 成功 · {} 失败 · {} 限流",
+                                    summary.passed, summary.failed, summary.rate_limited
+                                )
+                            } else {
+                                format!(
+                                    "Done: {} passed · {} failed · {} rate-limited",
+                                    summary.passed, summary.failed, summary.rate_limited
+                                )
+                            },
+                        ));
+                        this.last_summary = Some(summary);
+                        parent.update(cx, |p, cx| p.reload_all(cx));
+                    }
+                    Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub(super) fn stop_run(&mut self, cx: &mut Context<Self>) {
+        if let Some(tok) = self.cancel_token.clone() {
+            runtime(cx).state().cancellations.cancel(&tok);
+        }
+    }
+
+    pub(super) fn apply_results(&mut self, cx: &mut Context<Self>) {
+        let Some(rid) = self.run_id.clone() else {
+            return;
+        };
+        let parent = self.parent.clone();
+        let zh = self.zh;
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let preview = llm_probe_apply_preview_impl(state, &rid)?;
+                llm_probe_apply_impl(state, &rid, &preview.default_selection)
+            },
+            move |this, res, cx| {
+                match res {
+                    Ok(rep) => {
+                        this.last_apply_id = rep.apply_id;
+                        this.flash = Some((
+                            Tone::Success,
+                            if zh {
+                                format!(
+                                    "已应用测试结果：启用 {} · 停用 {} · 新增 {}",
+                                    rep.enabled.len(),
+                                    rep.disabled.len(),
+                                    rep.created.len(),
+                                )
+                            } else {
+                                format!(
+                                    "Applied: {} enabled · {} disabled · {} created",
+                                    rep.enabled.len(),
+                                    rep.disabled.len(),
+                                    rep.created.len(),
+                                )
+                            },
+                        ));
+                        parent.update(cx, |p, cx| p.reload_all(cx));
+                    }
+                    Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub(super) fn undo_apply(&mut self, cx: &mut Context<Self>) {
+        let Some(aid) = self.last_apply_id.clone() else {
+            return;
+        };
+        let parent = self.parent.clone();
+        let zh = self.zh;
+        let task = spawn_blocking_into(
+            cx,
+            move |state| llm_probe_apply_undo_impl(state, &aid),
+            move |this, res, cx| {
+                match res {
+                    Ok(u) => {
+                        this.last_apply_id = None;
+                        this.flash = Some((
+                            Tone::Neutral,
+                            if zh {
+                                format!("已撤销应用（恢复 {} 个模型）", u.restored.len())
+                            } else {
+                                format!("Undone ({} models restored)", u.restored.len())
+                            },
+                        ));
+                        parent.update(cx, |p, cx| p.reload_all(cx));
+                    }
+                    Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+}
+
+impl Render for BenchView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        render_bench(self, cx)
+    }
+}
+
+fn parse_probe_test(s: &str) -> Option<ProbeTest> {
+    match s {
+        "connectivity" => Some(ProbeTest::Connectivity),
+        "auth" => Some(ProbeTest::Auth),
+        "models" => Some(ProbeTest::Models),
+        "chat" => Some(ProbeTest::Chat),
+        "stream" => Some(ProbeTest::Stream),
+        "tools" => Some(ProbeTest::Tools),
+        "json_schema" => Some(ProbeTest::JsonSchema),
+        "vision" => Some(ProbeTest::Vision),
+        "reasoning" => Some(ProbeTest::Reasoning),
+        "cache" => Some(ProbeTest::Cache),
+        "embeddings" => Some(ProbeTest::Embeddings),
+        "search" => Some(ProbeTest::Search),
+        "pdf" => Some(ProbeTest::Pdf),
+        "decision" => Some(ProbeTest::Decision),
+        "context" => Some(ProbeTest::Context),
+        _ => None,
+    }
+}
+
+const fn test_key_name(t: ProbeTest) -> &'static str {
+    match t {
+        ProbeTest::Connectivity => "connectivity",
+        ProbeTest::Auth => "auth",
+        ProbeTest::Models => "models",
+        ProbeTest::Chat => "chat",
+        ProbeTest::Stream => "stream",
+        ProbeTest::Tools => "tools",
+        ProbeTest::JsonSchema => "json_schema",
+        ProbeTest::Vision => "vision",
+        ProbeTest::Reasoning => "reasoning",
+        ProbeTest::Cache => "cache",
+        ProbeTest::Embeddings => "embeddings",
+        ProbeTest::Search => "search",
+        ProbeTest::Pdf => "pdf",
+        ProbeTest::Decision => "decision",
+        ProbeTest::Context => "context",
+    }
+}

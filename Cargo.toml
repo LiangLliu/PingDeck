@@ -1,0 +1,148 @@
+[workspace]
+members = [
+  "crates/pingdeck-base",
+  "crates/pingdeck-response",
+  "crates/pingdeck-model",
+  "crates/pingdeck-executor",
+  "crates/pingdeck-store",
+  "crates/pingdeck-workbench",
+  "crates/pingdeck-llm-protocol",
+  "crates/pingdeck-client-config",
+  "crates/pingdeck-llm-domain",
+  "crates/pingdeck-llm-ops",
+  "crates/pingdeck-llm",
+  "crates/pingdeck-agent",
+  "crates/pingdeck-app",
+  "crates/pingdeck-app-llm",
+  "crates/pingdeck-app-agent",
+  "crates/pingdeck-app-sync",
+  "crates/pingdeck-core",
+  "crates/pingdeck-desktop",
+  "crates/pingdeck-gpui",
+  "xtask",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+expect_used = "deny"
+panic = "deny"
+# stderr is invisible in a packaged GUI: failures go through `pingdeck_base::logging::log_line`,
+# which writes the diagnostic log (and stderr when no log file is open or in debug builds).
+print_stderr = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+unwrap_used = "deny"
+
+[workspace.dependencies]
+arboard = { version = "3.7", default-features = false }
+base64 = "0.23.1"
+bytes = "1"
+boa_engine = { version = "0.22", default-features = false }
+# Floor from cargo-deny: cap-std / cap-primitives >= 4.0.3 (pulls rustix >= 1.1.6).
+cap-std = "4.0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+cookie = "0.18"
+dom_query = { version = "0.28", default-features = false }
+# Response charsets (GBK, Shift_JIS, ISO-8859-1, ...); already in the tree through serde-saphyr.
+encoding_rs = "0.8"
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+getrandom = "0.4"
+globset = "0.4"
+gpui-kit = { version = "0.11.0", default-features = false, features = [
+  "component",
+  "assets",
+  "x11",
+  "tree-sitter",
+  "tree-sitter-bash",
+  "tree-sitter-css",
+  "tree-sitter-diff",
+  "tree-sitter-graphql",
+  "tree-sitter-html",
+  "tree-sitter-javascript",
+  "tree-sitter-markdown",
+  "tree-sitter-markdown-inline",
+  "tree-sitter-python",
+  "tree-sitter-rust",
+  "tree-sitter-sql",
+  "tree-sitter-toml",
+  "tree-sitter-typescript",
+  "tree-sitter-yaml",
+] }
+hmac = "0.12"
+http = "1"
+http-body-util = "0.1"
+httpdate = "1.0.3"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+if-addrs = "0.15"
+ignore = "0.4"
+# Client config writers edit JSONC (comments, trailing commas) in place, keeping key order and comments.
+jsonc-parser = { version = "0.34", default-features = false, features = ["cst", "serde"] }
+# Offline only: the `resolve-http` and `resolve-file` defaults would let a `$ref` reach the network or disk.
+jsonschema = { version = "=0.61", default-features = false }
+md-5 = "0.10"
+memchr = "2.8"
+nix = { version = "0.31", default-features = false, features = ["signal"] }
+notify-rust = "4.19"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSApplication", "NSCell", "NSControl", "NSDockTile", "NSImage", "NSImageView", "NSResponder", "NSView", "std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSData", "NSString", "std"] }
+percent-encoding = "2.3"
+# Client certificates: PKCS#12 bundles (legacy 3DES/RC2 and PBES2 AES) and passphrase-protected
+# PKCS#8 keys; both stay on the RustCrypto 0.10 line.
+p12-keystore = "0.2.1"
+pkcs8 = { version = "0.10", features = ["encryption", "pem", "std"] }
+psl = "2.1"
+regex = "1"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+# Every response coding a browser or an imported cURL may ask for is decoded (`Accept-Encoding: br, zstd`).
+reqwest = { version = "0.13.5", features = ["gzip", "brotli", "deflate", "zstd", "multipart", "stream", "blocking", "socks"] }
+rusqlite = { version = "0.41.1", features = ["bundled", "functions"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
+# CryptoJS.SHA1 / HmacSHA1 in scripts; already in the graph through p12-keystore.
+sha1 = "0.10"
+sha2 = "0.10"
+similar = "2"
+thiserror = "2.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "time", "macros", "net", "sync", "io-util", "process"] }
+tokio-util = { version = "0.7.20", default-features = false }
+toml_edit = "0.25"
+tower = { version = "0.5", default-features = false }
+tray-icon = { version = "0.25.1", default-features = false }
+url = "2.5.8"
+uuid = { version = "1.29", default-features = false }
+
+# Dev/test builds keep line tables only: full DWARF was ~77% of object size and dominated link time and disk.
+# Panics and backtraces still resolve file:line; set `CARGO_PROFILE_DEV_DEBUG=2` for a step-debugger session.
+[profile.dev]
+debug = "line-tables-only"
+
+# Third-party deps at opt-level = 1 keep macOS dev `__eh_frame` well below ld64's 16 MiB compact-unwind cap
+# while leaving workspace crates unoptimized for fast incremental rebuilds.
+[profile.dev.package."*"]
+debug = false
+opt-level = 1
+
+# Keep GPUI and component layout/rendering smooth (120fps) even in debug builds.
+[profile.dev.package.gpui-pre]
+opt-level = 2
+[profile.dev.package.gpui-base]
+opt-level = 2
+[profile.dev.package.gpui-component]
+opt-level = 2
+
+[profile.release]
+strip = "symbols"

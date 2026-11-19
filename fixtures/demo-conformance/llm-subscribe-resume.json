@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "first_replayed_seq": null,
+        "gap": null,
+        "last_replayed_seq": null,
+        "replayed": 0
+      },
+      "from": null,
+      "name": "live only"
+    },
+    {
+      "expected": {
+        "first_replayed_seq": 9,
+        "gap": {
+          "first_seq": 9,
+          "seq": 8
+        },
+        "last_replayed_seq": 520,
+        "replayed": 512
+      },
+      "from": 0,
+      "name": "from an evicted position"
+    },
+    {
+      "expected": {
+        "first_replayed_seq": 511,
+        "gap": null,
+        "last_replayed_seq": 520,
+        "replayed": 10
+      },
+      "from": 510,
+      "name": "from inside the ring"
+    }
+  ],
+  "note": "Emit `emitted` events (seq 1 upwards) on a fresh stream, then subscribe with `from` (null = live only): an evicted position first yields a Gap envelope, then the remembered ring.",
+  "rule": "llm-subscribe-resume",
+  "setup": {
+    "emitted": 520
+  }
+}

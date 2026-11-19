@@ -1,0 +1,771 @@
+{
+  "version": 1,
+  "fetched_at": "2026-11-06",
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "category": "official",
+      "search_terms": ["GPT", "ChatGPT"],
+      "catalog_family": "openai",
+      "docs_url": "https://developers.openai.com/api/docs/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.openai.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" },
+        { "protocol": "decision_openai", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "drop_sampling_params": true
+      },
+      "models": [
+        { "id": "gpt-6-astra", "role": "flagship", "tools": true, "notes": "Highest intelligence. Chat Completions works but tool calling needs the Responses API. Context window not verified." },
+        { "id": "gpt-6.1-sol", "role": "balanced", "tools": true, "notes": "Near-Astra quality at lower cost. Effort low|medium|high|xhigh|max, no 'none'." },
+        { "id": "gpt-6.1-terra", "role": "fast", "vision": true, "tools": true, "notes": "Fast and efficient. Effort none|low|medium|high|xhigh|max." },
+        { "id": "gpt-6-luna", "role": "cheap", "context": 1050000, "max_output": 128000, "vision": true, "tools": true, "notes": "$0.10 in / $0.50 out per Mtok. Chat Completions tool calls only with reasoning_effort=none. The only model accepted by /v1/decisions." },
+        { "id": "text-embedding-3-small", "role": "embedding", "notes": "1536 dims by default, 8192 max input." },
+        { "id": "text-embedding-3-large", "role": "embedding", "notes": "3072 dims by default, 8192 max input." }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "category": "official",
+      "search_terms": ["Claude"],
+      "catalog_family": "anthropic",
+      "docs_url": "https://platform.claude.com/docs/en/models/overview",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.anthropic.com" }
+      ],
+      "endpoints": [
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "anthropic_version": "2026-10-21",
+        "reasoning_request": "anthropic_adaptive",
+        "reasoning_response_field": "thinking",
+        "drop_sampling_params": true,
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "claude-fable-5-1", "role": "flagship", "context": 1000000, "max_output": 128000, "vision": true, "tools": true, "notes": "$10/$50 per Mtok. Adaptive thinking always on." },
+        { "id": "claude-opus-5-5", "role": "balanced", "context": 1000000, "max_output": 128000, "vision": true, "tools": true, "notes": "$4/$20 per Mtok. Adaptive thinking always on. Anthropic's default recommendation." },
+        { "id": "claude-sonnet-5-5", "role": "fast", "context": 1000000, "max_output": 128000, "vision": true, "tools": true, "notes": "$2/$10 per Mtok. thinking type 'disabled' is rejected." },
+        { "id": "claude-haiku-5-5", "role": "cheap", "context": 1000000, "max_output": 128000, "vision": true, "tools": true, "notes": "From $0.10/$0.50 per Mtok." }
+      ]
+    },
+    {
+      "id": "google_gemini",
+      "name": "Google Gemini (AI Studio)",
+      "category": "official",
+      "search_terms": ["谷歌", "Google"],
+      "catalog_family": "google",
+      "docs_url": "https://aistudio.google.com/docs/models",
+      "auth": "x_goog_api_key",
+      "regions": [
+        { "id": "global", "label": "Global (AI Studio)", "base_url": "https://generativelanguage.googleapis.com" }
+      ],
+      "endpoints": [
+        { "protocol": "gemini", "path_prefix": "/v1beta" }
+      ],
+      "models_endpoint": "/v1beta/models",
+      "quirks": {
+        "reasoning_request": "gemini_thinking_level",
+        "reasoning_response_field": "thinking",
+        "drop_sampling_params": true,
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "gemini-4-argon", "role": "flagship", "context": 1048576, "max_output": 65536, "vision": true, "tools": true, "notes": "Thinking levels low|medium|high. Long decode up to 1M output tokens via continuation." },
+        { "id": "gemini-3.8-flash", "role": "fast", "vision": true, "tools": true, "notes": "Latest Flash. Sampling params ignored from 3.6 Flash onward." },
+        { "id": "gemini-3.5-flash-lite", "role": "cheap", "vision": true, "tools": true, "notes": "Replacement target for gemini-2.5-flash on 2026-12-01." },
+        { "id": "gemini-3.1-pro-preview", "role": "reasoning", "vision": true, "tools": true, "notes": "Previous-generation Pro, preview." },
+        { "id": "gemini-embedding-2", "role": "embedding", "notes": "Multimodal. Native :embedContent; returns one aggregated embedding for multiple inputs." },
+        { "id": "gemini-embedding-001", "role": "embedding", "notes": "Text only. Native :embedContent." }
+      ]
+    },
+    {
+      "id": "xai",
+      "name": "xAI",
+      "category": "official",
+      "search_terms": ["Grok", "马斯克"],
+      "catalog_family": "xai",
+      "docs_url": "https://docs.x.ai/developers/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.x.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "openai_chat", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {},
+      "models": [
+        { "id": "grok-4.7", "role": "flagship", "context": 500000, "tools": true, "notes": "$2/$6 per Mtok. Responses API always returns reasoning.encrypted_content. Reasoning request parameter, Anthropic-compat and embeddings: unverified." },
+        { "id": "grok-4.3", "role": "balanced", "context": 1000000, "tools": true, "notes": "$1.25/$2.50 per Mtok." },
+        { "id": "grok-4.20-0309-reasoning", "role": "reasoning", "context": 1000000, "tools": true },
+        { "id": "grok-4.20-0309-non-reasoning", "role": "fast", "context": 1000000, "tools": true },
+        { "id": "grok-build-0.1", "role": "code", "context": 256000, "tools": true }
+      ]
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "category": "official",
+      "catalog_family": "mistral",
+      "docs_url": "https://docs.mistral.ai/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.mistral.ai" },
+        { "id": "eu", "label": "EU (1.1x price)", "base_url": "https://api.eu.mistral.ai" },
+        { "id": "us", "label": "US (1.1x price)", "base_url": "https://api.us.mistral.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "reasoning_response_field": "thinking"
+      },
+      "models": [
+        { "id": "mistral-large-4", "role": "flagship", "context": 1000000, "vision": true, "tools": true, "notes": "Also mistral-large-4-0. reasoning_effort low|medium|high. With reasoning on, message.content is a list of chunks (thinking then text). Responses API is public preview and stateless." },
+        { "id": "mistral-medium-3-5", "role": "balanced", "tools": true, "notes": "Deprecated 2026-10-31, retires 2027-04-30; Large 4 is the replacement." },
+        { "id": "mistral-small-2603", "role": "fast", "tools": true, "notes": "Small 4 with reasoning (high|none)." },
+        { "id": "ministral-3b-2512", "role": "cheap", "tools": true, "notes": "ministral-8b-2512 and ministral-14b-2512 also exist." },
+        { "id": "codestral-2508", "role": "code" },
+        { "id": "mistral-embed-2312", "role": "embedding" },
+        { "id": "codestral-embed-2505", "role": "embedding", "notes": "Code embeddings." }
+      ]
+    },
+    {
+      "id": "meta_model_api",
+      "name": "Meta Model API",
+      "category": "official",
+      "docs_url": "https://dev.meta.ai/docs/overview",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.meta.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort"
+      },
+      "models": [
+        { "id": "muse-wonder-1.0", "role": "flagship", "tools": true, "notes": "Preview. Reasoning always on; reasoning_effort 'none' returns 400. The old Llama API (llama.developer.meta.com) shut down 2026-07-06." },
+        { "id": "muse-spark-1.3", "role": "fast", "tools": true },
+        { "id": "muse-spark-1.3-contributor", "role": "cheap", "tools": true, "notes": "Cheaper tier; Meta may train on your data." }
+      ]
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere",
+      "category": "official",
+      "catalog_family": "cohere",
+      "docs_url": "https://docs.cohere.com/docs/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global (OpenAI-compat host)", "base_url": "https://api.cohere.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/compatibility/v1" },
+        { "protocol": "embeddings", "path_prefix": "/compatibility/v1" }
+      ],
+      "models_endpoint": null,
+      "quirks": {
+        "reasoning_request": "reasoning_effort"
+      },
+      "models": [
+        { "id": "command-a-plus-05-2026", "role": "flagship", "context": 128000, "vision": true, "tools": true, "notes": "Compat API reasoning_effort accepts only none|high. Model list is the native GET https://api.cohere.com/v1/models, not served by the compat host." },
+        { "id": "command-a-reasoning-08-2025", "role": "reasoning", "tools": true },
+        { "id": "command-r7b-12-2024", "role": "fast", "tools": true },
+        { "id": "embed-v5.0-pro", "role": "embedding", "notes": "Native /v2/embed needs input_type; compat embeddings do not support dimensions." },
+        { "id": "embed-v5.0-fast", "role": "embedding" }
+      ]
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "category": "official",
+      "catalog_family": "groq",
+      "docs_url": "https://console.groq.com/docs/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.groq.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/openai/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/openai/v1" }
+      ],
+      "models_endpoint": "/openai/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "reasoning_response_field": "reasoning"
+      },
+      "models": [
+        { "id": "openai/gpt-oss-120b", "role": "reasoning", "tools": true, "notes": "Effort low|medium|high. Responses API is beta and stateless. reasoning_format must be parsed or hidden when using tools or JSON mode." },
+        { "id": "llama-3.3-70b-versatile", "role": "balanced", "tools": true },
+        { "id": "llama-3.1-8b-instant", "role": "fast", "tools": true },
+        { "id": "openai/gpt-oss-20b", "role": "cheap", "tools": true }
+      ]
+    },
+    {
+      "id": "together",
+      "name": "Together AI",
+      "category": "aggregator",
+      "catalog_family": "togetherai",
+      "docs_url": "https://docs.together.ai/docs/inference/recommended-models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.together.ai" },
+        { "id": "us", "label": "US only (1.25x price)", "base_url": "https://us-api.together.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_object",
+        "reasoning_response_field": "reasoning"
+      },
+      "models": [
+        { "id": "moonshotai/Kimi-K3.1-Pro", "role": "flagship", "tools": true },
+        { "id": "zai-org/GLM-5.3", "role": "code", "tools": true, "notes": "Anthropic Messages endpoint is only guaranteed on zai-org/GLM-5.2, GLM-5.3 and GLM-5.3-Flash." },
+        { "id": "zai-org/GLM-5.3-Flash", "role": "fast", "tools": true },
+        { "id": "deepseek-ai/DeepSeek-V4.1-Flash-1017", "role": "balanced", "tools": true },
+        { "id": "Qwen/Qwen3.8-Flash", "role": "cheap", "tools": true },
+        { "id": "openai/gpt-oss-120b", "role": "reasoning", "tools": true, "notes": "Reasoning field is reasoning or reasoning_content depending on model. Responses API is stateless. No serverless embedding models." }
+      ]
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks AI",
+      "category": "aggregator",
+      "catalog_family": "fireworks-ai",
+      "docs_url": "https://docs.fireworks.ai/guides/recommended-models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.fireworks.ai" },
+        { "id": "us", "label": "US only", "base_url": "https://us.api.fireworks.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/inference/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/inference/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/inference/v1" },
+        { "protocol": "embeddings", "path_prefix": "/inference/v1" }
+      ],
+      "models_endpoint": null,
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "reasoning_response_field": "reasoning_content",
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "accounts/fireworks/models/kimi-k3p1-pro", "role": "flagship", "tools": true, "notes": "Model list is native GET https://api.fireworks.ai/v1/accounts/{account_id}/models; no OpenAI-style /models found (unverified). Do not send both thinking and reasoning_effort." },
+        { "id": "accounts/fireworks/models/deepseek-v4p1-flash-1017", "role": "balanced", "tools": true },
+        { "id": "accounts/fireworks/models/glm-5p3", "role": "code", "tools": true },
+        { "id": "accounts/fireworks/models/glm-5p3-flash", "role": "fast", "tools": true },
+        { "id": "accounts/fireworks/models/qwen3-8b", "role": "cheap", "tools": true },
+        { "id": "accounts/fireworks/models/gpt-oss-120b", "role": "reasoning", "tools": true },
+        { "id": "fireworks/qwen3-embedding-8b", "role": "embedding", "notes": "Only serverless embedding model; vectors are not normalized." }
+      ]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "category": "aggregator",
+      "catalog_family": "openrouter",
+      "docs_url": "https://openrouter.ai/docs/llms.txt",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://openrouter.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/api/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/api/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/api" },
+        { "protocol": "embeddings", "path_prefix": "/api/v1" },
+        { "protocol": "decision_openai", "path_prefix": "/api/alpha" }
+      ],
+      "models_endpoint": "/api/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_object",
+        "reasoning_response_field": "reasoning"
+      },
+      "models": [
+        { "id": "anthropic/claude-fable-5.1", "role": "flagship", "tools": true, "notes": "/models is public and rich (supported_parameters, pricing, reasoning.mandatory, supported_efforts); prefer live data over this list. /api/alpha/decisions request shape is unverified." },
+        { "id": "openai/gpt-6.1-sol", "role": "balanced", "tools": true },
+        { "id": "google/gemini-4-argon", "role": "reasoning", "tools": true },
+        { "id": "x-ai/grok-4.7", "role": "balanced", "tools": true },
+        { "id": "deepseek/deepseek-v4.1-flash", "role": "fast", "tools": true },
+        { "id": "qwen/qwen3.8-flash", "role": "cheap", "tools": true },
+        { "id": "cohere/embed-5-pro", "role": "embedding", "notes": "Listed by GET /api/v1/embeddings/models; ID spelling differs from Cohere's own embed-v5.0-pro." },
+        { "id": "typesafe/jev-1.14", "role": "decision", "notes": "Jev via OpenRouter; alias ~typesafe/jev-latest." }
+      ]
+    },
+    {
+      "id": "siliconflow",
+      "name": "SiliconFlow",
+      "category": "aggregator",
+      "search_terms": ["硅基流动"],
+      "catalog_family": "siliconflow",
+      "docs_url": "https://docs.siliconflow.com/llms.txt",
+      "auth": "bearer",
+      "regions": [
+        { "id": "china", "label": "China", "base_url": "https://api.siliconflow.cn", "catalog_family": "siliconflow-cn" },
+        { "id": "global", "label": "Global", "base_url": "https://api.siliconflow.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" },
+        { "protocol": "decision_systemone", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "enable_thinking",
+        "reasoning_response_field": "reasoning_content"
+      },
+      "models": [
+        { "id": "deepseek-ai/DeepSeek-V4-Pro", "role": "flagship", "tools": true, "notes": "IDs come from the docs enum and may lag the live list. GLM-5.3 and DeepSeek V4.1 Flash were announced but exact IDs are unverified. No Responses API found." },
+        { "id": "deepseek-ai/DeepSeek-V4-Flash", "role": "fast", "tools": true },
+        { "id": "zai-org/GLM-5.1", "role": "balanced", "tools": true },
+        { "id": "Qwen/Qwen3.6-35B-A3B", "role": "cheap", "tools": true },
+        { "id": "Qwen/Qwen3-Embedding-8B", "role": "embedding" },
+        { "id": "Kev-4B", "role": "decision", "notes": "Open Jev-like model on /v1/systemone (alpha). Was free until 2026-10-08; pricing now unverified." }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "category": "official",
+      "search_terms": ["深度求索"],
+      "catalog_family": "deepseek",
+      "docs_url": "https://api-docs.deepseek.com/quick_start/pricing",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.deepseek.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "" },
+        { "protocol": "openai_responses", "path_prefix": "" },
+        { "protocol": "anthropic_messages", "path_prefix": "/anthropic/v1" }
+      ],
+      "models_endpoint": "/models",
+      "quirks": {
+        "reasoning_request": "thinking_type",
+        "reasoning_response_field": "reasoning_content",
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "deepseek-v4-pro", "role": "flagship", "context": 1000000, "vision": false, "tools": true, "notes": "Thinking on by default; reasoning_effort low|high|max. Images are replaced with [Unsupported Image]. Anthropic endpoint maps claude-opus* to this model." },
+        { "id": "deepseek-flash", "role": "fast", "context": 1000000, "vision": true, "tools": true, "notes": "Legacy alias deepseek-v4-flash still accepted. Responses API is stateless. No embedding model." }
+      ]
+    },
+    {
+      "id": "qwen_dashscope",
+      "name": "Alibaba Qwen (Model Studio)",
+      "category": "official",
+      "search_terms": ["通义千问", "千问", "阿里云", "百炼", "DashScope"],
+      "catalog_family": "alibaba",
+      "docs_url": "https://www.alibabacloud.com/help/en/model-studio/base-url",
+      "auth": "bearer",
+      "regions": [
+        { "id": "singapore", "label": "Singapore", "base_url": "https://dashscope-intl.aliyuncs.com" },
+        { "id": "china", "label": "China (Beijing)", "base_url": "https://dashscope.aliyuncs.com", "catalog_family": "alibaba-cn" },
+        { "id": "us", "label": "US (Virginia)", "base_url": "https://dashscope-us.aliyuncs.com" },
+        { "id": "hongkong", "label": "Hong Kong", "base_url": "https://cn-hongkong.dashscope.aliyuncs.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/compatible-mode/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/compatible-mode/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/apps/anthropic/v1" },
+        { "protocol": "embeddings", "path_prefix": "/compatible-mode/v1" }
+      ],
+      "models_endpoint": "/compatible-mode/v1/models",
+      "quirks": {
+        "reasoning_request": "enable_thinking",
+        "reasoning_response_field": "reasoning_content"
+      },
+      "models": [
+        { "id": "qwen3.8-max", "role": "flagship", "tools": true, "notes": "API keys are region-bound. Docs now recommend per-workspace hosts https://{WorkspaceId}.{region}.maas.aliyuncs.com; these shared hosts are 'still available'. The documented model list is native GET /api/v1/models; the compat /models route exists but its shape is unverified." },
+        { "id": "qwen3.7-plus", "role": "balanced", "tools": true },
+        { "id": "qwen3.8-flash", "role": "fast", "tools": true },
+        { "id": "qwen3.8-27b", "role": "cheap", "tools": true, "notes": "Open weights." },
+        { "id": "text-embedding-v4", "role": "embedding", "notes": "64-2048 dims, default 1024. qwen3.7-text-embedding also listed; its limits are unverified." }
+      ]
+    },
+    {
+      "id": "moonshot",
+      "name": "Moonshot Kimi",
+      "category": "official",
+      "search_terms": ["月之暗面", "Kimi"],
+      "catalog_family": "moonshotai",
+      "docs_url": "https://platform.kimi.ai/docs/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.moonshot.ai" },
+        { "id": "china", "label": "China", "base_url": "https://api.moonshot.cn", "catalog_family": "moonshotai-cn" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/anthropic/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "reasoning_response_field": "reasoning_content",
+        "drop_sampling_params": true,
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "kimi-k3.1-pro", "role": "flagship", "context": 1000000, "vision": true, "tools": true, "notes": "Always reasons; reasoning_effort low|medium|high|max (default max). temperature fixed at 1.0, top_p at 0.95, n at 1. Global and China keys are not interchangeable." },
+        { "id": "kimi-k3.1-pro-highspeed", "role": "fast", "vision": true, "tools": true },
+        { "id": "kimi-k3", "role": "balanced", "vision": true, "tools": true, "notes": "reasoning_effort low|high|max. No embedding model." }
+      ]
+    },
+    {
+      "id": "zhipu",
+      "name": "Zhipu GLM (Z.ai, BigModel)",
+      "category": "official",
+      "search_terms": ["智谱", "智谱清言", "BigModel"],
+      "catalog_family": "zai",
+      "docs_url": "https://docs.z.ai/guides/llm/glm-5.3",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global (Z.ai)", "base_url": "https://api.z.ai" },
+        { "id": "china", "label": "China (BigModel)", "base_url": "https://open.bigmodel.cn", "catalog_family": "zhipuai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/api/paas/v4" },
+        { "protocol": "openai_responses", "path_prefix": "/api/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/api/anthropic/v1" },
+        { "protocol": "embeddings", "path_prefix": "/api/paas/v4" }
+      ],
+      "models_endpoint": null,
+      "quirks": {
+        "reasoning_request": "thinking_type",
+        "reasoning_response_field": "reasoning_content",
+        "no_done_sentinel": true,
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "glm-5.3", "role": "flagship", "context": 1000000, "vision": false, "tools": true, "notes": "Thinking-only; thinking disabled fails (use enabled + reasoning_effort low). Coding-plan billing uses /api/coding/paas/v4. Anthropic and Responses URLs are documented only under the coding-plan set. Auth header on the Anthropic route is x-api-key on BigModel and unspecified on Z.ai. No /models endpoint documented. Responses stream has no [DONE]." },
+        { "id": "glm-5.3-flash", "role": "fast", "vision": true, "tools": true, "notes": "Free tier. Lowercase ID confirmed in the Z.ai and BigModel OpenAPI specs." },
+        { "id": "glm-5.3-flashx", "role": "cheap", "tools": true },
+        { "id": "glm-5.2", "role": "balanced", "tools": true },
+        { "id": "embedding-3", "role": "embedding", "context": 8192, "notes": "BigModel (china) only; 256-2048 dims. Z.ai (global) embeddings unverified." }
+      ]
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "category": "official",
+      "search_terms": ["稀宇", "海螺"],
+      "catalog_family": "minimax",
+      "docs_url": "https://platform.minimax.io/docs/api-reference/text-openai-api",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.minimax.io" },
+        { "id": "china", "label": "China", "base_url": "https://api.minimax.cn", "catalog_family": "minimax-cn" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/anthropic/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "reasoning_response_field": "reasoning_content",
+        "drop_sampling_params": true,
+        "echo_reasoning_in_tool_turns": true
+      },
+      "models": [
+        { "id": "MiniMax-M3.1-Flash", "role": "flagship", "context": 1000000, "vision": true, "tools": true, "notes": "Thinking cannot be disabled (400). Effort low|medium|high|xhigh|max. temperature fixed at 1, top_p at 0.95. China host api.minimax.cn is from the China docs, not checked live. Anthropic route auth header unverified: try Bearer and X-Api-Key." },
+        { "id": "MiniMax-M3", "role": "balanced", "tools": true, "notes": "Docs disagree on default thinking. MiniMax-M2.5 and M2.7 retire 2026-11-18. Anthropic route supports only M3.1-Flash and M3. No embedding model." }
+      ]
+    },
+    {
+      "id": "doubao_ark",
+      "name": "ByteDance Doubao (Volcengine Ark, BytePlus ModelArk)",
+      "category": "official",
+      "search_terms": ["豆包", "火山引擎", "火山方舟", "Volcengine"],
+      "docs_url": "https://docs.volcengine.com/docs/ark/model-list",
+      "auth": "bearer",
+      "regions": [
+        { "id": "china", "label": "China (Volcengine Ark)", "base_url": "https://ark.cn-beijing.volces.com", "catalog_family": "volcengine" },
+        { "id": "global", "label": "International (BytePlus ModelArk)", "base_url": "https://ark.ap-southeast.bytepluses.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/api/v3" },
+        { "protocol": "openai_responses", "path_prefix": "/api/v3" },
+        { "protocol": "anthropic_messages", "path_prefix": "/api/compatible/v1" }
+      ],
+      "models_endpoint": "/api/v3/models",
+      "quirks": {
+        "reasoning_request": "thinking_type",
+        "reasoning_response_field": "reasoning_content"
+      },
+      "models": [
+        { "id": "doubao-seed-2-1-pro-260915", "role": "flagship", "vision": true, "tools": true, "notes": "China. Rolling alias doubao-seed-evolving. 'model' may also be an ep- endpoint ID. Dated IDs rotate; use the live model list. Anthropic route shows x-api-key in docs but Bearer is used by Claude Code." },
+        { "id": "doubao-seed-2-1-lite-260915", "role": "fast", "vision": true, "tools": true, "notes": "China." },
+        { "id": "doubao-seed-2-1-turbo-260628", "role": "cheap", "vision": true, "tools": true, "notes": "China." },
+        { "id": "seed-2-0-pro-260328", "role": "flagship", "vision": true, "tools": true, "notes": "International; best confirmed there, no 2.1 pro in that list." },
+        { "id": "dola-seed-2-1-turbo-260628", "role": "fast", "vision": true, "tools": true, "notes": "International." },
+        { "id": "doubao-embedding-vision-251215", "role": "embedding", "notes": "China. Multimodal only via POST /api/v3/embeddings/multimodal; not the OpenAI embeddings shape, so no embeddings endpoint is declared." },
+        { "id": "skylark-embedding-vision-251215", "role": "embedding", "notes": "International. Same multimodal-only endpoint." }
+      ]
+    },
+    {
+      "id": "tencent_hunyuan",
+      "name": "Tencent Hunyuan (TokenHub)",
+      "category": "official",
+      "search_terms": ["腾讯", "混元"],
+      "docs_url": "https://cloud.tencent.com/document/product/1823/130078",
+      "auth": "bearer",
+      "regions": [
+        { "id": "china", "label": "China (Guangzhou)", "base_url": "https://tokenhub.tencentmaas.com" },
+        { "id": "global", "label": "International (Singapore)", "base_url": "https://tokenhub-intl.tencentmaas.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "thinking_type",
+        "reasoning_response_field": "reasoning_content"
+      },
+      "models": [
+        { "id": "hy4", "role": "flagship", "context": 1048576, "max_output": 65536, "vision": true, "tools": true, "notes": "Docs state 1024k context and 64k output. Thinks by default; reasoning_effort default high. The Anthropic route uses x-api-key, not Bearer. Each model must be activated in the console (402 otherwise). Legacy host api.hunyuan.cloud.tencent.com is being retired and is not listed as a region." },
+        { "id": "hy3", "role": "balanced", "context": 262144, "max_output": 131072, "tools": true, "notes": "Docs state 256k context and 128k output." },
+        { "id": "hy4-preview", "role": "fast", "tools": true },
+        { "id": "kinfra-text-embedding-0.6b", "role": "embedding", "notes": "1024 dims. kinfra-text-embedding-4b is 2560 dims." }
+      ]
+    },
+    {
+      "id": "baidu_qianfan",
+      "name": "Baidu ERNIE (Qianfan)",
+      "category": "official",
+      "search_terms": ["百度", "文心", "文心一言", "千帆"],
+      "docs_url": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
+      "auth": "bearer",
+      "regions": [
+        { "id": "china", "label": "China", "base_url": "https://qianfan.baidubce.com/v2" },
+        { "id": "global", "label": "International", "base_url": "https://api.baiduqianfan.ai/v1" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "" },
+        { "protocol": "openai_responses", "path_prefix": "" },
+        { "protocol": "embeddings", "path_prefix": "" }
+      ],
+      "models_endpoint": "/models",
+      "quirks": {
+        "reasoning_request": "thinking_type",
+        "reasoning_response_field": "reasoning_content"
+      },
+      "models": [
+        { "id": "ernie-5.1", "role": "flagship", "context": 128000, "max_output": 65536, "tools": true, "notes": "Only ERNIE chat model left in the China list. The version segment (/v2 vs /v1) is part of base_url, so path_prefix is empty. Responses is documented only for DeepSeek and GLM, not ERNIE, and only on the China host. GET /v1/models on the intl host returned 200 without auth; /v2/models on China returned 403 unauthenticated and is unverified with a key. Anthropic endpoint exists only on the Coding Plan URL and is not declared. Thinking parameters vary by model family (thinking.type, enable_thinking, thinking_budget)." },
+        { "id": "deepseek-v4.1-flash-1017", "role": "fast", "tools": true, "notes": "Hosted third-party model." },
+        { "id": "glm-5.3", "role": "balanced", "tools": true, "notes": "Hosted third-party model." },
+        { "id": "qwen3-embedding-8b", "role": "embedding" }
+      ]
+    },
+    {
+      "id": "stepfun",
+      "name": "StepFun",
+      "category": "official",
+      "search_terms": ["阶跃星辰", "阶跃"],
+      "docs_url": "https://platform.stepfun.com/docs/zh/guides/models/list",
+      "auth": "bearer",
+      "regions": [
+        { "id": "china", "label": "China", "base_url": "https://api.stepfun.com" },
+        { "id": "global", "label": "International", "base_url": "https://api.stepfun.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort",
+        "reasoning_response_field": "reasoning_content"
+      },
+      "models": [
+        { "id": "step-5-preview", "role": "flagship", "context": 1000000, "max_output": 64000, "vision": true, "tools": true, "notes": "No embedding model found in the docs index." },
+        { "id": "step-3.7-flash", "role": "fast", "vision": true, "tools": true },
+        { "id": "step-3.5-flash", "role": "cheap", "tools": true }
+      ]
+    },
+    {
+      "id": "azure_foundry",
+      "name": "Azure OpenAI (Microsoft Foundry)",
+      "category": "cloud",
+      "search_terms": ["微软", "Microsoft"],
+      "docs_url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/endpoints",
+      "auth": "bearer",
+      "regions": [
+        { "id": "resource", "label": "Your Azure resource", "base_url": "https://{resource}.openai.azure.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/openai/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/openai/v1" },
+        { "protocol": "embeddings", "path_prefix": "/openai/v1" }
+      ],
+      "models_endpoint": "/openai/v1/models",
+      "quirks": {
+        "reasoning_request": "reasoning_effort"
+      },
+      "models": []
+    },
+    {
+      "id": "aws_bedrock",
+      "name": "AWS Bedrock (bedrock-runtime)",
+      "category": "cloud",
+      "search_terms": ["亚马逊", "Amazon"],
+      "docs_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html",
+      "auth": "bearer",
+      "regions": [
+        { "id": "region", "label": "AWS region", "base_url": "https://bedrock-runtime.{region}.amazonaws.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/openai/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/openai/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/anthropic/v1" }
+      ],
+      "models_endpoint": null,
+      "quirks": {
+        "anthropic_version": "2023-06-01",
+        "reasoning_request": "anthropic_adaptive",
+        "reasoning_response_field": "thinking"
+      },
+      "models": [
+        { "id": "anthropic.claude-fable-5-1", "role": "flagship", "context": 1000000, "vision": true, "tools": true, "notes": "Bedrock Messages-API ID. Cross-region profiles use us. or global. prefixes. Auth here is a Bedrock API key as Bearer; the raw Anthropic route examples send it as x-api-key. SigV4 and native Converse (binary eventstream) are not covered. bedrock-runtime has no GET /models; use ListFoundationModels (https://bedrock.{region}.amazonaws.com/foundation-models). The mantle host bedrock-mantle.{region}.api.aws does list /v1/models." },
+        { "id": "anthropic.claude-opus-5-5", "role": "balanced", "context": 1000000, "vision": true, "tools": true },
+        { "id": "anthropic.claude-sonnet-5-5", "role": "fast", "context": 1000000, "vision": true, "tools": true },
+        { "id": "anthropic.claude-haiku-5-5", "role": "cheap", "context": 1000000, "vision": true, "tools": true }
+      ]
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "category": "local",
+      "search_terms": ["本机", "本地"],
+      "docs_url": "https://docs.ollama.com/api/openai-compatibility",
+      "auth": "none",
+      "regions": [
+        { "id": "local", "label": "Local", "base_url": "http://localhost:11434" },
+        { "id": "cloud", "label": "Ollama Cloud (needs Bearer key)", "base_url": "https://ollama.com" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/api/tags",
+      "quirks": {
+        "reasoning_request": "reasoning_effort"
+      },
+      "models": [
+        { "id": "gpt-oss", "role": "reasoning", "tools": true, "notes": "Tags are popularity-based from the library page; installed models come from /api/tags. Responses is non-stateful only. Anthropic route has no count_tokens." },
+        { "id": "qwen3.8", "role": "balanced", "tools": true },
+        { "id": "gemma4", "role": "fast", "tools": true },
+        { "id": "llama3.1", "role": "cheap", "tools": true },
+        { "id": "nomic-embed-text", "role": "embedding" },
+        { "id": "qwen3-embedding", "role": "embedding" }
+      ]
+    },
+    {
+      "id": "lmstudio",
+      "name": "LM Studio",
+      "category": "local",
+      "search_terms": ["本机", "本地"],
+      "docs_url": "https://lmstudio.ai/docs/developer",
+      "auth": "none",
+      "regions": [
+        { "id": "local", "label": "Local", "base_url": "http://localhost:1234" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" },
+        { "protocol": "decision_openai", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {},
+      "models": [
+        { "id": "openai/gpt-oss-20b", "role": "reasoning", "tools": true, "notes": "Example from the docs. Model keys are publisher/name; use what the app shows. Auth is off by default and, when enabled, takes a Bearer token." },
+        { "id": "ibm/granite-4-micro", "role": "cheap", "tools": true, "notes": "Example from the docs." }
+      ]
+    },
+    {
+      "id": "vllm",
+      "name": "vLLM",
+      "category": "local",
+      "search_terms": ["本机", "本地"],
+      "docs_url": "https://docs.vllm.ai/en/latest/serving/online_serving/",
+      "auth": "none",
+      "regions": [
+        { "id": "local", "label": "Local (default port 8000)", "base_url": "http://localhost:8000" }
+      ],
+      "endpoints": [
+        { "protocol": "openai_chat", "path_prefix": "/v1" },
+        { "protocol": "openai_responses", "path_prefix": "/v1" },
+        { "protocol": "anthropic_messages", "path_prefix": "/v1" },
+        { "protocol": "embeddings", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {
+        "reasoning_request": "chat_template_kwargs",
+        "reasoning_response_field": "reasoning"
+      },
+      "models": []
+    },
+    {
+      "id": "typesafe",
+      "name": "TypeSafe (Jev)",
+      "category": "decision",
+      "docs_url": "https://docs.typesafe.ai/models",
+      "auth": "bearer",
+      "regions": [
+        { "id": "global", "label": "Global", "base_url": "https://api.typesafe.ai" }
+      ],
+      "endpoints": [
+        { "protocol": "decision_systemone", "path_prefix": "/v1" }
+      ],
+      "models_endpoint": "/v1/models",
+      "quirks": {},
+      "models": [
+        { "id": "jev-1.14.0", "role": "decision", "context": 64000, "vision": true, "notes": "Released 2026-10-14. Question types noul|choice|score|box. $0.042 per Mtok input, output free. Images need header TypeSafe-Danger-Zone-Images: true; 262k context needs TypeSafe-Danger-Zone-Long-Context: true. Not generative, no streaming." },
+        { "id": "jev-1.13.0", "role": "decision", "context": 64000, "vision": true, "notes": "Question types noul|choice|score only." },
+        { "id": "jev-latest", "role": "decision", "context": 64000, "notes": "Alias, currently jev-1.14.0. GET /v1/models returns only aliases." },
+        { "id": "jev-preview", "role": "decision", "context": 64000, "notes": "Alias, currently the same as jev-latest." }
+      ]
+    }
+  ]
+}

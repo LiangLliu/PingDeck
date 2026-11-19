@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "accepted": 16,
+        "refused": {
+          "error": "Conflict"
+        }
+      },
+      "name": "live subscribers until refused"
+    },
+    {
+      "expected": {
+        "ok": "subscribed"
+      },
+      "name": "an unsubscribe frees a slot"
+    }
+  ],
+  "note": "Subscribe live until the stream refuses, then unsubscribe one and subscribe again.",
+  "rule": "llm-subscribe-cap",
+  "setup": null
+}

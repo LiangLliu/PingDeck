@@ -1,0 +1,107 @@
+{
+  "name": "ollama",
+  "input": {
+    "base_url": "http://localhost:11434"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "status": 200,
+      "body": {
+        "version": "0.12.3"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tags",
+      "status": 200,
+      "body": {
+        "models": [
+          {
+            "name": "llama3.2:latest",
+            "model": "llama3.2:latest",
+            "details": {
+              "parameter_size": "3.2B",
+              "quantization_level": "Q4_K_M"
+            }
+          },
+          {
+            "name": "nomic-embed-text:latest",
+            "model": "nomic-embed-text:latest"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/responses",
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain"
+      },
+      "text": "404 page not found"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "status": 400,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "model: field required"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "you must provide a model parameter",
+          "type": "invalid_request_error",
+          "code": null
+        }
+      }
+    }
+  ],
+  "expect": {
+    "family": "ollama",
+    "version": "0.12.3",
+    "confirmed": true,
+    "models": 2,
+    "max_requests": 8,
+    "requests": 5,
+    "protocols": {
+      "chat": 400,
+      "messages": 400,
+      "responses": "absent",
+      "embeddings": 400
+    },
+    "warnings": [
+      "preset_route_mismatch"
+    ],
+    "model_kinds": {
+      "nomic-embed-text:latest": "embedding"
+    },
+    "local_requests": 5,
+    "models_endpoint": "/api/tags",
+    "never_requested": [
+      "/api/status"
+    ]
+  }
+}
