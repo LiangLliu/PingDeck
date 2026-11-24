@@ -8,8 +8,14 @@ use pingdeck_desktop::state::{NavModule, SettingsSection};
 use pingdeck_desktop::theme::PaletteId;
 
 use crate::views::{
-    chat::ChatView, environments::EnvironmentsView, flows::FlowsView, history::HistoryView,
-    mock::MockView, providers::ProvidersView, requests::RequestsView, settings::SettingsView,
+    chat::ChatView,
+    environments::EnvironmentsView,
+    flows::FlowsView,
+    history::HistoryView,
+    mock::MockView,
+    providers::ProvidersView,
+    requests::{RequestsHandoff, RequestsView},
+    settings::SettingsView,
     usage::UsageView,
 };
 
@@ -66,12 +72,78 @@ impl ModuleHost {
     }
 
     /// Refreshes lightweight catalogs when navigating back into a mounted module (e.g., picking up
-    /// newly added providers/models when returning from Providers to Chat).
+    /// newly added providers/models when returning from Providers to Chat or Requests).
     pub fn on_enter_module<V: 'static>(&mut self, module: NavModule, cx: &mut Context<V>) {
         if module == NavModule::Chat
             && let Some(v) = &self.chat
         {
             v.update(cx, |c, cx| c.refresh_catalog(cx));
+        } else if module == NavModule::Requests
+            && let Some(v) = &self.requests
+        {
+            v.update(cx, |r, cx| r.refresh_catalog(cx));
+        }
+    }
+
+    /// Hands off sanitized context from Requests/History/Usage into a Chat draft (no auto-send).
+    pub fn handoff_to_chat<V: 'static>(
+        &mut self,
+        title: String,
+        context_markdown: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let chat = self
+            .chat
+            .get_or_insert_with(|| cx.new(|cx| ChatView::new(window, cx)));
+        chat.update(cx, |c, cx| {
+            c.accept_handoff_draft(title, context_markdown, window, cx);
+        });
+    }
+
+    /// Polls Requests view for cross-module navigation or Chat handoff intents.
+    pub fn poll_requests_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<RequestsHandoff> {
+        self.requests
+            .as_ref()
+            .and_then(|v| v.read(cx).take_pending_handoff())
+    }
+
+    /// Dispatches workspace-level Requests shortcuts to the mounted Requests view.
+    pub fn requests_save<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_save_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_send<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_send_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_toggle_console<V: 'static>(&mut self, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_toggle_console(cx));
+        }
+    }
+
+    pub fn requests_new_tab<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_new_tab_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_close_tab<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_close_tab_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_dismiss_modal<V: 'static>(&mut self, cx: &mut Context<V>) -> bool {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.dismiss_modal_if_open(cx))
+        } else {
+            false
         }
     }
 

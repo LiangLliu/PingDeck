@@ -1,6 +1,7 @@
 //! Main PingDeck desktop application shell: orchestrates navigation, core subscriptions,
 //! workspace switching, overlays, and persistent local UI state.
 
+pub mod actions;
 pub mod chrome;
 pub mod module_host;
 pub mod palette;
@@ -15,13 +16,10 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::app::{
     agent_attention_subscribe_impl, app_running_work_impl, set_window_focused, settings_get_impl,
-    settings_subscribe_impl, settings_update_impl, workspace_create_impl, workspace_list_impl,
-    workspace_touch_impl,
+    settings_subscribe_impl, workspace_list_impl, workspace_touch_impl,
 };
 use pingdeck_desktop::core::model::events::Sequenced;
-use pingdeck_desktop::core::model::settings::{
-    Language, SettingsSection as CoreSettingsSection, Theme as SettingsTheme,
-};
+use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::persistence::UiLocalState;
 use pingdeck_desktop::state::{
     NavModule, PaletteAction, SettingsSection, ShellState, ToastKind, UtilityDialog,
@@ -30,8 +28,9 @@ use pingdeck_desktop::streams::{StreamReceiver, channel_sink};
 use pingdeck_desktop::theme::PaletteId;
 
 use crate::app::actions::{
-    CloseOverlay, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9, OpenSettings,
-    QuitApp, TogglePalette, ToggleSidebar,
+    CloseOverlay, CloseTab, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9,
+    NewTab, OpenSettings, QuitApp, SaveActive, SendRequest, ToggleConsole, TogglePalette,
+    ToggleSidebar,
 };
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
@@ -39,6 +38,7 @@ use crate::ui::{
     InputState, apply_palette, palette as active_palette, resolve_is_dark, sync_window_scale,
     to_hsla, v_col,
 };
+use crate::views::requests::RequestsHandoff;
 use crate::views::utility::UtilityPanel;
 
 use chrome::{
@@ -182,7 +182,7 @@ impl AppShell {
         self.state.settings.general.language
     }
 
-    fn persist_local(&mut self, cx: &App) {
+    pub(super) fn persist_local(&mut self, cx: &App) {
         self.state.sync_to_local(&mut self.local_ui);
         runtime(cx).save_ui_state(&self.local_ui);
     }
@@ -197,7 +197,7 @@ impl AppShell {
             .then(|| rt.state().llm().gateway.status(rt.state().llm()).port);
     }
 
-    fn reapply_theme(&self, cx: &mut Context<Self>) {
+    pub(super) fn reapply_theme(&self, cx: &mut Context<Self>) {
         let current_dark = active_palette(cx).is_dark;
         let is_dark = resolve_is_dark(self.state.settings.appearance.theme, current_dark);
         apply_palette(
@@ -325,117 +325,6 @@ impl AppShell {
         cx.notify();
     }
 
-    pub fn toggle_theme_mode(&mut self, cx: &mut Context<Self>) {
-        let next = if active_palette(cx).is_dark {
-            SettingsTheme::Light
-        } else {
-            SettingsTheme::Dark
-        };
-        let patch = serde_json::json!({
-            "theme": match next {
-                SettingsTheme::Light => "light",
-                SettingsTheme::Dark => "dark",
-                SettingsTheme::System => "system",
-            }
-        });
-        let task = spawn_blocking_into(
-            cx,
-            move |state| settings_update_impl(state, CoreSettingsSection::Appearance, &patch),
-            |this, res, cx| match res {
-                Ok(settings) => {
-                    this.state.settings = settings;
-                    this.reapply_theme(cx);
-                    cx.notify();
-                }
-                Err(err) => {
-                    this.state
-                        .push_toast(ToastKind::Error, err.message().to_owned(), None);
-                    cx.notify();
-                }
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn toggle_language(&mut self, cx: &mut Context<Self>) {
-        let next = match self.language() {
-            Language::ZhCn => "en",
-            Language::En => "zh-CN",
-        };
-        let patch = serde_json::json!({ "language": next });
-        let task = spawn_blocking_into(
-            cx,
-            move |state| settings_update_impl(state, CoreSettingsSection::General, &patch),
-            |this, res, cx| match res {
-                Ok(settings) => {
-                    this.state.settings = settings;
-                    cx.notify();
-                }
-                Err(err) => {
-                    this.state
-                        .push_toast(ToastKind::Error, err.message().to_owned(), None);
-                    cx.notify();
-                }
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn start_create_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let placeholder = if self.language() == Language::ZhCn {
-            "新工作区名称…"
-        } else {
-            "New workspace name…"
-        };
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
-        self.new_workspace_input = Some(input);
-        self.workspace_menu_open = true;
-        cx.notify();
-    }
-
-    pub fn submit_create_workspace(&mut self, cx: &mut Context<Self>) {
-        let Some(input) = self.new_workspace_input.take() else {
-            return;
-        };
-        let name = input.read(cx).value().trim().to_owned();
-        if name.is_empty() {
-            cx.notify();
-            return;
-        }
-        let id = format!("ws-{}", pingdeck_desktop::core::app::current_time_ms());
-        let task = spawn_blocking_into(
-            cx,
-            move |state| workspace_create_impl(state, id, name),
-            |this, res, cx| match res {
-                Ok(ws) => {
-                    let ws_id = ws.id.as_str().to_owned();
-                    this.state.workspaces.insert(0, ws);
-                    this.state.active_workspace_id = Some(ws_id.clone());
-                    this.modules.set_workspace(Some(ws_id), cx);
-                    this.workspace_menu_open = false;
-                    this.persist_local(cx);
-                    this.state.push_toast(
-                        ToastKind::Success,
-                        if this.language() == Language::ZhCn {
-                            "已创建工作区"
-                        } else {
-                            "Workspace created"
-                        },
-                        None,
-                    );
-                    cx.notify();
-                }
-                Err(err) => {
-                    this.state
-                        .push_toast(ToastKind::Error, err.message().to_owned(), None);
-                    cx.notify();
-                }
-            },
-        );
-        self._tasks.push(task);
-        cx.notify();
-    }
-
     fn render_main_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         self.modules.render_active(
             self.state.active_module,
@@ -476,6 +365,22 @@ impl Render for AppShell {
             self.state.leave_settings();
             self.persist_local(cx);
         }
+        if let Some(handoff) = self.modules.poll_requests_handoff(cx) {
+            match handoff {
+                RequestsHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),
+                RequestsHandoff::OpenEnvironments => self.navigate(NavModule::Environments, cx),
+                RequestsHandoff::OpenHistory => self.navigate(NavModule::History, cx),
+                RequestsHandoff::OpenUsageCall(_) => self.navigate(NavModule::Usage, cx),
+                RequestsHandoff::AskAgent {
+                    title,
+                    context_markdown,
+                } => {
+                    self.navigate(NavModule::Chat, cx);
+                    self.modules
+                        .handoff_to_chat(title, context_markdown, window, cx);
+                }
+            }
+        }
 
         let p = active_palette(cx);
         sync_window_scale(&self.state.settings.appearance, window);
@@ -513,7 +418,38 @@ impl Render for AppShell {
             .on_action(cx.listener(|this, _: &OpenSettings, _, cx| {
                 this.navigate(NavModule::Settings, cx);
             }))
-            .on_action(cx.listener(|this, _: &CloseOverlay, _, cx| this.close_overlays(cx)))
+            .on_action(cx.listener(|this, _: &CloseOverlay, _, cx| {
+                if this.state.active_module != NavModule::Requests
+                    || !this.modules.requests_dismiss_modal(cx)
+                {
+                    this.close_overlays(cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &SaveActive, w, cx| {
+                if this.state.active_module == NavModule::Requests {
+                    this.modules.requests_save(w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &SendRequest, w, cx| {
+                if this.state.active_module == NavModule::Requests {
+                    this.modules.requests_send(w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ToggleConsole, _, cx| {
+                if this.state.active_module == NavModule::Requests {
+                    this.modules.requests_toggle_console(cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &NewTab, w, cx| {
+                if this.state.active_module == NavModule::Requests {
+                    this.modules.requests_new_tab(w, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &CloseTab, w, cx| {
+                if this.state.active_module == NavModule::Requests {
+                    this.modules.requests_close_tab(w, cx);
+                }
+            }))
             .on_action(cx.listener(|_, _: &HideWindow, _, cx| cx.hide()))
             .on_action(cx.listener(|_, _: &QuitApp, _, cx| cx.quit()))
             .on_action(cx.listener(|this, _: &Nav1, _, cx| this.navigate(NavModule::Requests, cx)))

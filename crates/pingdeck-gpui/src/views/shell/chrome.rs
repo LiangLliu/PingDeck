@@ -7,7 +7,8 @@ use gpui_kit::{
 use pingdeck_desktop::state::ToastKind;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, btn_icon, h_row, icon_xs, palette, status_indicator, to_hsla, v_col,
+    StatusShape, Tone, UiIcon, btn_icon, dismissible_banner, h_row, icon_xs, palette,
+    status_indicator, to_hsla, v_col,
 };
 
 use super::AppShell;
@@ -29,36 +30,17 @@ pub fn render_startup_banner(
     if shell.state.startup_notices.is_empty() {
         return None;
     }
-    let p = palette(cx);
     let notice_text = shell.state.startup_notices.join(" · ");
-    Some(
-        h_row()
-            .justify_between()
-            .mx(px(8.0))
-            .mb(px(6.0))
-            .px(px(12.0))
-            .py(px(6.0))
-            .rounded(px(8.0))
-            .bg(to_hsla(p.warn_soft))
-            .border_1()
-            .border_color(to_hsla(p.warn_line.composite_over(p.warn_soft)))
-            .child(
-                h_row()
-                    .gap(px(8.0))
-                    .text_xs()
-                    .text_color(to_hsla(p.warn))
-                    .child(status_indicator(StatusShape::Warn, cx))
-                    .child(SharedString::from(notice_text)),
-            )
-            .child(
-                btn_icon("dismiss-startup-notices", UiIcon::Close).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.state.startup_notices.clear();
-                        cx.notify();
-                    },
-                )),
-            ),
-    )
+    Some(div().mx(px(8.0)).mb(px(6.0)).child(dismissible_banner(
+        "dismiss-startup-notices",
+        Tone::Warning,
+        notice_text,
+        cx.listener(|this, _, _, cx| {
+            this.state.startup_notices.clear();
+            cx.notify();
+        }),
+        cx,
+    )))
 }
 
 pub fn render_palette_overlay(

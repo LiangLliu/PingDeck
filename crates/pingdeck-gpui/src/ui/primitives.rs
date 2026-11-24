@@ -221,16 +221,8 @@ pub fn badge(text: impl Into<SharedString>, tone: Tone, cx: &App) -> Div {
 /// Colour-coded HTTP method badge matching PingDeck's `--m-*` OKLCH tokens.
 #[must_use]
 pub fn method_badge(method: &str, cx: &App) -> Div {
-    let p = palette(cx);
     let upper = method.to_ascii_uppercase();
-    let fg: Hsla = match upper.as_str() {
-        "GET" => to_hsla(p.m_get),
-        "POST" => to_hsla(p.m_post),
-        "PUT" => to_hsla(p.m_put),
-        "PATCH" => to_hsla(p.m_patch),
-        "DELETE" => to_hsla(p.m_delete),
-        _ => to_hsla(p.muted),
-    };
+    let fg: Hsla = super::menus::method_color(&upper, cx);
     div()
         .w(px(54.0))
         .text_xs()
@@ -296,7 +288,7 @@ pub fn field_row(
         .child(div().flex_shrink_0().child(control))
 }
 
-/// Centered empty state with icon, title, and muted helper copy.
+/// Centered empty state with icon, title, and centered muted helper copy.
 #[must_use]
 pub fn empty_state(
     glyph: UiIcon,
@@ -304,35 +296,7 @@ pub fn empty_state(
     subtitle: impl Into<SharedString>,
     cx: &App,
 ) -> Div {
-    let p = palette(cx);
-    v_col()
-        .size_full()
-        .items_center()
-        .justify_center()
-        .gap(px(8.0))
-        .p(px(24.0))
-        .child(
-            div()
-                .p(px(10.0))
-                .rounded(px(10.0))
-                .bg(to_hsla(p.sunken))
-                .text_color(to_hsla(p.muted))
-                .child(icon(glyph)),
-        )
-        .child(
-            div()
-                .text_sm()
-                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .text_color(to_hsla(p.ink))
-                .child(title.into()),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .max_w(px(360.0))
-                .child(subtitle.into()),
-        )
+    super::feedback::empty_state(glyph, title, subtitle, cx)
 }
 
 /// Interactive selectable list/sidebar row with PingDeck's signature 3px inset vertical

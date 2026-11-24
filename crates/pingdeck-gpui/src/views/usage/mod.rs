@@ -18,8 +18,8 @@ use pingdeck_desktop::core::model::settings::Language;
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::{
     BarChart, Column, ScrollableElement as _, TableDelegate, TableState, Tone, UiIcon, badge,
-    btn_primary, btn_secondary, card, empty_state, h_row, palette, section_heading, table_column,
-    to_hsla, v_col, virtual_table,
+    btn_primary, btn_secondary, card, empty_state, h_row, kpi_card, palette, section_heading,
+    table_column, to_hsla, v_col, virtual_table,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,22 +114,6 @@ impl TableDelegate for UsageLogDelegate {
 struct DayBarPoint {
     day: SharedString,
     requests: f64,
-}
-
-fn kpi_card(label: &'static str, value: String, cx: &App) -> gpui_kit::Div {
-    let p = palette(cx);
-    card(cx).flex_1().p(px(14.0)).child(
-        v_col()
-            .gap(px(4.0))
-            .child(div().text_xs().text_color(to_hsla(p.muted)).child(label))
-            .child(
-                div()
-                    .text_lg()
-                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                    .text_color(to_hsla(p.ink))
-                    .child(SharedString::from(value)),
-            ),
-    )
 }
 
 pub struct UsageView {
@@ -253,21 +237,25 @@ impl Render for UsageView {
         let kpi_reqs = kpi_card(
             if zh { "总请求" } else { "Total Requests" },
             reqs.to_string(),
+            None,
             cx,
         );
         let kpi_ok = kpi_card(
             if zh { "成功 / 失败" } else { "OK / Failed" },
             format!("{ok_reqs} / {failed}"),
+            None,
             cx,
         );
         let kpi_in = kpi_card(
             if zh { "输入 Tokens" } else { "Input Tokens" },
             in_tok.to_string(),
+            None,
             cx,
         );
         let kpi_out = kpi_card(
             if zh { "输出 Tokens" } else { "Output Tokens" },
             out_tok.to_string(),
+            None,
             cx,
         );
 

@@ -18,5 +18,10 @@ gpui_kit::actions!(
         Nav8,
         Nav9,
         CloseOverlay,
+        SaveActive,
+        SendRequest,
+        ToggleConsole,
+        NewTab,
+        CloseTab,
     ]
 );

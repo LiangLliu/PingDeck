@@ -23,8 +23,9 @@ use crate::ui::{
 use crate::views::shell::AppShell;
 
 use actions::{
-    CloseOverlay, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9, OpenSettings,
-    QuitApp, TogglePalette, ToggleSidebar,
+    CloseOverlay, CloseTab, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9,
+    NewTab, OpenSettings, QuitApp, SaveActive, SendRequest, ToggleConsole, TogglePalette,
+    ToggleSidebar,
 };
 
 const BUNDLE_IDENTIFIER: &str = "com.pingdeck.desktop";
@@ -198,6 +199,11 @@ fn bind_keys_and_menus(cx: &mut App) {
         KeyBinding::new("cmd-7", Nav7, None),
         KeyBinding::new("cmd-8", Nav8, None),
         KeyBinding::new("cmd-9", Nav9, None),
+        KeyBinding::new("cmd-s", SaveActive, None),
+        KeyBinding::new("cmd-enter", SendRequest, None),
+        KeyBinding::new("cmd-j", ToggleConsole, None),
+        KeyBinding::new("cmd-t", NewTab, None),
+        KeyBinding::new("cmd-w", CloseTab, None),
         KeyBinding::new("escape", CloseOverlay, None),
     ]);
 

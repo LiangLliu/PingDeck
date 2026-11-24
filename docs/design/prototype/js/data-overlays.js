@@ -43,9 +43,15 @@ window.PD.POPOVER_TEMPLATES = {
     <div class="pop-sep"></div>
     <button class="pop-opt" data-pop-toast="已打开目录选择器（仅桌面端）">更改项目目录…</button>
     <button class="pop-opt" data-nav-to="settings" data-set-page="ai/memory">管理已信任目录 ↗</button>`,
-  "ai-protocol": () => ["Chat Completions", "Anthropic Messages", "OpenAI Responses", "Embeddings"].map((p) =>
+  "ai-protocol": () => ["Chat Completions", "OpenAI Responses", "Anthropic Messages", "Gemini", "Embeddings"].map((p) =>
     `<button class="pop-opt" data-pick-ai-proto="${p}"><span>${p}</span></button>`
   ).join(""),
+  "var-inspect": () => `
+    <div class="pop-head"><span>生效变量解析（环境 › 集合 › 全局）</span><button class="text-accent" data-nav-to="environments">管理 ↗</button></div>
+    <div class="pop-opt"><div class="pop-opt-col"><span class="mono">base_url</span><span class="pop-opt-sub">https://billing.staging.acme.dev</span></div><span class="tag tag-ok">Staging</span></div>
+    <div class="pop-opt"><div class="pop-opt-col"><span class="mono">token</span><span class="pop-opt-sub">•••••• (本地 0600 保险库)</span></div><span class="tag tag-warn">机密</span></div>
+    <div class="pop-opt"><div class="pop-opt-col"><span class="mono">api_version</span><span class="pop-opt-sub">2026-10-01</span></div><span class="tag tag-ok">Staging</span></div>
+    <div class="pop-opt"><div class="pop-opt-col"><span class="mono">trace_header</span><span class="pop-opt-sub">pd-local-dev</span></div><span class="tag">Globals</span></div>`,
   "usage-range": () => ["今天", "本月", "上月", "1h", "24h", "7d", "30d", "90d", "全部"].map((r, i) =>
     `<button class="pop-opt${i === 5 ? " active" : ""}" data-pick-range="${r}"><span>${r}</span>${i === 5 ? `<span class="ml-auto">✓</span>` : ""}</button>`
   ).join(""),
@@ -54,9 +60,9 @@ window.PD.POPOVER_TEMPLATES = {
 window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importTab }) => {
   const D = {
     "new-request": {
-      title: "新建请求或集合",
+      title: "新建请求、集合或文件夹",
       body: `
-        <div class="field-col"><span class="field-label">类型</span><div class="seg"><button class="active" data-action="seg-pick">HTTP 请求</button><button data-action="seg-pick">AI 协议请求</button><button data-action="seg-pick">集合 / 目录</button></div></div>
+        <div class="field-col"><span class="field-label">类型</span><div class="seg"><button class="active" data-action="seg-pick">HTTP GET</button><button data-action="seg-pick">HTTP POST</button><button data-action="seg-pick">GraphQL</button><button data-action="seg-pick">AI API</button><button data-action="seg-pick">集合</button><button data-action="seg-pick">文件夹</button></div></div>
         <div class="field-col"><span class="field-label">名称</span><div class="input-box"><input value="List customers" /></div></div>
         <div class="field-col"><span class="field-label">保存到位置</span><div class="input-box sunken"><input value="Billing API / Customers" readonly /></div></div>`,
       foot: `<button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-done="已创建请求「List customers」">创建并打开</button>`,

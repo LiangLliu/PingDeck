@@ -136,6 +136,40 @@ impl ChatView {
         cx.notify();
     }
 
+    /// Populates a Chat draft with sanitized handoff context from Requests / History / Usage
+    /// without auto-sending (`docs/design.md §1.3`).
+    pub fn accept_handoff_draft(
+        &mut self,
+        title: String,
+        context_markdown: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let prev_sid = self.thread.session_id.clone();
+        if !prev_sid.is_empty() && (!self.thread.messages.is_empty() || self.is_run_active()) {
+            let current_text = self.composer.read(cx).value().to_string();
+            self.drafts.set(&prev_sid, current_text);
+            runtime(cx).save_chat_drafts(&self.drafts);
+            if let Some(sub_id) = self.active_sub_id.take() {
+                agent_run_unsubscribe_impl(runtime(cx).state(), sub_id);
+            }
+            self.subscribed_session_id = None;
+            self.stream_task = None;
+            self.thread = ChatThreadState::default();
+            self.session = None;
+            self.audit_tool_calls.clear();
+            self.submitting = false;
+            self.pending_user_text = None;
+        }
+        self.composer
+            .update(cx, |c, cx| c.set_value(context_markdown, window, cx));
+        self.status_msg = Some((
+            Tone::Accent,
+            format!("已带入上下文：{title}（请确认后发送）"),
+        ));
+        cx.notify();
+    }
+
     pub fn send_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.submitting || self.is_run_active() {
             return;

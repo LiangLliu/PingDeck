@@ -1,6 +1,10 @@
-//! Tab, authentication mode, and open-tab state models for `RequestsView`.
+//! Tab enums and public model re-exports for `RequestsView`.
 
-use pingdeck_desktop::core::model::HttpMethod;
+use pingdeck_desktop::core::model::{AuthConfig, HttpMethod, RequestBody};
+use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
+
+pub use super::model_ai::*;
+pub use super::model_tabs::*;
 
 pub const ALL_METHODS: [HttpMethod; 7] = [
     HttpMethod::Get,
@@ -12,18 +16,30 @@ pub const ALL_METHODS: [HttpMethod; 7] = [
     HttpMethod::Options,
 ];
 
+pub const ALL_RESPONSE_FORMATS: [ResponseBodyFormat; 6] = [
+    ResponseBodyFormat::Json,
+    ResponseBodyFormat::Xml,
+    ResponseBodyFormat::Html,
+    ResponseBodyFormat::Yaml,
+    ResponseBodyFormat::Hex,
+    ResponseBodyFormat::Base64,
+];
+
+/// HTTP request editor sub-tabs (matching PingDeck prototype & `TabSession::EditorTab`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ReqTab {
+pub enum HttpEdTab {
+    #[default]
     Params,
     Headers,
     Auth,
-    #[default]
     Body,
+    Assertions,
     Scripts,
-    Snippets,
+    Network,
+    Docs,
 }
 
-impl ReqTab {
+impl HttpEdTab {
     #[must_use]
     pub const fn index(self) -> usize {
         match self {
@@ -31,41 +47,48 @@ impl ReqTab {
             Self::Headers => 1,
             Self::Auth => 2,
             Self::Body => 3,
-            Self::Scripts => 4,
-            Self::Snippets => 5,
+            Self::Assertions => 4,
+            Self::Scripts => 5,
+            Self::Network => 6,
+            Self::Docs => 7,
         }
     }
 
     #[must_use]
     pub const fn from_index(idx: usize) -> Self {
         match idx {
-            0 => Self::Params,
             1 => Self::Headers,
             2 => Self::Auth,
-            4 => Self::Scripts,
-            5 => Self::Snippets,
-            _ => Self::Body,
+            3 => Self::Body,
+            4 => Self::Assertions,
+            5 => Self::Scripts,
+            6 => Self::Network,
+            7 => Self::Docs,
+            _ => Self::Params,
         }
     }
 }
 
+/// HTTP response inspector sub-tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RespTab {
+pub enum HttpRespTab {
     #[default]
     Body,
     Headers,
     Cookies,
-    Summary,
+    Trace,
+    Tests,
 }
 
-impl RespTab {
+impl HttpRespTab {
     #[must_use]
     pub const fn index(self) -> usize {
         match self {
             Self::Body => 0,
             Self::Headers => 1,
             Self::Cookies => 2,
-            Self::Summary => 3,
+            Self::Trace => 3,
+            Self::Tests => 4,
         }
     }
 
@@ -74,46 +97,247 @@ impl RespTab {
         match idx {
             1 => Self::Headers,
             2 => Self::Cookies,
-            3 => Self::Summary,
+            3 => Self::Trace,
+            4 => Self::Tests,
             _ => Self::Body,
         }
     }
 }
 
+/// AI API request editor sub-tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AuthMode {
+pub enum AiEdTab {
     #[default]
-    None,
-    Bearer,
-    Basic,
-    ApiKey,
+    Messages,
+    Params,
+    Tools,
+    RawJson,
+    Assertions,
+    Scripts,
 }
 
-impl AuthMode {
+impl AiEdTab {
     #[must_use]
     pub const fn index(self) -> usize {
         match self {
-            Self::None => 0,
-            Self::Bearer => 1,
-            Self::Basic => 2,
-            Self::ApiKey => 3,
+            Self::Messages => 0,
+            Self::Params => 1,
+            Self::Tools => 2,
+            Self::RawJson => 3,
+            Self::Assertions => 4,
+            Self::Scripts => 5,
         }
     }
 
     #[must_use]
     pub const fn from_index(idx: usize) -> Self {
         match idx {
-            1 => Self::Bearer,
-            2 => Self::Basic,
-            3 => Self::ApiKey,
+            1 => Self::Params,
+            2 => Self::Tools,
+            3 => Self::RawJson,
+            4 => Self::Assertions,
+            5 => Self::Scripts,
+            _ => Self::Messages,
+        }
+    }
+}
+
+/// AI API response inspector sub-tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AiRespTab {
+    #[default]
+    Merged,
+    Events,
+    Raw,
+    Headers,
+    Timing,
+    Tests,
+    Usage,
+    Compare,
+}
+
+impl AiRespTab {
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Merged => 0,
+            Self::Events => 1,
+            Self::Raw => 2,
+            Self::Headers => 3,
+            Self::Timing => 4,
+            Self::Tests => 5,
+            Self::Usage => 6,
+            Self::Compare => 7,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_index(idx: usize) -> Self {
+        match idx {
+            1 => Self::Events,
+            2 => Self::Raw,
+            3 => Self::Headers,
+            4 => Self::Timing,
+            5 => Self::Tests,
+            6 => Self::Usage,
+            7 => Self::Compare,
+            _ => Self::Merged,
+        }
+    }
+}
+
+/// Body mode selector for HTTP requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BodyKind {
+    #[default]
+    None,
+    Json,
+    Raw,
+    Form,
+    Multipart,
+    Graphql,
+    Binary,
+}
+
+impl BodyKind {
+    #[must_use]
+    pub const fn from_body(body: &RequestBody) -> Self {
+        match body {
+            RequestBody::None => Self::None,
+            RequestBody::Json { .. } => Self::Json,
+            RequestBody::RawText { .. } => Self::Raw,
+            RequestBody::FormUrlEncoded { .. } => Self::Form,
+            RequestBody::Multipart { .. } => Self::Multipart,
+            RequestBody::Graphql { .. } => Self::Graphql,
+            RequestBody::Binary { .. } => Self::Binary,
+        }
+    }
+
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::Json => 1,
+            Self::Raw => 2,
+            Self::Form => 3,
+            Self::Multipart => 4,
+            Self::Graphql => 5,
+            Self::Binary => 6,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_index(idx: usize) -> Self {
+        match idx {
+            1 => Self::Json,
+            2 => Self::Raw,
+            3 => Self::Form,
+            4 => Self::Multipart,
+            5 => Self::Graphql,
+            6 => Self::Binary,
             _ => Self::None,
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct OpenReqTab {
-    pub id: String,
-    pub name: String,
-    pub method: HttpMethod,
+/// All 8 core authentication schemes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AuthKind {
+    #[default]
+    Inherit,
+    None,
+    Bearer,
+    Basic,
+    ApiKey,
+    OAuth2,
+    Digest,
+    AwsSigV4,
+}
+
+impl AuthKind {
+    #[must_use]
+    pub const fn from_auth(auth: &AuthConfig) -> Self {
+        match auth {
+            AuthConfig::Inherit => Self::Inherit,
+            AuthConfig::None => Self::None,
+            AuthConfig::Bearer { .. } => Self::Bearer,
+            AuthConfig::Basic { .. } => Self::Basic,
+            AuthConfig::ApiKey { .. } => Self::ApiKey,
+            AuthConfig::OAuth2 { .. } => Self::OAuth2,
+            AuthConfig::Digest { .. } => Self::Digest,
+            AuthConfig::AwsSignatureV4 { .. } => Self::AwsSigV4,
+        }
+    }
+
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Inherit => 0,
+            Self::None => 1,
+            Self::Bearer => 2,
+            Self::Basic => 3,
+            Self::ApiKey => 4,
+            Self::OAuth2 => 5,
+            Self::Digest => 6,
+            Self::AwsSigV4 => 7,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_index(idx: usize) -> Self {
+        match idx {
+            1 => Self::None,
+            2 => Self::Bearer,
+            3 => Self::Basic,
+            4 => Self::ApiKey,
+            5 => Self::OAuth2,
+            6 => Self::Digest,
+            7 => Self::AwsSigV4,
+            _ => Self::Inherit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScriptSubTab {
+    Pre,
+    #[default]
+    Post,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NewItemKind {
+    #[default]
+    HttpGet,
+    HttpPost,
+    Graphql,
+    AiApi,
+    Collection,
+    Folder,
+}
+
+impl NewItemKind {
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::HttpGet => 0,
+            Self::HttpPost => 1,
+            Self::Graphql => 2,
+            Self::AiApi => 3,
+            Self::Collection => 4,
+            Self::Folder => 5,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_index(idx: usize) -> Self {
+        match idx {
+            1 => Self::HttpPost,
+            2 => Self::Graphql,
+            3 => Self::AiApi,
+            4 => Self::Collection,
+            5 => Self::Folder,
+            _ => Self::HttpGet,
+        }
+    }
 }

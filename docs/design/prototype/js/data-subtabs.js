@@ -210,31 +210,41 @@ window.PD = window.PD || {};
         </table>`,
       auth: () => `
         <div class="col-stack">
-          <div class="row-center">
+          <div class="row-center" style="flex-wrap:wrap;gap:6px">
             <span class="field-label">认证方式</span>
-            <div class="seg"><button class="active" data-action="seg-pick">继承集合</button><button data-action="seg-pick">Bearer</button><button data-action="seg-pick">API Key</button><button data-action="seg-pick">OAuth 2.0</button><button data-action="seg-pick">无</button></div>
+            <div class="seg"><button class="active" data-action="seg-pick">继承集合</button><button data-action="seg-pick">无</button><button data-action="seg-pick">Bearer</button><button data-action="seg-pick">Basic</button><button data-action="seg-pick">API Key</button><button data-action="seg-pick">OAuth 2.0</button><button data-action="seg-pick">Digest</button><button data-action="seg-pick">AWS SigV4</button></div>
           </div>
           <div class="card-panel">
             <div class="card-panel-head"><span>继承自集合「Billing API」</span><span class="tag tag-ok">● Bearer Token</span></div>
-            <div class="mono fs-xs text-ink2">Authorization: Bearer <span class="url-var">{{token}}</span>（来自当前环境 Staging 的本地保险库）</div>
+            <div class="mono fs-xs text-ink2">Authorization: Bearer <span class="url-var">{{token}}</span>（来自当前环境 Staging 的本地 0600 保险库）</div>
           </div>
         </div>`,
       body: () => `
         <div class="col-stack">
-          <div class="seg" style="align-self:flex-start"><button class="active" data-action="seg-pick">无正文 (GET)</button><button data-action="seg-pick">JSON</button><button data-action="seg-pick">Form</button><button data-action="seg-pick">Multipart</button><button data-action="seg-pick">Binary</button></div>
-          <p class="set-row-desc">GET 请求默认不发送正文；切换到 POST / PUT / PATCH 或手动选择 JSON 即可编辑请求体。</p>
+          <div class="row-between">
+            <div class="seg"><button class="active" data-action="seg-pick">无正文</button><button data-action="seg-pick">JSON</button><button data-action="seg-pick">Raw</button><button data-action="seg-pick">Form</button><button data-action="seg-pick">Multipart</button><button data-action="seg-pick">GraphQL</button><button data-action="seg-pick">Binary</button></div>
+            <button class="btn btn-sm btn-ghost" data-toast="已格式化 JSON 请求体">格式化</button>
+          </div>
+          <p class="set-row-desc">GET / HEAD 仅在正文非空时发送；支持 JSON、多语言 Raw、URL 编码表单、Multipart（含文件）、GraphQL（Query + Variables）与二进制文件校验。</p>
         </div>`,
       assert: () => `
-        <table class="kv-table">
-          <thead><tr><th style="width:36px"></th><th>表达式（JSONPath / 状态）</th><th>比较</th><th>期望值</th><th style="width:80px">上次结果</th></tr></thead>
-          <tbody>
-            <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">status</td><td><span class="tag">==</span></td><td class="mono">200</td><td><span class="tag tag-ok">通过</span></td></tr>
-            <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">$.data[0].currency</td><td><span class="tag">==</span></td><td class="mono">"usd"</td><td><span class="tag tag-ok">通过</span></td></tr>
-          </tbody>
-        </table>`,
+        <div class="col-stack-sm">
+          <table class="kv-table">
+            <thead><tr><th style="width:36px"></th><th>目标（状态 / JSONPath / 响应头 / 正文 / 耗时 / Schema）</th><th>运算符</th><th>期望值</th><th style="width:84px">上次结果</th></tr></thead>
+            <tbody>
+              <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">status</td><td><span class="tag">==</span></td><td class="mono">200</td><td><span class="tag tag-ok">通过</span></td></tr>
+              <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">$.data[0].currency</td><td><span class="tag">==</span></td><td class="mono">"usd"</td><td><span class="tag tag-ok">通过</span></td></tr>
+              <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">$.data (JSON Schema)</td><td><span class="tag">schema</span></td><td class="mono">{"type":"array"}</td><td><span class="tag tag-ok">通过</span></td></tr>
+            </tbody>
+          </table>
+          <div><button class="btn btn-sm" data-toast="已新增一条断言规则">+ 添加断言</button></div>
+        </div>`,
       scripts: () => `
         <div class="col-stack-sm">
-          <div class="row-center"><div class="seg"><button class="active" data-action="seg-pick">响应后脚本 (Post)</button><button data-action="seg-pick">请求前脚本 (Pre)</button></div><span class="work-meta">Boa 沙箱 · 迭代上限 100,000</span></div>
+          <div class="row-between">
+            <div class="seg"><button class="active" data-action="seg-pick">响应后脚本 (Post)</button><button data-action="seg-pick">请求前脚本 (Pre)</button></div>
+            <span class="work-meta">Boa 沙箱 · 兼容扫描通过（0 项不支持 API）</span>
+          </div>
           <div class="code-box" style="white-space:pre">pm.test("returns open invoices", () => {
   const body = pm.response.json();
   pm.expect(body.object).to.eql("list");
@@ -243,13 +253,25 @@ window.PD = window.PD || {};
         </div>`,
       net: () => `
         <div class="grid-2col fs-xs">
-          <div class="card-panel"><b>单请求覆盖</b><div class="set-row" style="padding:6px 0"><span>超时时间</span>${num("30", "秒")}</div><div class="set-row" style="padding:6px 0;border:0"><span>跟随重定向</span>${sw(true)}</div></div>
-          <div class="card-panel"><b>继承全局网络设置</b><span class="set-row-desc">代理：系统代理 · TLS 校验：开启 · HTTP 版本：自动</span><div><button class="btn btn-sm" data-nav-to="settings" data-set-page="network">打开网络设置 ↗</button></div></div>
+          <div class="card-panel">
+            <div class="card-panel-head"><b>7 项可继承网络选项</b><span class="tag">跟随设置 / 本请求</span></div>
+            <div class="set-row" style="padding:5px 0"><span>空闲超时 <span class="tag">跟随 30s</span></span>${num("30", "秒")}</div>
+            <div class="set-row" style="padding:5px 0"><span>传输重试 <span class="tag">跟随 0次</span></span>${num("0", "次")}</div>
+            <div class="set-row" style="padding:5px 0"><span>HTTP 版本 <span class="tag">跟随自动</span></span><span class="tag">Auto</span></div>
+            <div class="set-row" style="padding:5px 0;border:0"><span>跟随重定向 / 最大跳数 / TLS 校验 / 代理</span><span class="tag tag-ok">全部跟随</span></div>
+          </div>
+          <div class="card-panel">
+            <div class="card-panel-head"><b>本请求附加项与全局来源</b><button class="btn btn-sm" data-nav-to="settings" data-set-page="network">网络设置 ↗</button></div>
+            <div class="set-row" style="padding:5px 0"><span>总时限（含重定向与正文）</span>${num("", "不限")}</div>
+            <div class="set-row" style="padding:5px 0"><span>携带工作区 Cookie 罐</span>${sw(true)}</div>
+            <div class="set-row" style="padding:5px 0;border:0"><span>自动 URL 编码</span>${sw(true)}</div>
+          </div>
         </div>`,
       docs: () => `
         <div class="col-stack-sm">
-          <b>List invoices</b>
+          <div class="row-between"><b>List invoices（支持 Markdown 与响应示例）</b><button class="btn btn-sm" data-toast="已将当前响应保存为示例">存当前响应为示例</button></div>
           <p class="set-row-desc">按状态与游标分页查询计费账单列表，支持 <code>status</code>（open / paid / void）与 <code>limit</code>（1–100）。</p>
+          <div class="card-panel"><div class="card-panel-head"><span>已保存示例 · 200 OK — Open invoices</span><span class="tag">Postman / OpenAPI 导入</span></div><div class="mono fs-2xs text-muted">{"object":"list","has_more":true,"total_count":42}</div></div>
         </div>`,
     },
     "req-resp": {
@@ -266,21 +288,29 @@ window.PD = window.PD || {};
           </tbody>
         </table></div>`,
       cookies: () => `
-        <div class="kv-wrap"><table class="kv-table">
-          <thead><tr><th>名称</th><th>值</th><th>域 / 路径</th><th>属性</th></tr></thead>
-          <tbody>
-            <tr><td class="mono">__pd_edge</td><td class="mono">stg-hkg-02</td><td class="mono">billing.staging.acme.dev /</td><td><span class="tag">HttpOnly</span> <span class="tag">Secure</span></td></tr>
-          </tbody>
-        </table></div>`,
+        <div class="kv-wrap col-stack-sm" style="padding:10px 14px">
+          <div class="row-between fs-xs"><span class="tag tag-ok">● 已存入工作区 Cookie 罐</span><span class="text-muted">0 条 Set-Cookie 被拒绝</span></div>
+          <table class="kv-table">
+            <thead><tr><th>名称</th><th>值</th><th>域 / 路径</th><th>属性</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">__pd_edge</td><td class="mono">stg-hkg-02</td><td class="mono">billing.staging.acme.dev /</td><td><span class="tag">HttpOnly</span> <span class="tag">Secure</span></td></tr>
+            </tbody>
+          </table>
+        </div>`,
       trace: () => `
         <div class="pad-pane col-stack fs-xs">
           <div class="card-panel">
-            <div class="card-panel-head"><span>完整连接与计时追踪（HTTP/2 · TLS 1.3）</span><span class="mono">总计 184 ms</span></div>
+            <div class="card-panel-head"><span>连接与计时瀑布（HTTP/2 · TLS 1.3 · 代理：系统代理）</span><span class="mono">总计 184 ms</span></div>
             <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-dns)"></span><span style="width:76px">DNS 解析</span><div class="wire-pop-bar"><i style="width:8%;background:var(--ph-dns)"></i></div><span class="mono">8 ms</span></div>
             <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-connect)"></span><span style="width:76px">TCP 建连</span><div class="wire-pop-bar"><i style="width:14%;background:var(--ph-connect)"></i></div><span class="mono">24 ms</span></div>
             <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-tls)"></span><span style="width:76px">TLS 握手</span><div class="wire-pop-bar"><i style="width:18%;background:var(--ph-tls)"></i></div><span class="mono">31 ms</span></div>
             <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-wait)"></span><span style="width:76px">等待首包</span><div class="wire-pop-bar"><i style="width:58%;background:var(--ph-wait)"></i></div><span class="mono">109 ms</span></div>
             <div class="wire-pop-row"><span class="wire-pop-swatch" style="background:var(--ph-recv)"></span><span style="width:76px">接收正文</span><div class="wire-pop-bar"><i style="width:12%;background:var(--ph-recv)"></i></div><span class="mono">12 ms</span></div>
+          </div>
+          <div class="card-panel">
+            <div class="card-panel-head"><span>调用链与实发请求（凭据已脱敏）</span><span class="tag">认证：集合 Bearer</span></div>
+            <div class="mono fs-2xs text-ink2">GET https://billing.staging.acme.dev/invoices/inv_01J9X3K2P8?status=open&amp;limit=25</div>
+            <div class="fs-2xs text-muted">变量解析：base_url (Staging), token (保险库 · 已遮蔽), api_version (Staging)</div>
           </div>
         </div>`,
       tests: () => `

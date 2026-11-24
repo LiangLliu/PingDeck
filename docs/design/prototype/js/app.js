@@ -280,6 +280,17 @@
       return;
     }
 
+    const folderToggle = e.target.closest("[data-toggle-folder]");
+    if (folderToggle && !e.target.closest("button")) {
+      const fid = folderToggle.dataset.toggleFolder;
+      const body = document.querySelector(`[data-folder-body="${fid}"]`);
+      if (body) {
+        body.hidden = !body.hidden;
+        folderToggle.innerHTML = folderToggle.innerHTML.replace(body.hidden ? "▾" : "▸", body.hidden ? "▸" : "▾");
+      }
+      return;
+    }
+
     const listRow = e.target.closest("[data-select-list] .list-row");
     if (listRow) listRow.closest("[data-select-list]").querySelectorAll(".list-row").forEach((r) => r.classList.toggle("selected", r === listRow));
 

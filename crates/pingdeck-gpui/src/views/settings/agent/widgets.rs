@@ -10,9 +10,9 @@ use pingdeck_desktop::core::llm::store::ProviderModel;
 use pingdeck_desktop::core::model::settings::Language;
 
 use crate::ui::{
-    Anchor, InputState, Popover, ScrollableElement as _, StatusShape, Tone, UiIcon, btn_ghost,
-    h_row, icon_xs, list_row, palette, popover, select_pill, status_indicator, text_input, to_hsla,
-    v_col,
+    Anchor, InputState, Popover, ScrollableElement as _, Tone, UiIcon, dismissible_banner, h_row,
+    icon_xs, list_row, number_field, palette, popover, section_header, select_pill, setting_row,
+    to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
@@ -79,47 +79,16 @@ pub fn display_model_ref(raw: &str, providers: &[ProviderView]) -> String {
     raw.to_owned()
 }
 
-/// Prototype `.set-section-head`: bold section title on left, optional right action/reset button,
-/// hairline bottom border.
+/// Prototype `.set-section-head`: delegates to unified `crate::ui::section_header`.
 pub fn section_head(
     title: impl Into<SharedString>,
     right: Option<gpui_kit::AnyElement>,
     cx: &App,
 ) -> gpui_kit::Div {
-    let p = palette(cx);
-    h_row()
-        .justify_between()
-        .gap(px(10.0))
-        .pb(px(8.0))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.surface)))
-        .child(
-            div()
-                .text_sm()
-                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .text_color(to_hsla(p.ink))
-                .child(title.into()),
-        )
-        .children(right)
+    section_header(title, right, cx)
 }
 
-/// Prototype `.set-meta-pill` ("仅这台电脑" / "Local only" etc.).
-pub fn meta_pill(text: impl Into<SharedString>, cx: &App) -> gpui_kit::Div {
-    let p = palette(cx);
-    div()
-        .px(px(6.0))
-        .py(px(1.0))
-        .rounded(px(4.0))
-        .bg(to_hsla(p.sunken))
-        .border_1()
-        .border_color(to_hsla(p.line.composite_over(p.sunken)))
-        .text_size(px(10.5))
-        .font_weight(gpui_kit::FontWeight::MEDIUM)
-        .text_color(to_hsla(p.muted))
-        .child(text.into())
-}
-
-/// Prototype `.set-row`: label + optional meta pill + optional description on left, control on right.
+/// Prototype `.set-row`: delegates to unified `crate::ui::setting_row`.
 pub fn set_row(
     label: impl Into<SharedString>,
     meta: Option<SharedString>,
@@ -127,115 +96,27 @@ pub fn set_row(
     control: impl IntoElement,
     cx: &App,
 ) -> gpui_kit::Div {
-    let p = palette(cx);
-    let title_row = h_row()
-        .gap(px(7.0))
-        .flex_wrap()
-        .child(
-            div()
-                .text_sm()
-                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                .text_color(to_hsla(p.ink))
-                .child(label.into()),
-        )
-        .children(meta.map(|m| meta_pill(m, cx)));
-
-    let mut left = v_col().flex_1().min_w_0().gap(px(2.0)).child(title_row);
-    if let Some(d) = desc
-        && !d.is_empty()
-    {
-        left = left.child(div().text_xs().text_color(to_hsla(p.muted)).child(d));
-    }
-
-    h_row()
-        .justify_between()
-        .items_center()
-        .gap(px(18.0))
-        .py(px(11.0))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.surface)))
-        .child(left)
-        .child(div().flex_shrink_0().child(control))
+    setting_row(label, meta, desc, control, cx)
 }
 
-/// Compact numeric input paired with a muted trailing unit label (matching prototype `num()`).
+/// Compact numeric input paired with a muted trailing unit label: delegates to `crate::ui::number_field`.
 pub fn num_box(
     input: &Entity<InputState>,
     unit: Option<&'static str>,
     width_px: f32,
     cx: &App,
 ) -> gpui_kit::Div {
-    let p = palette(cx);
-    h_row()
-        .gap(px(6.0))
-        .child(div().w(px(width_px)).child(text_input(input)))
-        .children(unit.map(|u| {
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .flex_shrink_0()
-                .child(u)
-        }))
+    number_field(input, unit, width_px, cx)
 }
 
-/// Inline dismissible flash banner for confirmations, warnings, and validation errors.
+/// Inline dismissible flash banner: delegates to unified `crate::ui::dismissible_banner`.
 pub fn flash_banner(
     tone: Tone,
     msg: &str,
     on_dismiss: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> gpui_kit::Div {
-    let p = palette(cx);
-    let (bg, border, fg, shape) = match tone {
-        Tone::Danger => (
-            to_hsla(p.bad_soft),
-            to_hsla(p.bad_line.composite_over(p.bad_soft)),
-            to_hsla(p.bad),
-            StatusShape::Bad,
-        ),
-        Tone::Warning => (
-            to_hsla(p.warn_soft),
-            to_hsla(p.warn_line.composite_over(p.warn_soft)),
-            to_hsla(p.warn),
-            StatusShape::Warn,
-        ),
-        Tone::Success => (
-            to_hsla(p.ok_soft),
-            to_hsla(p.ok_line.composite_over(p.ok_soft)),
-            to_hsla(p.ok),
-            StatusShape::Ok,
-        ),
-        _ => (
-            to_hsla(p.accent_soft),
-            to_hsla(p.accent_line.composite_over(p.accent_soft)),
-            to_hsla(p.accent_ink),
-            StatusShape::Live,
-        ),
-    };
-    h_row()
-        .justify_between()
-        .gap(px(8.0))
-        .px(px(12.0))
-        .py(px(8.0))
-        .rounded(px(8.0))
-        .bg(bg)
-        .border_1()
-        .border_color(border)
-        .child(
-            h_row()
-                .flex_1()
-                .min_w_0()
-                .gap(px(8.0))
-                .child(status_indicator(shape, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_xs()
-                        .text_color(fg)
-                        .child(SharedString::from(msg.to_owned())),
-                ),
-        )
-        .child(btn_ghost("agent-flash-dismiss", "×").on_click(on_dismiss))
+    dismissible_banner("agent-flash-dismiss", tone, msg.to_owned(), on_dismiss, cx)
 }
 
 /// Scrollable bounded-height model picker popover (`provider / model`) with optional clear/auto row.

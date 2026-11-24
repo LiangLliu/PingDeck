@@ -6,8 +6,9 @@ use pingdeck_desktop::core::agent::model::AgentSessionSummary;
 use pingdeck_desktop::core::app::current_time_ms;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon, btn_primary, h_row,
-    icon_xs, list_row, palette, search_input, section_heading, status_indicator, to_hsla, v_col,
+    ScrollableElement as _, StatusShape, UiIcon, btn_icon, btn_primary, empty_inline, h_row,
+    icon_xs, list_row, master_pane, palette, pane_header, search_input, section_heading,
+    status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -44,8 +45,7 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
     }
 
     let mut list = v_col()
-        .flex_1()
-        .min_h_0()
+        .size_full()
         .gap(px(2.0))
         .p(px(8.0))
         .overflow_y_scrollbar();
@@ -87,71 +87,55 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
     }
 
     if view.sessions.is_empty() {
-        list = list.child(
-            v_col()
-                .items_center()
-                .py(px(28.0))
-                .px(px(12.0))
-                .gap(px(6.0))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "还没有对话"
-                } else {
-                    "No conversations yet"
-                })),
-        );
+        list = list.child(empty_inline(
+            if zh {
+                "还没有对话"
+            } else {
+                "No conversations yet"
+            },
+            Some(SharedString::from(if zh {
+                "点击上方「新建」开始一段与智能体的协作对话。"
+            } else {
+                "Click New above to start a conversation with the agent."
+            })),
+            None,
+            cx,
+        ));
     }
 
-    v_col()
-        .size_full()
-        .bg(to_hsla(p.pane))
-        .child(
-            v_col()
-                .gap(px(8.0))
-                .p(px(10.0))
-                .border_b_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
+    let _ = p;
+    let header = pane_header(
+        if zh { "对话" } else { "Chats" },
+        Some(view.sessions.len()),
+        Some(
+            h_row()
+                .gap(px(4.0))
                 .child(
-                    h_row()
-                        .justify_between()
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                        .text_color(to_hsla(p.ink))
-                                        .child(if zh { "对话" } else { "Chats" }),
-                                )
-                                .child(badge(view.sessions.len().to_string(), Tone::Neutral, cx)),
-                        )
-                        .child(
-                            h_row()
-                                .gap(px(4.0))
-                                .child(
-                                    btn_icon("chat-toggle-arch", UiIcon::Archive)
-                                        .tooltip(if zh {
-                                            "显示/隐藏已归档"
-                                        } else {
-                                            "Toggle archived"
-                                        })
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.show_archived = !this.show_archived;
-                                            this.reload_sessions(cx);
-                                        })),
-                                )
-                                .child(
-                                    btn_primary("chat-new", if zh { "新建" } else { "New" })
-                                        .icon(icon_xs(UiIcon::MessageSquarePlus))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.create_session(cx);
-                                        })),
-                                ),
-                        ),
+                    btn_icon("chat-toggle-arch", UiIcon::Archive)
+                        .tooltip(if zh {
+                            "显示/隐藏已归档"
+                        } else {
+                            "Toggle archived"
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.show_archived = !this.show_archived;
+                            this.reload_sessions(cx);
+                        })),
                 )
-                .child(search_input(&view.search_input, cx)),
-        )
-        .child(list)
+                .child(
+                    btn_primary("chat-new", if zh { "新建" } else { "New" })
+                        .icon(icon_xs(UiIcon::MessageSquarePlus))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.create_session(cx);
+                        })),
+                )
+                .into_any_element(),
+        ),
+        Some(search_input(&view.search_input, cx).into_any_element()),
+        cx,
+    );
+
+    master_pane(header, list, None, cx)
 }
 
 fn group_label(

@@ -167,21 +167,32 @@
                 </div>
               </div>
               <div id="req-tree-list" class="pane-body">
-                <div class="tree-folder">▾ Billing API <span class="ml-auto text-faint">17</span></div>
-                <div class="tree-folder" style="padding-left:16px">▾ Invoices <span class="ml-auto text-faint">5</span></div>
-                <button class="tree-item selected" data-req-mode="http" data-req-primary="http"><span class="tree-m m-get">GET</span><span>List invoices</span></button>
-                <button class="tree-item" data-req-mode="http"><span class="tree-m m-post">POST</span><span class="flex-1">Create invoice</span><span class="dirty-dot"></span></button>
-                <button class="tree-item" data-req-mode="http"><span class="tree-m m-get">GET</span><span>Get invoice by ID</span></button>
-                <button class="tree-item" data-req-mode="http"><span class="tree-m m-patch">PATCH</span><span>Finalize draft</span></button>
-                <button class="tree-item" data-req-mode="http"><span class="tree-m m-delete">DELETE</span><span>Void invoice</span></button>
-                <div class="tree-folder" style="padding-left:16px">▸ Customers <span class="ml-auto text-faint">4</span></div>
-                <div class="tree-folder" style="padding-left:16px">▸ Refunds <span class="ml-auto text-faint">4</span></div>
-                <div class="tree-folder" style="padding-left:16px">▸ Webhooks <span class="ml-auto text-faint">4</span></div>
+                <div class="tree-folder" data-toggle-folder="col-billing">
+                  <span>▾ Billing API</span>
+                  <span class="ml-auto row-center" style="gap:4px">
+                    <button class="btn-icon" style="width:20px;height:20px" title="运行集合" data-toast="已打开集合运行标签「Billing API」">▶</button>
+                    <button class="btn-icon" style="width:20px;height:20px" title="集合设置" data-toast="已打开集合设置「Billing API」">⚙</button>
+                    <span class="text-faint">17</span>
+                  </span>
+                </div>
+                <div data-folder-body="col-billing">
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-invoices">▾ Invoices <span class="ml-auto text-faint">5</span></div>
+                  <div data-folder-body="fold-invoices">
+                    <button class="tree-item selected" data-req-mode="http" data-req-primary="http"><span class="tree-m m-get">GET</span><span>List invoices</span></button>
+                    <button class="tree-item" data-req-mode="http"><span class="tree-m m-post">POST</span><span class="flex-1">Create invoice</span><span class="dirty-dot" title="未保存"></span></button>
+                    <button class="tree-item" data-req-mode="http"><span class="tree-m m-get">GET</span><span class="flex-1">Get invoice by ID</span><span class="tag tag-accent" style="height:16px;padding:0 4px;font-size:10px" title="智能体改过，待审阅">AI改</span></button>
+                    <button class="tree-item" data-req-mode="http"><span class="tree-m m-patch">PATCH</span><span>Finalize draft</span></button>
+                    <button class="tree-item" data-req-mode="http"><span class="tree-m m-delete">DELETE</span><span>Void invoice</span></button>
+                  </div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-customers">▸ Customers <span class="ml-auto text-faint">4</span></div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-refunds">▸ Refunds <span class="ml-auto text-faint">4</span></div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-webhooks">▸ Webhooks <span class="ml-auto text-faint">4</span></div>
+                </div>
                 <div class="list-group-head"><span>AI 调试请求</span><span>1</span></div>
                 <button class="tree-item" data-req-mode="ai" data-req-primary="ai"><span class="tree-m mono text-accent fw-600 fs-2xs">AI</span><span>Ping test (DeepSeek)</span></button>
               </div>
               <div class="pane-foot">
-                <span>1 个集合 · 17 个请求</span>
+                <span>1 个集合 · 18 个请求</span>
                 <button class="text-accent" data-modal="import-export">导入 / 导出</button>
               </div>
             </div>
@@ -192,7 +203,23 @@
                 <button class="doc-tab" data-req-mode="http"><span class="m-post">POST</span> Create invoice <span class="dirty-dot"></span></button>
                 <button class="doc-tab" data-req-mode="http"><span class="m-get">GET</span> Get invoice by ID</button>
                 <button class="doc-tab" data-req-mode="ai" data-req-primary="ai"><span class="tag tag-accent" style="height:17px;padding:0 5px">AI</span> Ping test <span class="doc-tab-x">×</span></button>
-                <button class="btn-icon ml-auto" data-modal="new-request" title="新建标签页">+</button>
+                <button class="btn-icon ml-auto" data-modal="new-request" title="新建标签页 (⌘N)">+</button>
+              </div>
+
+              <!-- Request Identity, Breadcrumb & HTTP/AI Mode Bar -->
+              <div class="resp-filter-bar" style="height:34px;background:var(--bg-surface)">
+                <span class="text-faint fs-2xs">Billing API / Invoices /</span>
+                <b class="text-ink1 fs-xs">List invoices</b>
+                <span class="tag tag-ok" style="height:18px;font-size:10.5px">已保存</span>
+                <div class="ml-auto row-center" style="gap:8px">
+                  <div class="seg" title="在 HTTP 请求与 AI API 协议调试之间切换">
+                    <button class="active" data-req-mode="http" data-req-primary="http">HTTP</button>
+                    <button data-req-mode="ai" data-req-primary="ai">AI API</button>
+                  </div>
+                  <button class="btn btn-sm btn-ghost" data-popover="var-inspect" title="查看当前生效的环境变量与覆盖来源">变量</button>
+                  <button class="btn btn-sm btn-ghost" data-modal="code-snippets" title="生成 cURL / fetch / Python / Go 代码">代码</button>
+                  <button class="btn btn-sm" data-toast="已保存请求「List invoices」(⌘S)">保存</button>
+                </div>
               </div>
 
               <!-- HTTP REQUEST SUB-VIEW -->
@@ -200,28 +227,35 @@
                 <div class="url-strip">
                   <div class="url-field">
                     <button class="url-method" data-popover="method"><span id="req-method-label" class="m-get">GET</span><span class="text-faint fs-2xs">▾</span></button>
-                    <div class="url-text"><span class="url-var">{{base_url}}</span>/invoices?status=open&amp;limit=25</div>
+                    <div class="url-text"><span class="url-var">{{base_url}}</span>/invoices/:invoice_id?status=open&amp;limit=25</div>
                   </div>
                   <button class="select-pill" data-popover="env-pick"><span id="req-env-dot" class="dot dot-ok"></span> <span id="req-env-label">Staging</span> <span class="text-faint">▾</span></button>
-                  <button class="btn" data-modal="code-snippets" title="生成 cURL / fetch / Python / Rust 代码">代码</button>
-                  <button class="btn" data-toast="已保存请求「List invoices」">保存</button>
-                  <button class="btn btn-primary" data-action="send-http">发送</button>
+                  <button class="btn btn-primary" data-action="send-http" title="发送请求 (⌘↵)">发送</button>
+                  <button class="btn-icon" title="发送并保存到文件…" data-toast="已打开保存文件对话框（发送并流式写入完整响应）">⬇</button>
                 </div>
 
                 <div class="req-split">
                   <div class="req-top">
                     <div class="tabs-row" data-tab-group="req-ed">
-                      <button class="tab-btn active" data-tab="params">参数 <span class="tab-cnt">2</span></button>
+                      <button class="tab-btn active" data-tab="params">参数 <span class="tab-cnt">3</span></button>
                       <button class="tab-btn" data-tab="headers">请求头 <span class="tab-cnt">3</span></button>
                       <button class="tab-btn" data-tab="auth">认证</button>
                       <button class="tab-btn" data-tab="body">请求体</button>
-                      <button class="tab-btn" data-tab="assert">断言 <span class="dirty-dot"></span></button>
+                      <button class="tab-btn" data-tab="assert">断言 <span class="tab-cnt">2</span></button>
                       <button class="tab-btn" data-tab="scripts">脚本</button>
                       <button class="tab-btn" data-tab="net">网络</button>
                       <button class="tab-btn" data-tab="docs">文档</button>
-                      <span class="ml-auto fs-2xs text-muted">认证：继承集合 Bearer</span>
+                      <span class="ml-auto fs-2xs text-muted">认证：继承集合 Bearer · 3 个变量已解析</span>
                     </div>
                     <div id="req-ed-body" class="kv-wrap">
+                      <div class="fs-2xs text-muted fw-600" style="padding:8px 12px 4px">路径变量（自动从 URL <code>:name</code> / <code>{name}</code> 提取）</div>
+                      <table class="kv-table">
+                        <thead><tr><th style="width:36px"></th><th style="width:28%">变量名</th><th style="width:36%">值</th><th>说明</th></tr></thead>
+                        <tbody>
+                          <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono text-accent">invoice_id</td><td class="mono">inv_01J9X3K2P8</td><td class="kv-ph">账单主键（路径段自动编码）</td></tr>
+                        </tbody>
+                      </table>
+                      <div class="fs-2xs text-muted fw-600" style="padding:10px 12px 4px">查询参数（与 URL 双向实时同步）</div>
                       <table class="kv-table">
                         <thead><tr><th style="width:36px"></th><th style="width:28%">键</th><th style="width:36%">值</th><th>说明</th></tr></thead>
                         <tbody>
@@ -311,11 +345,11 @@
                       <span class="tag">D DeepSeek</span>
                       <span class="text-faint">/</span>
                       <b class="mono fs-xs">deepseek-v4-flash</b>
-                      <span class="ml-auto fs-2xs text-ok">● 密钥自动注入</span>
+                      <span class="ml-auto fs-2xs text-ok">● 密钥由核心注入</span>
                     </div>
                   </div>
                   <div class="seg"><button class="active" data-action="seg-pick">服务商</button><button data-action="seg-pick">自定义 URL</button></div>
-                  <button class="btn" data-toast="已保存 AI 请求草稿">保存</button>
+                  <button class="btn" data-toast="已打开多模型对比（支持同时对比最多 12 个模型并预估费用）">多模型对比…</button>
                   <button class="btn btn-primary" data-toast="已收到流式响应（首字 228 ms，共 7 帧）">发送</button>
                 </div>
 
