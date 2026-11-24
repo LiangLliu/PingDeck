@@ -1,15 +1,15 @@
 //! Core Settings pages: General, Appearance (16 eye-care OKLCH palettes), Shortcuts,
-//! Requests, Network, Mock, Data & Sync, Advanced, and About.
+//! Requests, Network, Mock, Data & Sync, and Advanced.
 
-use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, px};
 use pingdeck_desktop::core::model::settings::{
     Language, NotifyWhenAway, SettingsSection as CoreSection,
 };
 use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
-    Tone, badge, btn_danger, btn_primary, btn_secondary, card, field_row, h_row, kbd_chip, palette,
-    section_heading, to_hsla, toggle_switch, v_col,
+    Tone, badge, btn_danger, btn_primary, btn_secondary, card, field_row, h_row, kbd_chip,
+    section_heading, toggle_switch, v_col,
 };
 
 use super::SettingsView;
@@ -26,7 +26,6 @@ pub fn render_core_section(view: &SettingsView, cx: &mut Context<SettingsView>) 
         SettingsSection::Mock => render_mock(view, zh, cx),
         SettingsSection::Data => render_data(view, zh, cx),
         SettingsSection::Advanced => render_advanced(zh, cx),
-        SettingsSection::About => render_about(zh, cx),
         _ => v_col(),
     }
 }
@@ -472,46 +471,5 @@ fn render_advanced(zh: bool, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
             .on_click(cx.listener(|this, _, _, cx| this.reset_all(cx))),
             cx,
         )),
-    )
-}
-
-fn render_about(zh: bool, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
-    v_col().gap(px(10.0)).child(
-        card(cx).p(px(18.0)).child(
-            h_row()
-                .items_start()
-                .gap(px(14.0))
-                .child(crate::ui::app_icon(52.0))
-                .child(
-                    v_col()
-                        .flex_1()
-                        .gap(px(6.0))
-                        .child(
-                            h_row()
-                                .gap(px(8.0))
-                                .child(
-                                    div()
-                                        .text_base()
-                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                        .child("PingDeck · Pure-Rust GPUI Edition"),
-                                )
-                                .child(badge(
-                                    format!("v{}", env!("CARGO_PKG_VERSION")),
-                                    Tone::Accent,
-                                    cx,
-                                )),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(palette(cx).muted))
-                                .child(if zh {
-                                    "本地优先桌面 API 工作台、AI 网关与编码智能体宿主。基于 GPUI + gpui-kit 纯 Rust GPU 渲染，零 WebView、零 IPC、无账号、无云同步、无遥测。"
-                                } else {
-                                    "Local-first desktop API workbench, AI gateway & coding agent host. Pure-Rust GPU rendering via GPUI + gpui-kit; zero WebView, zero IPC, zero telemetry."
-                                }),
-                        ),
-                ),
-        ),
     )
 }

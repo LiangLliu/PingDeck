@@ -1,6 +1,7 @@
 //! Settings module (`NavModule::Settings`) hosting all 20 pages across 5 categories
 //! with live search, instant OKLCH eye-care palette preview, and direct `pingdeck-core` saves.
 
+pub mod about;
 pub mod appearance;
 pub mod catalog;
 pub mod sections_ai;
@@ -39,6 +40,7 @@ pub struct SettingsView {
     pub permission_rules: Vec<PermissionRuleView>,
     pub saved_flash: Option<String>,
     pub ui_font_slider: Entity<SliderState>,
+    about_view: Option<Entity<about::AboutSettingsView>>,
     catalog_view: Option<Entity<catalog::CatalogSettingsView>>,
     search_input: Entity<InputState>,
     pending_palette: Cell<Option<PaletteId>>,
@@ -88,6 +90,7 @@ impl SettingsView {
             permission_rules: Vec::new(),
             saved_flash: None,
             ui_font_slider,
+            about_view: None,
             catalog_view: None,
             search_input,
             pending_palette: Cell::new(None),
@@ -124,6 +127,11 @@ impl SettingsView {
 
     pub fn set_section(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
         self.active = section;
+        if section == SettingsSection::About
+            && let Some(about) = &self.about_view
+        {
+            about.update(cx, |v, cx| v.refresh(cx));
+        }
         cx.notify();
     }
 
@@ -238,8 +246,7 @@ impl Render for SettingsView {
                         self.active == sec,
                         cx,
                         cx.listener(move |this, _, _, cx| {
-                            this.active = sec;
-                            cx.notify();
+                            this.set_section(sec, cx);
                         }),
                     )
                     .child(div().text_xs().child(if zh { zl } else { el })),
@@ -296,7 +303,13 @@ impl Render for SettingsView {
         };
 
         let is_wide_page = self.active == SettingsSection::Catalog;
+        let show_saved_pill = self.active != SettingsSection::About;
         let page_body = match self.active {
+            SettingsSection::About => self
+                .about_view
+                .get_or_insert_with(|| cx.new(about::AboutSettingsView::new))
+                .clone()
+                .into_any_element(),
             SettingsSection::Catalog => self
                 .catalog_view
                 .get_or_insert_with(|| cx.new(|cx| catalog::CatalogSettingsView::new(window, cx)))
@@ -309,8 +322,7 @@ impl Render for SettingsView {
             | SettingsSection::Network
             | SettingsSection::Mock
             | SettingsSection::Data
-            | SettingsSection::Advanced
-            | SettingsSection::About => {
+            | SettingsSection::Advanced => {
                 sections_core::render_core_section(self, cx).into_any_element()
             }
             _ => sections_ai::render_ai_section(self, cx).into_any_element(),
@@ -334,7 +346,7 @@ impl Render for SettingsView {
                             .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                             .child(SharedString::from(breadcrumb)),
                     )
-                    .child(
+                    .children(show_saved_pill.then(|| {
                         h_row()
                             .gap(px(5.0))
                             .px(px(9.0))
@@ -351,8 +363,8 @@ impl Render for SettingsView {
                                 self.saved_flash
                                     .clone()
                                     .unwrap_or_else(|| if zh { "已保存" } else { "Saved" }.into()),
-                            )),
-                    ),
+                            ))
+                    })),
             )
             .child(
                 div()
