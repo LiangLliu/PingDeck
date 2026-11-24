@@ -158,8 +158,9 @@ fn forwarder(
     })
 }
 
-/// Creates the child chat, registers its run under the parent's cancellation and stores the
-/// brief as its first message. Blocking (the store).
+/// Creates (or resumes, when `brief.resume` names a child chat belonging to this parent) the
+/// child chat, registers its run under the parent's cancellation and stores the brief as its next
+/// user message. Blocking (the store).
 fn begin(
     state: &AppState,
     parent: &ActiveRun,
@@ -177,43 +178,73 @@ fn begin(
     };
     let images = image_parts(state, &source.id, &brief.images)?;
     let now = current_time_ms();
-    let session = AgentSession {
-        id: new_entity_id("as"),
-        title: brief.description.clone(),
-        target: Some(target.clone()),
-        workspace_dir: source.workspace_dir.clone(),
-        permission_mode: source.permission_mode,
-        reasoning_effort: source.reasoning_effort,
-        disabled_tools: source.disabled_tools.clone(),
-        disabled_skills: source.disabled_skills.clone(),
-        web_enabled: source.web_enabled,
-        title_locked: true,
-        head_message_id: None,
-        pinned_at_ms: None,
-        archived_at_ms: None,
-        deleted_at_ms: None,
-        forked_from: None,
-        forked_from_message_id: None,
-        parent_session_id: Some(source.id.clone()),
-        parent_run_id: Some(parent.run_id.clone()),
-        todos: Vec::new(),
-        total_usage: HubUsage::default(),
-        total_cost_micro_usd: 0,
-        last_context_tokens: 0,
-        pingdeck_workspace_id: source.pingdeck_workspace_id.clone(),
-        pingdeck_environment_id: source.pingdeck_environment_id.clone(),
-        pingdeck_workspace_name: None,
-        notice: None,
-        // A sub-agent sees only its task, not the chat; it gets the user's global instructions
-        // from the settings but not the chat's own.
-        instructions: None,
-        created_at_ms: now,
-        updated_at_ms: now,
+    let (session, newly_created) = if let Some(resume_id) = brief.resume.as_deref() {
+        let mut existing = load_session(state, resume_id)?;
+        if existing.parent_session_id.as_deref() != Some(source.id.as_str())
+            || existing.deleted_at_ms.is_some()
+        {
+            return Err(AppError::not_found(format!(
+                "no resumable sub-agent {resume_id} belongs to this chat"
+            )));
+        }
+        if state.agent.runs.active_for_session(&existing.id).is_some() {
+            return Err(AppError::conflict(format!(
+                "sub-agent {resume_id} is still running"
+            )));
+        }
+        existing.target = Some(target.clone());
+        existing.permission_mode = source.permission_mode;
+        existing.workspace_dir = source.workspace_dir.clone();
+        existing.disabled_tools = source.disabled_tools.clone();
+        existing.disabled_skills = source.disabled_skills.clone();
+        existing.web_enabled = source.web_enabled;
+        existing.parent_run_id = Some(parent.run_id.clone());
+        existing.updated_at_ms = now;
+        state
+            .store()
+            .save_agent_session(&existing)
+            .map_err(command_error)?;
+        (existing, false)
+    } else {
+        let session = AgentSession {
+            id: new_entity_id("as"),
+            title: brief.description.clone(),
+            target: Some(target.clone()),
+            workspace_dir: source.workspace_dir.clone(),
+            permission_mode: source.permission_mode,
+            reasoning_effort: source.reasoning_effort,
+            disabled_tools: source.disabled_tools.clone(),
+            disabled_skills: source.disabled_skills.clone(),
+            web_enabled: source.web_enabled,
+            title_locked: true,
+            head_message_id: None,
+            pinned_at_ms: None,
+            archived_at_ms: None,
+            deleted_at_ms: None,
+            forked_from: None,
+            forked_from_message_id: None,
+            parent_session_id: Some(source.id.clone()),
+            parent_run_id: Some(parent.run_id.clone()),
+            todos: Vec::new(),
+            total_usage: HubUsage::default(),
+            total_cost_micro_usd: 0,
+            last_context_tokens: 0,
+            pingdeck_workspace_id: source.pingdeck_workspace_id.clone(),
+            pingdeck_environment_id: source.pingdeck_environment_id.clone(),
+            pingdeck_workspace_name: None,
+            notice: None,
+            // A sub-agent sees only its task, not the chat; it gets the user's global instructions
+            // from the settings but not the chat's own.
+            instructions: None,
+            created_at_ms: now,
+            updated_at_ms: now,
+        };
+        state
+            .store()
+            .save_agent_session(&session)
+            .map_err(command_error)?;
+        (session, true)
     };
-    state
-        .store()
-        .save_agent_session(&session)
-        .map_err(command_error)?;
     let started = (|| {
         let mut summary = initial_summary(&session.id, AgentRunKind::Subagent, &target);
         summary.parent_run_id = Some(parent.run_id.clone());
@@ -221,7 +252,7 @@ fn begin(
         summary.role = role.map(|role| role.role);
         let run = ActiveRun::new(summary, parent.cancel.child());
         state.agent.runs.register(&run)?;
-        let user = new_message(
+        let mut user = new_message(
             &session.id,
             Some(&run.run_id),
             AgentRole::User,
@@ -229,6 +260,7 @@ fn begin(
                 .chain(images)
                 .collect(),
         );
+        user.parent_id = session.head_message_id.clone();
         // The run row first, with the store released before the message takes it again.
         let inserted = state.store().insert_agent_run(&run.summary());
         let stored = inserted
@@ -245,8 +277,10 @@ fn begin(
     match started {
         Ok((run, user)) => Ok(Begun { run, session, user }),
         Err(error) => {
-            // The chat never ran; it goes with the next purge instead of lingering unseen.
-            let _ = state.store().soft_delete_session(&session.id, now);
+            if newly_created {
+                // The chat never ran; it goes with the next purge instead of lingering unseen.
+                let _ = state.store().soft_delete_session(&session.id, now);
+            }
             Err(error)
         }
     }
@@ -288,9 +322,8 @@ fn end_of(outcome: &Result<AgentRunResult, AppError>) -> ChildEnd {
     match outcome {
         Ok(result) => match result.stop_reason {
             // A report cut short by the output cap is still the child's answer.
-            AgentStopReason::Completed
-            | AgentStopReason::OutputLimit
-            | AgentStopReason::ContextFull => ChildEnd::Completed,
+            AgentStopReason::Completed | AgentStopReason::OutputLimit => ChildEnd::Completed,
+            AgentStopReason::ContextFull => ChildEnd::ContextFull,
             AgentStopReason::MaxIterations => ChildEnd::StepLimit,
             AgentStopReason::NoProgress => {
                 ChildEnd::Failed("it kept repeating the same call without progress".to_owned())
@@ -343,6 +376,7 @@ async fn drive(
         )
         .ok();
     let session_id = begun.session.id.clone();
+    parent.begin_child();
     // A panic inside the loop (a dependency's) must still end the child's run and report.
     let loop_state = state.clone();
     let looped = tokio::spawn(async move { execute(&loop_state, &begun, kind).await }).await;
@@ -350,11 +384,15 @@ async fn drive(
         looped.unwrap_or_else(|_| Err(AppError::internal("the sub-agent stopped unexpectedly")));
     let end = end_of(&outcome);
     finish(&state, &run, outcome).await;
+    parent.end_child();
     if let Some(id) = forwarding {
         run.hub.unsubscribe(id);
     }
-    // What the child left running goes with it, however it ended.
+    // What the child left running goes with it, however it ended, and ephemeral in-memory caches
+    // are reclaimed so long-lived sessions never leak per-subagent entries.
     state.agent.processes.kill_session(&session_id).await;
+    state.agent.read_hashes.forget_session(&session_id);
+    state.agent.runs.forget_context_state(&session_id);
     parent.emit(AgentEvent::SubagentFinished {
         parent_call_id: call_id,
         child_run: Box::new(run.summary()),
@@ -363,6 +401,7 @@ async fn drive(
         end,
         text: last_text(&state, &session_id).await,
         origin: role.as_ref().map(|role| origin_line(role, &run)),
+        session_id: Some(session_id),
     }
 }
 

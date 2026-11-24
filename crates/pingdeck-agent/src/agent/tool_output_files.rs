@@ -60,12 +60,39 @@ pub fn truncation_marker(handle: &str, shown: u64, total: u64) -> String {
     )
 }
 
-/// The start of `text` and the [`truncation_marker`] for `handle`, at most about `cap` bytes.
-/// `total` is the size of the spill file, which starts with exactly the shown bytes.
+/// Keeps the head (and, when `cap >= 512`, a 30 % tail preview so trailing compiler/test errors
+/// are immediately visible) of `text` plus the [`truncation_marker`] for `handle`, at most about
+/// `cap` bytes. `total` is the size of the spill file, whose prefix matches the shown head bytes.
 #[must_use]
 pub fn head_with_marker(text: &str, cap: usize, handle: &str, total: u64) -> String {
     let reserve = truncation_marker(handle, total, total).len() + 1;
-    let mut end = cap.saturating_sub(reserve).min(text.len());
+    let body_cap = cap.saturating_sub(reserve).min(text.len());
+    const MIN_HEAD_TAIL_CAP: usize = 512;
+    const OMITTED_RESERVE: usize = 48;
+    if body_cap >= MIN_HEAD_TAIL_CAP && text.len() > body_cap {
+        let usable = body_cap.saturating_sub(OMITTED_RESERVE);
+        let head_budget = (usable * 7) / 10;
+        let tail_budget = usable.saturating_sub(head_budget);
+        let mut head_end = head_budget.min(text.len());
+        while !text.is_char_boundary(head_end) {
+            head_end -= 1;
+        }
+        let mut tail_start = text.len().saturating_sub(tail_budget).max(head_end);
+        while tail_start < text.len() && !text.is_char_boundary(tail_start) {
+            tail_start += 1;
+        }
+        if tail_start > head_end && tail_start < text.len() {
+            let omitted = tail_start - head_end;
+            let shown = u64::try_from(head_end).unwrap_or(u64::MAX);
+            return format!(
+                "{}\n[… {omitted} bytes omitted …]\n{}\n{}",
+                &text[..head_end],
+                &text[tail_start..],
+                truncation_marker(handle, shown, total)
+            );
+        }
+    }
+    let mut end = body_cap;
     while !text.is_char_boundary(end) {
         end -= 1;
     }

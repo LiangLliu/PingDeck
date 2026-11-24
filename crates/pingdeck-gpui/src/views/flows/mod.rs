@@ -286,8 +286,7 @@ impl Render for FlowsView {
 
         let right = if let Some(entry) = selected {
             v_col()
-                .flex_1()
-                .h_full()
+                .size_full()
                 .p(px(20.0))
                 .gap(px(14.0))
                 .overflow_y_scrollbar()

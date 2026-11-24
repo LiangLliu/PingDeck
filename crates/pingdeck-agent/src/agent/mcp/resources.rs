@@ -191,7 +191,8 @@ impl AgentTool for McpResourceTool {
             let Some(agent) = ctx.agent else {
                 return ToolOutput::error("MCP servers are not available in this run");
             };
-            let proxy = Some(ctx.settings.network.proxy_url.trim()).filter(|p| !p.is_empty());
+            let proxy = Some(ctx.settings.network.proxy_url.trim())
+                .filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case("direct"));
             let connection = match agent
                 .mcp
                 .connection(&self.server_id, &self.transport, proxy, CONNECT_TIMEOUT)

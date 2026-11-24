@@ -175,11 +175,14 @@ impl ChatError {
 }
 
 /// Whether a judged failure may pass if the same call is made again a few seconds later: a
-/// provider fault, a timeout or a connection that broke, never a rejected key, quota, rate limit
-/// or a request the upstream called wrong.
+/// provider fault, a rate limit, a timeout or a connection that broke, never a rejected key,
+/// quota exhaustion or a request the upstream called wrong.
 pub(crate) fn is_transient(failure: &Failure) -> bool {
     match failure.kind {
-        FailureKind::ProviderError | FailureKind::Network | FailureKind::Timeout => true,
+        FailureKind::ProviderError
+        | FailureKind::RateLimit
+        | FailureKind::Network
+        | FailureKind::Timeout => true,
         FailureKind::Unknown => matches!(failure.status, Some(408 | 425 | 500..=599)),
         _ => false,
     }

@@ -75,7 +75,7 @@ for line in sys.stdin:
         elif name == "env":
             reply(i, text(os.environ.get("MCP_TEST_VAR", "")))
         elif name == "big":
-            reply(i, text("x" * 200000))
+            reply(i, text("x" * (2 * 1024 * 1024 + 1024)))
         elif name == "structured":
             reply(i, {"content": [], "structuredContent": {"a": 1}})
         elif name == "cancels":
@@ -914,13 +914,16 @@ fn tool_names_trust_hints_server_env_caps_and_secret_scrubbing() {
     assert_eq!(parsed.len(), 2);
     assert_eq!(skipped.len(), 3);
     assert!(skipped.iter().any(|why| why.starts_with("listy: ")));
-    assert!(parsed[0].description.ends_with('…'));
-    assert!(parsed[0].description.len() <= MAX_TOOL_DESCRIPTION_BYTES + '…'.len_utf8());
+    // Sorted deterministically by name so provider prompt-cache prefixes never bust.
+    assert_eq!(parsed[0].name, "bare");
+    assert_eq!(parsed[1].name, "fat");
     assert_eq!(
-        parsed[1].input_schema,
+        parsed[0].input_schema,
         json!({"type": "object", "properties": {}})
     );
-    assert!(!parsed[1].description.contains('\u{202e}'));
+    assert!(!parsed[0].description.contains('\u{202e}'));
+    assert!(parsed[1].description.ends_with('…'));
+    assert!(parsed[1].description.len() <= MAX_TOOL_DESCRIPTION_BYTES + '…'.len_utf8());
     let many: Vec<_> = (0..MAX_TOOLS + 1)
         .map(|i| json!({"name": format!("t{i}"), "inputSchema": {"type": "object"}}))
         .collect();

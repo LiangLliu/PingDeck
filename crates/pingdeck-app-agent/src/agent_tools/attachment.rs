@@ -102,10 +102,22 @@ fn pick(candidates: Vec<AgentAttachment>, wanted: &str) -> Result<AgentAttachmen
 }
 
 fn read(state: &AppState, session_id: &str, args: &Args) -> Result<ToolOutput, AppError> {
-    let candidates = state
-        .store()
+    let store = state.store();
+    let mut candidates = store
         .list_session_attachments(session_id)
         .map_err(|error| AppError::database(error.to_string()))?;
+    // Sub-agents can also inspect text attachments uploaded to their parent chat.
+    if let Ok(Some(session)) = store.get_agent_session(session_id)
+        && let Some(parent_id) = session.parent_session_id
+        && let Ok(parent_attachments) = store.list_session_attachments(&parent_id)
+    {
+        for att in parent_attachments {
+            if !candidates.iter().any(|existing| existing.id == att.id) {
+                candidates.push(att);
+            }
+        }
+    }
+    drop(store);
     let attachment = pick(candidates, &args.attachment)?;
     if attachment.removed {
         return Err(AppError::validation(format!(

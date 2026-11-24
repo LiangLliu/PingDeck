@@ -141,6 +141,23 @@ impl WorkspaceStore {
         Ok(())
     }
 
+    /// Records the spill handle of a tool call whose full output was later written to disk (for
+    /// example, during watermark pruning) so `read_output` can read it back.
+    pub fn set_tool_call_spill_ref(
+        &self,
+        session_id: &str,
+        call_id: &str,
+        spill_ref: &str,
+    ) -> Result<(), StorageError> {
+        let mut statement = self.connection.prepare_cached(
+            "UPDATE agent_tool_calls
+             SET spill_ref = COALESCE(spill_ref, ?3), truncated = 1
+             WHERE session_id = ?1 AND call_id = ?2",
+        )?;
+        statement.execute(params![session_id, call_id, spill_ref])?;
+        Ok(())
+    }
+
     /// A session's tool calls in the order they were first recorded.
     pub fn list_tool_calls(
         &self,

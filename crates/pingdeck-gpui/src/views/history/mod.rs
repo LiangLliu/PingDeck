@@ -252,8 +252,7 @@ impl Render for HistoryView {
                 _ => Tone::Danger,
             };
             v_col()
-                .flex_1()
-                .h_full()
+                .size_full()
                 .p(px(20.0))
                 .gap(px(12.0))
                 .overflow_y_scrollbar()

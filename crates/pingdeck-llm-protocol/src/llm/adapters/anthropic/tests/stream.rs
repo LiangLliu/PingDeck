@@ -567,3 +567,43 @@ fn a_missing_message_stop_is_synthesised_with_the_delta_stop_reason() {
         1
     );
 }
+
+#[test]
+fn chunked_signature_deltas_coalesce_per_thinking_block() {
+    let raw = upstream(&[
+        message_start(),
+        json!({"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "step 1"}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "sig_part_1"}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "_part_2"}}),
+        json!({"type": "content_block_stop", "index": 0}),
+        json!({"type": "content_block_start", "index": 1, "content_block": {"type": "text", "text": ""}}),
+        json!({"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "done"}}),
+        json!({"type": "content_block_stop", "index": 1}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}}),
+        json!({"type": "message_stop"}),
+    ]);
+    let events = try_decode(&raw).unwrap();
+    let signatures: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            HubEvent::ReasoningSignature { signature } => Some(signature.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(signatures, ["sig_part_1_part_2"]);
+    let response = collect_events(&events).unwrap();
+    assert_eq!(
+        response.content,
+        [
+            HubPart::Reasoning {
+                text: "step 1".into(),
+                signature: Some("sig_part_1_part_2".into()),
+                encrypted: None,
+                id: None,
+                origin: Some(OWN),
+            },
+            HubPart::text("done"),
+        ]
+    );
+}

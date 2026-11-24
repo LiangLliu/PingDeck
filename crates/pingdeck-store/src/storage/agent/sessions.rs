@@ -361,6 +361,49 @@ impl WorkspaceStore {
         })
     }
 
+    /// Rolls sub-agent token usage and cost into the parent session's totals without overwriting
+    /// the parent chat's own `last_context_tokens` gauge.
+    pub fn add_session_usage_rollup(
+        &self,
+        session_id: &str,
+        usage: &HubUsage,
+        cost_micro_usd: i64,
+    ) -> Result<bool, StorageError> {
+        self.atomic(|transaction| {
+            let Some((usage_json, total_cost)) = transaction
+                .query_row(
+                    "SELECT total_usage_json, total_cost_micro_usd FROM agent_sessions WHERE id = ?1",
+                    params![session_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .optional()?
+            else {
+                return Ok(false);
+            };
+            let mut total: HubUsage = serde_json::from_str(&usage_json)?;
+            add_tokens(&mut total.input_tokens, usage.input_tokens);
+            add_tokens(&mut total.output_tokens, usage.output_tokens);
+            add_tokens(&mut total.cached_input_tokens, usage.cached_input_tokens);
+            add_tokens(&mut total.cache_write_tokens, usage.cache_write_tokens);
+            add_tokens(
+                &mut total.cache_write_long_tokens,
+                usage.cache_write_long_tokens,
+            );
+            add_tokens(&mut total.reasoning_tokens, usage.reasoning_tokens);
+            transaction.execute(
+                "UPDATE agent_sessions
+                 SET total_usage_json = ?2, total_cost_micro_usd = ?3
+                 WHERE id = ?1",
+                params![
+                    session_id,
+                    serde_json::to_string(&total)?,
+                    total_cost.saturating_add(cost_micro_usd),
+                ],
+            )?;
+            Ok(true)
+        })
+    }
+
     /// Tombstones a session at `now_ms` together with the sub-agent sessions it spawned, in one
     /// transaction. Returns `false` when the session does not exist or is already tombstoned.
     /// Rows stay until [`WorkspaceStore::purge_deleted_sessions`].

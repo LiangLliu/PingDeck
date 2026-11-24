@@ -566,7 +566,7 @@ impl Render for ProviderConfigForm {
         let endpoints_card = card(cx).p(px(16.0)).child(ep_col);
 
         v_col()
-            .max_w(px(920.0))
+            .w_full()
             .gap(px(14.0))
             .child(identity_card)
             .child(endpoints_card)

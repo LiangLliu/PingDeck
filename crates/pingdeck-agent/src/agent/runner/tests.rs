@@ -653,14 +653,14 @@ async fn pricing_served_models_and_per_currency_cost_caps() {
 
 #[tokio::test]
 async fn tool_batches_cap_parallelism_and_serialize_unsafe_calls() {
-    let calls: Vec<_> = (1..=6)
+    let calls: Vec<_> = (1..=10)
         .map(|n| (format!("c{n}"), "read", READ_ARGS))
         .collect();
     let refs: Vec<_> = calls
         .iter()
         .map(|(id, name, args)| (id.as_str(), *name, *args))
         .collect();
-    for (parallel_safe, expected) in [(true, 4), (false, 1)] {
+    for (parallel_safe, expected) in [(true, super::MAX_PARALLEL_CALLS), (false, 1)] {
         let clock = ManualClock::new();
         let busy: Behavior = Arc::new(|_, _| {
             async {
@@ -1018,12 +1018,15 @@ async fn a_cut_result_is_kept_redacted_and_the_model_gets_a_handle() {
     assert_eq!(handle, "c1");
     assert!(!full.contains(secret) && full.len() > 30 * 1024);
     let (shown, marker) = seen.rsplit_once('\n').unwrap();
-    assert!(full.starts_with(shown));
+    let (head, rest) = shown.split_once("\n[… ").unwrap();
+    let (_, tail) = rest.split_once(" bytes omitted …]\n").unwrap();
+    assert!(full.starts_with(head));
+    assert!(full.ends_with(tail));
     assert_eq!(
         marker,
         crate::agent::tool_output_files::truncation_marker(
             "c1",
-            shown.len() as u64,
+            head.len() as u64,
             full.len() as u64
         )
     );

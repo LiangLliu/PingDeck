@@ -12,10 +12,13 @@ use pingdeck_base::error::AppError;
 use pingdeck_llm::llm::hub::{HubMessage, text_of};
 
 use super::context::{
-    CompactionCut, compact_history_at, compaction_cut, compaction_request, estimate_context_tokens,
+    CompactionCut, compact_history_at_with_options, compaction_cut, compaction_request,
+    estimate_context_tokens, transcript_cap_for_window,
 };
+use super::limits::UNKNOWN_WINDOW_TOKENS;
 use super::model::AgentEvent;
 use super::runner::{ChatBackend, HistoryEntry, RunHost, RunInput};
+use super::tools::ToolSpec;
 
 /// What a compaction did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,32 +53,68 @@ pub async fn compact<B: ChatBackend, H: RunHost>(
     entries: &[HistoryEntry],
     cancel: &CancelToken,
 ) -> Result<Option<Compacted>, AppError> {
+    let window = input.model.context_limit.unwrap_or(UNKNOWN_WINDOW_TOKENS);
+    compact_with_config(
+        backend,
+        host,
+        input,
+        input.system.as_deref(),
+        &input.tools,
+        window,
+        entries,
+        cancel,
+    )
+    .await
+}
+
+/// Like [`compact`], using the step's live system prompt, tool specs, and effective context
+/// window (including a provider-learned window), and preserving the host's live working state
+/// (active todos, modified files, running background processes) inside the compacted summary.
+///
+/// # Errors
+/// The summarising call's error (including `Cancelled`) or the store's.
+#[allow(clippy::too_many_arguments)]
+pub async fn compact_with_config<B: ChatBackend, H: RunHost>(
+    backend: &B,
+    host: &H,
+    input: &RunInput,
+    system: Option<&str>,
+    tools: &[ToolSpec],
+    window_tokens: u64,
+    entries: &[HistoryEntry],
+    cancel: &CancelToken,
+) -> Result<Option<Compacted>, AppError> {
     let Some(cut) = cut_of(entries, input.compaction.keep_turns) else {
         return Ok(None);
     };
     let messages: Vec<HubMessage> = entries.iter().map(|entry| entry.message.clone()).collect();
-    let before = estimate_context_tokens(input.system.as_deref(), &messages, &input.tools);
+    let before = estimate_context_tokens(system, &messages, tools);
+    let working_state = host.working_state_summary().await;
+    let transcript_cap = transcript_cap_for_window(window_tokens);
     let label = input.model_label.clone();
     let metered = std::sync::Mutex::new(None);
     let meta = super::runner::call_meta(host, None, true);
     let (label_ref, metered_ref, meta_ref) = (&label, &metered, &meta);
-    let compaction = compact_history_at(&messages, cut, |transcript| async move {
-        backend
-            .complete(
-                meta_ref,
-                &input.target,
-                compaction_request(label_ref, &transcript),
-                Some(cancel),
-            )
-            .await
-            .map(|(response, served)| {
-                *metered_ref
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                    Some((response.usage.clone(), served));
-                response.text()
-            })
-    })
+    let compaction = compact_history_at_with_options(
+        &messages,
+        cut,
+        transcript_cap,
+        working_state.as_deref(),
+        |transcript| async move {
+            let mut req = compaction_request(label_ref, &transcript);
+            req.max_tokens = Some(4_096);
+            backend
+                .complete(meta_ref, &input.target, req, Some(cancel))
+                .await
+                .map(|(response, served)| {
+                    *metered_ref
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        Some((response.usage.clone(), served));
+                    response.text()
+                })
+        },
+    )
     .await;
     // The summarising call costs like any other: it counts in the run, the chat and the log
     // also when its answer is then discarded.
@@ -86,7 +125,7 @@ pub async fn compact<B: ChatBackend, H: RunHost>(
         Ok(compaction) => {
             let mut after_messages = vec![compaction.summary.clone()];
             after_messages.extend(compaction.kept.iter().cloned());
-            estimate_context_tokens(input.system.as_deref(), &after_messages, &input.tools)
+            estimate_context_tokens(system, &after_messages, tools)
         }
         _ => before,
     };

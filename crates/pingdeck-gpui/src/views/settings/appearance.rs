@@ -37,172 +37,175 @@ pub fn render_appearance(
     };
     let font_val = view.ui_font_slider.read(cx).value().end().round() as u8;
 
-    let mut swatches = h_row().flex_wrap().gap(px(10.0)).pt(px(8.0));
-    for pid in PaletteId::ALL {
-        let preview = resolve_palette(pid, is_dark, false);
-        let selected = view.active_palette == pid;
-        let border = if selected {
-            to_hsla(preview.accent)
-        } else {
-            to_hsla(preview.line_strong.composite_over(preview.surface))
-        };
+    let mut swatches = v_col().w_full().gap(px(10.0)).pt(px(8.0));
+    for chunk in PaletteId::ALL.chunks(4) {
+        let mut row = h_row().w_full().gap(px(10.0));
+        for &pid in chunk {
+            let preview = resolve_palette(pid, is_dark, false);
+            let selected = view.active_palette == pid;
+            let border = if selected {
+                to_hsla(preview.accent)
+            } else {
+                to_hsla(preview.line_strong.composite_over(preview.surface))
+            };
 
-        // Miniature PingDeck shell preview: left rail + floating rounded card with pane & CTA.
-        let mini_preview =
-            h_row()
-                .w_full()
-                .h(px(64.0))
-                .rounded(px(6.0))
-                .overflow_hidden()
-                .bg(to_hsla(preview.canvas))
-                .p(px(4.0))
-                .gap(px(4.0))
-                .child(
-                    v_col()
-                        .w(px(26.0))
-                        .h_full()
-                        .gap(px(3.0))
-                        .pt(px(3.0))
-                        .child(
-                            div()
-                                .w(px(16.0))
-                                .h(px(4.0))
-                                .rounded(px(2.0))
-                                .bg(to_hsla(preview.accent)),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .h(px(6.0))
-                                .rounded(px(3.0))
-                                .bg(to_hsla(preview.selected)),
-                        )
-                        .child(
-                            div()
-                                .w(px(18.0))
-                                .h(px(4.0))
-                                .rounded(px(2.0))
-                                .bg(to_hsla(preview.faint)),
-                        )
-                        .child(
-                            div()
-                                .w(px(14.0))
-                                .h(px(4.0))
-                                .rounded(px(2.0))
-                                .bg(to_hsla(preview.faint)),
-                        ),
-                )
-                .child(
-                    h_row()
-                        .flex_1()
-                        .h_full()
-                        .rounded(px(5.0))
-                        .overflow_hidden()
-                        .bg(to_hsla(preview.surface))
-                        .border_1()
-                        .border_color(to_hsla(preview.page_edge.composite_over(preview.canvas)))
-                        .child(
-                            v_col()
-                                .w(px(34.0))
-                                .h_full()
-                                .bg(to_hsla(preview.pane))
-                                .p(px(4.0))
-                                .gap(px(3.0))
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .h(px(6.0))
-                                        .rounded(px(2.0))
-                                        .bg(to_hsla(preview.selected_row)),
-                                )
-                                .child(
-                                    div().w(px(22.0)).h(px(4.0)).rounded(px(2.0)).bg(to_hsla(
-                                        preview.line_strong.composite_over(preview.pane),
-                                    )),
-                                ),
-                        )
-                        .child(
-                            v_col()
-                                .flex_1()
-                                .h_full()
-                                .p(px(5.0))
-                                .justify_between()
-                                .child(
-                                    v_col()
-                                        .gap(px(3.0))
-                                        .child(
-                                            div()
-                                                .w(px(42.0))
-                                                .h(px(5.0))
-                                                .rounded(px(2.0))
-                                                .bg(to_hsla(preview.ink)),
-                                        )
-                                        .child(
-                                            div()
-                                                .w(px(58.0))
-                                                .h(px(4.0))
-                                                .rounded(px(2.0))
-                                                .bg(to_hsla(preview.muted)),
-                                        ),
-                                )
-                                .child(
-                                    h_row()
-                                        .justify_between()
-                                        .child(
-                                            div()
-                                                .w(px(18.0))
-                                                .h(px(6.0))
-                                                .rounded(px(3.0))
-                                                .bg(to_hsla(preview.accent_soft)),
-                                        )
-                                        .child(
-                                            div()
-                                                .w(px(22.0))
-                                                .h(px(7.0))
-                                                .rounded(px(3.0))
-                                                .bg(to_hsla(preview.accent)),
-                                        ),
-                                ),
-                        ),
-                );
-
-        swatches = swatches.child(
-            div()
-                .id(SharedString::from(format!("pal-swatch-{}", pid.id())))
-                .w(px(172.0))
-                .p(px(8.0))
-                .rounded(px(10.0))
-                .bg(to_hsla(p.surface))
-                .border_2()
-                .border_color(border)
-                .cursor_pointer()
-                .hover(|s| s.border_color(to_hsla(preview.accent)))
-                .on_click(cx.listener(move |this, _, _, cx| this.choose_palette(pid, cx)))
-                .child(
-                    v_col().gap(px(7.0)).child(mini_preview).child(
-                        h_row()
-                            .justify_between()
-                            .px(px(2.0))
+            // Miniature PingDeck shell preview: left rail + floating rounded card with pane & CTA.
+            let mini_preview =
+                h_row()
+                    .w_full()
+                    .h(px(64.0))
+                    .rounded(px(6.0))
+                    .overflow_hidden()
+                    .bg(to_hsla(preview.canvas))
+                    .p(px(4.0))
+                    .gap(px(4.0))
+                    .child(
+                        v_col()
+                            .w(px(26.0))
+                            .h_full()
+                            .gap(px(3.0))
+                            .pt(px(3.0))
                             .child(
                                 div()
-                                    .text_xs()
-                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                    .text_color(to_hsla(p.ink))
-                                    .child(if zh { pid.label_zh() } else { pid.label_en() }),
+                                    .w(px(16.0))
+                                    .h(px(4.0))
+                                    .rounded(px(2.0))
+                                    .bg(to_hsla(preview.accent)),
                             )
-                            .child(if selected {
+                            .child(
                                 div()
-                                    .text_color(to_hsla(preview.accent))
-                                    .child(icon_xs(UiIcon::Check))
-                            } else {
+                                    .w_full()
+                                    .h(px(6.0))
+                                    .rounded(px(3.0))
+                                    .bg(to_hsla(preview.selected)),
+                            )
+                            .child(
                                 div()
-                                    .size(px(10.0))
-                                    .rounded(px(999.0))
-                                    .bg(to_hsla(preview.accent))
-                            }),
+                                    .w(px(18.0))
+                                    .h(px(4.0))
+                                    .rounded(px(2.0))
+                                    .bg(to_hsla(preview.faint)),
+                            )
+                            .child(
+                                div()
+                                    .w(px(14.0))
+                                    .h(px(4.0))
+                                    .rounded(px(2.0))
+                                    .bg(to_hsla(preview.faint)),
+                            ),
+                    )
+                    .child(
+                        h_row()
+                            .flex_1()
+                            .h_full()
+                            .rounded(px(5.0))
+                            .overflow_hidden()
+                            .bg(to_hsla(preview.surface))
+                            .border_1()
+                            .border_color(to_hsla(preview.page_edge.composite_over(preview.canvas)))
+                            .child(
+                                v_col()
+                                    .w(px(34.0))
+                                    .h_full()
+                                    .bg(to_hsla(preview.pane))
+                                    .p(px(4.0))
+                                    .gap(px(3.0))
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .h(px(6.0))
+                                            .rounded(px(2.0))
+                                            .bg(to_hsla(preview.selected_row)),
+                                    )
+                                    .child(div().w(px(22.0)).h(px(4.0)).rounded(px(2.0)).bg(
+                                        to_hsla(preview.line_strong.composite_over(preview.pane)),
+                                    )),
+                            )
+                            .child(
+                                v_col()
+                                    .flex_1()
+                                    .h_full()
+                                    .p(px(5.0))
+                                    .justify_between()
+                                    .child(
+                                        v_col()
+                                            .gap(px(3.0))
+                                            .child(
+                                                div()
+                                                    .w(px(42.0))
+                                                    .h(px(5.0))
+                                                    .rounded(px(2.0))
+                                                    .bg(to_hsla(preview.ink)),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(px(58.0))
+                                                    .h(px(4.0))
+                                                    .rounded(px(2.0))
+                                                    .bg(to_hsla(preview.muted)),
+                                            ),
+                                    )
+                                    .child(
+                                        h_row()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .w(px(18.0))
+                                                    .h(px(6.0))
+                                                    .rounded(px(3.0))
+                                                    .bg(to_hsla(preview.accent_soft)),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(px(22.0))
+                                                    .h(px(7.0))
+                                                    .rounded(px(3.0))
+                                                    .bg(to_hsla(preview.accent)),
+                                            ),
+                                    ),
+                            ),
+                    );
+
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("pal-swatch-{}", pid.id())))
+                    .flex_1()
+                    .min_w(px(150.0))
+                    .p(px(8.0))
+                    .rounded(px(10.0))
+                    .bg(to_hsla(p.surface))
+                    .border_2()
+                    .border_color(border)
+                    .cursor_pointer()
+                    .hover(|s| s.border_color(to_hsla(preview.accent)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.choose_palette(pid, cx)))
+                    .child(
+                        v_col().gap(px(7.0)).child(mini_preview).child(
+                            h_row()
+                                .justify_between()
+                                .px(px(2.0))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(to_hsla(p.ink))
+                                        .child(if zh { pid.label_zh() } else { pid.label_en() }),
+                                )
+                                .child(if selected {
+                                    div()
+                                        .text_color(to_hsla(preview.accent))
+                                        .child(icon_xs(UiIcon::Check))
+                                } else {
+                                    div()
+                                        .size(px(10.0))
+                                        .rounded(px(999.0))
+                                        .bg(to_hsla(preview.accent))
+                                }),
+                        ),
                     ),
-                ),
-        );
+            );
+        }
+        swatches = swatches.child(row);
     }
 
     let entity_theme = cx.entity().clone();

@@ -2,6 +2,7 @@
 //! with live search, instant OKLCH eye-care palette preview, and direct `pingdeck-core` saves.
 
 pub mod about;
+pub mod agent;
 pub mod appearance;
 pub mod catalog;
 pub mod sections_ai;
@@ -26,8 +27,8 @@ use pingdeck_desktop::theme::PaletteId;
 
 use crate::bridge::{runtime, spawn_blocking_into};
 use crate::ui::{
-    InputState, ScrollableElement as _, SliderEvent, SliderState, UiIcon, h_row, icon_xs, list_row,
-    palette, search_input, to_hsla, v_col,
+    InputState, ScrollableElement as _, SliderEvent, SliderState, StatusShape, UiIcon, h_row,
+    icon_xs, list_row, palette, search_input, status_indicator, to_hsla, v_col,
 };
 
 pub struct SettingsView {
@@ -41,6 +42,7 @@ pub struct SettingsView {
     pub saved_flash: Option<String>,
     pub ui_font_slider: Entity<SliderState>,
     about_view: Option<Entity<about::AboutSettingsView>>,
+    agent_view: Option<Entity<agent::AgentSettingsView>>,
     catalog_view: Option<Entity<catalog::CatalogSettingsView>>,
     search_input: Entity<InputState>,
     pending_palette: Cell<Option<PaletteId>>,
@@ -91,6 +93,7 @@ impl SettingsView {
             saved_flash: None,
             ui_font_slider,
             about_view: None,
+            agent_view: None,
             catalog_view: None,
             search_input,
             pending_palette: Cell::new(None),
@@ -132,6 +135,11 @@ impl SettingsView {
         {
             about.update(cx, |v, cx| v.refresh(cx));
         }
+        if section.group() == SettingsGroup::Agent
+            && let Some(ag) = &self.agent_view
+        {
+            ag.update(cx, |v, cx| v.set_section(section, cx));
+        }
         cx.notify();
     }
 
@@ -161,7 +169,13 @@ impl SettingsView {
             |this, res, cx| {
                 match res {
                     Ok(next) => {
-                        this.settings = next;
+                        this.settings = next.clone();
+                        if let Some(ag) = &this.agent_view {
+                            ag.update(cx, |v, cx| {
+                                v.settings = next;
+                                cx.notify();
+                            });
+                        }
                         this.saved_flash = Some("Saved".into());
                     }
                     Err(err) => {
@@ -192,7 +206,13 @@ impl SettingsView {
     pub fn reset_all(&mut self, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(cx, settings_reset_all_impl, |this, res, cx| {
             if let Ok(next) = res {
-                this.settings = next;
+                this.settings = next.clone();
+                if let Some(ag) = &this.agent_view {
+                    ag.update(cx, |v, cx| {
+                        v.settings = next;
+                        cx.notify();
+                    });
+                }
                 this.saved_flash = Some("All settings reset".into());
             }
             cx.notify();
@@ -206,6 +226,12 @@ impl Render for SettingsView {
         let p = palette(cx);
         let zh = self.settings.general.language == Language::ZhCn;
         let query = self.search_input.read(cx).value().trim().to_lowercase();
+
+        let mcp_attn = self
+            .agent_view
+            .as_ref()
+            .map(|v| v.read(cx).mcp_attention_count())
+            .unwrap_or_else(|| agent::count_mcp_attention(&self.mcp_servers));
 
         let mut nav = v_col()
             .flex_1()
@@ -240,6 +266,7 @@ impl Render for SettingsView {
             );
             for sec in matching {
                 let (zl, el) = sec.label_pair();
+                let show_mcp_warn = sec == SettingsSection::Mcp && mcp_attn > 0;
                 nav = nav.child(
                     list_row(
                         SharedString::from(format!("set-nav-{el}")),
@@ -249,7 +276,17 @@ impl Render for SettingsView {
                             this.set_section(sec, cx);
                         }),
                     )
-                    .child(div().text_xs().child(if zh { zl } else { el })),
+                    .justify_between()
+                    .child(div().text_xs().child(if zh { zl } else { el }))
+                    .children(show_mcp_warn.then(|| {
+                        h_row()
+                            .gap(px(4.0))
+                            .text_size(px(10.5))
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(to_hsla(p.warn))
+                            .child(status_indicator(StatusShape::Warn, cx))
+                            .child(if zh { "需要处理" } else { "Attention" })
+                    })),
                 );
             }
         }
@@ -302,7 +339,6 @@ impl Render for SettingsView {
             format!("{ge}  ›  {se}")
         };
 
-        let is_wide_page = self.active == SettingsSection::Catalog;
         let show_saved_pill = self.active != SettingsSection::About;
         let page_body = match self.active {
             SettingsSection::About => self
@@ -310,6 +346,32 @@ impl Render for SettingsView {
                 .get_or_insert_with(|| cx.new(about::AboutSettingsView::new))
                 .clone()
                 .into_any_element(),
+            SettingsSection::Agent
+            | SettingsSection::Personalization
+            | SettingsSection::Memory
+            | SettingsSection::Subagents
+            | SettingsSection::Tools
+            | SettingsSection::Permissions
+            | SettingsSection::Mcp
+            | SettingsSection::Skills => {
+                let sec = self.active;
+                let ent = if let Some(existing) = &self.agent_view {
+                    existing.clone()
+                } else {
+                    let created = cx.new(|cx| agent::AgentSettingsView::new(sec, window, cx));
+                    let sub = cx.observe(&created, |this, ent, cx| {
+                        this.settings = ent.read(cx).settings.clone();
+                        cx.notify();
+                    });
+                    self._subscriptions.push(sub);
+                    self.agent_view = Some(created.clone());
+                    created
+                };
+                if ent.read(cx).active != sec {
+                    ent.update(cx, |v, cx| v.set_section(sec, cx));
+                }
+                ent.into_any_element()
+            }
             SettingsSection::Catalog => self
                 .catalog_view
                 .get_or_insert_with(|| cx.new(|cx| catalog::CatalogSettingsView::new(window, cx)))
@@ -370,14 +432,11 @@ impl Render for SettingsView {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .px(px(28.0))
+                    .w_full()
+                    .px(px(24.0))
                     .py(px(18.0))
                     .overflow_y_scrollbar()
-                    .child(if is_wide_page {
-                        div().w_full().child(page_body)
-                    } else {
-                        div().max_w(px(760.0)).child(page_body)
-                    }),
+                    .child(div().w_full().child(page_body)),
             );
 
         h_row().size_full().items_start().child(left).child(right)

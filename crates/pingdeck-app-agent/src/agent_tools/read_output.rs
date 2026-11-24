@@ -151,16 +151,7 @@ fn read(state: &AppState, session_id: &str, args: &Args, cap: usize) -> Result<S
         .size_limit(1 << 20)
         .build()
         .map_err(|error| AppError::validation(format!("grep is not a valid regex: {error}")))?;
-    let mut text = String::new();
-    let mut offset = 0;
-    loop {
-        let chunk = agent_tool_output_read_impl(state, session_id, handle, offset, PAGE)?;
-        text.push_str(&chunk.text);
-        if chunk.eof || chunk.next_offset <= offset {
-            break;
-        }
-        offset = chunk.next_offset;
-    }
+    let text = crate::agent_service::agent_tool_output_read_all_impl(state, session_id, handle)?;
     let found = grep_lines(&text, &regex, limit);
     let needles = expand_needles(state.secrets().active_redaction_needles());
     Ok(redact_secrets(&found, &needles))

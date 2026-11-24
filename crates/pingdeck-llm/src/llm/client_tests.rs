@@ -1066,7 +1066,9 @@ async fn a_refused_old_thinking_block_is_dropped_and_retried_once() {
         );
     }
 
-    // The current turn's own reasoning is never dropped, so its refusal ends the call.
+    // Mid-turn thinking-signature refusals (e.g. failover across two Anthropic providers/keys
+    // during a tool loop) also recover by stripping the refused thinking blocks and disabling
+    // thinking on the one recovery retry.
     let mut tool_turn = HubRequest::user_prompt("x", "weather?");
     tool_turn.messages.push(HubMessage {
         role: HubRole::Assistant,
@@ -1090,9 +1092,15 @@ async fn a_refused_old_thinking_block_is_dropped_and_retried_once() {
             is_error: false,
         }],
     });
-    let error = client.complete(&named("a/ma"), tool_turn, None).await;
-    assert!(error.unwrap_err().message().contains("signature"));
-    assert_eq!(fake.count(), 5);
+    let recovered = client
+        .complete(&named("a/ma"), tool_turn, None)
+        .await
+        .unwrap();
+    assert_eq!(recovered.text(), "resumed");
+    let sent = fake.requests();
+    assert_eq!(sent.len(), 6);
+    assert!(!sent[5].body.to_string().contains(BLOCK));
+    assert!(sent[5].body.get("thinking").is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]

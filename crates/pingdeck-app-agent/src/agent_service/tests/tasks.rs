@@ -520,3 +520,160 @@ async fn subagent_watcher_timeout_stop_isolation_and_shared_cost_cap() {
         ToolCallStatus::Error
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn subagent_resume_preserves_child_history_and_rolls_up_parent_usage() {
+    let world = world(|_, request| {
+        if is_subagent(request) {
+            let msgs = request.body["messages"].as_array().map_or(0, Vec::len);
+            let saw_first = request.body["messages"]
+                .as_array()
+                .is_some_and(|arr| arr.iter().any(|m| m["content"] == "first child answer"));
+            if msgs > 2 && saw_first {
+                return text_answer("resumed saw prior turn");
+            }
+            return text_answer("first child answer");
+        }
+        match tool_result_count(request) {
+            0 => call_answer(
+                "call_first",
+                "task",
+                &task_args("First pass", "remember token ALPHA", "explore"),
+            ),
+            1 => {
+                let agent_id = request.body["messages"]
+                    .as_array()
+                    .and_then(|arr| arr.iter().find(|m| m["role"] == "tool"))
+                    .and_then(|m| m["content"].as_str())
+                    .and_then(|text| {
+                        text.lines().find_map(|line| {
+                            line.strip_prefix("[agent_id: ")
+                                .and_then(|rest| rest.strip_suffix(']'))
+                        })
+                    })
+                    .expect("agent_id header in first task report")
+                    .to_owned();
+                call_answer(
+                    "call_resume",
+                    "task",
+                    &json!({
+                        "description": "Follow up",
+                        "prompt": "what was the token?",
+                        "kind": "explore",
+                        "resume": agent_id
+                    })
+                    .to_string(),
+                )
+            }
+            _ => text_answer("parent finished"),
+        }
+    });
+    let workspace = workspace_with("note.txt", "hello");
+    let session = chat(&world, ToolApproval::AutoReadOnly, Some(workspace.path()));
+    let (_, seen) = run_to_end(&world, &session, "delegate and resume").await;
+
+    let evs = events(&seen);
+    assert_eq!(tool_result(&evs, "call_first").0, ToolCallStatus::Ok);
+    let (resume_status, resume_text) = tool_result(&evs, "call_resume");
+    assert_eq!(resume_status, ToolCallStatus::Ok);
+    assert!(
+        resume_text.contains("resumed saw prior turn"),
+        "{resume_text}"
+    );
+
+    // Resuming reused the same child session rather than creating a second hidden chat.
+    let children = agent_session_list_impl(
+        &world.state,
+        Some(AgentSessionFilter {
+            parent_session_id: Some(session.id.clone()),
+            ..AgentSessionFilter::default()
+        }),
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(children.sessions.len(), 1);
+
+    // Parent usage totals include both parent (3 calls) and child (2 calls) = 5 * (11 in, 7 out).
+    let stored = world
+        .state
+        .store()
+        .get_agent_session(&session.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.total_usage.input_tokens, Some(55));
+    assert_eq!(stored.total_usage.output_tokens, Some(35));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn subagent_inherits_parent_block_rules_and_plan_mode_restricts_kind() {
+    use crate::agent::permissions::{PermissionAction, PermissionRule};
+
+    let world_blocked = world(delegates("explore", |request| {
+        if has_tool_result(request) {
+            let saw_secret = request.body["messages"].to_string().contains("top secret");
+            text_answer(if saw_secret { "LEAKED" } else { "BLOCKED" })
+        } else {
+            call_answer("child_read", "read_file", r#"{"path":"secret.txt"}"#)
+        }
+    }));
+    let workspace = workspace_with("secret.txt", "top secret");
+    let session = chat(
+        &world_blocked,
+        ToolApproval::AutoReadOnly,
+        Some(workspace.path()),
+    );
+    world_blocked
+        .state
+        .store()
+        .save_permission_rule(&PermissionRule {
+            id: String::new(),
+            session_id: Some(session.id.clone()),
+            workspace_dir: None,
+            tool_pattern: "read_file".to_owned(),
+            arg_pattern: None,
+            action: PermissionAction::Block,
+            created_at_ms: 0,
+        })
+        .unwrap();
+    let (_, seen) = run_to_end(&world_blocked, &session, "try reading").await;
+    let evs = events(&seen);
+    let (status, text) = tool_result(&evs, "call_task");
+    assert_eq!(status, ToolCallStatus::Ok);
+    assert!(
+        text.contains("BLOCKED") && !text.contains("LEAKED"),
+        "{text}"
+    );
+
+    // Plan mode allows explore sub-agents and refuses general (write-capable) sub-agents.
+    let world_plan = world(|_, request| {
+        if is_subagent(request) {
+            return text_answer("explore ok");
+        }
+        match tool_result_count(request) {
+            0 => call_answer(
+                "call_general",
+                "task",
+                &task_args("Try write subagent", "edit files", "general"),
+            ),
+            1 => call_answer(
+                "call_explore",
+                "task",
+                &task_args("Inspect code", "read files", "explore"),
+            ),
+            _ => text_answer("planned"),
+        }
+    });
+    let plan_session = chat(&world_plan, ToolApproval::AutoAll, Some(workspace.path()));
+    super::super::agent_plan_set_impl(&world_plan.state, &plan_session.id, true)
+        .await
+        .unwrap();
+    let (_, plan_seen) = run_to_end(&world_plan, &plan_session, "plan with subagent").await;
+    let plan_evs = events(&plan_seen);
+    let (gen_status, gen_text) = tool_result(&plan_evs, "call_general");
+    assert_eq!(gen_status, ToolCallStatus::Error);
+    assert!(gen_text.contains("Plan mode is read-only"), "{gen_text}");
+    let (exp_status, exp_text) = tool_result(&plan_evs, "call_explore");
+    assert_eq!(exp_status, ToolCallStatus::Ok);
+    assert!(exp_text.contains("explore ok"), "{exp_text}");
+}

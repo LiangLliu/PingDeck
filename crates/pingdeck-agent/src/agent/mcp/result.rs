@@ -9,8 +9,9 @@ use serde_json::Value;
 use super::McpCallResult;
 use pingdeck_llm::llm::hub::{HubImage, HubPart};
 
-/// Longest tool result text kept (100 KiB).
-pub(super) const MAX_RESULT_BYTES: usize = 100 * 1024;
+/// Longest tool result text kept before the runner's spill-to-disk path (2 MiB, within the
+/// 8 MiB `TOOL_OUTPUT_FILE_BYTES` cap so large MCP results remain readable via `read_output`).
+pub(super) const MAX_RESULT_BYTES: usize = 2 * 1024 * 1024;
 /// Largest decoded image kept (5 MiB).
 pub(super) const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 /// Appended where the text cap cut a result.
@@ -256,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn text_is_capped_at_100_kib_in_total_but_images_are_not_counted() {
+    fn text_is_capped_at_max_result_bytes_in_total_but_images_are_not_counted() {
         let half = "x".repeat(MAX_RESULT_BYTES - 10);
         let result = parse_call_result(&json!({
             "content": [
@@ -280,7 +281,7 @@ mod tests {
     #[test]
     fn a_single_big_block_is_cut_exactly_at_the_cap() {
         let result = parse_call_result(&json!({
-            "content": [{"type": "text", "text": "x".repeat(200_000)}],
+            "content": [{"type": "text", "text": "x".repeat(MAX_RESULT_BYTES + 1024)}],
         }));
         let text = text_of(&result);
         assert_eq!(text.len(), MAX_RESULT_BYTES + TRUNCATED.len());

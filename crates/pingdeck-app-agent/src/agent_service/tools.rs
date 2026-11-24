@@ -81,7 +81,8 @@ impl Role {
     }
 }
 
-/// What an Explore sub-agent may use: file reads and searches, `web_search`
+/// What an Explore sub-agent may use: file reads and searches, `read_output` / `read_attachment`
+/// (so spilled grep/read results and parent text attachments remain readable), `web_search`
 /// (no `fetch_url`: a URL can carry data out) and MCP tools of trusted servers that declare
 /// themselves read-only.
 fn explore_allows(spec: &ToolSpec) -> bool {
@@ -90,6 +91,8 @@ fn explore_allows(spec: &ToolSpec) -> bool {
         ToolSource::Builtin => {
             matches!(spec.class, ToolClass::Read | ToolClass::PingDeckRead)
                 || spec.name == WEB_SEARCH
+                || spec.name == crate::agent::tool_output_files::READ_OUTPUT
+                || spec.name == "read_attachment"
         }
     }
 }
@@ -149,9 +152,7 @@ pub(super) async fn register_session_tools(
         .map(|(role, _)| role)
         .collect();
     if role == Role::Main
-        && (session.workspace_dir.is_some()
-            || session.web_enabled
-            || roles.contains(&SubagentRole::Vision))
+        && (session.workspace_dir.is_some() || session.web_enabled || !roles.is_empty())
     {
         subagent::register(&mut registry, &roles);
     }
@@ -162,6 +163,7 @@ pub(super) async fn register_session_tools(
 
     let mut connecting = Vec::new();
     let mut pending = Vec::new();
+    let mut ready_mcp = Vec::new();
     for (server, transport) in resolved_servers(state).await {
         let cached = state.agent.mcp.cached_tools(&server.id);
         if connect && (cached.is_none() || state.agent.mcp.tools_stale(&server.id)) {
@@ -180,7 +182,7 @@ pub(super) async fn register_session_tools(
             }
         }
         match cached {
-            Some(tools) => register_mcp(state, &mut registry, &server, &transport, tools),
+            Some(tools) => ready_mcp.push((server, transport, tools)),
             None => connecting.push(server.name.clone()),
         }
     }
@@ -189,10 +191,16 @@ pub(super) async fn register_session_tools(
     for (server, transport, mut task) in pending {
         let finished = tokio::time::timeout_at(deadline, &mut task).await.is_ok();
         match state.agent.mcp.cached_tools(&server.id) {
-            Some(tools) => register_mcp(state, &mut registry, &server, &transport, tools),
+            Some(tools) => ready_mcp.push((server, transport, tools)),
             None if !finished => connecting.push(server.name.clone()),
             None => {}
         }
+    }
+    // Sort deterministically by `(name, id)` across both warm and newly-connected servers so tool
+    // order never flips between runs and busts provider prompt caches.
+    ready_mcp.sort_by(|(a, _, _), (b, _, _)| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+    for (server, transport, tools) in ready_mcp {
+        register_mcp(state, &mut registry, &server, &transport, tools);
     }
 
     let disabled: HashSet<&str> = session.disabled_tools.iter().map(String::as_str).collect();

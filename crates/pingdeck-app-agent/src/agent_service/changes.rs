@@ -113,6 +113,13 @@ pub(super) async fn apply_journaled(
     };
     let (tool, hashes, cancel) = (tool.to_owned(), ctx.read_hashes.clone(), ctx.cancel.clone());
     let work = tokio::task::spawn_blocking(move || {
+        // Serialize file mutations per canonical workspace folder so parallel `General`
+        // sub-agents or concurrent runs cannot race past read-hash/target checks and clobber
+        // each other's writes or corrupt the undo journal.
+        let folder_lock = state.agent.write_locks.lock_for(&workspace);
+        let _write_guard = folder_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // The row (and the bytes it undoes with) is stored as `Applying` BEFORE the file is
         // replaced and turns `Pending` after it: a crash in between leaves a row that startup
         // recovery completes or drops by comparing the file's hash.

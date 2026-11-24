@@ -181,6 +181,8 @@ pub struct ActiveRun {
     slot: Mutex<Option<SlotGuard>>,
     holds_slot: AtomicBool,
     waits: AtomicU32,
+    /// Number of currently running child sub-agents attached to this top-level run.
+    active_children: AtomicU32,
     subagents_started: AtomicU32,
     finished_at: Mutex<Option<Instant>>,
     ended: Notify,
@@ -222,6 +224,7 @@ impl ActiveRun {
             slot: Mutex::new(None),
             holds_slot: AtomicBool::new(false),
             waits: AtomicU32::new(0),
+            active_children: AtomicU32::new(0),
             subagents_started: AtomicU32::new(0),
             finished_at: Mutex::new(None),
             ended: Notify::new(),
@@ -435,15 +438,38 @@ impl ActiveRun {
         lock(&self.slot).take();
     }
 
-    /// One more wait for the user (an approval or a cost pause) in this run's tree; the first one
-    /// frees the tree's top-level slot, so a sub-agent waiting for an approval does not hold it.
-    pub fn begin_wait(&self) {
-        if self.waits.fetch_add(1, Ordering::SeqCst) == 0 {
+    /// Marks one child sub-agent as actively executing under this top-level run.
+    pub fn begin_child(&self) {
+        self.active_children.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Marks one child sub-agent as finished; if every remaining branch in the tree is paused on
+    /// a user gate, releases the top-level concurrency slot.
+    pub fn end_child(&self) {
+        let remaining = self
+            .active_children
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+            .map_or(0, |before| before - 1);
+        let waits = self.waits.load(Ordering::SeqCst);
+        if waits > 0 && waits >= remaining.max(1) {
             lock(&self.slot).take();
         }
     }
 
-    /// One wait ended; `true` when it was the last one and the run must take a slot back.
+    /// One more wait for the user (an approval or a cost pause) in this run's tree; releases the
+    /// tree's top-level slot once every active branch in the tree is paused (a single main run
+    /// drops immediately on wait 1; two parallel sub-agents keep the slot while one is still
+    /// running and drop it once both wait).
+    pub fn begin_wait(&self) {
+        let after = self.waits.fetch_add(1, Ordering::SeqCst) + 1;
+        let active = self.active_children.load(Ordering::SeqCst).max(1);
+        if after >= active {
+            lock(&self.slot).take();
+        }
+    }
+
+    /// One wait ended; `true` when at least one branch in this run tree is now active again and
+    /// the tree must reacquire a top-level slot before resuming.
     #[must_use]
     pub fn end_wait(&self) -> bool {
         let before = self
@@ -452,7 +478,12 @@ impl ActiveRun {
                 waits.checked_sub(1)
             })
             .unwrap_or(0);
-        before == 1 && self.holds_slot.load(Ordering::SeqCst) && lock(&self.slot).is_none()
+        if before == 0 {
+            return false;
+        }
+        let after = before - 1;
+        let active = self.active_children.load(Ordering::SeqCst).max(1);
+        after < active && self.holds_slot.load(Ordering::SeqCst) && lock(&self.slot).is_none()
     }
 
     /// Gives back a `task` call counted by [`ActiveRun::claim_subagent`] whose sub-agent never
@@ -1016,6 +1047,11 @@ impl RunRegistry {
         self.state()
             .context
             .insert(session_id.to_owned(), state.clone());
+    }
+
+    /// Drops the in-memory context state of `session_id` (e.g. when a sub-agent ends).
+    pub fn forget_context_state(&self, session_id: &str) {
+        self.state().context.remove(session_id);
     }
 
     /// Stops `session_id`'s queue from running on until [`RunRegistry::resume_queue`].

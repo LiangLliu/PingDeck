@@ -227,9 +227,10 @@ pub fn render_provider_detail(
         ProviderTab::Overview => div()
             .flex_1()
             .min_h_0()
+            .w_full()
             .p(px(20.0))
             .overflow_y_scrollbar()
-            .child(render_overview_tab(view, pv, zh, cx))
+            .child(div().w_full().child(render_overview_tab(view, pv, zh, cx)))
             .into_any_element(),
         ProviderTab::Config => {
             let body: gpui_kit::AnyElement = if let Some(cfg) = &view.config_form {
@@ -240,9 +241,10 @@ pub fn render_provider_detail(
             div()
                 .flex_1()
                 .min_h_0()
+                .w_full()
                 .p(px(20.0))
                 .overflow_y_scrollbar()
-                .child(body)
+                .child(div().w_full().child(body))
                 .into_any_element()
         }
     };

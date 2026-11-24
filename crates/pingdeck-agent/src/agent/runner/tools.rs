@@ -188,6 +188,7 @@ pub(super) async fn execute_calls<H: RunHost>(
 ) -> Result<bool, AppError> {
     let (host, cancel) = (run.host, run.cancel);
     let mut index = 0;
+    let mut lookahead: Option<(usize, ToolPlan)> = None;
     while index < calls.len() {
         if cancel.is_cancelled() {
             run.finish_unrun(&calls[index..], ToolCallStatus::Cancelled)
@@ -200,17 +201,21 @@ pub(super) async fn execute_calls<H: RunHost>(
             return Ok(false);
         }
         let call = &calls[index];
-        let plan = host.plan_call(call).await;
+        let plan = match lookahead.take() {
+            Some((at, plan)) if at == index => plan,
+            _ => host.plan_call(call).await,
+        };
         run.record(call, &plan, "input-available").await;
         if plan.verdict == Verdict::Run && plan.parallel_safe {
             let mut batch = vec![(call, plan)];
             let mut next = index + 1;
-            while batch.len() < MAX_PARALLEL_CALLS
-                && let Some(candidate) = calls.get(next)
+            while let Some(candidate) = calls.get(next)
                 && host.parallel_safe(&candidate.name)
             {
                 let planned = host.plan_call(candidate).await;
                 if planned.verdict != Verdict::Run || !planned.parallel_safe {
+                    // Preserve the already-computed plan so the next iteration does not plan twice.
+                    lookahead = Some((next, planned));
                     break;
                 }
                 run.record(candidate, &planned, "input-available").await;
@@ -261,11 +266,18 @@ impl<H: RunHost> CallRun<'_, H> {
         refuse_calls(self, calls, status, unrun_text(status)).await
     }
 
-    /// Runs a batch of allowed parallel-safe calls at once and stores the results in call order.
+    /// Runs a batch of allowed parallel-safe calls with a rolling concurrency window of
+    /// [`MAX_PARALLEL_CALLS`] (so fast calls start as soon as any slot frees without head-of-line
+    /// wave barriers) and stores the results in original call order.
     async fn run_batch(&self, batch: Vec<(&ToolCall, ToolPlan)>) -> Result<(), AppError> {
-        let settled = futures_util::future::join_all(
-            batch.iter().map(|(call, plan)| self.settle(call, plan)),
-        )
+        let limit = tokio::sync::Semaphore::new(MAX_PARALLEL_CALLS);
+        let settled = futures_util::future::join_all(batch.iter().map(|(call, plan)| {
+            let limit = &limit;
+            async move {
+                let _permit = limit.acquire().await.ok();
+                self.settle(call, plan).await
+            }
+        }))
         .await;
         for ((call, plan), settled) in batch.iter().zip(settled) {
             self.finish(call, plan, settled).await?;
@@ -455,9 +467,9 @@ impl<H: RunHost> CallRun<'_, H> {
         let parts = self.host.redact(parts);
         let text = text_of(&parts);
         let output_bytes = u64::try_from(text.len()).unwrap_or(u64::MAX);
-        let over = parts
-            .iter()
-            .any(|part| matches!(part, HubPart::Text { text, .. } if text.len() > cap));
+        // Check combined text across all text parts (not just individual parts), so multi-part
+        // MCP outputs cannot bypass capping/spilling.
+        let over = text.len() > cap;
         if !over {
             let kept = Kept {
                 output_bytes,

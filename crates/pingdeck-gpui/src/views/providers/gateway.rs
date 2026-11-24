@@ -112,9 +112,10 @@ pub fn render_gateway_cockpit(
         div()
             .flex_1()
             .min_h_0()
+            .w_full()
             .p(px(20.0))
             .overflow_y_scrollbar()
-            .child(body),
+            .child(div().w_full().child(body)),
     )
 }
 

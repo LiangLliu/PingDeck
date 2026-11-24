@@ -61,6 +61,44 @@ pub fn agent_tool_output_read_impl(
     Ok(chunk)
 }
 
+/// Reads the entire kept spill file for `(session_id, call_id)` in one pass (verifying ownership,
+/// `spill_ref`, and redacting secrets once instead of once per 64 KiB page). Used by `read_output`
+/// when `grep` is supplied.
+///
+/// # Errors
+/// Same error cases as [`agent_tool_output_read_impl`].
+pub(crate) fn agent_tool_output_read_all_impl(
+    state: &AppState,
+    session_id: &str,
+    call_id: &str,
+) -> Result<String, AppError> {
+    if !valid_call_id(call_id) {
+        return Err(AppError::validation(
+            "the call id is not a valid output name",
+        ));
+    }
+    let record = state
+        .store()
+        .get_tool_call(session_id, call_id)
+        .map_err(command_error)?
+        .ok_or_else(|| AppError::not_found("this chat made no such tool call"))?;
+    let root = tool_output_root(state)?;
+    if record.spill_ref.is_none() {
+        return Err(AppError::not_found("no full output was kept for this call"));
+    }
+    let dir = session_dir(&root, session_id)
+        .ok_or_else(|| AppError::validation("the chat id is not a valid output name"))?;
+    let path = dir.join(call_id);
+    let bytes = std::fs::read(&path).map_err(|error| match error.kind() {
+        std::io::ErrorKind::NotFound => AppError::not_found(CLEARED),
+        _ => AppError::internal(format!("reading kept output failed: {error}")),
+    })?;
+    touch_session(&root, session_id);
+    let raw = String::from_utf8_lossy(&bytes);
+    let needles = expand_needles(state.secrets().active_redaction_needles());
+    Ok(redact_secrets(&raw, &needles))
+}
+
 /// Removes the kept full output of chat `session_id`, or of every chat with `None`, and reports
 /// how many files and bytes went. A state without a data directory has nothing to remove.
 ///

@@ -5,8 +5,8 @@
 //! attention snapshot, the sandbox tier, the approval gate of one run). The pieces themselves
 //! live in `registry`, `approvals`, `attention` and `tools`; the use-cases in `app::agent_service`.
 
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -50,6 +50,24 @@ impl SeenTools {
     }
 }
 
+/// Serializes journaled file mutations (`write_file`, `edit_file`, `delete_file`, `move_file`)
+/// per canonical workspace folder so concurrent `General` sub-agents or parallel top-level runs
+/// cannot race past read-hash checks and silently clobber each other or corrupt the undo journal.
+#[derive(Default)]
+pub struct FolderWriteLocks(Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>);
+
+impl FolderWriteLocks {
+    /// Returns the per-workspace lock for `workspace` (canonicalized when possible).
+    #[must_use]
+    pub fn lock_for(&self, workspace: &Path) -> Arc<Mutex<()>> {
+        let key = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.to_path_buf());
+        let mut map = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(map.entry(key).or_insert_with(|| Arc::new(Mutex::new(()))))
+    }
+}
+
 /// Everything the agent use-cases share between calls.
 pub struct AgentRuntime {
     /// Live MCP server connections.
@@ -64,6 +82,8 @@ pub struct AgentRuntime {
     pub processes: ProcessRegistry,
     /// What the file tools last read, per chat.
     pub read_hashes: ReadHashes,
+    /// Per-workspace write serialization locks preventing concurrent file-tool TOCTOU races.
+    pub write_locks: FolderWriteLocks,
     /// What needs the user across every chat; one snapshot per change.
     pub attention_hub: EventHub<AgentAttention>,
     last_attention: Mutex<AgentAttention>,
@@ -97,6 +117,7 @@ impl AgentRuntime {
             gates,
             processes: ProcessRegistry::new(),
             read_hashes: ReadHashes::new(),
+            write_locks: FolderWriteLocks::default(),
             attention_hub: EventHub::new(ATTENTION_SUBSCRIBERS, ATTENTION_REPLAY),
             last_attention: Mutex::new(AgentAttention::default()),
             managed_skills_dir,
@@ -242,6 +263,22 @@ impl GateWatch for RunGate<'_> {
     }
 
     fn steered(&self) -> BoxFuture<'_, ()> {
-        self.run.steered().boxed()
+        let parent = self
+            .run
+            .parent_run_id
+            .as_deref()
+            .and_then(|id| self.runtime.runs.get(id));
+        async move {
+            match parent {
+                Some(parent) => {
+                    tokio::select! {
+                        () = self.run.steered() => {}
+                        () = parent.steered() => {}
+                    }
+                }
+                None => self.run.steered().await,
+            }
+        }
+        .boxed()
     }
 }

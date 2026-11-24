@@ -98,6 +98,7 @@ pub use sessions::{
     agent_session_set_head_impl, agent_session_update_impl,
 };
 pub(crate) use subagent::run_subagent;
+pub(crate) use tool_output::agent_tool_output_read_all_impl;
 pub use tool_output::{agent_tool_output_delete_impl, agent_tool_output_read_impl};
 pub use trust::{
     agent_folder_trust_get_impl, agent_folder_trust_list_impl, agent_folder_trust_revoke_impl,

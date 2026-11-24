@@ -29,12 +29,14 @@ use super::roles::roles_prompt_section;
 use super::tools::{Role, register_session_tools};
 use crate::app::{AppState, current_time_ms};
 
-/// Tools Plan mode offers besides the Read and PingDeck-read classes.
-const PLAN_TOOLS: [&str; 6] = [
+/// Tools Plan mode offers besides the Read and PingDeck-read classes. `task` is allowed for
+/// read-only `kind: "explore"` delegation (non-explore sub-agents are rejected during Plan mode).
+const PLAN_TOOLS: [&str; 7] = [
     "read_skill",
     "read_attachment",
     "read_output",
     "todo_write",
+    crate::agent_tools::subagent::TASK,
     crate::agent::tools::submit_plan::SUBMIT_PLAN,
     crate::agent::tools::ask_user::ASK_USER,
 ];

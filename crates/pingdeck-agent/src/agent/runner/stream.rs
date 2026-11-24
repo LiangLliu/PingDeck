@@ -166,16 +166,18 @@ pub(super) async fn stream_turn<B: ChatBackend, H: RunHost>(
     call_ids: &CallIds,
     cancel: &CancelToken,
 ) -> Result<TurnOutcome, TurnFailure> {
-    let mut retries: u32 = 0;
+    let mut transient_retries: u32 = 0;
+    let mut stall_retries: u32 = 0;
     loop {
         match attempt(backend, host, input, &request, message_id, call_ids, cancel).await {
             Attempt::Done(outcome) => return Ok(outcome),
             Attempt::Stalled(stalled) => {
-                // A stall already waited 90 s: one more try, right away.
-                if retries > 0 || stalled.content_started {
+                // A stall already waited 90 s: one more try, right away (independent of transient
+                // pre-content retries).
+                if stall_retries > 0 || stalled.content_started {
                     return Err(stalled);
                 }
-                retries += 1;
+                stall_retries += 1;
                 host.emit(AgentEvent::coded_notice(
                     "stall_retry",
                     "The model stopped responding; trying once more.",
@@ -183,20 +185,24 @@ pub(super) async fn stream_turn<B: ChatBackend, H: RunHost>(
                 ));
             }
             Attempt::Failed(failed) => {
-                if retries >= TRANSIENT_RETRIES || !retryable(&failed) || cancel.is_cancelled() {
+                if transient_retries >= TRANSIENT_RETRIES
+                    || !retryable(&failed)
+                    || cancel.is_cancelled()
+                {
                     return Err(failed);
                 }
-                retries += 1;
-                let delay = retry_delay(retries, failed.retry_after_ms, spread_permille());
+                transient_retries += 1;
+                let delay =
+                    retry_delay(transient_retries, failed.retry_after_ms, spread_permille());
                 let delay_s = delay.as_millis().div_ceil(1_000).to_string();
                 let reason = retry_reason(&failed);
                 host.emit(AgentEvent::coded_notice(
                     "retrying",
                     format!(
-                        "The model call failed ({reason}); retry {retries} of {TRANSIENT_RETRIES} in {delay_s} s."
+                        "The model call failed ({reason}); retry {transient_retries} of {TRANSIENT_RETRIES} in {delay_s} s."
                     ),
                     &[
-                        ("attempt", retries.to_string()),
+                        ("attempt", transient_retries.to_string()),
                         ("of", TRANSIENT_RETRIES.to_string()),
                         ("delay_s", delay_s),
                         ("reason", reason),
@@ -308,6 +314,13 @@ async fn attempt<B: ChatBackend, H: RunHost>(
                 content_started = true;
                 first_content.get_or_insert_with(|| host.clock().now());
                 host.emit(AgentEvent::ReasoningDelta { text: text.clone() });
+            }
+            HubEvent::RedactedReasoning { .. }
+            | HubEvent::ReasoningItem { .. }
+            | HubEvent::ServerToolStart { .. }
+            | HubEvent::ServerToolResult { .. } => {
+                content_started = true;
+                first_content.get_or_insert_with(|| host.clock().now());
             }
             HubEvent::Citation { citation } => {
                 content_started = true;

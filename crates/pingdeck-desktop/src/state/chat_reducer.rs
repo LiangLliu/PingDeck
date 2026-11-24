@@ -310,25 +310,120 @@ impl ChatThreadState {
                 child_run_id,
                 event,
                 ..
-            } => {
-                if let Some(sub) = self.subagents.get_mut(&child_run_id) {
-                    match *event {
-                        AgentEvent::TextDelta { text } => sub.streaming_text.push_str(&text),
-                        AgentEvent::ToolCallStarted { .. } => {
-                            sub.active_tools = sub.active_tools.saturating_add(1);
-                        }
-                        AgentEvent::ToolResult { .. } => {
-                            sub.active_tools = sub.active_tools.saturating_sub(1);
-                        }
-                        _ => {}
+            } => match *event {
+                AgentEvent::TextDelta { text } => {
+                    if let Some(sub) = self.subagents.get_mut(&child_run_id) {
+                        sub.streaming_text.push_str(&text);
                     }
                 }
-            }
+                AgentEvent::ToolCallStarted { .. } => {
+                    if let Some(sub) = self.subagents.get_mut(&child_run_id) {
+                        sub.active_tools = sub.active_tools.saturating_add(1);
+                    }
+                }
+                AgentEvent::ToolResult { .. } => {
+                    if let Some(sub) = self.subagents.get_mut(&child_run_id) {
+                        sub.active_tools = sub.active_tools.saturating_sub(1);
+                    }
+                }
+                AgentEvent::ToolApprovalRequired {
+                    run_id,
+                    call_id,
+                    name,
+                    arguments,
+                    reason,
+                    network,
+                    risk,
+                    summary,
+                    full_text,
+                    destructive,
+                    ..
+                } => {
+                    // Surface sub-agent approval cards into the parent chat dock so the user can
+                    // approve/deny instead of deadlocking while the parent chat is focused.
+                    self.pending_approvals.retain(|a| a.call_id != call_id);
+                    self.pending_approvals.push(LiveApproval {
+                        run_id,
+                        call_id,
+                        name,
+                        risk,
+                        summary,
+                        reason,
+                        arguments,
+                        full_text,
+                        destructive,
+                        network,
+                    });
+                }
+                AgentEvent::ToolApprovalResolved {
+                    call_id,
+                    decision: ApprovalDecision::Deny,
+                    scope: ApprovalScope::Once,
+                    timed_out: true,
+                } => {
+                    self.pending_approvals.retain(|a| a.call_id != call_id);
+                    self.notices
+                        .push(format!("Sub-agent tool approval timed out ({call_id})"));
+                }
+                AgentEvent::ToolApprovalResolved { call_id, .. } => {
+                    self.pending_approvals.retain(|a| a.call_id != call_id);
+                }
+                AgentEvent::CostLimitReached {
+                    run_id,
+                    cost_micro,
+                    cap_micro,
+                    currency,
+                    tokens,
+                    ..
+                } => {
+                    self.cost_pause = Some(LiveCostPause {
+                        run_id,
+                        cost_micro,
+                        cap_micro,
+                        currency,
+                        is_tokens: tokens.unwrap_or(false),
+                    });
+                }
+                AgentEvent::FileChanged {
+                    call_id,
+                    path,
+                    change,
+                    added,
+                    removed,
+                    change_id,
+                } => {
+                    self.file_changes.push(LiveFileChange {
+                        call_id,
+                        path,
+                        change,
+                        added,
+                        removed,
+                        change_id,
+                    });
+                }
+                AgentEvent::Notice { text, .. } => {
+                    self.notices.push(text);
+                    if self.notices.len() > 20 {
+                        self.notices.remove(0);
+                    }
+                }
+                _ => {}
+            },
             AgentEvent::SubagentFinished { child_run, .. } => {
-                if let Some(sub) = self.subagents.get_mut(&child_run.run_id) {
+                let finished_run_id = child_run.run_id.clone();
+                if let Some(sub) = self.subagents.get_mut(&finished_run_id) {
                     sub.summary = *child_run;
                     sub.finished = true;
                     sub.active_tools = 0;
+                }
+                self.pending_approvals
+                    .retain(|a| a.run_id != finished_run_id);
+                if self
+                    .cost_pause
+                    .as_ref()
+                    .is_some_and(|p| p.run_id == finished_run_id)
+                {
+                    self.cost_pause = None;
                 }
             }
             AgentEvent::Usage {
@@ -465,5 +560,150 @@ mod tests {
 
         assert!(state.apply(env(5, AgentEvent::Gap { first_seq: 10 })));
         assert!(state.needs_reload);
+    }
+
+    #[test]
+    fn subagent_approvals_cost_pause_file_changes_and_cleanup_reach_parent_state() {
+        use pingdeck_core::agent::model::{
+            AgentRunKind, AgentRunSummary, AgentTarget, SandboxKind, ToolClass,
+        };
+
+        let mut state = ChatThreadState::new("s_parent", "Parent");
+        let child_run = AgentRunSummary {
+            run_id: "r_child".into(),
+            session_id: "s_child".into(),
+            kind: AgentRunKind::Subagent,
+            parent_run_id: Some("r1".into()),
+            parent_call_id: Some("tc_task".into()),
+            status: AgentRunStatus::Running,
+            model_label: "fast".into(),
+            target: Some(AgentTarget::Named {
+                name: "fast".into(),
+            }),
+            iterations: 0,
+            usage: Default::default(),
+            cost_micro_usd: 0,
+            started_at_ms: 1000,
+            finished_at_ms: None,
+            last_event_ms: None,
+            last_step: None,
+            stop_reason: None,
+            error_kind: None,
+            error: None,
+            prompt_version: 1,
+            last_seq: 0,
+            failure: None,
+            role: None,
+            cost_currency: None,
+            cap_inapplicable: None,
+            status_detail: None,
+        };
+        state.apply(env(
+            1,
+            AgentEvent::SubagentStarted {
+                parent_call_id: "tc_task".into(),
+                child_session_id: "s_child".into(),
+                child_run: Box::new(child_run.clone()),
+            },
+        ));
+        state.apply(env(
+            2,
+            AgentEvent::SubagentEvent {
+                parent_call_id: "tc_task".into(),
+                child_run_id: "r_child".into(),
+                event: Box::new(AgentEvent::ToolApprovalRequired {
+                    run_id: "r_child".into(),
+                    call_id: "c_write".into(),
+                    name: "write_file".into(),
+                    arguments: r#"{"path":"out.txt"}"#.into(),
+                    class: ToolClass::Edit,
+                    read_only: false,
+                    destructive: false,
+                    sandbox: SandboxKind::None,
+                    reason: "writes file".into(),
+                    preview: None,
+                    network: false,
+                    risk: "medium".into(),
+                    summary: "Write out.txt".into(),
+                    full_text: None,
+                    card: None,
+                }),
+            },
+        ));
+        assert_eq!(state.pending_approvals.len(), 1);
+        assert_eq!(state.pending_approvals[0].run_id, "r_child");
+        assert_eq!(state.pending_approvals[0].call_id, "c_write");
+
+        state.apply(env(
+            3,
+            AgentEvent::SubagentEvent {
+                parent_call_id: "tc_task".into(),
+                child_run_id: "r_child".into(),
+                event: Box::new(AgentEvent::ToolApprovalResolved {
+                    call_id: "c_write".into(),
+                    decision: ApprovalDecision::Allow,
+                    scope: ApprovalScope::Once,
+                    timed_out: false,
+                }),
+            },
+        ));
+        assert!(state.pending_approvals.is_empty());
+
+        state.apply(env(
+            4,
+            AgentEvent::SubagentEvent {
+                parent_call_id: "tc_task".into(),
+                child_run_id: "r_child".into(),
+                event: Box::new(AgentEvent::CostLimitReached {
+                    run_id: "r_child".into(),
+                    cost_micro: 2_000_000,
+                    cap_micro: 1_000_000,
+                    currency: "USD".into(),
+                    breakdown: None,
+                    next_cap_micro: None,
+                    unpriced_models: None,
+                    tokens: None,
+                }),
+            },
+        ));
+        assert_eq!(
+            state.cost_pause.as_ref().map(|p| p.run_id.as_str()),
+            Some("r_child")
+        );
+
+        state.apply(env(
+            5,
+            AgentEvent::SubagentEvent {
+                parent_call_id: "tc_task".into(),
+                child_run_id: "r_child".into(),
+                event: Box::new(AgentEvent::FileChanged {
+                    call_id: "c_write".into(),
+                    path: "out.txt".into(),
+                    change: FileChangeKind::Create,
+                    added: 3,
+                    removed: 0,
+                    change_id: Some("fc1".into()),
+                }),
+            },
+        ));
+        assert_eq!(state.file_changes.len(), 1);
+        assert_eq!(state.file_changes[0].path, "out.txt");
+
+        // SubagentFinished clears any lingering approval or cost pause belonging to that child.
+        let finished_run = AgentRunSummary {
+            status: AgentRunStatus::Completed,
+            stop_reason: Some("completed".into()),
+            ..child_run
+        };
+        state.apply(env(
+            6,
+            AgentEvent::SubagentFinished {
+                parent_call_id: "tc_task".into(),
+                child_run: Box::new(finished_run),
+            },
+        ));
+        assert!(state.cost_pause.is_none());
+        assert!(state.pending_approvals.is_empty());
+        assert!(state.subagents["r_child"].finished);
     }
 }

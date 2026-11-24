@@ -850,6 +850,9 @@ fn parse_tools(items: &[Value]) -> (Vec<McpTool>, Vec<String>) {
         }
         tools.push(tool);
     }
+    // Sort deterministically by tool name so provider prompt-cache prefixes never bust when an
+    // MCP server returns tools from an unordered map across restarts or TTL refreshes.
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
     (tools, skipped)
 }
 

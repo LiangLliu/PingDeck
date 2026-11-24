@@ -163,13 +163,26 @@ pub fn compaction_cut(
 
 /// Whether a model call failed because the request exceeds the context window, so one
 /// compaction and one retry may fix it. Judged by the provider's message text (every provider
-/// words it differently, so the one word list of the provider layer decides); the output-size
-/// limit (`max_tokens`) is not a context-length error.
+/// words it differently, so the one word list of the provider layer decides); a pure output-cap
+/// error (`max_tokens` above the model's max output, with no context/input overflow) is excluded,
+/// while real Anthropic/OpenAI context overflows that mention `max_tokens` alongside input/context
+/// length ("input length and `max_tokens` exceed context limit", "... in max_tokens") ARE matched.
 #[must_use]
 pub fn is_context_length_error(error: &AppError) -> bool {
     let message = error.message();
-    !message.to_ascii_lowercase().contains("max_tokens")
-        && pingdeck_llm::llm::failure::names_context_limit(message)
+    if !pingdeck_llm::llm::failure::names_context_limit(message) {
+        return false;
+    }
+    let lower = message.to_ascii_lowercase();
+    let names_output_field = lower.contains("max_tokens")
+        || lower.contains("max_output_tokens")
+        || lower.contains("max_completion_tokens");
+    let mentions_context_or_input = lower.contains("context")
+        || lower.contains("input length")
+        || lower.contains("input token")
+        || lower.contains("prompt")
+        || lower.contains("messages");
+    !(names_output_field && !mentions_context_or_input)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -707,8 +720,28 @@ where
     F: FnOnce(String) -> Fut,
     Fut: Future<Output = Result<String, AppError>>,
 {
+    compact_history_at_with_options(messages, cut, TRANSCRIPT_CAP_CHARS, None, summarize).await
+}
+
+/// Like [`compact_history_at`], with an explicit character budget for the rendered transcript
+/// (scaled to the active model's context window so smaller or CJK windows do not overflow the
+/// compaction call itself) and an optional active working-state footer preserved verbatim.
+///
+/// # Errors
+/// See [`compact_history`].
+pub async fn compact_history_at_with_options<F, Fut>(
+    messages: &[HubMessage],
+    cut: CompactionCut,
+    transcript_cap_chars: usize,
+    working_state: Option<&str>,
+    summarize: F,
+) -> Result<Compaction, AppError>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Result<String, AppError>>,
+{
     let split = cut.split.min(messages.len());
-    let transcript = build_transcript(&messages[..split]);
+    let transcript = build_transcript(&messages[..split], transcript_cap_chars.max(4_000));
     let transcript_chars = transcript.chars().count();
     let summary = summarize(transcript).await?;
     let summary = summary.trim();
@@ -716,6 +749,10 @@ where
         return Err(AppError::validation("the compaction summary was empty"));
     }
     let mut text = format!("{SUMMARY_HEADER}\n{summary}");
+    if let Some(state) = working_state.map(str::trim).filter(|s| !s.is_empty()) {
+        text.push_str("\n\n[Active working state preserved across compaction:]\n");
+        text.push_str(state);
+    }
     if cut.mid_turn
         && let Some(request) = current_request(&messages[..split])
     {
@@ -729,6 +766,14 @@ where
         replaced: split,
         transcript_chars,
     })
+}
+
+/// Safe transcript character budget for a model whose context window is `window_tokens`.
+/// Keeps headroom for `COMPACTION_PROMPT` and the generated summary even on CJK text (~1 char/tok).
+#[must_use]
+pub fn transcript_cap_for_window(window_tokens: u64) -> usize {
+    let scaled = usize::try_from(window_tokens.saturating_mul(2)).unwrap_or(TRANSCRIPT_CAP_CHARS);
+    scaled.clamp(24_000, TRANSCRIPT_CAP_CHARS)
 }
 
 /// The index where the kept tail starts, or `None` when there is nothing before it. The tail
@@ -747,9 +792,10 @@ fn safe_split(roles: &[HubRole], keep_last: usize, mid_turn: bool) -> Option<usi
     boundary(|role| role == HubRole::User).or_else(|| boundary(|role| role != HubRole::Tool))
 }
 
-/// A role-labelled plain-text rendering of `messages`, capped at [`TRANSCRIPT_CAP_CHARS`] by
-/// keeping its head and tail.
-fn build_transcript(messages: &[HubMessage]) -> String {
+/// A role-labelled plain-text rendering of `messages`, capped at `cap_chars` by keeping its head
+/// and tail. Tool results retain both head and tail so compiler/test errors at the end of command
+/// output survive into the compaction summary.
+fn build_transcript(messages: &[HubMessage], cap_chars: usize) -> String {
     let mut out = String::new();
     for message in messages {
         let label = match message.role {
@@ -791,7 +837,7 @@ fn build_transcript(messages: &[HubMessage]) -> String {
                         "[tool result, untrusted] {}{}: {}",
                         name.as_deref().unwrap_or(call_id),
                         if *is_error { " (error)" } else { "" },
-                        truncate_marked(&body, TRANSCRIPT_RESULT_CHARS)
+                        truncate_head_tail(&body, TRANSCRIPT_RESULT_CHARS)
                     )
                 }
                 // Reasoning is private to the model and provider tool blocks are opaque payloads.
@@ -805,7 +851,23 @@ fn build_transcript(messages: &[HubMessage]) -> String {
             out.push('\n');
         }
     }
-    cap_head_tail(out, TRANSCRIPT_CAP_CHARS)
+    cap_head_tail(out, cap_chars)
+}
+
+/// Keeps head and tail of `text` within `max_chars` so trailing error summaries are preserved.
+fn truncate_head_tail(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_owned();
+    }
+    let head_len = max_chars / 2;
+    let tail_len = max_chars - head_len;
+    let head = cut_prefix(text, head_len);
+    let tail_start = text
+        .char_indices()
+        .nth(total - tail_len)
+        .map_or(text.len(), |(at, _)| at);
+    format!("{head} … {}", &text[tail_start..])
 }
 
 /// `text` cut to `max_chars` characters with an ellipsis when something was removed.

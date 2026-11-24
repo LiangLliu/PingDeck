@@ -524,10 +524,11 @@ async fn transcript_cuts_calls_results_and_media() {
     assert!(transcript.contains(&format!("write({}…)", "p".repeat(300))));
     assert!(!transcript.contains(&"p".repeat(301)));
     assert!(transcript.contains(&format!(
-        "[tool result, untrusted] write (error): {}…",
-        "r".repeat(500)
+        "[tool result, untrusted] write (error): {} … {}\n[image]",
+        "r".repeat(250),
+        "r".repeat(242)
     )));
-    assert!(!transcript.contains(&"r".repeat(501)));
+    assert!(!transcript.contains(&"r".repeat(251)));
     assert!(transcript.contains("[document attached: notes.txt]"));
     assert!(!transcript.contains("AAAA"));
 }
@@ -709,6 +710,8 @@ fn context_length_errors_are_recognised_across_providers() {
         "Please reduce the length of the messages or completion.",
         "Input is too long for requested model.",
         "Your input exceeds the context window of this model",
+        "input length and `max_tokens` exceed context limit: 195000 + 8192 > 200000",
+        "This model's maximum context length is 128000 tokens. However, you requested 130000 tokens (125000 in the messages, 5000 in max_tokens).",
     ] {
         for error in [AppError::network(message), AppError::validation(message)] {
             assert!(is_context_length_error(&error), "{message}");

@@ -30,31 +30,50 @@ fn is_reasoning(part: &HubPart) -> bool {
     matches!(part, HubPart::Reasoning { .. })
 }
 
-/// `request` without the reasoning of the assistant turns before the newest user message (the
-/// current turn keeps its own); `None` when there is none to drop. An assistant turn left empty
-/// is dropped too.
+/// `request` without replayed reasoning blocks that failed signature verification. Prefers
+/// stripping only assistant turns before the newest user message (keeping the active turn's
+/// reasoning intact); when the refusal happened mid-turn (e.g., failover across two Anthropic
+/// keys/providers during a tool loop), strips reasoning from the current turn too and clears
+/// `request.reasoning` for the recovery call so providers that require thinking on the latest
+/// assistant turn accept it. Returns `None` when no reasoning block exists to drop.
 fn without_old_reasoning(request: &HubRequest) -> Option<HubRequest> {
+    let has_reasoning = |message: &HubMessage| {
+        message.role == HubRole::Assistant && message.content.iter().any(is_reasoning)
+    };
     let current = request
         .messages
         .iter()
-        .rposition(|message| message.role == HubRole::User)?;
-    let old = |message: &HubMessage| {
-        message.role == HubRole::Assistant && message.content.iter().any(is_reasoning)
+        .rposition(|message| message.role == HubRole::User);
+    let strip_current_turn = match current {
+        Some(idx) => !request.messages[..idx].iter().any(has_reasoning),
+        None => true,
     };
-    if !request.messages[..current].iter().any(old) {
+    if strip_current_turn && !request.messages.iter().any(has_reasoning) {
         return None;
     }
     let mut stripped = request.clone();
-    let newer = stripped.messages.split_off(current);
-    for message in &mut stripped.messages {
-        if message.role == HubRole::Assistant {
-            message.content.retain(|part| !is_reasoning(part));
+    if strip_current_turn {
+        for message in &mut stripped.messages {
+            if message.role == HubRole::Assistant {
+                message.content.retain(|part| !is_reasoning(part));
+            }
         }
+        stripped
+            .messages
+            .retain(|message| message.role != HubRole::Assistant || !message.content.is_empty());
+        stripped.reasoning = None;
+    } else if let Some(idx) = current {
+        let newer = stripped.messages.split_off(idx);
+        for message in &mut stripped.messages {
+            if message.role == HubRole::Assistant {
+                message.content.retain(|part| !is_reasoning(part));
+            }
+        }
+        stripped
+            .messages
+            .retain(|message| message.role != HubRole::Assistant || !message.content.is_empty());
+        stripped.messages.extend(newer);
     }
-    stripped
-        .messages
-        .retain(|message| message.role != HubRole::Assistant || !message.content.is_empty());
-    stripped.messages.extend(newer);
     Some(stripped)
 }
 

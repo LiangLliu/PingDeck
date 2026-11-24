@@ -238,11 +238,14 @@ pub fn build_system_prompt(input: &PromptInput<'_>) -> String {
         PromptKind::Main => {}
         PromptKind::Explore => parts.push(
             "You are a sub-agent; return a concise final report; do not ask the user questions. \
-             You investigate only: you cannot change anything."
+             You investigate only: you cannot change anything. \
+             If something is unclear or blocked, state what blocked you in your final report."
                 .to_owned(),
         ),
         PromptKind::General => parts.push(
-            "You are a sub-agent; return a concise final report; do not ask the user questions."
+            "You are a sub-agent; return a concise final report; do not ask the user questions. \
+             If something is unclear or a call is denied, do not ask the user — state what blocked \
+             you in your final report."
                 .to_owned(),
         ),
     }

@@ -868,8 +868,20 @@ pub(super) async fn prepare(
         cost_caps: cost_caps(&settings),
         model: model.clone(),
         wrap_up_last_step: agent.wrap_up_last_step,
-        prompt_cache: (agent.prompt_cache != pingdeck_model::settings::PromptCacheMode::Off)
-            .then(|| session.id.clone()),
+        prompt_cache: (agent.prompt_cache != pingdeck_model::settings::PromptCacheMode::Off).then(
+            || match (&session.parent_session_id, role) {
+                // Parallel sub-agents of the same kind share a stable cache key so their identical
+                // system prompt + tool definitions hit provider KV prompt caches.
+                (Some(parent_id), Role::Subagent(kind)) => {
+                    let tag = match kind {
+                        crate::agent_tools::subagent::SubagentKind::Explore => "explore",
+                        crate::agent_tools::subagent::SubagentKind::General => "general",
+                    };
+                    format!("{parent_id}:sub:{tag}")
+                }
+                _ => session.id.clone(),
+            },
+        ),
         max_run_tokens: agent.max_run_tokens,
     };
     let host = ServiceHost::new(HostParts {

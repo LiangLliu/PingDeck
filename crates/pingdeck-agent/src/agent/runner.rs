@@ -63,8 +63,8 @@ pub(crate) use super::limits::{STALL_TIMEOUT, WAKE_STALL_TIMEOUT};
 pub const PARTIAL_SAVE_INTERVAL: Duration = Duration::from_secs(2);
 /// How long a cancelled tool call may take to wind down before it is abandoned.
 pub const CANCEL_GRACE: Duration = Duration::from_secs(2);
-/// Consecutive parallel-safe calls that run at once.
-pub const MAX_PARALLEL_CALLS: usize = 4;
+/// Consecutive parallel-safe calls that run at once (aligned with Settings `max_subagents` ceiling).
+pub const MAX_PARALLEL_CALLS: usize = 8;
 /// Failed proactive compactions after which a run stops trying.
 const COMPACTION_ATTEMPTS: u32 = 2;
 /// What the model reads after the history on the last step; it is not stored.
@@ -488,6 +488,12 @@ pub trait RunHost: Sync {
     fn take_end_request(&self) -> bool {
         false
     }
+    /// Compact structured snapshot of live working state (active todos, pending modified files,
+    /// running background processes) preserved verbatim across context compaction so the agent
+    /// does not lose track of ongoing work.
+    fn working_state_summary(&self) -> impl Future<Output = Option<String>> + Send {
+        async { None }
+    }
 }
 
 /// What the loop needs to know about the model.
@@ -803,8 +809,10 @@ struct Loop<'a, B, H> {
     cap_passes: Vec<(String, i64)>,
     /// The system prompt and tools of the next call (re-resolved at each step boundary).
     config: StepConfig,
-    /// A context-length error asked for the current turn's tool results to be shortened.
-    shrink: bool,
+    /// Fixed byte budget locked after a context-length error so earlier results of the current
+    /// user turn stay byte-identical across subsequent steps (preserving provider prompt caching)
+    /// instead of recomputing `UserTurn / 2` every step.
+    shrink_budget_fixed: Option<usize>,
     /// The latest answer was cut off by the model's output token cap.
     output_limited: bool,
     /// The provider refused `tool_choice: none` on the last step: it goes without tools instead.
@@ -813,8 +821,12 @@ struct Loop<'a, B, H> {
     probe: std::sync::Mutex<progress::ProgressProbe>,
     /// The chat's pruning watermark and learned window.
     context: ContextState,
-    /// Proactive compactions that failed in this run.
+    /// Consecutive proactive compactions that failed in this run (reset on success).
     compaction_failures: u32,
+    /// History length when a proactive compaction produced a non-shrinking summary (`after >=
+    /// before`), preventing wasted summary LLM calls on every subsequent step until new history
+    /// accumulates.
+    unshrinkable_entries_len: Option<usize>,
     /// The request stayed too long after shortening and compaction.
     context_full: bool,
 }
@@ -845,12 +857,13 @@ pub async fn run_agent<B: ChatBackend, H: RunHost>(
             tools: input.tools.clone(),
             native_web_search: input.native_web_search,
         },
-        shrink: false,
+        shrink_budget_fixed: None,
         output_limited: false,
         tool_choice_refused: false,
         probe: std::sync::Mutex::default(),
         context: host.context_state(),
         compaction_failures: 0,
+        unshrinkable_entries_len: None,
         context_full: false,
     };
     run.run().await
@@ -977,7 +990,11 @@ impl<B: ChatBackend, H: RunHost> Loop<'_, B, H> {
             used = self.used_tokens(&request);
         }
         let mut pending = Some(request);
+        let cooled_down = self
+            .unshrinkable_entries_len
+            .is_some_and(|prev| entries.len() < prev.saturating_add(3));
         if self.input.compaction.auto
+            && !cooled_down
             && self.compaction_failures < COMPACTION_ATTEMPTS
             && super::context::should_compact(
                 used,
@@ -985,15 +1002,30 @@ impl<B: ChatBackend, H: RunHost> Loop<'_, B, H> {
                 self.input.compaction.threshold_pct,
             )
         {
-            match compaction::compact(self.backend, self.host, self.input, &entries, self.cancel)
-                .await
+            match compaction::compact_with_config(
+                self.backend,
+                self.host,
+                self.input,
+                self.config.system.as_deref(),
+                &self.config.tools,
+                self.window(),
+                &entries,
+                self.cancel,
+            )
+            .await
             {
                 Ok(Some(_)) => {
+                    self.compaction_failures = 0;
+                    self.unshrinkable_entries_len = None;
                     self.last_context_tokens = 0;
                     entries = self.host.load_history().await?;
                     pending = None;
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    // Summary did not shrink the context: avoid calling the summariser again on
+                    // every single step until enough new history accumulates.
+                    self.unshrinkable_entries_len = Some(entries.len());
+                }
                 Err(error) if error.is_cancelled() => return Err(error),
                 Err(_) => {
                     // The request goes out in full; two failures end the attempts.
@@ -1045,23 +1077,28 @@ impl<B: ChatBackend, H: RunHost> Loop<'_, B, H> {
                         && super::context::is_context_length_error(&failure.error)
                         && !self.cancel.is_cancelled();
                     if too_long && !compacted_reactively {
-                        // First shorten the current turn's largest tool results, then
-                        // summarise, then retry once; a failed summary still leaves
-                        // the shortened retry.
+                        // Learn any provider-reported context window first, prune newly-prunable
+                        // tool outputs, lock a fixed reduced turn budget, then summarise and retry
+                        // once; a failed summary still leaves the pruned/shortened retry.
                         compacted_reactively = true;
                         self.learn_window(failure.error.message());
+                        let pruned_now = self.advance_watermark(&entries, self.window()).await;
                         let raw: Vec<HubMessage> =
                             entries.iter().map(|e| e.message.clone()).collect();
+                        let fixed_budget = self.shrink_budget(&raw);
                         let shortenable = shorten_scoped_results(
                             &mut raw.clone(),
-                            self.shrink_budget(&raw),
+                            fixed_budget,
                             ResultScope::UserTurn,
                         ) > 0;
-                        self.shrink = true;
-                        let compacted = match compaction::compact(
+                        self.shrink_budget_fixed = Some(fixed_budget);
+                        let compacted = match compaction::compact_with_config(
                             self.backend,
                             self.host,
                             self.input,
+                            self.config.system.as_deref(),
+                            &self.config.tools,
+                            self.window(),
                             &entries,
                             self.cancel,
                         )
@@ -1075,10 +1112,12 @@ impl<B: ChatBackend, H: RunHost> Loop<'_, B, H> {
                             }
                         };
                         if compacted {
+                            self.compaction_failures = 0;
+                            self.unshrinkable_entries_len = None;
                             self.last_context_tokens = 0;
                             entries = self.host.load_history().await?;
                         }
-                        if compacted || shortenable {
+                        if compacted || pruned_now || shortenable {
                             continue;
                         }
                     }
@@ -1269,10 +1308,10 @@ impl<B: ChatBackend, H: RunHost> Loop<'_, B, H> {
         prune_calls(&mut messages, &self.context);
         repair_orphan_tool_calls(&mut messages);
         let mut messages = self.host.resolve_attachments(messages).await;
-        // After a context-length error every result of the current user turn shares one smaller
-        // budget; otherwise the newest step's results share a quarter of the window.
-        if self.shrink {
-            let budget = self.shrink_budget(&messages);
+        // After a context-length error every result of the current user turn shares the fixed
+        // smaller budget locked when the error occurred (keeping prefixes stable); otherwise the
+        // newest step's results share a quarter of the window.
+        if let Some(budget) = self.shrink_budget_fixed {
             shorten_scoped_results(&mut messages, budget, ResultScope::UserTurn);
         } else {
             shorten_turn_results(&mut messages, self.turn_budget());

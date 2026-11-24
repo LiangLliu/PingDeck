@@ -179,6 +179,74 @@ impl LiveAcc {
                     tool.child_run_id = Some(child_run.run_id.clone());
                 }
             }
+            AgentEvent::SubagentEvent {
+                child_run_id,
+                event,
+                ..
+            } => match event.as_ref() {
+                AgentEvent::ToolApprovalRequired {
+                    call_id,
+                    name,
+                    card,
+                    ..
+                } => {
+                    if let Some(tool) = self.tool(call_id) {
+                        tool.state = LiveToolState::WaitingApproval;
+                        tool.approval.clone_from(card);
+                    } else {
+                        self.tools.push(LiveToolCall {
+                            call_id: call_id.clone(),
+                            name: name.clone(),
+                            source: crate::agent::tools::ToolSource::Builtin,
+                            state: LiveToolState::WaitingApproval,
+                            child_run_id: Some(child_run_id.clone()),
+                            result: None,
+                            approval: card.clone(),
+                        });
+                    }
+                }
+                AgentEvent::ToolApprovalResolved { call_id, .. } => {
+                    self.tools.retain(|tool| {
+                        !(tool.call_id == *call_id
+                            && tool.child_run_id.as_deref() == Some(child_run_id.as_str()))
+                    });
+                }
+                AgentEvent::CostLimitReached {
+                    run_id,
+                    cost_micro,
+                    cap_micro,
+                    currency,
+                    breakdown,
+                    next_cap_micro,
+                    unpriced_models,
+                    tokens,
+                } => {
+                    self.cost_limit = Some(LiveCostLimit {
+                        run_id: run_id.clone(),
+                        cost_micro: *cost_micro,
+                        cap_micro: *cap_micro,
+                        currency: currency.clone(),
+                        breakdown: breakdown.clone(),
+                        next_cap_micro: *next_cap_micro,
+                        unpriced_models: unpriced_models.clone(),
+                        tokens: *tokens,
+                    });
+                }
+                _ => {}
+            },
+            AgentEvent::SubagentFinished { child_run, .. } => {
+                self.tools.retain(|tool| {
+                    !(tool.child_run_id.as_deref() == Some(child_run.run_id.as_str())
+                        && tool.approval.is_some())
+                });
+                if self
+                    .cost_limit
+                    .as_ref()
+                    .is_some_and(|limit| limit.run_id == child_run.run_id)
+                {
+                    self.cost_limit = None;
+                }
+            }
             AgentEvent::MessageSaved { message } if message.role == AgentRole::Assistant => {
                 // The stored message holds the text now; the calls keep their live state.
                 let kept: usize = self

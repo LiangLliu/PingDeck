@@ -266,7 +266,7 @@ pub fn render_access_tab(
     );
 
     v_col()
-        .max_w(px(900.0))
+        .w_full()
         .gap(px(14.0))
         .child(server_card)
         .child(card(cx).p(px(16.0)).child(hosts_col))

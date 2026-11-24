@@ -27,9 +27,10 @@ use super::journal::{Ended, Journal};
 use super::{ChatError, ChatErrorKind, ChatTarget, HealthGuard, Reshape, encode_for, shape_for};
 
 /// No SSE event for this long ends the stream with an idle stall (the setting `idle_timeout_s`
-/// may only make it shorter): 30 s. Keep-alive comments are bytes, not
-/// events, and do not restart it (`UpstreamStream::next_chunk`).
-const CHAT_IDLE_CAP: Duration = Duration::from_secs(30);
+/// may only make it shorter): 90 s, matching the agent's normative `STALL_TIMEOUT` so deep
+/// reasoning pauses are not cut off early. Keep-alive comments are bytes, not events, and do not
+/// restart it (`UpstreamStream::next_chunk`).
+const CHAT_IDLE_CAP: Duration = Duration::from_secs(90);
 
 /// A committed stream.
 pub(super) struct Flow {
@@ -136,15 +137,20 @@ fn relay(flow: &mut Flow, event: HubEvent) -> Result<HubEvent, ChatError> {
                 ChatErrorKind::Failed
             };
             let text = format!("upstream stream error: {message}");
+            let assessed = crate::llm::failure::FailureObservation {
+                status: None,
+                transport: Some(crate::llm::failure::Transport::StreamError),
+                body: message.clone(),
+                retry_after_ms: None,
+            }
+            .assess();
             flow.guard.finish(Outcome::Failure);
             flow.journal.end(&Ended::Failed {
                 status: 200,
                 error: text.clone(),
-                kind: FailureKind::Network,
+                kind: assessed.kind,
             });
-            return Err(
-                ChatError::new(kind, AppError::network(text)).with_failure(FailureKind::Network)
-            );
+            return Err(ChatError::new(kind, AppError::network(text)).with_failure(assessed.kind));
         }
         HubEvent::Usage { usage } => flow.journal.add_usage(usage),
         HubEvent::Finish { reason } => {

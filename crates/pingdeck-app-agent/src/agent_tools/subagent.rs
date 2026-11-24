@@ -35,6 +35,9 @@ pub const MAX_PROMPT_CHARS: usize = 16_000;
 /// Most images one vision job is handed.
 pub const MAX_IMAGES: usize = 10;
 
+/// Longest `resume` agent id, in characters.
+pub const MAX_RESUME_ID_CHARS: usize = 128;
+
 /// What a sub-agent may do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +60,8 @@ struct Args {
     role: Option<SubagentRole>,
     #[serde(default)]
     images: Vec<String>,
+    #[serde(default)]
+    resume: Option<String>,
 }
 
 /// What `task` was asked to do, checked.
@@ -64,7 +69,7 @@ struct Args {
 pub struct TaskBrief {
     /// The row title (3 to 60 characters).
     pub description: String,
-    /// The child's whole brief.
+    /// The child's whole brief (or follow-up prompt when `resume` is set).
     pub prompt: String,
     /// What the child may do.
     pub kind: SubagentKind,
@@ -72,6 +77,9 @@ pub struct TaskBrief {
     pub role: Option<SubagentRole>,
     /// Attachment ids of the chat's images the child looks at (vision jobs only).
     pub images: Vec<String>,
+    /// Optional `agent_id` (child session id from a prior report) to continue instead of starting
+    /// from an empty context.
+    pub resume: Option<String>,
 }
 
 impl TaskBrief {
@@ -103,6 +111,21 @@ impl TaskBrief {
                 args.images.len()
             )));
         }
+        let resume = match args.resume {
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    None
+                } else if trimmed.chars().count() > MAX_RESUME_ID_CHARS {
+                    return Err(AppError::validation(format!(
+                        "resume must be at most {MAX_RESUME_ID_CHARS} characters"
+                    )));
+                } else {
+                    Some(trimmed.to_owned())
+                }
+            }
+            None => None,
+        };
         let mut images: Vec<String> = Vec::new();
         for image in args.images {
             let image = image.trim().to_owned();
@@ -116,6 +139,7 @@ impl TaskBrief {
             kind: args.kind,
             role: args.role,
             images,
+            resume,
         })
     }
 
@@ -166,6 +190,8 @@ pub enum ChildEnd {
     StepLimit,
     /// The child stopped at the cost cap.
     CostLimit,
+    /// The child's conversation exceeded its model's context window.
+    ContextFull,
     /// The child was stopped (on its own, or with its parent).
     Cancelled,
     /// The child failed with this message.
@@ -182,6 +208,8 @@ pub struct ChildReport {
     /// The first line of the result for a child with a role: role, model and spend
     /// (`[fast · my-new-api/Atria-Dawn · USD 0.0021]`); `None` without a role.
     pub origin: Option<String>,
+    /// Resumable child session id (`agent_id`) for follow-up `task` calls with `resume`.
+    pub session_id: Option<String>,
 }
 
 /// What a sub-agent reads when it calls `ask_user`: only the chat's own agent asks the user.
@@ -214,23 +242,34 @@ impl ChildReport {
                 "Sub-agent stopped: it reached the cost limit. Partial result: {}",
                 partial()
             )),
+            ChildEnd::ContextFull => ToolOutput::error(format!(
+                "Sub-agent stopped: it reached its context limit. Partial result: {}",
+                partial()
+            )),
             ChildEnd::Failed(message) => ToolOutput::error(format!(
                 "Sub-agent stopped: {message}. Partial result: {}",
                 partial()
             )),
         };
-        let output = ToolOutput {
-            external: wrote,
-            ..output
-        };
-        match self.origin {
-            Some(origin) => ToolOutput {
-                parts: std::iter::once(crate::llm::hub::HubPart::text(format!("{origin}\n")))
+        // Never mark PingDeck's own "Cancelled by the user." string as untrusted external data.
+        let external = wrote && !matches!(self.end, ChildEnd::Cancelled);
+        let output = ToolOutput { external, ..output };
+        let mut prefix = String::new();
+        if let Some(id) = self.session_id {
+            prefix.push_str(&format!("[agent_id: {id}]\n"));
+        }
+        if let Some(origin) = self.origin {
+            prefix.push_str(&format!("{origin}\n"));
+        }
+        if prefix.is_empty() {
+            output
+        } else {
+            ToolOutput {
+                parts: std::iter::once(crate::llm::hub::HubPart::text(prefix))
                     .chain(output.parts)
                     .collect(),
                 ..output
-            },
-            None => output,
+            }
         }
     }
 }
@@ -257,7 +296,7 @@ pub struct TaskTool {
 impl TaskTool {
     /// The tool offering `roles` (the roles that have a model) as `role`.
     fn new(roles: &[SubagentRole]) -> Self {
-        let mut description = "Hand a self-contained job to a sub-agent with its own context and get its final answer back. `kind: explore` investigates only (read files, search, list; it cannot change anything); `kind: general` (default) may use the same tools you have, except `task`. The sub-agent sees nothing of this conversation: put everything it needs in `prompt`. Several `task` calls in one turn run at the same time. At most the configured number of sub-agents per run. Do work of one or two steps yourself. Split parallel write jobs into disjoint sets of files. Use `kind: explore` for read-only investigation.".to_owned();
+        let mut description = "Hand a self-contained job to a sub-agent with its own context and get its final answer back. `kind: explore` investigates only (read files, search, list; it cannot change anything); `kind: general` (default) may use the same tools you have, except `task`. The sub-agent sees nothing of this conversation: put everything it needs in `prompt`, or pass `resume` with an earlier report's `agent_id` to continue that sub-agent with its preserved context. Several `task` calls in one turn run at the same time. At most the configured number of sub-agents per run. Do work of one or two steps yourself. Split parallel write jobs into disjoint sets of files. Use `kind: explore` for read-only investigation.".to_owned();
         let mut properties = json!({
             "description": {
                 "type": "string",
@@ -268,9 +307,14 @@ impl TaskTool {
             "prompt": {
                 "type": "string",
                 "maxLength": MAX_PROMPT_CHARS,
-                "description": "The sub-agent's whole brief, including what to report back."
+                "description": "The sub-agent's whole brief (or follow-up question when resuming), including what to report back."
             },
-            "kind": {"type": "string", "enum": ["explore", "general"], "description": "Default general."}
+            "kind": {"type": "string", "enum": ["explore", "general"], "description": "Default general."},
+            "resume": {
+                "type": "string",
+                "maxLength": MAX_RESUME_ID_CHARS,
+                "description": "Optional agent_id from a previous task report to continue that sub-agent instead of starting fresh."
+            }
         });
         if !roles.is_empty() {
             let names: Vec<&str> = roles.iter().map(|role| role.as_str()).collect();
@@ -333,10 +377,17 @@ impl AgentTool for TaskTool {
 
     fn inspect(
         &self,
-        _ctx: &ToolContext<'_>,
+        ctx: &ToolContext<'_>,
         arguments: &Value,
     ) -> Result<CallInspection, AppError> {
-        TaskBrief::parse(arguments)?;
+        let brief = TaskBrief::parse(arguments)?;
+        if ctx.agent.is_some_and(|a| a.plan_active(ctx.session_id))
+            && brief.kind != SubagentKind::Explore
+        {
+            return Err(AppError::validation(
+                "Plan mode is read-only: use kind \"explore\" for sub-agents while planning.",
+            ));
+        }
         // The call itself changes nothing; the child's own calls are gated one by one.
         Ok(CallInspection {
             read_only: true,
@@ -350,6 +401,13 @@ impl AgentTool for TaskTool {
                 Ok(brief) => brief,
                 Err(error) => return ToolOutput::error(error.message()),
             };
+            if ctx.agent.is_some_and(|a| a.plan_active(ctx.session_id))
+                && brief.kind != SubagentKind::Explore
+            {
+                return ToolOutput::error(
+                    "Plan mode is read-only: use kind \"explore\" for sub-agents while planning.",
+                );
+            }
             let configured: Vec<SubagentRole> = ctx
                 .settings
                 .ai
@@ -444,6 +502,7 @@ mod tests {
                 end,
                 text: text.to_owned(),
                 origin: None,
+                session_id: None,
             }
             .into_output()
         };
@@ -454,12 +513,13 @@ mod tests {
         assert!(!blank.is_error && !blank.external);
 
         let cancelled = report(ChildEnd::Cancelled, "half");
-        assert!(cancelled.is_error);
+        assert!(cancelled.is_error && !cancelled.external);
         assert_eq!(cancelled.text_content(), "Cancelled by the user.");
 
         for (end, reason) in [
             (ChildEnd::StepLimit, "step limit"),
             (ChildEnd::CostLimit, "cost limit"),
+            (ChildEnd::ContextFull, "context limit"),
             (ChildEnd::Failed("boom".into()), "boom"),
         ] {
             let output = report(end, "partial text");
@@ -563,11 +623,42 @@ mod tests {
             end: ChildEnd::Completed,
             text: "found it".to_owned(),
             origin: Some("[fast · p/m · USD 0.0021]".to_owned()),
+            session_id: Some("as_child1".to_owned()),
         }
         .into_output();
         assert_eq!(
             output.text_content(),
-            format!("[fast · p/m · USD 0.0021]\n{REPORT_PREFIX}\nfound it")
+            format!("[agent_id: as_child1]\n[fast · p/m · USD 0.0021]\n{REPORT_PREFIX}\nfound it")
+        );
+    }
+
+    #[test]
+    fn resume_id_is_trimmed_and_validated() {
+        let parsed = brief(&json!({
+            "description": "Follow up",
+            "prompt": "check line 12",
+            "resume": "  as_child_42  "
+        }))
+        .unwrap();
+        assert_eq!(parsed.resume.as_deref(), Some("as_child_42"));
+        assert!(
+            brief(&json!({
+                "description": "Follow up",
+                "prompt": "check line 12",
+                "resume": "   "
+            }))
+            .unwrap()
+            .resume
+            .is_none()
+        );
+        let too_long = "x".repeat(MAX_RESUME_ID_CHARS + 1);
+        assert!(
+            brief(&json!({
+                "description": "Follow up",
+                "prompt": "check",
+                "resume": too_long
+            }))
+            .is_err()
         );
     }
 }

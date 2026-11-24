@@ -646,6 +646,16 @@ impl ServiceHost {
         self.state.agent.publish_attention();
     }
 
+    /// The user-facing chat id: the parent chat for a sub-agent, or this session itself.
+    /// Permission rules, sandbox acknowledgements and session-level rollups live here so
+    /// sub-agents inherit parent Block/Allow rules and never persist rules to hidden child rows.
+    fn effective_chat_id(&self) -> &str {
+        self.session
+            .parent_session_id
+            .as_deref()
+            .unwrap_or(&self.session.id)
+    }
+
     /// The top-level run of this run's tree (itself, or a sub-agent's parent).
     fn root(&self) -> Arc<ActiveRun> {
         self.run
@@ -655,9 +665,14 @@ impl ServiceHost {
             .unwrap_or_else(|| Arc::clone(&self.run))
     }
 
-    /// The run waits for the user: the tree's top-level slot is free while it does.
+    /// The run waits for the user: the tree's top-level slot is free while all active branches wait.
     fn release_slot(&self) {
         self.root().begin_wait();
+    }
+
+    /// Ends a wait when the gate was cancelled so `root.waits` never leaks across cancellations.
+    fn end_wait_cancelled(&self) {
+        let _ = self.root().end_wait();
     }
 
     /// Waits for a top-level slot again after a pause; `false` when the run was cancelled meanwhile.
@@ -746,7 +761,7 @@ impl ServiceHost {
         self.state
             .agent
             .approvals
-            .sandbox_acknowledged(&self.session.id)
+            .sandbox_acknowledged(self.effective_chat_id())
     }
 
     /// How the call stood to the sandbox, recorded with it: `skipped_by_choice` when the chat
@@ -817,14 +832,30 @@ impl RunHost for ServiceHost {
     }
 
     async fn load_history(&self) -> Result<Vec<HistoryEntry>, AppError> {
-        let (id, skills) = (self.session.id.clone(), self.resolved().skills.clone());
-        let (messages, used) = blocking(&self.state, move |state| {
-            let mut messages = state
-                .store()
-                .list_model_history(&id)
-                .map_err(command_error)?;
+        let (id, parent_id, skills) = (
+            self.session.id.clone(),
+            self.session.parent_session_id.clone(),
+            self.resolved().skills.clone(),
+        );
+        let (messages, parent_user_texts, used) = blocking(&self.state, move |state| {
+            let store = state.store();
+            let mut messages = store.list_model_history(&id).map_err(command_error)?;
+            let parent_user_texts: Vec<String> = match parent_id {
+                Some(pid) => store
+                    .list_model_history(&pid)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|m| m.role == AgentRole::User)
+                    .flat_map(|m| m.parts)
+                    .filter_map(|p| match p {
+                        HubPart::Text { text, .. } => Some(text),
+                        _ => None,
+                    })
+                    .collect(),
+                None => Vec::new(),
+            };
             let used = super::skill_delivery::attach_skills(&mut messages, &skills);
-            Ok::<_, AppError>((messages, used))
+            Ok::<_, AppError>((messages, parent_user_texts, used))
         })
         .await??;
         *self
@@ -836,6 +867,9 @@ impl RunHost for ServiceHost {
                 .seen_hosts
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
+            for text in &parent_user_texts {
+                seen.note_text(text);
+            }
             for message in messages.iter().filter(|m| m.role == AgentRole::User) {
                 for part in &message.parts {
                     if let HubPart::Text { text, .. } = part {
@@ -1150,12 +1184,20 @@ impl RunHost for ServiceHost {
     ) -> Result<RunTotals, AppError> {
         use crate::llm::client::CallPurpose;
         let cost_micro = cost.micro_or_zero();
-        let (session, call_usage) = (self.session.id.clone(), usage.clone());
+        let (session, parent_session, call_usage) = (
+            self.session.id.clone(),
+            self.session.parent_session_id.clone(),
+            usage.clone(),
+        );
         blocking(&self.state, move |state| {
-            state
-                .store()
+            let store = state.store();
+            store
                 .add_session_usage(&session, &call_usage, cost_micro, context_tokens)
-                .map_err(command_error)
+                .map_err(command_error)?;
+            if let Some(parent_id) = parent_session {
+                let _ = store.add_session_usage_rollup(&parent_id, &call_usage, cost_micro);
+            }
+            Ok::<(), AppError>(())
         })
         .await??;
         // An unknown cost counts in no currency; a known one counts for the run and, as it
@@ -1318,17 +1360,19 @@ impl RunHost for ServiceHost {
             "medium"
         };
         // The safety list and the auto-run switch are read now, not from the run's snapshot: a
-        // pattern added mid-run applies to the next call.
+        // pattern added mid-run applies to the next call. Sub-agents evaluate chat-scoped rules
+        // against their parent chat so parent Block/Allow rules always apply.
         let live = self.state.settings();
-        let (session_id, blocked) = (
+        let (session_id, rules_chat_id, blocked) = (
             self.session.id.clone(),
+            self.effective_chat_id().to_owned(),
             live.ai.agent.blocked_commands.clone(),
         );
         let loaded = blocking(&self.state, move |state| {
             let store = state.store();
             (
                 store
-                    .list_permission_rules(Some(&session_id))
+                    .list_permission_rules(Some(&rules_chat_id))
                     .unwrap_or_default(),
                 store.list_tool_policy().unwrap_or_default(),
                 session_mode(&store, &session_id),
@@ -1348,16 +1392,30 @@ impl RunHost for ServiceHost {
             .collect();
         let data_dir = self.state.data_dirs().map(|dirs| dirs.root.clone());
         let home = std::env::var_os("HOME").map(PathBuf::from);
-        let folder_busy = self
-            .state
-            .agent
-            .processes
-            .list(Some(&self.session.id))
-            .iter()
-            .any(|process| process.state == crate::agent::tools::process::ProcessState::Running);
+        let tree_sessions: std::collections::HashSet<String> = {
+            let root = self.root();
+            let mut ids: std::collections::HashSet<String> = self
+                .state
+                .agent
+                .runs
+                .active_runs()
+                .into_iter()
+                .filter(|r| {
+                    r.run_id == root.run_id || r.parent_run_id.as_deref() == Some(&root.run_id)
+                })
+                .map(|r| r.session_id.clone())
+                .collect();
+            ids.insert(self.session.id.clone());
+            ids.insert(self.effective_chat_id().to_owned());
+            ids
+        };
+        let folder_busy = self.state.agent.processes.list(None).iter().any(|process| {
+            process.state == crate::agent::tools::process::ProcessState::Running
+                && tree_sessions.contains(&process.session_id)
+        });
         let status = sandbox_status();
         let query = PermissionQuery {
-            session_id: &self.session.id,
+            session_id: self.effective_chat_id(),
             workspace_dir: resolved.workspace.as_deref(),
             tool_name: &call.name,
             spec,
@@ -1423,9 +1481,10 @@ impl RunHost for ServiceHost {
             full_text: full_text.clone(),
             card: ask.card.as_deref().cloned(),
         };
+        let rule_chat_id = self.effective_chat_id();
         let context = ask.card.as_ref().map_or_else(
             || RuleContext {
-                session_id: self.session.id.clone(),
+                session_id: rule_chat_id.to_owned(),
                 workspace_dir: self.session.workspace_dir.clone(),
                 tool: call.name.clone(),
                 pattern: None,
@@ -1433,7 +1492,7 @@ impl RunHost for ServiceHost {
             },
             |card| {
                 card.rule_context(
-                    &self.session.id,
+                    rule_chat_id,
                     self.session.workspace_dir.as_deref(),
                     &call.name,
                 )
@@ -1497,7 +1556,12 @@ impl RunHost for ServiceHost {
             self.run.mark_approval_timed_out();
             self.save_extras().await;
         }
-        if outcome == ApprovalOutcome::Cancelled || !self.reacquire_slot().await {
+        if outcome == ApprovalOutcome::Cancelled {
+            self.end_wait_cancelled();
+            runtime.publish_attention();
+            return ApprovalOutcome::Cancelled;
+        }
+        if !self.reacquire_slot().await {
             runtime.publish_attention();
             return ApprovalOutcome::Cancelled;
         }
@@ -1661,6 +1725,7 @@ impl RunHost for ServiceHost {
             GateOutcome::Answered(GateAnswer::Cost(decision)) => decision,
             GateOutcome::TimedOut => CostDecision::Stop,
             _ => {
+                self.end_wait_cancelled();
                 runtime.publish_attention();
                 return None;
             }
@@ -1705,13 +1770,98 @@ impl RunHost for ServiceHost {
             .iter()
             .map(|run| run.summary().session_id)
             .collect();
-        let (session, call) = (self.session.id.clone(), call_id.to_owned());
+        let (state, session, call) = (
+            self.state.clone(),
+            self.session.id.clone(),
+            call_id.to_owned(),
+        );
         tokio::task::spawn_blocking(move || {
-            write_spill(&root, &session, &call, &text, SpillCaps::DEFAULT, &busy).ok()
+            let written =
+                write_spill(&root, &session, &call, &text, SpillCaps::DEFAULT, &busy).ok()?;
+            // Persist `spill_ref` on the tool-call audit row so watermark-pruned handles also
+            // resolve in `agent_tool_output_read_impl` (`read_output`).
+            let _ = state
+                .store()
+                .set_tool_call_spill_ref(&session, &call, &call);
+            Some(written)
         })
         .await
         .ok()
         .flatten()
+    }
+
+    async fn working_state_summary(&self) -> Option<String> {
+        let session_id = self.session.id.clone();
+        let chat_id = self.effective_chat_id().to_owned();
+        let state = self.state.clone();
+        let (todos, changes) = blocking(&state, move |state| {
+            let store = state.store();
+            let todos = store
+                .get_agent_session(&session_id)
+                .ok()
+                .flatten()
+                .map(|s| s.todos)
+                .unwrap_or_default();
+            let changes = store.list_chat_file_changes(&chat_id).unwrap_or_default();
+            (todos, changes)
+        })
+        .await
+        .ok()?;
+        let mut lines = Vec::new();
+        let active_todos: Vec<String> = todos
+            .into_iter()
+            .filter(|t| {
+                !matches!(
+                    t.status,
+                    crate::agent::model::AgentTodoStatus::Completed
+                        | crate::agent::model::AgentTodoStatus::Cancelled
+                )
+            })
+            .take(15)
+            .map(|t| {
+                let tag = match t.status {
+                    crate::agent::model::AgentTodoStatus::InProgress => "in_progress",
+                    crate::agent::model::AgentTodoStatus::Pending => "pending",
+                    crate::agent::model::AgentTodoStatus::Completed => "completed",
+                    crate::agent::model::AgentTodoStatus::Cancelled => "cancelled",
+                };
+                format!("- [{tag}] {}", t.content)
+            })
+            .collect();
+        if !active_todos.is_empty() {
+            lines.push(format!("Active todos:\n{}", active_todos.join("\n")));
+        }
+        let mut touched: Vec<String> = Vec::new();
+        for ch in changes
+            .into_iter()
+            .filter(|c| c.status == crate::agent::model::FileChangeStatus::Pending)
+        {
+            if !touched.contains(&ch.path) {
+                touched.push(ch.path);
+                if touched.len() >= 20 {
+                    break;
+                }
+            }
+        }
+        if !touched.is_empty() {
+            lines.push(format!("Pending modified files: {}", touched.join(", ")));
+        }
+        let running_procs: Vec<String> = self
+            .state
+            .agent
+            .processes
+            .list(Some(&self.session.id))
+            .into_iter()
+            .filter(|p| p.state == crate::agent::tools::process::ProcessState::Running)
+            .map(|p| format!("{} ({})", p.id, p.command))
+            .collect();
+        if !running_procs.is_empty() {
+            lines.push(format!(
+                "Running background processes: {}",
+                running_procs.join("; ")
+            ));
+        }
+        (!lines.is_empty()).then(|| lines.join("\n"))
     }
 
     fn record_failure(&self, failure: AgentFailure) {

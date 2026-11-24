@@ -244,7 +244,8 @@ impl AgentTool for McpToolAdapter {
                 .connection(
                     &self.server_id,
                     &self.transport,
-                    Some(ctx.settings.network.proxy_url.trim()).filter(|proxy| !proxy.is_empty()),
+                    Some(ctx.settings.network.proxy_url.trim())
+                        .filter(|proxy| !proxy.is_empty() && !proxy.eq_ignore_ascii_case("direct")),
                     CONNECT_TIMEOUT,
                 )
                 .await

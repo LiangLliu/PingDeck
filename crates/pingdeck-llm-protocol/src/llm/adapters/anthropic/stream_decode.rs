@@ -29,6 +29,8 @@ pub(super) struct Decoder {
     next_tool: u32,
     /// `server_tool_use` blocks buffered until their `content_block_stop`.
     pending: Vec<PendingServerTool>,
+    /// Chunked `signature_delta` fragments buffered per thinking block until `content_block_stop`.
+    pending_signatures: Vec<(u64, String)>,
 }
 
 /// An upstream `tool_use` block and the hub tool index it was given.
@@ -90,12 +92,30 @@ impl Decoder {
         }
     }
 
+    fn flush_pending_signatures(&mut self, out: &mut Vec<HubEvent>) {
+        for (_, signature) in self.pending_signatures.drain(..) {
+            out.push(HubEvent::ReasoningSignature { signature });
+        }
+    }
+
     fn on_block_start(
         &mut self,
         value: &mut Value,
         index: u64,
         out: &mut Vec<HubEvent>,
     ) -> Result<(), AppError> {
+        // Flush any unclosed thinking block's signature before opening a later block.
+        if !self.pending_signatures.is_empty() {
+            let mut i = 0;
+            while i < self.pending_signatures.len() {
+                if self.pending_signatures[i].0 != index {
+                    let (_, signature) = self.pending_signatures.remove(i);
+                    out.push(HubEvent::ReasoningSignature { signature });
+                } else {
+                    i += 1;
+                }
+            }
+        }
         let mut block = value
             .get_mut("content_block")
             .map(Value::take)
@@ -167,7 +187,27 @@ impl Decoder {
             }
             Some("signature_delta") => {
                 if let Some(signature) = take_str(&mut delta, "signature") {
-                    out.push(HubEvent::ReasoningSignature { signature });
+                    if let Some((_, buf)) = self
+                        .pending_signatures
+                        .iter_mut()
+                        .find(|(block, _)| *block == index)
+                    {
+                        if buf.len() + signature.len() > MAX_TOOL_ARGUMENT_BYTES {
+                            return Err(AppError::network(too_large(
+                                "reasoning signature",
+                                MAX_TOOL_ARGUMENT_BYTES,
+                            )));
+                        }
+                        buf.push_str(&signature);
+                    } else {
+                        if signature.len() > MAX_TOOL_ARGUMENT_BYTES {
+                            return Err(AppError::network(too_large(
+                                "reasoning signature",
+                                MAX_TOOL_ARGUMENT_BYTES,
+                            )));
+                        }
+                        self.pending_signatures.push((index, signature));
+                    }
                 }
             }
             Some("input_json_delta") => {
@@ -211,8 +251,16 @@ impl Decoder {
         Ok(())
     }
 
-    /// Emits a pending server tool call once its block closes, with its input parsed.
+    /// Emits any buffered thinking signature or server tool call once its block closes.
     fn on_block_stop(&mut self, index: u64, out: &mut Vec<HubEvent>) -> Result<(), AppError> {
+        if let Some(pos) = self
+            .pending_signatures
+            .iter()
+            .position(|(block, _)| *block == index)
+        {
+            let (_, signature) = self.pending_signatures.remove(pos);
+            out.push(HubEvent::ReasoningSignature { signature });
+        }
         let Some(at) = self.pending.iter().position(|p| p.block == index) else {
             return Ok(());
         };
@@ -247,6 +295,7 @@ impl Decoder {
     fn on_error(&mut self, value: &mut Value, out: &mut Vec<HubEvent>) {
         self.finished = true;
         self.pending.clear();
+        self.pending_signatures.clear();
         let mut error = value.get_mut("error").map(Value::take).unwrap_or_default();
         out.push(HubEvent::Error {
             message: take_str(&mut error, "message").unwrap_or_else(|| "upstream error".to_owned()),
@@ -274,7 +323,10 @@ impl StreamDecoder for Decoder {
             "content_block_delta" => self.on_block_delta(&mut value, index, &mut out)?,
             "content_block_stop" => self.on_block_stop(index, &mut out)?,
             "message_delta" => self.on_message_delta(&value, &mut out),
-            "message_stop" => out.push(self.finish_event()),
+            "message_stop" => {
+                self.flush_pending_signatures(&mut out);
+                out.push(self.finish_event());
+            }
             "error" => self.on_error(&mut value, &mut out),
             _ => {}
         }
@@ -284,14 +336,17 @@ impl StreamDecoder for Decoder {
     fn finish(&mut self) -> Result<Vec<HubEvent>, AppError> {
         if !self.pending.is_empty() {
             self.pending.clear();
+            self.pending_signatures.clear();
             return Err(AppError::network(
                 "anthropic stream ended inside a server tool call",
             ));
         }
+        let mut out = Vec::new();
+        self.flush_pending_signatures(&mut out);
         if self.started && !self.finished {
-            return Ok(vec![self.finish_event()]);
+            out.push(self.finish_event());
         }
-        Ok(Vec::new())
+        Ok(out)
     }
 }
 
