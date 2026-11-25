@@ -28,8 +28,8 @@ use pingdeck_desktop::services::clipboard;
 
 use crate::bridge::{runtime, spawn_blocking_into};
 use crate::ui::{
-    StatusShape, Tone, UiIcon, app_icon, badge, btn_ghost, card, h_row, icon_xs, palette,
-    status_indicator, to_hsla, v_col,
+    Tone, UiIcon, alert_banner, app_icon, badge, btn_ghost, card, h_row, icon_xs, palette, to_hsla,
+    v_col,
 };
 
 pub(super) const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -436,19 +436,12 @@ impl AboutSettingsView {
             .child(footer);
 
         if let Some(err) = &self.link_error {
-            body = body.child(
-                h_row()
-                    .mt(px(8.0))
-                    .gap(px(6.0))
-                    .px(px(10.0))
-                    .py(px(6.0))
-                    .rounded(px(6.0))
-                    .bg(to_hsla(p.bad_soft))
-                    .text_xs()
-                    .text_color(to_hsla(p.bad))
-                    .child(status_indicator(StatusShape::Bad, cx))
-                    .child(SharedString::from(err.clone())),
-            );
+            body = body.child(div().pt(px(8.0)).child(alert_banner(
+                Tone::Danger,
+                err.clone(),
+                None,
+                cx,
+            )));
         }
 
         card(cx).p(px(20.0)).child(body)

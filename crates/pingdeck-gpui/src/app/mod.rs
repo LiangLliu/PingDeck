@@ -5,8 +5,8 @@ pub mod actions;
 use std::sync::Arc;
 
 use gpui_kit::{
-    App, AppContext as _, Bounds, KeyBinding, Menu, MenuItem, SystemMenuType, WindowBounds,
-    WindowOptions, px, size,
+    App, AppContext as _, Bounds, Menu, MenuItem, SystemMenuType, WindowBounds, WindowOptions, px,
+    size,
 };
 use pingdeck_desktop::core::app::settings_get_impl;
 use pingdeck_desktop::core::logging::{LogLevel, log_line};
@@ -23,9 +23,7 @@ use crate::ui::{
 use crate::views::shell::AppShell;
 
 use actions::{
-    CloseOverlay, CloseTab, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9,
-    NewTab, OpenSettings, QuitApp, SaveActive, SendRequest, ToggleConsole, TogglePalette,
-    ToggleSidebar,
+    HideWindow, OpenSettings, QuitApp, TogglePalette, ToggleSidebar, bind_app_shortcuts,
 };
 
 const BUNDLE_IDENTIFIER: &str = "com.pingdeck.desktop";
@@ -88,7 +86,7 @@ pub fn run() {
             cx,
         );
 
-        bind_keys_and_menus(cx);
+        bind_keys_and_menus(&initial_settings.shortcuts.overrides, cx);
 
         // Graceful core shutdown whenever the GPUI app exits (Cmd+Q, NSRunningApplication.terminate,
         // Linux window close, or tray Quit).
@@ -184,28 +182,8 @@ pub fn run() {
     });
 }
 
-fn bind_keys_and_menus(cx: &mut App) {
-    cx.bind_keys([
-        KeyBinding::new("cmd-q", QuitApp, None),
-        KeyBinding::new("cmd-,", OpenSettings, None),
-        KeyBinding::new("cmd-b", ToggleSidebar, None),
-        KeyBinding::new("cmd-k", TogglePalette, None),
-        KeyBinding::new("cmd-1", Nav1, None),
-        KeyBinding::new("cmd-2", Nav2, None),
-        KeyBinding::new("cmd-3", Nav3, None),
-        KeyBinding::new("cmd-4", Nav4, None),
-        KeyBinding::new("cmd-5", Nav5, None),
-        KeyBinding::new("cmd-6", Nav6, None),
-        KeyBinding::new("cmd-7", Nav7, None),
-        KeyBinding::new("cmd-8", Nav8, None),
-        KeyBinding::new("cmd-9", Nav9, None),
-        KeyBinding::new("cmd-s", SaveActive, None),
-        KeyBinding::new("cmd-enter", SendRequest, None),
-        KeyBinding::new("cmd-j", ToggleConsole, None),
-        KeyBinding::new("cmd-t", NewTab, None),
-        KeyBinding::new("cmd-w", CloseTab, None),
-        KeyBinding::new("escape", CloseOverlay, None),
-    ]);
+fn bind_keys_and_menus(overrides: &std::collections::BTreeMap<String, String>, cx: &mut App) {
+    bind_app_shortcuts(overrides, cx);
 
     cx.set_menus(vec![
         Menu {

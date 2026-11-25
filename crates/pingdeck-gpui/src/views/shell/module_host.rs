@@ -147,13 +147,28 @@ impl ModuleHost {
         }
     }
 
-    /// Polls settings view for palette-change or back-button signals.
-    pub fn poll_settings_signals<V: 'static>(&self, cx: &Context<V>) -> (Option<PaletteId>, bool) {
+    pub fn settings_dismiss_modal<V: 'static>(&mut self, cx: &mut Context<V>) -> bool {
+        if let Some(v) = &self.settings {
+            v.update(cx, |s, cx| s.dismiss_modal_if_open(cx))
+        } else {
+            false
+        }
+    }
+
+    /// Polls settings view for palette-change, back-button, or cross-module jump signals.
+    pub fn poll_settings_signals<V: 'static>(
+        &self,
+        cx: &Context<V>,
+    ) -> (Option<PaletteId>, bool, Option<NavModule>) {
         let Some(v) = &self.settings else {
-            return (None, false);
+            return (None, false, None);
         };
         let s = v.read(cx);
-        (s.take_pending_palette(), s.take_pending_back())
+        (
+            s.take_pending_palette(),
+            s.take_pending_back(),
+            s.take_pending_navigate(),
+        )
     }
 
     /// Lazily mounts (if first visit) and returns the active module element.

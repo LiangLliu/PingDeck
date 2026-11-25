@@ -252,6 +252,7 @@ pub(super) fn render_permissions(
         this.reset_ai_keys(
             &[
                 "agent.default_permission_mode",
+                "agent.sandbox_writes_to_workspace",
                 "agent.sandbox_auto_run",
                 "agent.approval_timeout_s",
                 "agent.shell_timeout_s",
@@ -292,6 +293,29 @@ pub(super) fn render_permissions(
             None,
             Some(SharedString::from(sb_detail)),
             sandbox_ctl,
+            cx,
+        ))
+        .child(set_row(
+            if zh {
+                "将 Shell 写入限制在工作目录内"
+            } else {
+                "Confine shell writes to workspace"
+            },
+            None,
+            Some(SharedString::from(if zh {
+                "开启后由 OS 沙箱禁止 run_shell 修改项目目录之外的文件（推荐保持开启）。"
+            } else {
+                "Uses the OS sandbox to prevent run_shell from writing outside the active workspace (recommended)."
+            })),
+            toggle_switch("agent-sandbox-writes", ag.sandbox_writes_to_workspace).on_change(
+                cx.listener(|this, checked: &bool, _, cx| {
+                    this.patch_ai(
+                        serde_json::json!({ "agent": { "sandbox_writes_to_workspace": *checked } }),
+                        None,
+                        cx,
+                    );
+                }),
+            ),
             cx,
         ))
         .child(set_row(

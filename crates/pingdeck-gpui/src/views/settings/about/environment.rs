@@ -8,8 +8,8 @@ use pingdeck_desktop::i18n::{t, t_args};
 use pingdeck_desktop::theme::ResolvedPalette;
 
 use crate::ui::{
-    StatusShape, UiIcon, btn_ghost, btn_secondary, card, h_row, icon_xs, palette, section_heading,
-    status_indicator, to_hsla, v_col,
+    StatusShape, Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, card, h_row, icon_xs,
+    palette, section_header, status_indicator, to_hsla, v_col,
 };
 
 use super::{AboutSettingsView, AboutSnapshot};
@@ -21,20 +21,19 @@ pub(super) fn render_environment_section(
     cx: &mut Context<AboutSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
-    let header = h_row()
-        .justify_between()
-        .child(section_heading(
-            t(lang, "set.sec.about.build").to_owned(),
-            cx,
-        ))
-        .child(
+    let header = section_header(
+        t(lang, "set.sec.about.build").to_owned(),
+        Some(
             btn_ghost(
                 "about-env-recheck",
                 t(lang, "set.agent.sandbox.test").to_owned(),
             )
             .icon(icon_xs(UiIcon::Refresh))
-            .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
-        );
+            .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
+            .into_any_element(),
+        ),
+        cx,
+    );
 
     let body = if view.loading && view.snapshot.is_none() {
         h_row()
@@ -100,35 +99,19 @@ fn render_environment_rows(
     if let Some(err) = &view.load_error {
         let msg = t_args(lang, "set.about.failed", &[("error", err.as_str())]);
         rows = rows.child(
-            h_row()
-                .justify_between()
-                .gap(px(8.0))
-                .px(px(14.0))
-                .py(px(8.0))
-                .bg(to_hsla(p.warn_soft))
-                .border_b_1()
-                .border_color(to_hsla(p.warn_line.composite_over(p.warn_soft)))
-                .child(
-                    h_row()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(6.0))
-                        .child(status_indicator(StatusShape::Warn, cx))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_xs()
-                                .text_color(to_hsla(p.warn))
-                                .child(SharedString::from(msg)),
-                        ),
-                )
-                .child(
+            div().p(px(10.0)).child(alert_banner(
+                Tone::Warning,
+                msg,
+                Some(
                     btn_ghost(
                         "about-env-stale-retry",
                         t(lang, "set.data.retry").to_owned(),
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
+                    .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
+                    .into_any_element(),
                 ),
+                cx,
+            )),
         );
     }
 

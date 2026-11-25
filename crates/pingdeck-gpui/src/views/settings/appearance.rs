@@ -1,18 +1,18 @@
-//! Settings › Appearance page: native segmented mode/density switches, live font-scale slider,
-//! and miniature app-layout OKLCH palette preview cards.
+//! Settings › Appearance page: color mode, density, UI & monospace font scale sliders,
+//! reduced motion, sidebar presentation, and 8 miniature OKLCH eye-care palette preview cards.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, ParentElement as _, SharedString,
+    Context, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::settings::{
-    Density, SettingsSection as CoreSection, Theme as SettingsTheme,
+    Density, ReduceMotion, SettingsSection as CoreSection, SidebarMode, Theme as SettingsTheme,
 };
 use pingdeck_desktop::theme::{PaletteId, resolve_palette};
 
 use crate::ui::{
-    UiIcon, field_row, h_row, icon_xs, palette, section_heading, slider, tab_bar_segmented,
-    tab_item, to_hsla, v_col,
+    UiIcon, btn_ghost, h_row, icon_xs, palette, section_header, setting_row, slider,
+    tab_bar_segmented, tab_item, to_hsla, v_col,
 };
 
 use super::SettingsView;
@@ -35,9 +35,225 @@ pub fn render_appearance(
         Density::Comfortable => 0,
         Density::Compact => 1,
     };
-    let font_val = view.ui_font_slider.read(cx).value().end().round() as u8;
+    let motion_idx = match app.reduce_motion {
+        ReduceMotion::System => 0,
+        ReduceMotion::On => 1,
+        ReduceMotion::Off => 2,
+    };
+    let sidebar_idx = match app.sidebar {
+        SidebarMode::Auto => 0,
+        SidebarMode::Expanded => 1,
+        SidebarMode::Rail => 2,
+    };
 
-    let mut swatches = v_col().w_full().gap(px(10.0)).pt(px(8.0));
+    let ui_font_val = view.inputs.ui_font_slider.read(cx).value().end().round() as u8;
+    let mono_font_val = view.inputs.mono_font_slider.read(cx).value().end().round() as u8;
+
+    let ent_theme = cx.entity().clone();
+    let ent_density = cx.entity().clone();
+    let ent_motion = cx.entity().clone();
+    let ent_sidebar = cx.entity().clone();
+
+    v_col()
+        .w_full()
+        .gap(px(20.0))
+        .child(
+            v_col()
+                .w_full()
+                .child(section_header(
+                    if zh { "外观与排版" } else { "Theme & Typography" },
+                    Some(
+                        btn_ghost(
+                            "app-reset-sec",
+                            if zh { "恢复默认" } else { "Reset" },
+                        )
+                        .icon(icon_xs(UiIcon::RotateCcw))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.reset_section(CoreSection::Appearance, cx);
+                        }))
+                        .into_any_element(),
+                    ),
+                    cx,
+                ))
+                .child(setting_row(
+                    if zh { "色彩模式" } else { "Color mode" },
+                    None,
+                    Some(SharedString::from(if zh {
+                        "跟随操作系统浅色/深色外观，或固定为其中一种。"
+                    } else {
+                        "Follow system light/dark appearance automatically or lock one mode."
+                    })),
+                    tab_bar_segmented("appearance-theme-seg")
+                        .selected_index(theme_idx)
+                        .child(tab_item(if zh { "跟随系统" } else { "System" }))
+                        .child(tab_item(if zh { "浅色" } else { "Light" }))
+                        .child(tab_item(if zh { "深色" } else { "Dark" }))
+                        .on_click(move |idx, _, cx| {
+                            let mode = match *idx {
+                                1 => "light",
+                                2 => "dark",
+                                _ => "system",
+                            };
+                            ent_theme.update(cx, |this, cx| {
+                                this.patch_section(
+                                    CoreSection::Appearance,
+                                    serde_json::json!({ "theme": mode }),
+                                    cx,
+                                );
+                            });
+                        }),
+                    cx,
+                ))
+                .child(setting_row(
+                    if zh { "界面密度" } else { "Density" },
+                    None,
+                    Some(SharedString::from(if zh {
+                        "紧凑模式缩小行距与内边距，适合多面板高信息量调试。"
+                    } else {
+                        "Compact tightens row padding for information-dense debugging."
+                    })),
+                    tab_bar_segmented("appearance-density-seg")
+                        .selected_index(density_idx)
+                        .child(tab_item(if zh { "舒适" } else { "Comfortable" }))
+                        .child(tab_item(if zh { "紧凑" } else { "Compact" }))
+                        .on_click(move |idx, _, cx| {
+                            let density = if *idx == 1 { "compact" } else { "comfortable" };
+                            ent_density.update(cx, |this, cx| {
+                                this.patch_section(
+                                    CoreSection::Appearance,
+                                    serde_json::json!({ "density": density }),
+                                    cx,
+                                );
+                            });
+                        }),
+                    cx,
+                ))
+                .child(setting_row(
+                    if zh { "界面字号" } else { "UI font size" },
+                    None,
+                    Some(SharedString::from(if zh {
+                        "实时按比例缩放全局界面字体（10–20 px，默认 13 px）。"
+                    } else {
+                        "Proportionally scales global interface typography live (10–20 px, default 13 px)."
+                    })),
+                    h_row()
+                        .gap(px(10.0))
+                        .w(px(220.0))
+                        .child(div().flex_1().child(slider(&view.inputs.ui_font_slider)))
+                        .child(
+                            div()
+                                .w(px(42.0))
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .child(SharedString::from(format!("{ui_font_val} px"))),
+                        ),
+                    cx,
+                ))
+                .child(setting_row(
+                    if zh { "等宽代码字号" } else { "Monospace font size" },
+                    None,
+                    Some(SharedString::from(if zh {
+                        "用于请求编辑器、响应体、脚本与日志（10–20 px，默认 12 px）。"
+                    } else {
+                        "Used for request editors, response viewers, scripts, and logs (10–20 px, default 12 px)."
+                    })),
+                    h_row()
+                        .gap(px(10.0))
+                        .w(px(220.0))
+                        .child(div().flex_1().child(slider(&view.inputs.mono_font_slider)))
+                        .child(
+                            div()
+                                .w(px(42.0))
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .child(SharedString::from(format!("{mono_font_val} px"))),
+                        ),
+                    cx,
+                ))
+                .child(setting_row(
+                    if zh { "侧栏呈现方式" } else { "Sidebar layout" },
+                    None,
+                    Some(SharedString::from(if zh {
+                        "自动模式沿用你用 ⌘B 切换的状态；也可锁定始终展开或紧凑窄轨。"
+                    } else {
+                        "Auto remembers your ⌘B toggle; or lock the sidebar always expanded or compact rail."
+                    })),
+                    tab_bar_segmented("appearance-sidebar-seg")
+                        .selected_index(sidebar_idx)
+                        .child(tab_item(if zh { "自动" } else { "Auto" }))
+                        .child(tab_item(if zh { "展开" } else { "Expanded" }))
+                        .child(tab_item(if zh { "窄轨" } else { "Rail" }))
+                        .on_click(move |idx, _, cx| {
+                            let val = match *idx {
+                                1 => "expanded",
+                                2 => "rail",
+                                _ => "auto",
+                            };
+                            ent_sidebar.update(cx, |this, cx| {
+                                this.patch_section(
+                                    CoreSection::Appearance,
+                                    serde_json::json!({ "sidebar": val }),
+                                    cx,
+                                );
+                            });
+                        }),
+                    cx,
+                ))
+                .child(setting_row(
+                    if zh { "减少动态效果" } else { "Reduce motion" },
+                    None,
+                    Some(SharedString::from(if zh {
+                        "降低面板折叠、流式淡入与过渡动画强度。"
+                    } else {
+                        "Minimize transitions, collapsible animations, and streaming fade effects."
+                    })),
+                    tab_bar_segmented("appearance-motion-seg")
+                        .selected_index(motion_idx)
+                        .child(tab_item(if zh { "跟随系统" } else { "System" }))
+                        .child(tab_item(if zh { "开启" } else { "On" }))
+                        .child(tab_item(if zh { "关闭" } else { "Off" }))
+                        .on_click(move |idx, _, cx| {
+                            let val = match *idx {
+                                1 => "on",
+                                2 => "off",
+                                _ => "system",
+                            };
+                            ent_motion.update(cx, |this, cx| {
+                                this.patch_section(
+                                    CoreSection::Appearance,
+                                    serde_json::json!({ "reduce_motion": val }),
+                                    cx,
+                                );
+                            });
+                        }),
+                    cx,
+                )),
+        )
+        .child(
+            v_col()
+                .w_full()
+                .gap(px(10.0))
+                .child(section_header(
+                    if zh {
+                        "8 套护眼 OKLCH 色系（单帧零闪烁切换）"
+                    } else {
+                        "8 Eye-Care OKLCH Palettes (Instant Single-Frame Switch)"
+                    },
+                    None,
+                    cx,
+                ))
+                .child(render_palette_grid(view, is_dark, zh, cx)),
+        )
+}
+
+fn render_palette_grid(
+    view: &SettingsView,
+    is_dark: bool,
+    zh: bool,
+    cx: &mut Context<SettingsView>,
+) -> gpui_kit::Div {
+    let p = palette(cx);
+    let mut swatches = v_col().w_full().gap(px(10.0));
     for chunk in PaletteId::ALL.chunks(4) {
         let mut row = h_row().w_full().gap(px(10.0));
         for &pid in chunk {
@@ -49,7 +265,6 @@ pub fn render_appearance(
                 to_hsla(preview.line_strong.composite_over(preview.surface))
             };
 
-            // Miniature PingDeck shell preview: left rail + floating rounded card with pane & CTA.
             let mini_preview =
                 h_row()
                     .w_full()
@@ -170,7 +385,7 @@ pub fn render_appearance(
                 div()
                     .id(SharedString::from(format!("pal-swatch-{}", pid.id())))
                     .flex_1()
-                    .min_w(px(150.0))
+                    .min_w(px(140.0))
                     .p(px(8.0))
                     .rounded(px(10.0))
                     .bg(to_hsla(p.surface))
@@ -207,90 +422,5 @@ pub fn render_appearance(
         }
         swatches = swatches.child(row);
     }
-
-    let entity_theme = cx.entity().clone();
-    let entity_density = cx.entity().clone();
-
-    v_col()
-        .gap(px(6.0))
-        .child(field_row(
-            if zh { "色彩模式" } else { "Color mode" },
-            Some(SharedString::from(if zh {
-                "跟随系统外观或固定浅色/深色主题"
-            } else {
-                "Follow system appearance or lock light / dark"
-            })),
-            tab_bar_segmented("appearance-theme-seg")
-                .selected_index(theme_idx)
-                .child(tab_item(if zh { "跟随系统" } else { "System" }))
-                .child(tab_item(if zh { "浅色" } else { "Light" }))
-                .child(tab_item(if zh { "深色" } else { "Dark" }))
-                .on_click(move |idx, _, cx| {
-                    let mode = match *idx {
-                        1 => "light",
-                        2 => "dark",
-                        _ => "system",
-                    };
-                    entity_theme.update(cx, |this, cx| {
-                        this.patch_section(
-                            CoreSection::Appearance,
-                            serde_json::json!({ "theme": mode }),
-                            cx,
-                        );
-                    });
-                }),
-            cx,
-        ))
-        .child(field_row(
-            if zh { "界面密度" } else { "Density" },
-            Some(SharedString::from(if zh {
-                "紧凑模式缩小行距，适合大信息量调试"
-            } else {
-                "Compact reduces row padding for high-density views"
-            })),
-            tab_bar_segmented("appearance-density-seg")
-                .selected_index(density_idx)
-                .child(tab_item(if zh { "舒适" } else { "Comfortable" }))
-                .child(tab_item(if zh { "紧凑" } else { "Compact" }))
-                .on_click(move |idx, _, cx| {
-                    let density = if *idx == 1 { "compact" } else { "comfortable" };
-                    entity_density.update(cx, |this, cx| {
-                        this.patch_section(
-                            CoreSection::Appearance,
-                            serde_json::json!({ "density": density }),
-                            cx,
-                        );
-                    });
-                }),
-            cx,
-        ))
-        .child(field_row(
-            if zh { "界面字号" } else { "UI font size" },
-            Some(SharedString::from(if zh {
-                "实时按比例缩放全局界面字体（11–18 px）"
-            } else {
-                "Proportionally scales interface typography live (11–18 px)"
-            })),
-            h_row()
-                .gap(px(10.0))
-                .w(px(210.0))
-                .child(div().flex_1().child(slider(&view.ui_font_slider)))
-                .child(
-                    div()
-                        .w(px(40.0))
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(SharedString::from(format!("{font_val} px"))),
-                ),
-            cx,
-        ))
-        .child(div().pt(px(12.0)).child(section_heading(
-            if zh {
-                "8 套护眼 OKLCH 色系（单帧零闪烁切换）"
-            } else {
-                "8 Eye-Care OKLCH Palettes (Instant Single-Frame Switch)"
-            },
-            cx,
-        )))
-        .child(swatches)
+    swatches
 }

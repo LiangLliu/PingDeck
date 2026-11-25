@@ -96,6 +96,7 @@ pub struct AgentSettingsView {
     pub instructions_input: Entity<TextareaState>,
     pub instructions_dirty: bool,
     pub instructions_synced_text: String,
+    pub(crate) pending_sync_inputs: bool,
 
     _subscriptions: Vec<Subscription>,
     pub(super) _tasks: Vec<Task<()>>,
@@ -267,11 +268,23 @@ impl AgentSettingsView {
             instructions_input,
             instructions_dirty: false,
             instructions_synced_text: init_instr,
+            pending_sync_inputs: false,
             _subscriptions: subs,
             _tasks: Vec::new(),
         };
         view.reload_all(cx);
         view
+    }
+
+    /// Synchronizes local state & schedules input refresh after external settings updates
+    /// (such as Reset All, Undo Reset, or Folder Sync import).
+    pub fn sync_from_external_settings(&mut self, next: Settings, cx: &mut Context<Self>) {
+        if self.settings != next {
+            self.settings = next;
+            self.instructions_dirty = false;
+            self.pending_sync_inputs = true;
+            cx.notify();
+        }
     }
 
     /// Switches the active sub-page inside `SettingsGroup::Agent` and refreshes dynamic data.
@@ -340,7 +353,10 @@ impl AgentSettingsView {
                 (settings, roles, trusted_folders, rules, skills, sandbox)
             },
             |this, (settings, roles, trusted_folders, rules, skills, sandbox), cx| {
-                this.settings = settings;
+                if this.settings != settings {
+                    this.settings = settings;
+                    this.pending_sync_inputs = true;
+                }
                 this.roles = roles;
                 this.trusted_folders = trusted_folders;
                 this.permission_rules = rules;
@@ -470,6 +486,10 @@ pub fn count_mcp_attention(servers: &[AgentMcpServerView]) -> usize {
 
 impl Render for AgentSettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.pending_sync_inputs {
+            self.pending_sync_inputs = false;
+            self.sync_inputs_from_settings(window, cx);
+        }
         let lang = self.settings.general.language;
         let zh = lang == Language::ZhCn;
 

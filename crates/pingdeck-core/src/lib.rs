@@ -34,7 +34,7 @@ pub mod app {
 
 pub use pingdeck_agent::agent;
 pub use pingdeck_app_sync::sync;
-pub use pingdeck_base::{error, logging, platform, regex, secrets};
+pub use pingdeck_base::{error, logging, platform, proxy_url, regex, secrets};
 /// AI coding tool config writers.
 pub use pingdeck_client_config as client_config;
 pub use pingdeck_executor::executor;

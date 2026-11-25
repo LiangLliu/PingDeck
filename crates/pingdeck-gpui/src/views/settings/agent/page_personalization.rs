@@ -5,7 +5,8 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
-    Tone, badge, btn_ghost, btn_primary, card, h_row, multiline_input, palette, to_hsla, v_col,
+    Disableable as _, Tone, badge, btn_ghost, btn_primary, card, h_row, multiline_input, palette,
+    to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
@@ -102,6 +103,7 @@ pub(super) fn render_personalization(
                         }))
                         .child(
                             btn_primary("agent-pz-save", if zh { "立即保存" } else { "Save now" })
+                                .disabled(over_limit || !view.instructions_dirty)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.save_global_instructions(cx);
                                 })),

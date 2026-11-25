@@ -7,9 +7,9 @@ use pingdeck_desktop::core::model::model_catalog::{
 };
 
 use crate::ui::{
-    Anchor, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_secondary, card, h_row, icon_xs,
-    list_row, palette, popover, section_heading, select_pill, status_indicator, to_hsla,
-    toggle_switch, v_col,
+    Anchor, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, card,
+    dismissible_banner, h_row, icon_xs, list_row, palette, popover, section_header, select_pill,
+    status_indicator, to_hsla, toggle_switch, v_col,
 };
 
 use super::CatalogSettingsView;
@@ -21,62 +21,16 @@ pub fn render_flash_banner(
     msg: &str,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
-    let p = palette(cx);
-    let (bg, border, fg, shape) = match tone {
-        Tone::Danger => (
-            to_hsla(p.bad_soft),
-            to_hsla(p.bad_line.composite_over(p.bad_soft)),
-            to_hsla(p.bad),
-            StatusShape::Bad,
-        ),
-        Tone::Warning => (
-            to_hsla(p.warn_soft),
-            to_hsla(p.warn_line.composite_over(p.warn_soft)),
-            to_hsla(p.warn),
-            StatusShape::Warn,
-        ),
-        Tone::Success => (
-            to_hsla(p.ok_soft),
-            to_hsla(p.ok_line.composite_over(p.ok_soft)),
-            to_hsla(p.ok),
-            StatusShape::Ok,
-        ),
-        _ => (
-            to_hsla(p.accent_soft),
-            to_hsla(p.accent_line.composite_over(p.accent_soft)),
-            to_hsla(p.accent_ink),
-            StatusShape::Live,
-        ),
-    };
-    h_row()
-        .justify_between()
-        .gap(px(8.0))
-        .px(px(12.0))
-        .py(px(8.0))
-        .rounded(px(8.0))
-        .bg(bg)
-        .border_1()
-        .border_color(border)
-        .child(
-            h_row()
-                .flex_1()
-                .min_w_0()
-                .gap(px(8.0))
-                .child(status_indicator(shape, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_xs()
-                        .text_color(fg)
-                        .child(SharedString::from(msg.to_owned())),
-                ),
-        )
-        .child(
-            btn_ghost("cat-flash-dismiss", "×").on_click(cx.listener(|this, _, _, cx| {
-                this.flash_msg = None;
-                cx.notify();
-            })),
-        )
+    dismissible_banner(
+        "cat-flash-dismiss",
+        tone,
+        msg.to_owned(),
+        cx.listener(|this, _, _, cx| {
+            this.flash_msg = None;
+            cx.notify();
+        }),
+        cx,
+    )
 }
 
 pub fn render_sync_section(
@@ -289,64 +243,32 @@ pub fn render_sync_section(
                 report.added, report.updated, report.unchanged
             )
         };
-        box_el = box_el.child(
-            h_row()
-                .justify_between()
-                .gap(px(8.0))
-                .px(px(10.0))
-                .py(px(5.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(p.ok_soft))
-                .border_1()
-                .border_color(to_hsla(p.ok_line.composite_over(p.ok_soft)))
-                .child(
-                    h_row()
-                        .gap(px(6.0))
-                        .text_xs()
-                        .text_color(to_hsla(p.ok))
-                        .child(status_indicator(StatusShape::Ok, cx))
-                        .child(SharedString::from(msg)),
-                )
-                .child(btn_ghost("cat-sync-rep-dismiss", "×").on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.last_sync_report = None;
-                        cx.notify();
-                    },
-                ))),
-        );
+        box_el = box_el.child(dismissible_banner(
+            "cat-sync-rep-dismiss",
+            Tone::Success,
+            msg,
+            cx.listener(|this, _, _, cx| {
+                this.last_sync_report = None;
+                cx.notify();
+            }),
+            cx,
+        ));
     } else if let Some(err) = err_line {
-        box_el = box_el.child(
-            h_row()
-                .justify_between()
-                .gap(px(8.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(p.warn_soft))
-                .child(
-                    h_row()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(6.0))
-                        .child(status_indicator(StatusShape::Warn, cx))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_xs()
-                                .text_color(to_hsla(p.warn))
-                                .child(SharedString::from(err)),
-                        ),
-                )
-                .child(
-                    btn_ghost("cat-sync-retry", if zh { "重试" } else { "Retry" })
-                        .on_click(cx.listener(|this, _, _, cx| this.start_sync(cx))),
-                ),
-        );
+        box_el = box_el.child(alert_banner(
+            Tone::Warning,
+            err,
+            Some(
+                btn_ghost("cat-sync-retry", if zh { "重试" } else { "Retry" })
+                    .on_click(cx.listener(|this, _, _, cx| this.start_sync(cx)))
+                    .into_any_element(),
+            ),
+            cx,
+        ));
     }
 
     v_col()
-        .gap(px(8.0))
-        .child(section_heading(if zh { "同步" } else { "Sync" }, cx))
+        .gap(px(10.0))
+        .child(section_header(if zh { "同步" } else { "Sync" }, None, cx))
         .child(card(cx).p(px(14.0)).child(box_el))
 }
 
@@ -461,13 +383,14 @@ pub fn render_provider_pricing_section(
     }
 
     v_col()
-        .gap(px(6.0))
-        .child(section_heading(
+        .gap(px(8.0))
+        .child(section_header(
             if zh {
                 "服务商计价"
             } else {
                 "Provider pricing"
             },
+            None,
             cx,
         ))
         .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {

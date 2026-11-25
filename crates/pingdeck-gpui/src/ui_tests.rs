@@ -422,4 +422,268 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn settings_all_20_pages_and_mutations_lifecycle(cx: &mut TestAppContext) {
+        use pingdeck_desktop::core::model::settings::{Language, SettingsSection as CoreSection};
+
+        use crate::views::settings::SettingsView;
+        use crate::views::settings::state_inputs::{
+            ProxyModeChoice, SettingsModal, section_matches_query,
+        };
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(|window, cx| {
+            SettingsView::new(SettingsSection::General, PaletteId::Slate, window, cx)
+        });
+        visual.run_until_parked();
+
+        // Helper to wait for async blocking settings commits to land in GPUI.
+        fn wait_for(
+            visual: &mut gpui_kit::VisualTestContext,
+            pred: impl Fn(&gpui_kit::App) -> bool,
+        ) -> bool {
+            for _ in 0..100 {
+                visual.run_until_parked();
+                if visual.update(|window, cx| {
+                    window.refresh();
+                    pred(cx)
+                }) {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        }
+
+        // 1. Bilingual keyword search finds expected sections.
+        assert!(section_matches_query(SettingsSection::Network, "代理"));
+        assert!(section_matches_query(SettingsSection::Routing, "circuit"));
+        assert!(section_matches_query(SettingsSection::Data, "backup"));
+        assert!(section_matches_query(SettingsSection::Shortcuts, "快捷键"));
+
+        // 2. Render all 20 Settings pages cleanly in zh-CN.
+        for section in SettingsSection::ALL {
+            visual.update(|window, cx| {
+                view.update(cx, |v, cx| v.set_section(section, cx));
+                window.refresh();
+            });
+            visual.run_until_parked();
+        }
+
+        // 3. Edit Request Defaults, Mock, Routing, and Advanced fields and verify persistence.
+        visual.update(|_window, cx| {
+            view.update(cx, |v, cx| {
+                v.commit_u64(
+                    "45000",
+                    1,
+                    3_600_000,
+                    CoreSection::Network,
+                    |n| serde_json::json!({ "timeout_ms": n }),
+                    cx,
+                );
+                v.patch_section(
+                    CoreSection::Editor,
+                    serde_json::json!({ "tab_size": 4 }),
+                    cx,
+                );
+                v.commit_u64(
+                    "125",
+                    0,
+                    60_000,
+                    CoreSection::Mock,
+                    |n| serde_json::json!({ "default_latency_ms": n }),
+                    cx,
+                );
+                v.commit_u64(
+                    "6",
+                    0,
+                    10,
+                    CoreSection::Ai,
+                    |n| serde_json::json!({ "gateway": { "max_retries": n } }),
+                    cx,
+                );
+                v.commit_u64(
+                    "512",
+                    16,
+                    4_096,
+                    CoreSection::Advanced,
+                    |n| serde_json::json!({ "script_recursion_limit": n }),
+                    cx,
+                );
+            });
+        });
+        assert!(
+            wait_for(visual, |cx| {
+                let s = &view.read(cx).settings;
+                s.network.timeout_ms == 45_000
+                    && s.editor.tab_size == 4
+                    && s.mock.default_latency_ms == 125
+                    && s.ai.gateway.max_retries == 6
+                    && s.advanced.script_recursion_limit == 512
+            }),
+            "settings patches must persist and sync back into SettingsView"
+        );
+
+        // 4. Invalid numeric input surfaces error flash & error pill state cleanly.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.commit_u64(
+                    "not-a-number",
+                    1,
+                    100,
+                    CoreSection::Network,
+                    |n| serde_json::json!({ "timeout_ms": n }),
+                    cx,
+                );
+            });
+            assert!(view.read(cx).last_save_error);
+            assert!(view.read(cx).flash.is_some());
+            window.refresh();
+        });
+
+        // 5. Shortcut override: reject conflicting key, accept unique custom key, then restore.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.set_section(SettingsSection::Shortcuts, cx);
+                v.start_edit_shortcut("app.palette", window, cx);
+                // Conflict with app.sidebar (`cmd-b`) must be rejected.
+                v.inputs
+                    .shortcut_key
+                    .update(cx, |i, cx| i.set_value("cmd-b", window, cx));
+                v.save_shortcut_override("app.palette", window, cx);
+            });
+            assert!(view.read(cx).editing_shortcut == Some("app.palette"));
+
+            view.update(cx, |v, cx| {
+                v.inputs
+                    .shortcut_key
+                    .update(cx, |i, cx| i.set_value("cmd-shift-p", window, cx));
+                v.save_shortcut_override("app.palette", window, cx);
+            });
+            assert!(view.read(cx).editing_shortcut.is_none());
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, |cx| {
+                view.read(cx)
+                    .settings
+                    .shortcuts
+                    .overrides
+                    .get("app.palette")
+                    .map(String::as_str)
+                    == Some("cmd-shift-p")
+            }),
+            "custom shortcut override must persist"
+        );
+
+        // 6. Proxy mode toggle (Direct) and no_proxy add/remove.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.set_section(SettingsSection::Network, cx);
+                v.select_proxy_mode(ProxyModeChoice::Direct, cx);
+                v.inputs
+                    .no_proxy_add
+                    .update(cx, |i, cx| i.set_value("corp.internal", window, cx));
+                v.add_no_proxy_entry(window, cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, |cx| {
+                let net = &view.read(cx).settings.network;
+                net.proxy_url == "direct" && net.no_proxy.iter().any(|h| h == "corp.internal")
+            }),
+            "proxy mode and no_proxy edits must persist"
+        );
+
+        // 7. Reset-All confirmation modal render + Esc dismiss + Reset All + 60s Undo restore.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.set_section(SettingsSection::Advanced, cx);
+                v.modal = Some(SettingsModal::ConfirmResetAll);
+                cx.notify();
+            });
+            window.refresh();
+            let dismissed = view.update(cx, |v, cx| v.dismiss_modal_if_open(cx));
+            assert!(dismissed);
+            assert!(view.read(cx).modal.is_none());
+
+            view.update(cx, |v, cx| v.reset_all(cx));
+        });
+        assert!(
+            wait_for(visual, |cx| {
+                let v = view.read(cx);
+                v.can_undo_reset_all
+                    && v.settings.network.timeout_ms == 30_000
+                    && v.settings.editor.tab_size == 2
+                    && v.settings.shortcuts.overrides.is_empty()
+            }),
+            "reset_all must restore factory defaults and arm undo"
+        );
+
+        visual.update(|_window, cx| {
+            view.update(cx, |v, cx| v.undo_last_reset(cx));
+        });
+        assert!(
+            wait_for(visual, |cx| {
+                let v = view.read(cx);
+                !v.can_undo_reset_all
+                    && v.settings.network.timeout_ms == 45_000
+                    && v.settings.editor.tab_size == 4
+                    && v.settings
+                        .shortcuts
+                        .overrides
+                        .get("app.palette")
+                        .map(String::as_str)
+                        == Some("cmd-shift-p")
+            }),
+            "undo_last_reset must restore prior custom settings"
+        );
+
+        // 8. Switch language to English and render key pages cleanly.
+        visual.update(|_window, cx| {
+            view.update(cx, |v, cx| {
+                v.patch_section(
+                    CoreSection::General,
+                    serde_json::json!({ "language": "en" }),
+                    cx,
+                );
+            });
+        });
+        assert!(
+            wait_for(visual, |cx| {
+                view.read(cx).settings.general.language == Language::En
+            }),
+            "language switch to English must persist"
+        );
+        for section in [
+            SettingsSection::General,
+            SettingsSection::Appearance,
+            SettingsSection::Shortcuts,
+            SettingsSection::Requests,
+            SettingsSection::Network,
+            SettingsSection::Mock,
+            SettingsSection::Data,
+            SettingsSection::Routing,
+            SettingsSection::Usage,
+            SettingsSection::Advanced,
+        ] {
+            visual.update(|window, cx| {
+                view.update(cx, |v, cx| v.set_section(section, cx));
+                window.refresh();
+            });
+        }
+
+        rt.shutdown_blocking();
+    }
 }

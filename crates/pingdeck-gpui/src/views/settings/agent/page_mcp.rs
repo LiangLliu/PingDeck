@@ -11,9 +11,9 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary,
-    btn_secondary, card, empty_state, h_row, icon_xs, markdown_view, palette, status_indicator,
-    to_hsla, toggle_switch, v_col,
+    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger,
+    btn_ghost, btn_icon, btn_primary, btn_secondary, card, empty_state, h_row, icon_xs,
+    markdown_view, palette, status_indicator, to_hsla, toggle_switch, v_col,
 };
 
 use super::AgentSettingsView;
@@ -281,29 +281,48 @@ fn render_mcp_row(
             )
         }))
         .children(srv.enabled.then(|| {
-            btn_ghost(SharedString::from(format!("mcp-re-{idx}")), "")
-                .icon(icon_xs(UiIcon::Refresh))
+            btn_icon(SharedString::from(format!("mcp-re-{idx}")), UiIcon::Refresh)
+                .tooltip(if zh {
+                    "重启服务器"
+                } else {
+                    "Restart server"
+                })
+                .disabled(restarting)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.restart_mcp_server(sid_restart.clone(), cx);
                 }))
         }))
         .children(is_stdio.then(|| {
-            btn_ghost(SharedString::from(format!("mcp-log-{idx}")), "")
-                .icon(icon_xs(UiIcon::Terminal))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_mcp_log(sid_log.clone(), cx);
-                }))
+            btn_icon(
+                SharedString::from(format!("mcp-log-{idx}")),
+                UiIcon::Terminal,
+            )
+            .tooltip(if zh {
+                "查看标准错误日志"
+            } else {
+                "View stderr log"
+            })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.toggle_mcp_log(sid_log.clone(), cx);
+            }))
         }))
         .child(
-            btn_ghost(SharedString::from(format!("mcp-edit-{idx}")), "")
-                .icon(icon_xs(UiIcon::Pencil))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.open_mcp_edit_sheet(srv_edit.clone(), window, cx);
-                })),
+            btn_icon(
+                SharedString::from(format!("mcp-edit-{idx}")),
+                UiIcon::Pencil,
+            )
+            .tooltip(if zh { "编辑配置" } else { "Edit server" })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_mcp_edit_sheet(srv_edit.clone(), window, cx);
+            })),
         )
         .child(
-            btn_ghost(SharedString::from(format!("mcp-del-{idx}")), "")
-                .icon(icon_xs(UiIcon::Trash))
+            btn_icon(SharedString::from(format!("mcp-del-{idx}")), UiIcon::Trash)
+                .tooltip(if zh {
+                    "删除服务器"
+                } else {
+                    "Delete server"
+                })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.mcp_confirm_delete_id = Some(sid_del.clone());
                     cx.notify();

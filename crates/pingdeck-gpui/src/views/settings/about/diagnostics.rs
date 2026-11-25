@@ -1,15 +1,15 @@
 //! Redacted diagnostics copy & selectable inline preview section for Settings › About.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Styled as _,
-    div, px,
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, UiIcon, btn_ghost, btn_secondary, card, h_row, icon_xs,
-    markdown_view, palette, section_heading, status_indicator, to_hsla, v_col,
+    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, btn_ghost, btn_secondary,
+    card, dismissible_banner, h_row, icon_xs, markdown_view, palette, section_header,
+    status_indicator, to_hsla, v_col,
 };
 
 use super::AboutSettingsView;
@@ -40,6 +40,7 @@ pub(super) fn render_diagnostics_section(
         };
         btn_secondary("about-diag-copy", label)
             .icon(icon_xs(UiIcon::Copy))
+            .disabled(view.diag_copying)
             .on_click(cx.listener(|this, _, _, cx| this.copy_diagnostics(cx)))
     };
 
@@ -96,38 +97,16 @@ pub(super) fn render_diagnostics_section(
 
     if let Some(err) = &view.diag_error {
         let msg = t_args(lang, "set.about.copyFailed", &[("reason", err.as_str())]);
-        card_col = card_col.child(
-            h_row()
-                .justify_between()
-                .gap(px(8.0))
-                .px(px(14.0))
-                .py(px(8.0))
-                .bg(to_hsla(p.bad_soft))
-                .border_t_1()
-                .border_color(to_hsla(p.bad_line.composite_over(p.bad_soft)))
-                .child(
-                    h_row()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(6.0))
-                        .child(status_indicator(StatusShape::Bad, cx))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_xs()
-                                .text_color(to_hsla(p.bad))
-                                .child(SharedString::from(msg)),
-                        ),
-                )
-                .child(
-                    btn_ghost("about-diag-err-dismiss", "×").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.diag_error = None;
-                            cx.notify();
-                        },
-                    )),
-                ),
-        );
+        card_col = card_col.child(div().px(px(14.0)).pb(px(10.0)).child(dismissible_banner(
+            "about-diag-err-dismiss",
+            Tone::Danger,
+            msg,
+            cx.listener(|this, _, _, cx| {
+                this.diag_error = None;
+                cx.notify();
+            }),
+            cx,
+        )));
     }
 
     if view.diag_open {
@@ -135,9 +114,10 @@ pub(super) fn render_diagnostics_section(
     }
 
     v_col()
-        .gap(px(8.0))
-        .child(section_heading(
+        .gap(px(10.0))
+        .child(section_header(
             t(lang, "set.sec.about.diagnostics").to_owned(),
+            None,
             cx,
         ))
         .child(card(cx).child(card_col))

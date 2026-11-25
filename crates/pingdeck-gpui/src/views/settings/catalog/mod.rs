@@ -26,7 +26,7 @@ use pingdeck_desktop::core::model::model_catalog::{
     CatalogKind, CatalogSource, ModelCatalogPage, ModelCatalogQuery, ModelCatalogRow,
     ModelCatalogStatus, ModelCatalogSyncReport, PricingFilter,
 };
-use pingdeck_desktop::core::model::settings::{Language, SettingsSection as CoreSection};
+use pingdeck_desktop::core::model::settings::{Language, Settings, SettingsSection as CoreSection};
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::{InputEvent, InputState, Tone, WindowExt as _, v_col};
@@ -101,6 +101,13 @@ impl CatalogSettingsView {
         };
         view.reload_all(cx);
         view
+    }
+
+    pub fn sync_from_settings(&mut self, settings: &Settings, cx: &mut Context<Self>) {
+        if self.auto_sync != settings.ai.providers.catalog_auto_refresh {
+            self.auto_sync = settings.ai.providers.catalog_auto_refresh;
+            cx.notify();
+        }
     }
 
     pub fn has_active_filters(&self, cx: &gpui_kit::App) -> bool {

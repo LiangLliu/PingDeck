@@ -7,8 +7,8 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, btn_ghost, btn_secondary, card, h_row, icon_xs, palette,
-    status_indicator, to_hsla, v_col,
+    Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, card, h_row, icon_xs, palette,
+    to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
@@ -233,18 +233,7 @@ pub(super) fn render_subagents(
 
         if let Some(st) = status {
             if let Some(unavail) = &st.unavailable {
-                role_card = role_card.child(
-                    h_row()
-                        .gap(px(6.0))
-                        .px(px(8.0))
-                        .py(px(5.0))
-                        .rounded(px(6.0))
-                        .bg(to_hsla(p.bad_soft))
-                        .text_xs()
-                        .text_color(to_hsla(p.bad))
-                        .child(status_indicator(StatusShape::Bad, cx))
-                        .child(SharedString::from(unavail.clone())),
-                );
+                role_card = role_card.child(alert_banner(Tone::Danger, unavail.clone(), None, cx));
             }
             if !st.warnings.is_empty() {
                 let mut warn_row = h_row().gap(px(6.0)).flex_wrap();

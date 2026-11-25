@@ -398,21 +398,23 @@ pub(super) fn render_defaults(
     }));
 
     let limits_toggle = h_row()
-        .id("agent-limits-disclosure")
         .justify_between()
         .gap(px(10.0))
         .pb(px(8.0))
         .border_b_1()
         .border_color(to_hsla(p.line.composite_over(p.surface)))
-        .cursor_pointer()
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.limits_open = !this.limits_open;
-            cx.notify();
-        }))
         .child(
             h_row()
+                .id("agent-limits-disclosure")
+                .flex_1()
+                .min_w_0()
                 .gap(px(8.0))
                 .flex_wrap()
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.limits_open = !this.limits_open;
+                    cx.notify();
+                }))
                 .child(icon_xs(if view.limits_open {
                     UiIcon::ChevronDown
                 } else {
@@ -538,8 +540,18 @@ pub(super) fn render_defaults(
                 })),
                 h_row()
                     .gap(px(8.0))
-                    .child(num_box(&view.max_image_input, Some("MB 图"), 60.0, cx))
-                    .child(num_box(&view.max_file_input, Some("MB 文件"), 60.0, cx))
+                    .child(num_box(
+                        &view.max_image_input,
+                        Some(if zh { "MB 图" } else { "MB img" }),
+                        60.0,
+                        cx,
+                    ))
+                    .child(num_box(
+                        &view.max_file_input,
+                        Some(if zh { "MB 文件" } else { "MB file" }),
+                        60.0,
+                        cx,
+                    ))
                     .child(num_box(&view.max_edge_input, Some("px"), 72.0, cx)),
                 cx,
             ));

@@ -8,8 +8,8 @@ use pingdeck_desktop::core::model::settings::{Language, SearchBackend};
 use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
-    Anchor, Popover, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_secondary, card, h_row,
-    icon_xs, list_row, palette, popover, select_pill, status_indicator, text_input, to_hsla,
+    Anchor, Disableable as _, Popover, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary,
+    card, h_row, icon_xs, list_row, palette, popover, select_pill, text_input, to_hsla,
     toggle_switch, v_col,
 };
 
@@ -263,7 +263,6 @@ fn render_search_section(
     zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
-    let p = palette(cx);
     let search = &view.settings.ai.search;
 
     let backend_label = move |b: SearchBackend| -> String {
@@ -337,6 +336,7 @@ fn render_search_section(
             t(lang, "set.agent.search.test").to_owned()
         },
     )
+    .disabled(view.search_testing)
     .on_click(cx.listener(|this, _, _, cx| this.test_search_backend(cx)));
 
     let reset_search_btn = btn_ghost(
@@ -377,13 +377,11 @@ fn render_search_section(
         ));
 
     if let Some(res) = &view.search_test_result {
-        let (shape, fg, bg, text) = if res.ok {
+        let (tone, text) = if res.ok {
             let count_s = res.results.to_string();
             let ms_s = res.elapsed_ms.to_string();
             (
-                StatusShape::Ok,
-                to_hsla(p.ok),
-                to_hsla(p.ok_soft),
+                Tone::Success,
                 t_args(
                     lang,
                     "set.agent.search.works",
@@ -392,27 +390,13 @@ fn render_search_section(
             )
         } else {
             (
-                StatusShape::Warn,
-                to_hsla(p.warn),
-                to_hsla(p.warn_soft),
+                Tone::Warning,
                 res.error
                     .clone()
                     .unwrap_or_else(|| t(lang, "set.agent.search.noReason").to_owned()),
             )
         };
-        sec = sec.child(
-            h_row()
-                .mt(px(8.0))
-                .gap(px(6.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded(px(6.0))
-                .bg(bg)
-                .text_xs()
-                .text_color(fg)
-                .child(status_indicator(shape, cx))
-                .child(SharedString::from(text)),
-        );
+        sec = sec.child(div().pt(px(8.0)).child(alert_banner(tone, text, None, cx)));
     }
 
     sec = sec

@@ -7,8 +7,9 @@ use gpui_kit::{
 use pingdeck_desktop::core::model::model_catalog::{CatalogSource, ModelCatalogRow};
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary, card, filter_chip,
-    h_row, palette, search_input, section_heading, status_indicator, to_hsla, v_col,
+    Disableable as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary,
+    card, filter_chip, h_row, palette, search_input, section_header, status_indicator, to_hsla,
+    v_col,
 };
 
 use super::CatalogSettingsView;
@@ -254,6 +255,7 @@ pub fn render_models_section(
                             format!("Load {step} more ({remaining} left)")
                         },
                     )
+                    .disabled(view.loading_more)
                     .on_click(cx.listener(|this, _, _, cx| {
                         if !this.loading_more {
                             this.load_page(true, cx);
@@ -265,7 +267,7 @@ pub fn render_models_section(
 
     v_col()
         .gap(px(8.0))
-        .child(section_heading(if zh { "模型" } else { "Models" }, cx))
+        .child(section_header(if zh { "模型" } else { "Models" }, None, cx))
         .child(toolbar_top)
         .child(toolbar_filters)
         .child(table_card)
@@ -542,19 +544,27 @@ pub fn render_unlisted_section(
                     .child(SharedString::from(price_str)),
             )
             .child(
-                div().w(px(120.0)).flex().justify_end().child(
-                    btn_secondary(
-                        SharedString::from(format!("cat-unlisted-btn-{idx}")),
-                        if zh {
-                            "设置价格 / 指认"
-                        } else {
-                            "Price / Match"
-                        },
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_unlisted_drawer(item_btn.clone(), window, cx);
-                    })),
-                ),
+                div()
+                    .id(SharedString::from(format!("cat-unlisted-act-{idx}")))
+                    .w(px(120.0))
+                    .flex()
+                    .justify_end()
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        btn_secondary(
+                            SharedString::from(format!("cat-unlisted-btn-{idx}")),
+                            if zh {
+                                "设置价格 / 指认"
+                            } else {
+                                "Price / Match"
+                            },
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                this.open_unlisted_drawer(item_btn.clone(), window, cx);
+                            },
+                        )),
+                    ),
             );
         if idx + 1 < count {
             row = row
@@ -565,13 +575,14 @@ pub fn render_unlisted_section(
     }
 
     v_col()
-        .gap(px(6.0))
-        .child(section_heading(
+        .gap(px(8.0))
+        .child(section_header(
             if zh {
                 format!("未收录的模型（{count}）")
             } else {
                 format!("Unlisted models ({count})")
             },
+            None,
             cx,
         ))
         .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {

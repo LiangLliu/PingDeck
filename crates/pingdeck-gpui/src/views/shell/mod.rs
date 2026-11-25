@@ -19,7 +19,7 @@ use pingdeck_desktop::core::app::{
     settings_subscribe_impl, workspace_list_impl, workspace_touch_impl,
 };
 use pingdeck_desktop::core::model::events::Sequenced;
-use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::core::model::settings::{Language, SidebarMode};
 use pingdeck_desktop::persistence::UiLocalState;
 use pingdeck_desktop::state::{
     NavModule, PaletteAction, SettingsSection, ShellState, ToastKind, UtilityDialog,
@@ -30,7 +30,7 @@ use pingdeck_desktop::theme::PaletteId;
 use crate::app::actions::{
     CloseOverlay, CloseTab, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9,
     NewTab, OpenSettings, QuitApp, SaveActive, SendRequest, ToggleConsole, TogglePalette,
-    ToggleSidebar,
+    ToggleSidebar, bind_app_shortcuts,
 };
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
@@ -53,6 +53,7 @@ use sidebar::render_sidebar;
 pub struct AppShell {
     pub state: ShellState,
     local_ui: UiLocalState,
+    system_is_dark: bool,
     focus_handle: FocusHandle,
     modules: ModuleHost,
     pub(crate) palette_view: Entity<CommandPaletteView>,
@@ -150,7 +151,26 @@ impl AppShell {
             channel_sink::<pingdeck_desktop::core::model::settings::SettingsEvent>();
         let _ = settings_subscribe_impl(rt.state(), set_sink);
         tasks.push(subscribe_stream_into(cx, set_rx, 8, |this, _, cx| {
-            this.state.settings = settings_get_impl(runtime(cx).state());
+            let next = settings_get_impl(runtime(cx).state());
+            let prev_sidebar = this.state.settings.appearance.sidebar;
+            let prev_shortcuts = this.state.settings.shortcuts.overrides.clone();
+            this.state.settings = next;
+            if this.state.settings.appearance.sidebar != prev_sidebar {
+                match this.state.settings.appearance.sidebar {
+                    SidebarMode::Expanded => {
+                        this.state.sidebar_collapsed = false;
+                        this.persist_local(cx);
+                    }
+                    SidebarMode::Rail => {
+                        this.state.sidebar_collapsed = true;
+                        this.persist_local(cx);
+                    }
+                    SidebarMode::Auto => {}
+                }
+            }
+            if this.state.settings.shortcuts.overrides != prev_shortcuts {
+                bind_app_shortcuts(&this.state.settings.shortcuts.overrides, cx);
+            }
             this.reapply_theme(cx);
             cx.notify();
         }));
@@ -158,22 +178,36 @@ impl AppShell {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
 
+        let system_is_dark = matches!(
+            window.appearance(),
+            gpui_kit::WindowAppearance::Dark | gpui_kit::WindowAppearance::VibrantDark
+        );
+
         let act_sub = cx.observe_window_activation(window, move |_this, window, cx| {
             let active = window.is_window_active();
             host_window.set_focused(active);
             set_window_focused(runtime(cx).state(), active);
         });
+        let app_sub = cx.observe_window_appearance(window, |this, window, cx| {
+            this.system_is_dark = matches!(
+                window.appearance(),
+                gpui_kit::WindowAppearance::Dark | gpui_kit::WindowAppearance::VibrantDark
+            );
+            this.reapply_theme(cx);
+            cx.notify();
+        });
 
         Self {
             state,
             local_ui,
+            system_is_dark,
             focus_handle,
             modules: ModuleHost::default(),
             palette_view,
             utility_view,
             workspace_menu_open: false,
             new_workspace_input: None,
-            _subscriptions: vec![act_sub],
+            _subscriptions: vec![act_sub, app_sub],
             _tasks: tasks,
         }
     }
@@ -198,8 +232,7 @@ impl AppShell {
     }
 
     pub(super) fn reapply_theme(&self, cx: &mut Context<Self>) {
-        let current_dark = active_palette(cx).is_dark;
-        let is_dark = resolve_is_dark(self.state.settings.appearance.theme, current_dark);
+        let is_dark = resolve_is_dark(self.state.settings.appearance.theme, self.system_is_dark);
         apply_palette(
             self.state.palette,
             is_dark,
@@ -357,11 +390,13 @@ impl Render for AppShell {
         if self.utility_view.read(cx).is_dismissed() {
             self.state.active_utility = None;
         }
-        let (pending_pal, pending_back) = self.modules.poll_settings_signals(cx);
+        let (pending_pal, pending_back, pending_nav) = self.modules.poll_settings_signals(cx);
         if let Some(pid) = pending_pal {
             self.set_palette(pid, cx);
         }
-        if pending_back {
+        if let Some(target_mod) = pending_nav {
+            self.navigate(target_mod, cx);
+        } else if pending_back {
             self.state.leave_settings();
             self.persist_local(cx);
         }
@@ -419,11 +454,17 @@ impl Render for AppShell {
                 this.navigate(NavModule::Settings, cx);
             }))
             .on_action(cx.listener(|this, _: &CloseOverlay, _, cx| {
-                if this.state.active_module != NavModule::Requests
-                    || !this.modules.requests_dismiss_modal(cx)
+                if this.state.active_module == NavModule::Requests
+                    && this.modules.requests_dismiss_modal(cx)
                 {
-                    this.close_overlays(cx);
+                    return;
                 }
+                if this.state.active_module == NavModule::Settings
+                    && this.modules.settings_dismiss_modal(cx)
+                {
+                    return;
+                }
+                this.close_overlays(cx);
             }))
             .on_action(cx.listener(|this, _: &SaveActive, w, cx| {
                 if this.state.active_module == NavModule::Requests {
