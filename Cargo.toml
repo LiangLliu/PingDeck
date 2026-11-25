@@ -101,7 +101,7 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["N
 percent-encoding = "2.3"
 # Client certificates: PKCS#12 bundles (legacy 3DES/RC2 and PBES2 AES) and passphrase-protected
 # PKCS#8 keys; both stay on the RustCrypto 0.10 line.
-p12-keystore = "0.2.1"
+p12-keystore = "0.4.1"
 pkcs8 = { version = "0.10", features = ["encryption", "pem", "std"] }
 psl = "2.1"
 regex = "1"
