@@ -588,6 +588,15 @@ fn sandbox_denied_outside(output: &str, workspace: &Path, tmp_dir: Option<&Path>
             line.to_ascii_lowercase()
                 .contains("operation not permitted")
         })
+        .map(|line| {
+            // Strip a leading `<argv0>: ` diagnostic prefix (such as `/bin/bash: ` or
+            // `/bin/zsh:1: `) when another colon follows, so the shell/binary path itself
+            // is not mistaken for a denied target outside the workspace.
+            match line.split_once(": ") {
+                Some((_, tail)) if tail.contains(':') => tail,
+                _ => line,
+            }
+        })
         .flat_map(|line| line.split_whitespace())
         .map(|word| word.trim_matches(|c: char| matches!(c, '\'' | '"' | ':' | ',' | '(' | ')')))
         .filter(|word| word.starts_with('/'))

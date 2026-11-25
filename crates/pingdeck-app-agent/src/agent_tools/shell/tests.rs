@@ -175,6 +175,36 @@ fn pure_helpers_handle_utf8_capture_lane_workspace_and_args() {
             .timeout_s,
         Some(5)
     );
+
+    // Shell diagnostic prefixes like `/bin/bash: ` must not count as denied outside paths.
+    assert!(!sandbox_denied_outside(
+        "/bin/bash: .git/hooks/pre-commit: Operation not permitted",
+        &ws,
+        None,
+    ));
+    assert!(!sandbox_denied_outside(
+        "/bin/zsh:1: operation not permitted: .git/hooks/pre-commit",
+        &ws,
+        None,
+    ));
+    assert!(!sandbox_denied_outside(
+        &format!(
+            "/bin/bash: {}/.git/hooks/pre-commit: Operation not permitted",
+            ws.display()
+        ),
+        &ws,
+        None,
+    ));
+    assert!(sandbox_denied_outside(
+        "/bin/bash: /Users/me/.ssh/id_ed25519: Operation not permitted",
+        &ws,
+        None,
+    ));
+    assert!(sandbox_denied_outside(
+        "/Users/me/.ssh/id_ed25519: Operation not permitted",
+        &ws,
+        None,
+    ));
 }
 
 struct Harness {

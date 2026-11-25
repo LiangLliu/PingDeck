@@ -686,4 +686,528 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn mock_workbench_full_lifecycle(cx: &mut TestAppContext) {
+        use crate::views::mock::state::{MockImportFormat, MockModal, MockSubTab};
+        use crate::views::mock::{MockHandoff, MockView};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        workspace_create_impl(rt.state(), "ws-mock-ui".into(), "Mock WS".into())
+            .expect("create workspace");
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) =
+            cx.add_window_view(|window, cx| MockView::new(Some("ws-mock-ui".into()), window, cx));
+        visual.run_until_parked();
+
+        let wait_for = |visual: &mut gpui_kit::VisualTestContext,
+                        pred: &dyn Fn(&gpui_kit::App) -> bool|
+         -> bool {
+            for _ in 0..80 {
+                visual.run_until_parked();
+                if visual.update(|window, cx| {
+                    window.refresh();
+                    pred(cx)
+                }) {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        };
+
+        // 1. Create a mock server and verify it populates draft + default GET route.
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.create_server(cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).draft.is_some()),
+            "created mock server should become active draft"
+        );
+
+        // 2. Add CRUD route, second response branch, matching rule, data bucket, callback, and save.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.add_route("CRUD", cx);
+                v.add_route("POST", cx);
+                v.add_response(cx);
+                v.rule_mod_input
+                    .update(cx, |s, cx| s.set_value("role", window, cx));
+                v.rule_val_input
+                    .update(cx, |s, cx| s.set_value("admin", window, cx));
+                v.add_rule_to_response(window, cx);
+                v.add_bucket(cx);
+                v.add_callback(cx);
+                v.save_draft(cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, &|cx| !view.read(cx).dirty),
+            "mock draft save should clear dirty state"
+        );
+
+        // 3. Cycle all 7 sub-tabs cleanly and verify test-in-Requests handoff.
+        visual.update(|window, cx| {
+            let route_id = view
+                .read(cx)
+                .draft
+                .as_ref()
+                .and_then(|s| s.routes.first())
+                .map(|r| r.id.clone())
+                .expect("at least one route");
+            view.update(cx, |v, cx| {
+                for tab in MockSubTab::ALL {
+                    v.active_tab = tab;
+                    cx.notify();
+                }
+                v.test_route_in_requests(&route_id, cx);
+            });
+            window.refresh();
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(MockHandoff::OpenTestRequest { .. })
+            ));
+        });
+
+        // 4. Open and dismiss Import & Delete modals, then delete the server.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.active_modal = Some(MockModal::Import {
+                    format: MockImportFormat::OpenApi,
+                });
+                cx.notify();
+            });
+            window.refresh();
+            assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+            let sid = view.read(cx).selected_id.clone().expect("selected server");
+            view.update(cx, |v, cx| v.delete_server(sid, cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).servers.is_empty()),
+            "deleted mock server should be removed"
+        );
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn flows_workbench_full_lifecycle(cx: &mut TestAppContext) {
+        use crate::views::flows::FlowsView;
+        use crate::views::flows::state::{FlowModal, FlowRunTab, FlowStepTab};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        workspace_create_impl(rt.state(), "ws-flow-ui".into(), "Flow WS".into())
+            .expect("create workspace");
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) =
+            cx.add_window_view(|window, cx| FlowsView::new(Some("ws-flow-ui".into()), window, cx));
+        visual.run_until_parked();
+
+        let wait_for = |visual: &mut gpui_kit::VisualTestContext,
+                        pred: &dyn Fn(&gpui_kit::App) -> bool|
+         -> bool {
+            for _ in 0..80 {
+                visual.run_until_parked();
+                if visual.update(|window, cx| {
+                    window.refresh();
+                    pred(cx)
+                }) {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        };
+
+        // 1. Create a flow, add a second step, reorder, add extraction & assertion, save.
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.create_flow(cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).draft.is_some()),
+            "created flow should load into draft"
+        );
+
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.add_inline_step(cx);
+                v.move_step(1, 0, cx);
+                v.ext_var_input
+                    .update(cx, |s, cx| s.set_value("auth_token", window, cx));
+                v.ext_expr_input
+                    .update(cx, |s, cx| s.set_value("$.token", window, cx));
+                v.new_ext_secret = true;
+                v.add_extraction(window, cx);
+                v.assert_val_input
+                    .update(cx, |s, cx| s.set_value("200", window, cx));
+                v.add_quick_assertion(window, cx);
+                v.save_flow(cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, &|cx| {
+                let v = view.read(cx);
+                !v.dirty && v.draft.as_ref().is_some_and(|f| f.steps.len() == 2)
+            }),
+            "saved flow should persist 2 steps"
+        );
+
+        // 2. Cycle all inspector & bottom tabs + Options modal.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                for tab in FlowStepTab::ALL {
+                    v.step_tab = tab;
+                    cx.notify();
+                }
+                for rtab in [
+                    FlowRunTab::LiveRun,
+                    FlowRunTab::Variables,
+                    FlowRunTab::History,
+                ] {
+                    v.run_tab = rtab;
+                    cx.notify();
+                }
+                v.active_modal = Some(FlowModal::Options);
+                cx.notify();
+            });
+            window.refresh();
+            assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+            let fid = view.read(cx).selected_flow_id.clone().expect("flow id");
+            view.update(cx, |v, cx| v.delete_flow(fid, cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).entries.is_empty()),
+            "deleted flow should be removed"
+        );
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn history_workbench_filters_undo_and_handoff(cx: &mut TestAppContext) {
+        use pingdeck_desktop::core::app::history_restore_many_impl;
+        use pingdeck_desktop::core::model::{ExecutionHistoryEntry, HistorySource, Request};
+
+        use crate::views::history::state::HistoryDetailTab;
+        use crate::views::history::{HistoryHandoff, HistoryView};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        workspace_create_impl(rt.state(), "ws-hist-ui".into(), "Hist WS".into())
+            .expect("create workspace");
+
+        let seed_req = Request::new(
+            "req_hist_seed",
+            "ws-hist-ui",
+            "List Users",
+            "https://api.example.com/users",
+        )
+        .expect("seed request");
+        let entry = ExecutionHistoryEntry::from_success(
+            "hist_ui_1",
+            &seed_req,
+            None,
+            200,
+            "OK",
+            "https://api.example.com/users",
+            42,
+            "{\"users\":[]}",
+            12,
+            1,
+            "1700000000000",
+        )
+        .expect("build history entry");
+        history_restore_many_impl(rt.state(), vec![entry]).expect("seed history row");
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx
+            .add_window_view(|window, cx| HistoryView::new(Some("ws-hist-ui".into()), window, cx));
+        visual.run_until_parked();
+
+        let wait_for = |visual: &mut gpui_kit::VisualTestContext,
+                        pred: &dyn Fn(&gpui_kit::App) -> bool|
+         -> bool {
+            for _ in 0..80 {
+                visual.run_until_parked();
+                if visual.update(|window, cx| {
+                    window.refresh();
+                    pred(cx)
+                }) {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        };
+
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).entries.len() == 1),
+            "seeded history entry should load"
+        );
+
+        // 1. Cycle all 6 detail tabs and verify OpenInRequests + AskAgent handoffs.
+        visual.update(|window, cx| {
+            let active = view.read(cx).active_entry().cloned().expect("active entry");
+            view.update(cx, |v, cx| {
+                for tab in HistoryDetailTab::ALL {
+                    v.detail_tab = tab;
+                    cx.notify();
+                }
+                v.open_in_requests(&active, cx);
+            });
+            window.refresh();
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(HistoryHandoff::OpenInRequests(_))
+            ));
+            view.update(cx, |v, cx| v.ask_agent(&active, cx));
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(HistoryHandoff::AskAgent { .. })
+            ));
+        });
+
+        // 2. Filter by Mock source (0 hits), reset filter (1 hit), then delete & undo restore!
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.toggle_source(HistorySource::Mock, cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).entries.is_empty()),
+            "filtering by Mock source should yield 0 rows"
+        );
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| v.reset_filters(window, cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).entries.len() == 1),
+            "resetting filters should bring row back"
+        );
+
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.delete_entry("hist_ui_1".into(), cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| {
+                let v = view.read(cx);
+                v.entries.is_empty() && v.last_undo.is_some()
+            }),
+            "deleting entry should arm undo token"
+        );
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.undo_delete(cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).entries.len() == 1),
+            "undo should restore deleted history row"
+        );
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn environments_globals_cookies_certs_lifecycle(cx: &mut TestAppContext) {
+        use crate::views::environments::EnvironmentsView;
+        use crate::views::environments::state::{
+            EditableVarRow, EnvDetailTab, EnvModal, EnvResourceTab,
+        };
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        workspace_create_impl(rt.state(), "ws-env-ui".into(), "Env WS".into())
+            .expect("create workspace");
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(|window, cx| {
+            EnvironmentsView::new(Some("ws-env-ui".into()), window, cx)
+        });
+        visual.run_until_parked();
+
+        let wait_for = |visual: &mut gpui_kit::VisualTestContext,
+                        pred: &dyn Fn(&gpui_kit::App) -> bool|
+         -> bool {
+            for _ in 0..80 {
+                visual.run_until_parked();
+                if visual.update(|window, cx| {
+                    window.refresh();
+                    pred(cx)
+                }) {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        };
+
+        // 1. Create two environments; add a plain + secret variable and production guard; verify secret stays redacted.
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.create_env(cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).environments.len() == 1),
+            "first environment should be created"
+        );
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.env_draft_vars.push(EditableVarRow {
+                    id: None,
+                    key: "baseUrl".into(),
+                    value: Some("https://api.example.com".into()),
+                    is_secret: false,
+                    has_secret: false,
+                    secret_hint: None,
+                    enabled: true,
+                    note: "primary".into(),
+                });
+                v.env_draft_vars.push(EditableVarRow {
+                    id: None,
+                    key: "apiSecret".into(),
+                    value: Some("super-secret-value-9999".into()),
+                    is_secret: true,
+                    has_secret: true,
+                    secret_hint: None,
+                    enabled: true,
+                    note: String::new(),
+                });
+                v.env_draft_confirm = true;
+                v.env_draft_hosts.push("api.example.com".into());
+                v.save_env(cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, &|cx| {
+                let v = view.read(cx);
+                !v.env_dirty
+                    && v.environments.first().is_some_and(|e| {
+                        e.confirm_before_send
+                            && e.variables.iter().any(|var| {
+                                var.key == "apiSecret"
+                                    && var.is_secret
+                                    && var.has_secret
+                                    && var.value.is_none()
+                            })
+                    })
+            }),
+            "saved secret variable must persist with has_secret=true and value=None (never echoed)"
+        );
+
+        // 2. Create second environment, cycle all 4 detail tabs & 4 resource tabs.
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.create_env(cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).environments.len() == 2),
+            "second environment should be created"
+        );
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                for dt in EnvDetailTab::ALL {
+                    v.detail_tab = dt;
+                    cx.notify();
+                }
+            });
+            window.refresh();
+        });
+
+        // 3. Globals save + Cookies add/delete/undo + Certificates modal render.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.resource_tab = EnvResourceTab::Globals;
+                v.globals_draft.push(EditableVarRow {
+                    id: None,
+                    key: "org".into(),
+                    value: Some("pingdeck".into()),
+                    is_secret: false,
+                    has_secret: false,
+                    secret_hint: None,
+                    enabled: true,
+                    note: String::new(),
+                });
+                v.save_globals(cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, &|cx| {
+                !view.read(cx).globals_dirty && view.read(cx).globals_draft.len() == 1
+            }),
+            "global variable should persist"
+        );
+
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.resource_tab = EnvResourceTab::Cookies;
+                v.ck_domain_input
+                    .update(cx, |s, cx| s.set_value("api.example.com", window, cx));
+                v.ck_name_input
+                    .update(cx, |s, cx| s.set_value("sid", window, cx));
+                v.ck_value_input
+                    .update(cx, |s, cx| s.set_value("abc123", window, cx));
+                v.add_cookie_from_modal(true, true, window, cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).cookies.len() == 1),
+            "added cookie should appear in workspace cookie jar"
+        );
+
+        // 4. Delete environment and restore it via 60s Undo.
+        visual.update(|window, cx| {
+            let first = view.read(cx).environments[0].clone();
+            view.update(cx, |v, cx| {
+                v.resource_tab = EnvResourceTab::Certificates;
+                v.active_modal = Some(EnvModal::ImportEnv);
+                assert!(v.dismiss_modal_if_open(cx));
+                v.resource_tab = EnvResourceTab::Environments;
+                v.delete_env(first.id, first.name, cx);
+            });
+            window.refresh();
+        });
+        assert!(
+            wait_for(visual, &|cx| {
+                view.read(cx).environments.len() == 1 && view.read(cx).env_undo.is_some()
+            }),
+            "deleting environment should arm undo token"
+        );
+        visual.update(|_w, cx| {
+            view.update(cx, |v, cx| v.undo_delete_env(cx));
+        });
+        assert!(
+            wait_for(visual, &|cx| view.read(cx).environments.len() == 2),
+            "undo should restore deleted environment"
+        );
+
+        rt.shutdown_blocking();
+    }
 }

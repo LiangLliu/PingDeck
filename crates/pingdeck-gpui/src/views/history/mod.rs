@@ -1,47 +1,73 @@
-//! Execution History module (`NavModule::History`).
+//! Complete Execution History module (`NavModule::History`).
 //!
-//! Backed directly by `history_page_impl` and `history_clear_filtered_impl`.
+//! Server-side filtered, keyset-paginated audit & replay browser backed by
+//! `pingdeck_core::app::misc_logic_service` and `history_cookies_service`:
+//! - Search + source / status-class / failed / environment filters
+//! - Delete with 60s undo banner, confirmed Clear Filtered, and redacted HAR 1.2 export
+//! - 6-tab inspector (Body, Headers, Sent Request, Request Snapshot, Timing & Call-Chain Trace,
+//!   Checks & Run Children) plus 1-click Open in Requests and Ask Agent handoffs.
+
+pub mod actions;
+pub mod detail;
+pub mod detail_tabs;
+pub mod detail_trace;
+pub mod sidebar;
+pub mod state;
+
+use std::cell::Cell;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Task, Window, div, px,
+    App, AppContext as _, ClickEvent, Context, IntoElement, ParentElement as _, Render,
+    Styled as _, Window, div, px,
 };
-use pingdeck_desktop::core::app::{
-    history_clear_filtered_impl, misc_logic_service::history_page_impl, settings_get_impl,
-};
-use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::core::model::{ExecutionHistoryEntry, HistoryFilter};
+use pingdeck_desktop::core::app::settings_get_impl;
+use pingdeck_desktop::core::model::HistoryFilter;
 
-use crate::bridge::{runtime, spawn_blocking_into};
+use crate::bridge::runtime;
 use crate::ui::{
-    InputState, ScrollableElement as _, Tone, UiIcon, badge, btn_danger, btn_secondary, card,
-    empty_state, h_row, list_row, method_badge, palette, section_heading, text_input, to_hsla,
-    v_col,
+    InputEvent, InputState, btn_danger, btn_secondary, h_resizable, h_row, modal_dialog, palette,
+    resizable_panel, to_hsla,
 };
 
-pub struct HistoryView {
-    workspace_id: Option<String>,
-    entries: Vec<ExecutionHistoryEntry>,
-    selected_id: Option<String>,
-    search_input: Entity<InputState>,
-    total_count: Option<u64>,
-    _tasks: Vec<Task<()>>,
-}
+use state::{HistoryDetailTab, HistoryModal};
+pub use state::{HistoryHandoff, HistoryView};
 
 impl HistoryView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let lang = settings_get_impl(runtime(cx).state()).general.language;
         let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Filter URL, method, status…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder("搜索 URL / 名称 / 状态码…"));
+        let sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
+                this.reload_page(true, cx);
+            }
+        });
+
         let mut view = Self {
             workspace_id: workspace_id.clone(),
+            lang,
             entries: Vec::new(),
-            selected_id: None,
+            next_cursor: None,
+            total: None,
+            workspace_total: None,
+            mock_dropped: None,
+            environments: Vec::new(),
+            filter: HistoryFilter::default(),
             search_input,
-            total_count: None,
+            loading: false,
+            selected_id: None,
+            selected_entry: None,
+            run_children: Vec::new(),
+            detail_tab: HistoryDetailTab::Body,
+            last_undo: None,
+            active_modal: None,
+            status_msg: None,
+            pending_handoff: Cell::new(None),
+            _subscriptions: vec![sub],
             _tasks: Vec::new(),
         };
-        if let Some(ws) = workspace_id {
-            view.reload(ws, cx);
+        if workspace_id.is_some() {
+            view.reload_page(true, cx);
         }
         view
     }
@@ -52,291 +78,106 @@ impl HistoryView {
         }
         self.workspace_id = workspace_id.clone();
         self.entries.clear();
+        self.next_cursor = None;
+        self.total = None;
+        self.workspace_total = None;
+        self.mock_dropped = None;
+        self.environments.clear();
+        self.filter = HistoryFilter::default();
         self.selected_id = None;
-        if let Some(ws) = workspace_id {
-            self.reload(ws, cx);
+        self.selected_entry = None;
+        self.run_children.clear();
+        self.last_undo = None;
+        self.active_modal = None;
+        if workspace_id.is_some() {
+            self.reload_page(true, cx);
         }
         cx.notify();
     }
 
-    pub fn reload(&mut self, workspace_id: String, cx: &mut Context<Self>) {
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                history_page_impl(
-                    state,
-                    workspace_id,
-                    HistoryFilter::default(),
-                    Some(100),
-                    None,
-                )
-            },
-            |this, res, cx| {
-                if let Ok(page) = res {
-                    this.total_count = page.total;
-                    if this
-                        .selected_id
-                        .as_deref()
-                        .is_none_or(|id| !page.entries.iter().any(|e| e.id.as_str() == id))
-                    {
-                        this.selected_id = page.entries.first().map(|e| e.id.as_str().to_owned());
-                    }
-                    this.entries = page.entries;
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
+    pub fn refresh_catalog(&mut self, cx: &mut Context<Self>) {
+        self.reload_page(true, cx);
     }
 
-    fn clear_history(&mut self, cx: &mut Context<Self>) {
-        let Some(ws_id) = self.workspace_id.clone() else {
-            return;
-        };
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                history_clear_filtered_impl(state, ws_id.clone(), HistoryFilter::default())
-            },
-            |this, res, cx| {
-                if res.is_ok() {
-                    this.entries.clear();
-                    this.selected_id = None;
-                    this.total_count = Some(0);
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
+    pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.active_modal.take().is_some() {
+            cx.notify();
+            true
+        } else {
+            false
+        }
+    }
+
+    #[must_use]
+    pub fn take_pending_handoff(&self) -> Option<HistoryHandoff> {
+        self.pending_handoff.take()
     }
 }
 
 impl Render for HistoryView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
+        let left = sidebar::render_sidebar(self, cx);
+        let right = detail::render_detail(self, cx);
 
-        let Some(ws_id) = self.workspace_id.clone() else {
-            return empty_state(
-                UiIcon::History,
-                if zh {
-                    "未选择工作区"
-                } else {
-                    "No workspace selected"
-                },
-                if zh {
-                    "选择一个工作区后即可查看请求与流程执行历史。"
-                } else {
-                    "Select a workspace to inspect request and flow execution history."
-                },
-                cx,
-            );
-        };
-
-        let query = self.search_input.read(cx).value().trim().to_lowercase();
-        let filtered: Vec<&ExecutionHistoryEntry> = self
-            .entries
-            .iter()
-            .filter(|e| {
-                query.is_empty()
-                    || e.request_url.to_lowercase().contains(&query)
-                    || e.request_name.to_lowercase().contains(&query)
-                    || e.status_code.to_string().contains(&query)
-            })
-            .collect();
-
-        let mut list = v_col()
-            .flex_1()
-            .gap(px(3.0))
-            .p(px(8.0))
-            .overflow_y_scrollbar();
-        for entry in &filtered {
-            let id = entry.id.as_str().to_owned();
-            let selected = self.selected_id.as_deref() == Some(entry.id.as_str());
-            let tone = match entry.status_code {
-                200..=299 => Tone::Success,
-                300..=399 => Tone::Accent,
-                400..=499 => Tone::Warning,
-                _ => Tone::Danger,
-            };
-            list = list.child(
-                list_row(
-                    SharedString::from(format!("hist-{id}")),
-                    selected,
-                    cx,
-                    cx.listener(move |this, _, _, cx| {
-                        this.selected_id = Some(id.clone());
-                        cx.notify();
-                    }),
-                )
-                .child(method_badge(&format!("{:?}", entry.method), cx))
+        let mut root = div().relative().size_full().bg(to_hsla(p.surface)).child(
+            h_resizable("history-split")
                 .child(
-                    v_col()
-                        .flex_1()
-                        .min_w_0()
-                        .child(
-                            div()
-                                .text_xs()
-                                .truncate()
-                                .child(SharedString::from(entry.request_url.clone())),
-                        )
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(format!(
-                            "{} ms · {} B",
-                            entry.elapsed_ms, entry.body_size_bytes
-                        ))),
+                    resizable_panel()
+                        .size(px(330.0))
+                        .size_range(px(260.0)..px(480.0))
+                        .child(left),
                 )
-                .child(badge(entry.status_code.to_string(), tone, cx)),
-            );
-        }
+                .child(resizable_panel().child(right)),
+        );
 
-        let left = v_col()
-            .w(px(360.0))
-            .h_full()
-            .bg(to_hsla(p.pane))
-            .border_r_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .child(
-                v_col()
-                    .p(px(10.0))
-                    .gap(px(6.0))
-                    .border_b_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .child(
-                        h_row()
-                            .justify_between()
-                            .child(section_heading(
-                                format!(
-                                    "{} ({})",
-                                    if zh { "执行历史" } else { "History" },
-                                    self.total_count.unwrap_or(self.entries.len() as u64)
-                                ),
-                                cx,
-                            ))
-                            .child(
-                                h_row()
-                                    .gap(px(4.0))
-                                    .child(
-                                        btn_secondary(
-                                            "hist-refresh",
-                                            if zh { "刷新" } else { "Refresh" },
-                                        )
-                                        .on_click(
-                                            cx.listener(move |this, _, _, cx| {
-                                                this.reload(ws_id.clone(), cx);
-                                            }),
-                                        ),
-                                    )
-                                    .child(
-                                        btn_danger("hist-clear", if zh { "清空" } else { "Clear" })
-                                            .on_click(
-                                                cx.listener(|this, _, _, cx| {
-                                                    this.clear_history(cx)
-                                                }),
-                                            ),
-                                    ),
-                            ),
+        if let Some(HistoryModal::ClearFiltered { count }) = &self.active_modal {
+            let count = *count;
+            let entity = cx.entity().clone();
+            let on_close = move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                entity.update(cx, |this, cx| {
+                    this.active_modal = None;
+                    cx.notify();
+                });
+            };
+            let body = div()
+                .text_sm()
+                .text_color(to_hsla(p.ink))
+                .child(if self.is_zh() {
+                    format!("确定要永久清空当前筛选匹配的 {count} 条执行历史吗？此操作无法撤销。")
+                } else {
+                    format!(
+                        "Permanently clear {count} matching history entries? This cannot be undone."
                     )
-                    .child(text_input(&self.search_input)),
-            )
-            .child(list);
-
-        let selected = self
-            .selected_id
-            .as_deref()
-            .and_then(|id| self.entries.iter().find(|e| e.id.as_str() == id));
-
-        let right = if let Some(entry) = selected {
-            let tone = match entry.status_code {
-                200..=299 => Tone::Success,
-                400..=499 => Tone::Warning,
-                _ => Tone::Danger,
-            };
-            v_col()
-                .size_full()
-                .p(px(20.0))
-                .gap(px(12.0))
-                .overflow_y_scrollbar()
+                })
+                .into_any_element();
+            let footer = h_row()
+                .gap(px(8.0))
                 .child(
-                    h_row()
-                        .gap(px(8.0))
-                        .child(method_badge(&format!("{:?}", entry.method), cx))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_sm()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .truncate()
-                                .child(SharedString::from(entry.request_url.clone())),
-                        )
-                        .child(badge(
-                            format!("{} {}", entry.status_code, entry.status_text),
-                            tone,
-                            cx,
-                        )),
-                )
-                .child(
-                    h_row()
-                        .gap(px(8.0))
-                        .child(badge(format!("{} ms", entry.elapsed_ms), Tone::Neutral, cx))
-                        .child(badge(
-                            format!("{} B", entry.body_size_bytes),
-                            Tone::Neutral,
-                            cx,
-                        ))
-                        .child(badge(
-                            SharedString::from(entry.executed_at.clone()),
-                            Tone::Neutral,
-                            cx,
-                        )),
-                )
-                .child(
-                    card(cx).p(px(12.0)).flex_1().child(
-                        v_col()
-                            .gap(px(6.0))
-                            .child(section_heading(
-                                if zh {
-                                    "响应预览"
-                                } else {
-                                    "Response Preview"
-                                },
-                                cx,
-                            ))
-                            .child(div().text_xs().text_color(to_hsla(p.ink)).child(
-                                SharedString::from(if entry.response_body_preview.is_empty() {
-                                    entry
-                                        .error_message
-                                        .clone()
-                                        .unwrap_or_else(|| "(empty body)".into())
-                                } else {
-                                    entry.response_body_preview.clone()
-                                }),
-                            )),
+                    btn_secondary("hist-clr-cancel", self.t("取消", "Cancel")).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.active_modal = None;
+                            cx.notify();
+                        }),
                     ),
                 )
-                .into_any_element()
-        } else {
-            empty_state(
-                UiIcon::History,
-                if zh {
-                    "暂无历史记录"
-                } else {
-                    "No history recorded yet"
-                },
-                if zh {
-                    "在「请求」或「流程」模块发送请求后，记录会自动出现在这里。"
-                } else {
-                    "Send a request or run a flow to record entries here."
-                },
+                .child(
+                    btn_danger("hist-clr-confirm", self.t("确认清空", "Clear History"))
+                        .on_click(cx.listener(|this, _, _, cx| this.clear_filtered(cx))),
+                )
+                .into_any_element();
+            root = root.child(modal_dialog(
+                "hist-clear-modal",
+                self.t("清空历史记录", "Clear Filtered History"),
+                440.0,
+                body,
+                footer,
+                window,
                 cx,
-            )
-            .into_any_element()
-        };
+                on_close,
+            ));
+        }
 
-        h_row()
-            .size_full()
-            .items_start()
-            .bg(to_hsla(p.surface))
-            .child(left)
-            .child(div().flex_1().h_full().min_w_0().child(right))
+        root
     }
 }

@@ -323,6 +323,24 @@ impl RequestsView {
         }
         false
     }
+
+    /// Opens an externally supplied unsaved request draft (e.g. replayed from History or a Mock
+    /// route's test request) in a fresh workbench tab and hydrates all inputs immediately.
+    pub fn open_external_draft_request(
+        &mut self,
+        req: Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.snapshot_active_tab(cx);
+        let tab_id = format!("tab-ext-{}", current_time_ms());
+        let tab = RequestTabState::from_request(tab_id.clone(), req, false);
+        self.tabs.push(OpenTab::Request(Box::new(tab)));
+        self.active_tab_id = Some(tab_id);
+        self.hydrate_active_tab(window, cx);
+        self.persist_tab_session(cx);
+        cx.notify();
+    }
 }
 
 impl Render for RequestsView {

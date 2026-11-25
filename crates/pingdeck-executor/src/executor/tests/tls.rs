@@ -286,8 +286,9 @@ async fn mtls_opens_a_passphrase_protected_key_and_a_pkcs12_bundle() {
         new_leaf(&issuer, ExtendedKeyUsagePurpose::ClientAuth);
     let key_der = client_key.serialize_der();
     let params =
-        pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(2048, &[7; 16], &[9; 16]).unwrap();
-    let encrypted = pkcs8::PrivateKeyInfo::try_from(key_der.as_slice())
+        pkcs8::pkcs5::pbes2::Parameters::generate_pbkdf2_sha256_aes256cbc(2048, &[7; 16], [9; 16])
+            .unwrap();
+    let encrypted = pkcs8::PrivateKeyInfoRef::try_from(key_der.as_slice())
         .unwrap()
         .encrypt_with_params(params, "s3cret")
         .unwrap()
@@ -328,8 +329,8 @@ async fn mtls_opens_a_passphrase_protected_key_and_a_pkcs12_bundle() {
     keystore.add_entry(
         "client",
         p12_keystore::KeyStoreEntry::PrivateKeyChain(p12_keystore::PrivateKeyChain::new(
-            &key_der,
-            b"client",
+            b"client".as_slice(),
+            p12_keystore::PrivateKey::from_der(&key_der).unwrap(),
             vec![p12_keystore::Certificate::from_der(&client_der).unwrap()],
         )),
     );

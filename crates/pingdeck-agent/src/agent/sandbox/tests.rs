@@ -1,7 +1,9 @@
 //! Tests of the Seatbelt profile and bubblewrap argument builders, the self-test classification
 //! and, on macOS, the real sandbox: every probe has a negative twin run without the sandbox.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 use std::process::Command;
 
 use super::*;
@@ -499,6 +501,7 @@ fn a_missing_tool_is_missing_and_the_status_maps_to_tier_and_label() {
 }
 
 /// Whether this machine can run Seatbelt (otherwise the integration tests below skip).
+#[cfg(target_os = "macos")]
 fn seatbelt_works() -> bool {
     cfg!(target_os = "macos") && sandbox_status().usable() == SandboxKind::Seatbelt
 }
@@ -529,6 +532,7 @@ fn launched_inside_another_sandbox_the_state_is_nested() {
 
 /// A world for the real-sandbox probes: a data folder with a database stand-in and a per-session
 /// temp folder inside it, a fake home with credential folders, a git folder.
+#[cfg(target_os = "macos")]
 struct World {
     scratch: Scratch,
     data: PathBuf,
@@ -537,6 +541,7 @@ struct World {
     ws: PathBuf,
 }
 
+#[cfg(target_os = "macos")]
 impl World {
     fn new(tag: &str) -> Self {
         let scratch = Scratch::new(tag);

@@ -30,6 +30,7 @@ OS=$(uname -s)
 
 DB_TIMEOUT_S=40     # database file and schema version after the first launch
 HEALTH_TIMEOUT_S=30 # gateway auto-start after the seeded launch
+WINDOW_TIMEOUT_S=20 # X11 window mapping before wmctrl graceful quit on Linux
 QUIT_TIMEOUT_S=20   # process exit after a graceful quit
 SETTLE_S=3          # a launch that survives this long counts as started
 SCHEMA_SETTLE_S=1   # let the first launch finish its startup writes after the schema appears
@@ -113,7 +114,13 @@ quit_app() { # graceful quit; sets QUIT_CODE (empty when skipped) and QUIT_ERR (
       if ! command -v wmctrl >/dev/null; then
         skip "graceful quit (wmctrl missing)"; kill -TERM "$PID"; wait "$PID" 2>/dev/null; return 0
       fi
-      local w; w=$(wmctrl -lp | awk -v p="$PID" '$3 == p { print $1; exit }')
+      local w="" end=$((SECONDS + WINDOW_TIMEOUT_S))
+      while alive; do
+        w=$(wmctrl -lp 2>/dev/null | awk -v p="$PID" '$3 == p { print $1; exit }')
+        [ -n "$w" ] && break
+        [ "$SECONDS" -ge "$end" ] && break
+        sleep "$POLL_S"
+      done
       if [ -z "$w" ]; then
         QUIT_ERR="no window for pid $PID to close (wmctrl)"; kill -KILL "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; return 1
       fi

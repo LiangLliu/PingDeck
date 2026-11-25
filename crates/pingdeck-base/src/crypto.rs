@@ -6,7 +6,7 @@
 //! correct for protocol use but not constant-time: compare secrets only through
 //! [`constant_time_eq`], and never use these for password storage.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use md5::Md5;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
@@ -37,7 +37,7 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     } else {
         key_block[..key.len()].copy_from_slice(key);
     }
-    let mut mac = <Hmac<Sha256> as Mac>::new((&key_block).into());
+    let mut mac = <Hmac<Sha256> as KeyInit>::new((&key_block).into());
     mac.update(data);
     mac.finalize().into_bytes().into()
 }
@@ -64,7 +64,7 @@ pub fn hmac_sha1(key: &[u8], data: &[u8]) -> [u8; 20] {
     } else {
         key_block[..key.len()].copy_from_slice(key);
     }
-    let mut mac = <Hmac<Sha1> as Mac>::new((&key_block).into());
+    let mut mac = <Hmac<Sha1> as KeyInit>::new((&key_block).into());
     mac.update(data);
     mac.finalize().into_bytes().into()
 }
@@ -78,7 +78,7 @@ pub fn hmac_sha512(key: &[u8], data: &[u8]) -> [u8; 64] {
     } else {
         key_block[..key.len()].copy_from_slice(key);
     }
-    let mut mac = <Hmac<Sha512> as Mac>::new((&key_block).into());
+    let mut mac = <Hmac<Sha512> as KeyInit>::new((&key_block).into());
     mac.update(data);
     mac.finalize().into_bytes().into()
 }

@@ -11,8 +11,8 @@ use crate::views::{
     chat::ChatView,
     environments::EnvironmentsView,
     flows::FlowsView,
-    history::HistoryView,
-    mock::MockView,
+    history::{HistoryHandoff, HistoryView},
+    mock::{MockHandoff, MockView},
     providers::ProvidersView,
     requests::{RequestsHandoff, RequestsView},
     settings::SettingsView,
@@ -72,16 +72,103 @@ impl ModuleHost {
     }
 
     /// Refreshes lightweight catalogs when navigating back into a mounted module (e.g., picking up
-    /// newly added providers/models when returning from Providers to Chat or Requests).
+    /// newly added providers/models, environments, mock servers, or newly recorded history entries).
     pub fn on_enter_module<V: 'static>(&mut self, module: NavModule, cx: &mut Context<V>) {
-        if module == NavModule::Chat
-            && let Some(v) = &self.chat
-        {
-            v.update(cx, |c, cx| c.refresh_catalog(cx));
-        } else if module == NavModule::Requests
-            && let Some(v) = &self.requests
-        {
-            v.update(cx, |r, cx| r.refresh_catalog(cx));
+        match module {
+            NavModule::Chat => {
+                if let Some(v) = &self.chat {
+                    v.update(cx, |c, cx| c.refresh_catalog(cx));
+                }
+            }
+            NavModule::Requests => {
+                if let Some(v) = &self.requests {
+                    v.update(cx, |r, cx| r.refresh_catalog(cx));
+                }
+            }
+            NavModule::Mock => {
+                if let Some(v) = &self.mock {
+                    v.update(cx, |m, cx| m.refresh_catalog(cx));
+                }
+            }
+            NavModule::Flows => {
+                if let Some(v) = &self.flows {
+                    v.update(cx, |f, cx| f.refresh_catalog(cx));
+                }
+            }
+            NavModule::History => {
+                if let Some(v) = &self.history {
+                    v.update(cx, |h, cx| h.refresh_catalog(cx));
+                }
+            }
+            NavModule::Environments => {
+                if let Some(v) = &self.environments {
+                    v.update(cx, |e, cx| e.refresh_catalog(cx));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Opens an external request draft (from History replay or Mock route test) inside Requests.
+    pub fn open_request_in_requests<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        req: pingdeck_desktop::core::model::Request,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self
+            .requests
+            .get_or_insert_with(|| cx.new(|cx| RequestsView::new(workspace_id, window, cx)));
+        view.update(cx, |r, cx| r.open_external_draft_request(req, window, cx));
+    }
+
+    /// Polls Mock view for route test-request handoffs.
+    pub fn poll_mock_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<MockHandoff> {
+        self.mock
+            .as_ref()
+            .and_then(|v| v.read(cx).take_pending_handoff())
+    }
+
+    /// Polls History view for replay-in-Requests or Ask-Agent handoffs.
+    pub fn poll_history_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<HistoryHandoff> {
+        self.history
+            .as_ref()
+            .and_then(|v| v.read(cx).take_pending_handoff())
+    }
+
+    /// Dismisses an open modal inside the active feature module when pressing `Esc`.
+    pub fn dismiss_active_modal<V: 'static>(
+        &mut self,
+        module: NavModule,
+        cx: &mut Context<V>,
+    ) -> bool {
+        match module {
+            NavModule::Requests => self
+                .requests
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |r, cx| r.dismiss_modal_if_open(cx))),
+            NavModule::Mock => self
+                .mock
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |m, cx| m.dismiss_modal_if_open(cx))),
+            NavModule::Flows => self
+                .flows
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |f, cx| f.dismiss_modal_if_open(cx))),
+            NavModule::History => self
+                .history
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |h, cx| h.dismiss_modal_if_open(cx))),
+            NavModule::Environments => self
+                .environments
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |e, cx| e.dismiss_modal_if_open(cx))),
+            NavModule::Settings => self
+                .settings
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |s, cx| s.dismiss_modal_if_open(cx))),
+            _ => false,
         }
     }
 

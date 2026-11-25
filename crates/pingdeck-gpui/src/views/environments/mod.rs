@@ -1,57 +1,162 @@
-//! Environments & secrets module (`NavModule::Environments`).
+//! Complete Environments & Workspace Resources module (`NavModule::Environments`).
 //!
-//! Directly backed by `environment_list_impl`, `environment_save_impl`, `environment_delete_impl`,
-//! `environment_secret_clipboard_set` (via `pingdeck_desktop::services::set_secret_text`), and
-//! `environment_declared_hosts_impl`.
+//! Unifies all four workspace-level configuration resources:
+//! - **Environments**: variable & secret management, direct-to-clipboard secret copy, resolved
+//!   precedence + unresolved `{{var}}` scan, side-by-side environment diff, production guards,
+//!   declared secret host allowlist, duplicate, Postman JSON import/export, and 60s delete undo
+//! - **Globals**: workspace-wide fallback variables with optimistic revision checks
+//! - **Cookies**: searchable cookie jar editor, Secure/HttpOnly/SameSite flags, delete undo,
+//!   clean expired, and Netscape `cookies.txt` / JSON import-export
+//! - **Certificates**: mTLS client certificates and custom CA bundles.
+
+pub mod actions;
+pub mod actions_resources;
+pub mod modals;
+pub mod sidebar;
+pub mod state;
+pub mod tab_analysis;
+pub mod tab_certs;
+pub mod tab_cookies;
+pub mod tab_vars;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Task, Window, div, px,
+    AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
+    Window, div, px,
 };
-use pingdeck_desktop::core::app::{
-    EnvironmentDto, EnvironmentVariableInput, SaveEnvironmentInput, environment_delete_impl,
-    environment_list_impl, environment_save_impl, settings_get_impl,
-};
-use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::core::app::settings_get_impl;
 
-use crate::bridge::{runtime, spawn_blocking_into};
+use crate::bridge::runtime;
 use crate::ui::{
-    InputState, ScrollableElement as _, Tone, UiIcon, badge, btn_danger, btn_icon, btn_primary,
-    btn_secondary, card, empty_state, field_row, h_row, list_row, palette, section_heading,
-    text_input, to_hsla, toggle_switch, v_col,
+    EditorState, InputEvent, InputState, Tone, UiIcon, alert_banner, btn_icon, btn_primary,
+    btn_secondary, dismissible_banner, empty_state_with_actions, h_resizable, h_row, icon_xs,
+    palette, resizable_panel, subtab_strip, tab_bar_segmented, tab_bar_underline, tab_item,
+    text_input, to_hsla, toolbar_strip, v_col,
 };
 
-pub struct EnvironmentsView {
-    workspace_id: Option<String>,
-    environments: Vec<EnvironmentDto>,
-    selected_id: Option<String>,
-    new_env_input: Entity<InputState>,
-    new_var_key: Entity<InputState>,
-    new_var_val: Entity<InputState>,
-    new_var_secret: bool,
-    status_msg: Option<(Tone, String)>,
-    _tasks: Vec<Task<()>>,
-}
+pub use state::EnvironmentsView;
+use state::{EnvDetailTab, EnvModal, EnvResourceTab};
 
 impl EnvironmentsView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let new_env_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Environment name…"));
-        let new_var_key = cx.new(|cx| InputState::new(window, cx).placeholder("KEY_NAME"));
-        let new_var_val = cx.new(|cx| InputState::new(window, cx).placeholder("value"));
+        let lang = settings_get_impl(runtime(cx).state()).general.language;
+        let env_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("筛选环境 / Filter…"));
+        let env_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Environment name"));
+        let var_filter_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("筛选变量 / Filter variables…"));
+        let new_var_key =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Key (e.g. baseUrl)"));
+        let new_var_val = cx.new(|cx| InputState::new(window, cx).placeholder("Value / Secret"));
+        let new_var_note = cx.new(|cx| InputState::new(window, cx).placeholder("Note (optional)"));
+        let edit_var_key = cx.new(|cx| InputState::new(window, cx).placeholder("Key"));
+        let edit_var_val = cx.new(|cx| InputState::new(window, cx).placeholder("Value"));
+        let edit_var_note = cx.new(|cx| InputState::new(window, cx).placeholder("Note"));
+        let host_input = cx
+            .new(|cx| InputState::new(window, cx).placeholder("api.example.com or localhost:8080"));
+        let import_editor = cx.new(|cx| {
+            let mut ed = EditorState::new(window, cx)
+                .soft_wrap(true)
+                .placeholder("Paste Postman environment JSON…");
+            ed.set_highlighter("json", cx);
+            ed
+        });
+        let cookie_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("筛选域名或名称…"));
+        let cookie_edit_val = cx.new(|cx| InputState::new(window, cx).placeholder("Cookie value"));
+        let ck_domain_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("api.example.com"));
+        let ck_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("session_id"));
+        let ck_value_input = cx.new(|cx| InputState::new(window, cx).placeholder("value"));
+        let ck_path_input = cx.new(|cx| InputState::new(window, cx).placeholder("/"));
+        let cert_host_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("api.example.com or *"));
+        let cert_path_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/cert.pem"));
+        let cert_key_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/key.pem"));
+        let cert_pass_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Passphrase")
+                .masked(true)
+        });
+
+        let mut subs = Vec::new();
+        subs.push(
+            cx.subscribe(&env_name_input, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) && !this.syncing {
+                    this.env_dirty = true;
+                    cx.notify();
+                }
+            }),
+        );
+        for f in [&env_search_input, &var_filter_input, &cookie_search_input] {
+            subs.push(cx.subscribe(f, |_, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    cx.notify();
+                }
+            }));
+        }
+
         let mut view = Self {
             workspace_id: workspace_id.clone(),
+            lang,
+            resource_tab: EnvResourceTab::Environments,
+            detail_tab: EnvDetailTab::Variables,
             environments: Vec::new(),
-            selected_id: None,
-            new_env_input,
+            selected_env_id: None,
+            env_draft_name: String::new(),
+            env_draft_vars: Vec::new(),
+            env_draft_confirm: false,
+            env_draft_confirm_safe: false,
+            env_draft_hosts: Vec::new(),
+            env_draft_revision: None,
+            env_dirty: false,
+            env_undo: None,
+            resolved_vars: Vec::new(),
+            unresolved_vars: Vec::new(),
+            declared_hosts: Vec::new(),
+            compare_target_id: None,
+            compare_include_globals: false,
+            compare_rows: Vec::new(),
+            globals_dto: None,
+            globals_draft: Vec::new(),
+            globals_dirty: false,
+            cookies: Vec::new(),
+            selected_cookie_id: None,
+            deleted_cookies_undo: None,
+            certificates: Vec::new(),
+            env_search_input,
+            env_name_input,
+            var_filter_input,
             new_var_key,
             new_var_val,
+            new_var_note,
             new_var_secret: false,
+            edit_var_key,
+            edit_var_val,
+            edit_var_note,
+            host_input,
+            import_editor,
+            cookie_search_input,
+            cookie_edit_val,
+            ck_domain_input,
+            ck_name_input,
+            ck_value_input,
+            ck_path_input,
+            cert_host_input,
+            cert_path_input,
+            cert_key_input,
+            cert_pass_input,
+            active_modal: None,
             status_msg: None,
+            pending_sync: false,
+            syncing: false,
+            _subscriptions: subs,
             _tasks: Vec::new(),
         };
-        if let Some(ws_id) = workspace_id {
-            view.reload(ws_id, cx);
+        if let Some(ws) = workspace_id {
+            view.reload_all(ws, cx);
         }
         view
     }
@@ -62,457 +167,250 @@ impl EnvironmentsView {
         }
         self.workspace_id = workspace_id.clone();
         self.environments.clear();
-        self.selected_id = None;
-        if let Some(ws_id) = workspace_id {
-            self.reload(ws_id, cx);
+        self.selected_env_id = None;
+        self.env_draft_vars.clear();
+        self.env_dirty = false;
+        self.env_undo = None;
+        self.resolved_vars.clear();
+        self.unresolved_vars.clear();
+        self.declared_hosts.clear();
+        self.compare_rows.clear();
+        self.globals_dto = None;
+        self.globals_draft.clear();
+        self.globals_dirty = false;
+        self.cookies.clear();
+        self.selected_cookie_id = None;
+        self.deleted_cookies_undo = None;
+        self.certificates.clear();
+        self.active_modal = None;
+        if let Some(ws) = workspace_id {
+            self.reload_all(ws, cx);
         }
         cx.notify();
     }
 
-    pub fn reload(&mut self, workspace_id: String, cx: &mut Context<Self>) {
-        let task = spawn_blocking_into(
-            cx,
-            move |state| environment_list_impl(state, workspace_id),
-            |this, res, cx| {
-                match res {
-                    Ok(list) => {
-                        if this
-                            .selected_id
-                            .as_deref()
-                            .is_none_or(|id| !list.iter().any(|e| e.id == id))
-                        {
-                            this.selected_id = list.first().map(|e| e.id.clone());
-                        }
-                        this.environments = list;
-                    }
-                    Err(err) => {
-                        this.status_msg = Some((Tone::Danger, err.message().to_owned()));
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    fn create_environment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ws_id) = self.workspace_id.clone() else {
-            return;
-        };
-        let name = self.new_env_input.read(cx).value().trim().to_owned();
-        if name.is_empty() {
-            return;
+    pub fn refresh_catalog(&mut self, cx: &mut Context<Self>) {
+        if let Some(ws) = self.workspace_id.clone() {
+            self.reload_all(ws, cx);
         }
-        self.new_env_input
-            .update(cx, |input, cx| input.set_value("", window, cx));
-        let id = format!("env-{}", pingdeck_desktop::core::app::current_time_ms());
-        let input = SaveEnvironmentInput {
-            id: id.clone(),
-            workspace_id: ws_id.clone(),
-            name,
-            variables: Vec::new(),
-            confirm_before_send: Some(false),
-            confirm_safe_methods: Some(false),
-            declared_hosts: None,
-            base_revision: None,
-        };
-        let task = spawn_blocking_into(
-            cx,
-            move |state| environment_save_impl(state, input),
-            move |this, res, cx| {
-                match res {
-                    Ok(saved) => {
-                        this.selected_id = Some(saved.id.clone());
-                        this.status_msg = Some((Tone::Success, format!("Saved {}", saved.name)));
-                        this.reload(ws_id, cx);
-                    }
-                    Err(err) => {
-                        this.status_msg = Some((Tone::Danger, err.message().to_owned()));
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
     }
 
-    fn add_variable(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(env) = self.selected_env().cloned() else {
-            return;
-        };
-        let key = self.new_var_key.read(cx).value().trim().to_owned();
-        let val = self.new_var_val.read(cx).value().to_string();
-        if key.is_empty() {
-            return;
+    pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.active_modal.take().is_some() {
+            cx.notify();
+            true
+        } else {
+            false
         }
-        let mut vars: Vec<EnvironmentVariableInput> = env
-            .variables
-            .iter()
-            .map(|v| EnvironmentVariableInput {
-                id: Some(v.id.clone()),
-                key: v.key.clone(),
-                value: v.value.clone(),
-                enabled: v.enabled,
-                is_secret: v.is_secret,
-                note: v.note.clone(),
-            })
-            .collect();
-        vars.push(EnvironmentVariableInput {
-            id: None,
-            key,
-            value: Some(val),
-            enabled: true,
-            is_secret: self.new_var_secret,
-            note: String::new(),
-        });
-        self.new_var_key
-            .update(cx, |i, cx| i.set_value("", window, cx));
-        self.new_var_val
-            .update(cx, |i, cx| i.set_value("", window, cx));
-        self.save_env(
-            SaveEnvironmentInput {
-                id: env.id,
-                workspace_id: env.workspace_id,
-                name: env.name,
-                variables: vars,
-                confirm_before_send: Some(env.confirm_before_send),
-                confirm_safe_methods: Some(env.confirm_safe_methods),
-                declared_hosts: Some(env.declared_hosts),
-                base_revision: Some(env.revision),
-            },
-            cx,
-        );
-    }
-
-    fn save_env(&mut self, input: SaveEnvironmentInput, cx: &mut Context<Self>) {
-        let ws_id = input.workspace_id.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| environment_save_impl(state, input),
-            move |this, res, cx| {
-                match res {
-                    Ok(saved) => {
-                        this.status_msg = Some((Tone::Success, format!("Updated {}", saved.name)));
-                        this.reload(ws_id, cx);
-                    }
-                    Err(err) => {
-                        this.status_msg = Some((Tone::Danger, err.message().to_owned()));
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    fn delete_selected(&mut self, cx: &mut Context<Self>) {
-        let Some(env) = self.selected_env().cloned() else {
-            return;
-        };
-        let ws_id = env.workspace_id.clone();
-        let env_id = env.id.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| environment_delete_impl(state, ws_id.clone(), env_id),
-            move |this, res, cx| {
-                match res {
-                    Ok(_) => {
-                        this.selected_id = None;
-                        this.status_msg = Some((Tone::Neutral, "Environment deleted".into()));
-                        if let Some(ws) = this.workspace_id.clone() {
-                            this.reload(ws, cx);
-                        }
-                    }
-                    Err(err) => {
-                        this.status_msg = Some((Tone::Danger, err.message().to_owned()));
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    fn selected_env(&self) -> Option<&EnvironmentDto> {
-        let id = self.selected_id.as_deref()?;
-        self.environments.iter().find(|e| e.id == id)
     }
 }
 
 impl Render for EnvironmentsView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.pending_sync {
+            self.sync_inputs(window, cx);
+        }
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
+        let zh = self.is_zh();
 
-        let Some(_ws_id) = self.workspace_id.as_ref() else {
-            return empty_state(
-                UiIcon::Layers,
-                if zh {
-                    "未选择工作区"
-                } else {
-                    "No workspace selected"
-                },
-                if zh {
-                    "先在左侧选择或创建一个工作区以管理环境变量与密钥。"
-                } else {
-                    "Select or create a workspace in the sidebar to manage environments and secrets."
-                },
-                cx,
-            );
-        };
-
-        let mut list = v_col()
-            .gap(px(4.0))
-            .p(px(10.0))
-            .flex_1()
-            .overflow_y_scrollbar();
-        for env in &self.environments {
-            let id = env.id.clone();
-            let selected = self.selected_id.as_deref() == Some(env.id.as_str());
-            let name = env.name.clone();
-            let count = env.variables.len();
-            list = list.child(
-                list_row(
-                    SharedString::from(format!("env-row-{id}")),
-                    selected,
-                    cx,
-                    cx.listener(move |this, _, _, cx| {
-                        this.selected_id = Some(id.clone());
-                        cx.notify();
-                    }),
-                )
-                .justify_between()
-                .child(div().text_xs().truncate().child(SharedString::from(name)))
-                .child(badge(count.to_string(), Tone::Neutral, cx)),
-            );
+        // Top workspace resource switcher
+        let mut res_tabs = tab_bar_segmented("env-resource-tabs")
+            .selected_index(self.resource_tab.index())
+            .on_click(cx.listener(|this, idx: &usize, _, cx| {
+                this.resource_tab = EnvResourceTab::from_index(*idx);
+                if let Some(ws) = this.workspace_id.clone() {
+                    match this.resource_tab {
+                        EnvResourceTab::Globals => this.reload_globals(ws, cx),
+                        EnvResourceTab::Cookies => this.reload_cookies(ws, cx),
+                        EnvResourceTab::Certificates => this.reload_certificates(ws, cx),
+                        EnvResourceTab::Environments => this.refresh_env_analysis(cx),
+                    }
+                }
+                cx.notify();
+            }));
+        for rt in EnvResourceTab::ALL {
+            let label = match rt {
+                EnvResourceTab::Cookies if !self.cookies.is_empty() => {
+                    SharedString::from(format!("{} ({})", rt.label(zh), self.cookies.len()))
+                }
+                EnvResourceTab::Certificates if !self.certificates.is_empty() => {
+                    SharedString::from(format!("{} ({})", rt.label(zh), self.certificates.len()))
+                }
+                _ => SharedString::from(rt.label(zh)),
+            };
+            res_tabs = res_tabs.child(tab_item(label));
         }
 
-        let left_pane = v_col()
-            .w(px(250.0))
-            .h_full()
-            .bg(to_hsla(p.pane))
-            .border_r_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .child(
-                v_col()
-                    .p(px(10.0))
-                    .gap(px(6.0))
-                    .border_b_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .child(section_heading(
-                        if zh { "环境列表" } else { "Environments" },
-                        cx,
-                    ))
-                    .child(
-                        h_row()
-                            .gap(px(4.0))
-                            .child(div().flex_1().child(text_input(&self.new_env_input)))
-                            .child(btn_primary("env-add", "+").on_click(cx.listener(
-                                |this, _, window, cx| this.create_environment(window, cx),
-                            ))),
+        let top_bar = toolbar_strip(cx).justify_between().child(res_tabs);
+
+        let mut banners = v_col().w_full().gap(px(6.0));
+        if let Some((_, deleted_name)) = &self.env_undo {
+            banners = banners.child(
+                div().px(px(12.0)).pt(px(8.0)).child(alert_banner(
+                    Tone::Warning,
+                    if zh {
+                        format!("已删除环境「{deleted_name}」（60 秒内可撤销恢复，含机密）")
+                    } else {
+                        format!("Deleted environment \"{deleted_name}\" (undo available for 60s)")
+                    },
+                    Some(
+                        btn_secondary("env-undo-del", self.t("撤销删除", "Undo"))
+                            .icon(icon_xs(UiIcon::RotateCcw))
+                            .on_click(cx.listener(|this, _, _, cx| this.undo_delete_env(cx)))
+                            .into_any_element(),
                     ),
-            )
-            .child(list);
+                    cx,
+                )),
+            );
+        }
+        if let Some((tone, msg)) = &self.status_msg {
+            banners = banners.child(div().px(px(12.0)).pt(px(8.0)).child(dismissible_banner(
+                "env-banner-close",
+                *tone,
+                msg.clone(),
+                cx.listener(|this, _, _, cx| {
+                    this.status_msg = None;
+                    cx.notify();
+                }),
+                cx,
+            )));
+        }
 
-        let right_pane = if let Some(env) = self.selected_env().cloned() {
-            let mut vars_list = v_col().gap(px(4.0));
-            for (idx, var) in env.variables.iter().enumerate() {
-                let env_for_del = env.clone();
-                let key = var.key.clone();
-                let is_secret = var.is_secret;
-                let shown = if is_secret {
-                    "••••••••".to_owned()
-                } else {
-                    var.value.clone().unwrap_or_default()
-                };
-                vars_list = vars_list.child(
-                    h_row()
-                        .gap(px(8.0))
-                        .px(px(10.0))
-                        .py(px(6.0))
-                        .rounded(px(6.0))
-                        .bg(to_hsla(p.surface_2))
-                        .child(
-                            div()
-                                .w(px(180.0))
-                                .text_xs()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .text_color(to_hsla(p.ink))
-                                .truncate()
-                                .child(SharedString::from(key)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_xs()
-                                .text_color(to_hsla(p.ink_2))
-                                .truncate()
-                                .child(SharedString::from(shown)),
-                        )
-                        .child(if is_secret {
-                            badge(if zh { "密钥" } else { "Secret" }, Tone::Warning, cx)
-                        } else {
-                            badge(if zh { "明文" } else { "Plain" }, Tone::Neutral, cx)
-                        })
-                        .child(btn_icon(("env-var-del", idx), UiIcon::Trash).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                let mut next_vars: Vec<EnvironmentVariableInput> = env_for_del
-                                    .variables
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(i, _)| *i != idx)
-                                    .map(|(_, v)| EnvironmentVariableInput {
-                                        id: Some(v.id.clone()),
-                                        key: v.key.clone(),
-                                        value: v.value.clone(),
-                                        enabled: v.enabled,
-                                        is_secret: v.is_secret,
-                                        note: v.note.clone(),
-                                    })
-                                    .collect();
-                                next_vars.shrink_to_fit();
-                                this.save_env(
-                                    SaveEnvironmentInput {
-                                        id: env_for_del.id.clone(),
-                                        workspace_id: env_for_del.workspace_id.clone(),
-                                        name: env_for_del.name.clone(),
-                                        variables: next_vars,
-                                        confirm_before_send: Some(env_for_del.confirm_before_send),
-                                        confirm_safe_methods: Some(
-                                            env_for_del.confirm_safe_methods,
-                                        ),
-                                        declared_hosts: Some(env_for_del.declared_hosts.clone()),
-                                        base_revision: Some(env_for_del.revision.clone()),
-                                    },
-                                    cx,
-                                );
-                            }),
-                        )),
-                );
-            }
+        let main_body = match self.resource_tab {
+            EnvResourceTab::Environments => self.render_environments_split(cx),
+            EnvResourceTab::Globals => tab_vars::render_variables_panel(self, true, cx),
+            EnvResourceTab::Cookies => tab_cookies::render_cookies_tab(self, cx),
+            EnvResourceTab::Certificates => tab_certs::render_certs_tab(self, cx),
+        };
 
-            let guard_env = env.clone();
-            v_col()
-                .size_full()
-                .p(px(20.0))
-                .gap(px(14.0))
-                .overflow_y_scrollbar()
-                .child(
-                    h_row()
-                        .justify_between()
-                        .child(
-                            h_row()
-                                .gap(px(8.0))
-                                .child(
-                                    div()
-                                        .text_base()
-                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                        .child(SharedString::from(env.name.clone())),
-                                )
-                                .child(badge(
-                                    format!("{} vars", env.variables.len()),
-                                    Tone::Accent,
-                                    cx,
-                                )),
-                        )
-                        .child(
-                            btn_danger("env-delete", if zh { "删除环境" } else { "Delete" })
-                                .on_click(cx.listener(|this, _, _, cx| this.delete_selected(cx))),
-                        ),
-                )
-                .child(
-                    card(cx).p(px(12.0)).child(field_row(
-                        if zh {
-                            "发送前确认（生产环境保护）"
-                        } else {
-                            "Confirm before send (production guard)"
-                        },
-                        Some(SharedString::from(if zh {
-                            "开启后，向此环境发送写请求前会要求二次确认。"
-                        } else {
-                            "Requires explicit confirmation before sending write requests in this environment."
-                        })),
-                        toggle_switch("env-guard-toggle", env.confirm_before_send).on_change(
-                            cx.listener(move |this, checked: &bool, _, cx| {
-                                let vars = guard_env
-                                    .variables
-                                    .iter()
-                                    .map(|v| EnvironmentVariableInput {
-                                        id: Some(v.id.clone()),
-                                        key: v.key.clone(),
-                                        value: v.value.clone(),
-                                        enabled: v.enabled,
-                                        is_secret: v.is_secret,
-                                        note: v.note.clone(),
-                                    })
-                                    .collect();
-                                this.save_env(
-                                    SaveEnvironmentInput {
-                                        id: guard_env.id.clone(),
-                                        workspace_id: guard_env.workspace_id.clone(),
-                                        name: guard_env.name.clone(),
-                                        variables: vars,
-                                        confirm_before_send: Some(*checked),
-                                        confirm_safe_methods: Some(guard_env.confirm_safe_methods),
-                                        declared_hosts: Some(guard_env.declared_hosts.clone()),
-                                        base_revision: Some(guard_env.revision.clone()),
-                                    },
-                                    cx,
-                                );
-                            }),
-                        ),
-                        cx,
-                    )),
-                )
+        let mut root = v_col()
+            .relative()
+            .size_full()
+            .bg(to_hsla(p.surface))
+            .child(top_bar)
+            .child(banners)
+            .child(div().flex_1().min_h_0().w_full().child(main_body));
+
+        if let Some(modal) = modals::render_modal(self, window, cx) {
+            root = root.child(modal);
+        }
+        root
+    }
+}
+
+impl EnvironmentsView {
+    fn render_environments_split(&self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+        let zh = self.is_zh();
+        let left = sidebar::render_env_sidebar(self, cx);
+        let right = if let Some(env_id) = self.selected_env_id.clone() {
+            let env_name = self.env_draft_name.clone();
+            let env_id_exp = env_id.clone();
+            let env_name_exp = env_name.clone();
+
+            let header = toolbar_strip(cx)
+                .justify_between()
+                .child(div().w(px(260.0)).child(text_input(&self.env_name_input)))
                 .child(
                     h_row()
                         .gap(px(6.0))
-                        .child(div().w(px(180.0)).child(text_input(&self.new_var_key)))
-                        .child(div().flex_1().child(text_input(&self.new_var_val)))
+                        .flex_shrink_0()
+                        .child(if self.env_dirty {
+                            btn_primary("env-save-btn", self.t("保存", "Save"))
+                                .icon(icon_xs(UiIcon::Check))
+                                .on_click(cx.listener(|this, _, _, cx| this.save_env(cx)))
+                        } else {
+                            btn_secondary("env-save-btn", self.t("已保存", "Saved"))
+                                .on_click(cx.listener(|this, _, _, cx| this.save_env(cx)))
+                        })
                         .child(
-                            btn_secondary(
-                                "env-var-secret-toggle",
-                                if self.new_var_secret {
-                                    if zh { "密钥: 开" } else { "Secret: ON" }
-                                } else if zh {
-                                    "密钥: 关"
-                                } else {
-                                    "Secret: OFF"
-                                },
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.new_var_secret = !this.new_var_secret;
-                                cx.notify();
-                            })),
+                            btn_icon("env-dup-btn", UiIcon::Copy)
+                                .tooltip(self.t("复制环境", "Duplicate environment"))
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.duplicate_selected_env(cx)),
+                                ),
                         )
                         .child(
-                            btn_primary("env-var-add", if zh { "添加变量" } else { "Add" })
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.add_variable(window, cx);
+                            btn_icon("env-exp-btn", UiIcon::Download)
+                                .tooltip(self.t("导出环境 JSON", "Export environment JSON"))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.active_modal = Some(EnvModal::ExportEnv {
+                                        id: env_id_exp.clone(),
+                                        name: env_name_exp.clone(),
+                                        include_secrets: false,
+                                    });
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            btn_icon("env-del-btn", UiIcon::Trash)
+                                .tooltip(self.t("删除环境", "Delete environment"))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.active_modal = Some(EnvModal::DeleteEnv {
+                                        id: env_id.clone(),
+                                        name: env_name.clone(),
+                                    });
+                                    cx.notify();
                                 })),
                         ),
-                )
-                .child(vars_list)
-                .into_any_element()
-        } else {
-            empty_state(
-                UiIcon::Key,
-                if zh { "还没有环境" } else { "No environment selected" },
-                if zh {
-                    "在左侧输入名称创建一个环境，密钥会存放在独立 0600 权限的 .secrets 明文库中。"
+                );
+
+            let mut dtabs = tab_bar_underline("env-detail-tabs")
+                .selected_index(self.detail_tab.index())
+                .on_click(cx.listener(|this, idx: &usize, _, cx| {
+                    this.detail_tab = EnvDetailTab::from_index(*idx);
+                    if this.detail_tab != EnvDetailTab::Variables {
+                        this.refresh_env_analysis(cx);
+                    }
+                    cx.notify();
+                }));
+            for t in EnvDetailTab::ALL {
+                let lbl = if t == EnvDetailTab::Resolved && !self.unresolved_vars.is_empty() {
+                    SharedString::from(format!("{} ({})", t.label(zh), self.unresolved_vars.len()))
                 } else {
-                    "Create an environment on the left. Secrets are stored in the adjacent 0600 plaintext .secrets vault."
-                },
+                    SharedString::from(t.label(zh))
+                };
+                dtabs = dtabs.child(tab_item(lbl));
+            }
+
+            let detail_body = match self.detail_tab {
+                EnvDetailTab::Variables => tab_vars::render_variables_panel(self, false, cx),
+                EnvDetailTab::Resolved => tab_analysis::render_resolved_tab(self, cx),
+                EnvDetailTab::Compare => tab_analysis::render_compare_tab(self, cx),
+                EnvDetailTab::Protection => tab_analysis::render_protection_tab(self, cx),
+            };
+
+            v_col()
+                .size_full()
+                .min_h_0()
+                .child(header)
+                .child(subtab_strip(dtabs, None, cx))
+                .child(div().flex_1().min_h_0().w_full().child(detail_body))
+        } else {
+            v_col().size_full().child(empty_state_with_actions(
+                UiIcon::Layers,
+                self.t("还没有环境配置", "No Environment Selected"),
+                self.t(
+                    "创建环境以隔离不同部署目标的 Base URL、机密凭据、允许主机与发送前确认护栏。",
+                    "Create environments to isolate base URLs, secrets, host allowlists, and send guards.",
+                ),
+                Some(
+                    btn_primary("env-empty-new", self.t("新建环境", "New Environment"))
+                        .icon(icon_xs(UiIcon::Plus))
+                        .on_click(cx.listener(|this, _, _, cx| this.create_env(cx)))
+                        .into_any_element(),
+                ),
                 cx,
-            )
-            .into_any_element()
+            ))
         };
 
-        h_row()
-            .size_full()
-            .items_start()
-            .bg(to_hsla(p.surface))
-            .child(left_pane)
-            .child(div().flex_1().h_full().min_w_0().child(right_pane))
+        h_resizable("env-split")
+            .child(
+                resizable_panel()
+                    .size(px(250.0))
+                    .size_range(px(200.0)..px(360.0))
+                    .child(left),
+            )
+            .child(resizable_panel().child(right))
+            .into_any_element()
     }
 }

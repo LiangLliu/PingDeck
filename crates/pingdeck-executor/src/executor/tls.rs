@@ -162,7 +162,7 @@ fn plain_key_pem(text: &str, passphrase: Option<&str>) -> Result<String, String>
         })?;
     let (_, der) = pem::decode_vec(&text.as_bytes()[start..end])
         .map_err(|_| "the encrypted key block is not valid PEM".to_owned())?;
-    let encrypted = pkcs8::EncryptedPrivateKeyInfo::try_from(der.as_slice())
+    let encrypted = pkcs8::EncryptedPrivateKeyInfoRef::try_from(der.as_slice())
         .map_err(|_| "the encrypted key is not a PKCS#8 key".to_owned())?;
     let document = encrypted
         .decrypt(passphrase)
@@ -175,18 +175,22 @@ fn plain_key_pem(text: &str, passphrase: Option<&str>) -> Result<String, String>
 
 /// The leaf certificate, its chain and its key of a PKCS#12 bundle as one PEM text.
 fn pkcs12_to_pem(bytes: &[u8], passphrase: &str) -> Result<String, String> {
-    let store =
-        p12_keystore::KeyStore::from_pkcs12(bytes, passphrase).map_err(|error| match error {
-            p12_keystore::error::Error::MacError(_) => {
-                "the passphrase does not open the PKCS#12 file".to_owned()
-            }
-            other => format!("cannot read the PKCS#12 file: {other}"),
-        })?;
+    let store = p12_keystore::KeyStore::from_pkcs12(
+        bytes,
+        passphrase,
+        p12_keystore::Pkcs12ImportPolicy::Relaxed,
+    )
+    .map_err(|error| match error {
+        p12_keystore::error::Error::MacError(_) => {
+            "the passphrase does not open the PKCS#12 file".to_owned()
+        }
+        other => format!("cannot read the PKCS#12 file: {other}"),
+    })?;
     let (_, chain) = store
         .private_key_chain()
         .ok_or_else(|| "the PKCS#12 file holds no private key".to_owned())?;
     let mut out = String::new();
-    for certificate in chain.chain() {
+    for certificate in chain.certs() {
         out.push_str(
             &pem::encode_string("CERTIFICATE", LineEnding::LF, certificate.as_der())
                 .map_err(|error| format!("cannot encode a certificate: {error}"))?,
@@ -196,7 +200,7 @@ fn pkcs12_to_pem(bytes: &[u8], passphrase: &str) -> Result<String, String> {
         return Err("the PKCS#12 file holds no certificate for its key".to_owned());
     }
     out.push_str(
-        &pem::encode_string("PRIVATE KEY", LineEnding::LF, chain.key())
+        &pem::encode_string("PRIVATE KEY", LineEnding::LF, chain.key().as_der())
             .map_err(|error| format!("cannot encode the key: {error}"))?,
     );
     Ok(out)

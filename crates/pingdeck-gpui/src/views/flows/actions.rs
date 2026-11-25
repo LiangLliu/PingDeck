@@ -1,0 +1,529 @@
+//! Core CRUD, step manipulation, live streaming execution, cancellation, and run history actions for `FlowsView`.
+
+use std::collections::BTreeMap;
+
+use gpui_kit::{Context, Window};
+use pingdeck_desktop::core::app::factory_service::{
+    assertion_new, flow_duplicate, flow_new, flow_step_duplicate, flow_step_new, flow_step_remove,
+    flow_steps_reorder, new_entity_id,
+};
+use pingdeck_desktop::core::app::{
+    environment_list_impl, execution_cancel_impl, flow_delete_impl, flow_list_impl, flow_run_impl,
+    flow_run_list_impl, flow_save_impl, request_list_impl, settings_get_impl,
+};
+use pingdeck_desktop::core::error::AppError;
+use pingdeck_desktop::core::flows::FlowEvent;
+use pingdeck_desktop::core::model::items::FlowExtraction;
+use pingdeck_desktop::core::model::{Assertion, HttpMethod, Request};
+use pingdeck_desktop::streams::channel_sink;
+
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
+use crate::ui::Tone;
+
+use super::state::{FlowModal, FlowRunTab, FlowsView};
+
+impl FlowsView {
+    pub fn reload(&mut self, ws_id: String, cx: &mut Context<Self>) {
+        self.lang = settings_get_impl(runtime(cx).state()).general.language;
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let entries = flow_list_impl(state, ws_id.clone())?;
+                let requests = request_list_impl(state, ws_id.clone()).unwrap_or_default();
+                let envs = environment_list_impl(state, ws_id).unwrap_or_default();
+                Ok::<_, AppError>((entries, requests, envs))
+            },
+            |this, res, cx| {
+                match res {
+                    Ok((entries, requests, envs)) => {
+                        this.entries = entries;
+                        this.requests = requests;
+                        this.environments = envs;
+                        let sel_ok = this
+                            .selected_flow_id
+                            .as_deref()
+                            .is_some_and(|id| this.entries.iter().any(|e| e.flow.id == id));
+                        if !sel_ok {
+                            this.selected_flow_id = this.entries.first().map(|e| e.flow.id.clone());
+                            this.draft = this.entries.first().map(|e| e.flow.clone());
+                            this.dirty = false;
+                            this.pending_sync = true;
+                        } else if !this.dirty
+                            && let Some(id) = this.selected_flow_id.as_deref()
+                            && let Some(e) = this.entries.iter().find(|e| e.flow.id == id)
+                        {
+                            this.draft = Some(e.flow.clone());
+                            this.pending_sync = true;
+                        }
+                        if let Some(fid) = this.selected_flow_id.clone() {
+                            this.load_past_runs(fid, cx);
+                        }
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn select_flow(&mut self, flow_id: String, cx: &mut Context<Self>) {
+        if self.selected_flow_id.as_deref() == Some(flow_id.as_str()) {
+            return;
+        }
+        self.selected_flow_id = Some(flow_id.clone());
+        self.draft = self
+            .entries
+            .iter()
+            .find(|e| e.flow.id == flow_id)
+            .map(|e| e.flow.clone());
+        self.dirty = false;
+        self.selected_step_id = None;
+        self.live_steps.clear();
+        self.last_result = None;
+        self.past_runs.clear();
+        self.selected_past_run_id = None;
+        self.pending_sync = true;
+        self.load_past_runs(flow_id, cx);
+        cx.notify();
+    }
+
+    pub fn load_past_runs(&mut self, flow_id: String, cx: &mut Context<Self>) {
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
+        };
+        let fid_match = flow_id.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| flow_run_list_impl(state, ws_id, flow_id),
+            move |this, res, cx| {
+                if this.selected_flow_id.as_deref() != Some(fid_match.as_str()) {
+                    return;
+                }
+                if let Ok(runs) = res {
+                    this.past_runs = runs;
+                    cx.notify();
+                }
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn create_flow(&mut self, cx: &mut Context<Self>) {
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
+        };
+        let ws_reload = ws_id.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let mut flow = flow_new(state, &ws_id)?;
+                let mut first = flow_step_new(&flow);
+                first.method_override = Some(HttpMethod::Get);
+                first.url_override = Some("https://httpbin.org/get".to_owned());
+                flow.steps.push(first);
+                flow_save_impl(state, flow)
+            },
+            move |this, res, cx| {
+                match res {
+                    Ok(saved) => {
+                        this.selected_flow_id = Some(saved.id.clone());
+                        this.draft = Some(saved);
+                        this.dirty = false;
+                        this.pending_sync = true;
+                        this.status_msg = Some((
+                            Tone::Success,
+                            this.t("已新建流程", "Created flow").to_owned(),
+                        ));
+                        this.reload(ws_reload, cx);
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn save_flow(&mut self, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.clone() else {
+            return;
+        };
+        let ws_reload = self.workspace_id.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| flow_save_impl(state, flow),
+            move |this, res, cx| {
+                match res {
+                    Ok(saved) => {
+                        this.draft = Some(saved.clone());
+                        this.dirty = false;
+                        this.pending_sync = true;
+                        this.status_msg =
+                            Some((Tone::Success, this.t("已保存流程", "Saved flow").to_owned()));
+                        if let Some(ws) = ws_reload {
+                            this.reload(ws, cx);
+                        }
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn duplicate_selected(&mut self, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.clone() else {
+            return;
+        };
+        let ws_reload = self.workspace_id.clone();
+        let copy = flow_duplicate(flow);
+        let task = spawn_blocking_into(
+            cx,
+            move |state| flow_save_impl(state, copy),
+            move |this, res, cx| {
+                match res {
+                    Ok(saved) => {
+                        this.selected_flow_id = Some(saved.id.clone());
+                        this.draft = Some(saved);
+                        this.dirty = false;
+                        this.pending_sync = true;
+                        this.status_msg = Some((
+                            Tone::Success,
+                            this.t("已复制流程", "Duplicated flow").to_owned(),
+                        ));
+                        if let Some(ws) = ws_reload {
+                            this.reload(ws, cx);
+                        }
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn delete_flow(&mut self, flow_id: String, cx: &mut Context<Self>) {
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
+        };
+        let ws_reload = ws_id.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| flow_delete_impl(state, ws_id, flow_id),
+            move |this, res, cx| {
+                this.active_modal = None;
+                match res {
+                    Ok(()) => {
+                        this.selected_flow_id = None;
+                        this.draft = None;
+                        this.dirty = false;
+                        this.status_msg = Some((
+                            Tone::Success,
+                            this.t("已删除流程", "Deleted flow").to_owned(),
+                        ));
+                        this.reload(ws_reload, cx);
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn add_inline_step(&mut self, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.as_mut() else {
+            return;
+        };
+        let mut step = flow_step_new(flow);
+        step.method_override = Some(HttpMethod::Get);
+        step.url_override = Some("https://httpbin.org/get".to_owned());
+        let id = step.id.clone();
+        flow.steps.push(step);
+        self.selected_step_id = Some(id);
+        self.dirty = true;
+        self.pending_sync = true;
+        cx.notify();
+    }
+
+    pub fn add_saved_request_step(&mut self, req: &Request, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.as_mut() else {
+            return;
+        };
+        let mut step = flow_step_new(flow);
+        step.name = req.name.clone();
+        step.request_id = req.id.as_str().to_owned();
+        let id = step.id.clone();
+        flow.steps.push(step);
+        self.selected_step_id = Some(id);
+        self.active_modal = None;
+        self.dirty = true;
+        self.pending_sync = true;
+        cx.notify();
+    }
+
+    pub fn move_step(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.as_mut() else {
+            return;
+        };
+        if let Ok(steps) = flow_steps_reorder(flow.steps.clone(), from, to) {
+            flow.steps = steps;
+            self.dirty = true;
+            cx.notify();
+        }
+    }
+
+    pub fn duplicate_step(&mut self, step_id: String, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.as_mut() else {
+            return;
+        };
+        if let Ok(steps) = flow_step_duplicate(flow.steps.clone(), &step_id) {
+            let next_id = steps
+                .iter()
+                .position(|s| s.id == step_id)
+                .and_then(|idx| steps.get(idx + 1))
+                .map(|s| s.id.clone());
+            flow.steps = steps;
+            if let Some(id) = next_id {
+                self.selected_step_id = Some(id);
+            }
+            self.dirty = true;
+            self.pending_sync = true;
+            cx.notify();
+        }
+    }
+
+    pub fn remove_step(&mut self, step_id: String, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let Some(flow) = self.draft.as_mut() else {
+            return;
+        };
+        if let Ok(steps) = flow_step_remove(flow.steps.clone(), &step_id) {
+            flow.steps = steps;
+            self.dirty = true;
+            self.pending_sync = true;
+            cx.notify();
+        }
+    }
+
+    pub fn add_extraction(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let var_name = self.ext_var_input.read(cx).value().trim().to_owned();
+        let expr = self.ext_expr_input.read(cx).value().trim().to_owned();
+        if var_name.is_empty() {
+            return;
+        }
+        let source = self.new_ext_source;
+        let secret = self.new_ext_secret;
+        if let Some(step) = self.selected_step_mut() {
+            step.extractions.push(FlowExtraction {
+                variable_name: var_name,
+                source,
+                expression: expr,
+                secret: Some(secret),
+            });
+            self.dirty = true;
+        }
+        self.ext_var_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        self.ext_expr_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        cx.notify();
+    }
+
+    pub fn add_quick_assertion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        let path_or_key = self.assert_path_input.read(cx).value().trim().to_owned();
+        let val_str = self.assert_val_input.read(cx).value().trim().to_owned();
+        let kind_idx = self.new_assert_kind_idx;
+        let assertion = match kind_idx {
+            0 => Assertion::StatusEquals {
+                value: val_str.parse::<u16>().unwrap_or(200),
+            },
+            1 => Assertion::HeaderExists {
+                key: if path_or_key.is_empty() {
+                    "content-type".into()
+                } else {
+                    path_or_key
+                },
+            },
+            2 => Assertion::JsonPathExists {
+                path: if path_or_key.is_empty() {
+                    "$.id".into()
+                } else {
+                    path_or_key
+                },
+            },
+            3 => Assertion::BodyContains { value: val_str },
+            4 => Assertion::ResponseTimeLessThanMs {
+                value: val_str.parse::<u64>().unwrap_or(1000),
+            },
+            _ => match assertion_new("StatusEquals") {
+                Ok(a) => a,
+                Err(_) => return,
+            },
+        };
+        if let Some(step) = self.selected_step_mut() {
+            step.assertions.push(assertion);
+            self.dirty = true;
+        }
+        self.assert_path_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        self.assert_val_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        cx.notify();
+    }
+
+    pub fn run_flow(
+        &mut self,
+        max_steps: Option<usize>,
+        only_step: Option<usize>,
+        confirmed: Option<bool>,
+        cx: &mut Context<Self>,
+    ) {
+        self.snapshot_inputs(cx);
+        let (Some(ws_id), Some(flow)) = (self.workspace_id.clone(), self.draft.clone()) else {
+            return;
+        };
+        let flow_id = flow.id.clone();
+        let env_id = self.selected_env_id.clone();
+        let dirty_save = self.dirty.then_some(flow.clone());
+        let token = new_entity_id("flow_cancel");
+
+        // When running a single step, seed from the previous run's captured variables if any.
+        let seed_vars: Option<BTreeMap<String, String>> = if only_step.is_some() {
+            let mut merged = flow.options.initial_variables.clone();
+            if let Some(prev) = &self.last_result {
+                for kv in &prev.variables {
+                    merged.insert(kv.key.clone(), kv.value.clone());
+                }
+            }
+            Some(merged)
+        } else {
+            Some(flow.options.initial_variables.clone())
+        };
+        let cookie_session = Some(flow.options.cookie_session);
+
+        self.running = true;
+        self.cancel_token = Some(token.clone());
+        self.live_steps.clear();
+        self.live_total = flow.steps.len();
+        self.run_tab = FlowRunTab::LiveRun;
+        self.active_modal = None;
+        cx.notify();
+
+        let (sink, rx) = channel_sink::<FlowEvent>();
+        let stream_task = subscribe_stream_into(cx, rx, 16, |this, events, cx| {
+            for ev in events {
+                match ev {
+                    FlowEvent::StepsFinished { total, steps, .. } => {
+                        this.live_total = total;
+                        for st in steps {
+                            this.live_steps.insert(st.step_id.clone(), st);
+                        }
+                    }
+                    FlowEvent::RunFinished { .. } => {}
+                }
+            }
+            cx.notify();
+        });
+        self._tasks.push(stream_task);
+
+        let fid_reload = flow_id.clone();
+        let ws_reload = ws_id.clone();
+        let task = spawn_async_into(
+            cx,
+            move |state| async move {
+                if let Some(f) = dirty_save {
+                    let _ = flow_save_impl(&state, f)?;
+                }
+                flow_run_impl(
+                    &state,
+                    ws_id,
+                    flow_id,
+                    env_id,
+                    seed_vars,
+                    max_steps,
+                    only_step,
+                    cookie_session,
+                    Some(token),
+                    confirmed,
+                    sink.as_ref(),
+                )
+                .await
+            },
+            move |this, res, cx| {
+                this.running = false;
+                this.cancel_token = None;
+                match res {
+                    Ok(run) => {
+                        this.dirty = false;
+                        let summary_msg = if run.cancelled {
+                            this.t("流程已取消", "Flow run cancelled").to_owned()
+                        } else if run.passed {
+                            if this.is_zh() {
+                                format!(
+                                    "流程执行通过 · {} 步 · {} ms",
+                                    run.steps.len(),
+                                    run.elapsed_ms
+                                )
+                            } else {
+                                format!(
+                                    "Flow passed · {} steps · {} ms",
+                                    run.steps.len(),
+                                    run.elapsed_ms
+                                )
+                            }
+                        } else if this.is_zh() {
+                            format!("流程执行存在失败步骤 · {} ms", run.elapsed_ms)
+                        } else {
+                            format!("Flow failed · {} ms", run.elapsed_ms)
+                        };
+                        let tone = if run.cancelled {
+                            Tone::Warning
+                        } else if run.passed {
+                            Tone::Success
+                        } else {
+                            Tone::Danger
+                        };
+                        this.last_result = Some(run);
+                        this.status_msg = Some((tone, summary_msg));
+                        this.load_past_runs(fid_reload, cx);
+                        this.reload(ws_reload, cx);
+                    }
+                    Err(AppError::ConfirmationRequired { message, .. }) => {
+                        this.active_modal = Some(FlowModal::ConfirmRun {
+                            reason: message,
+                            max_steps,
+                            only_step,
+                        });
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn cancel_run(&mut self, cx: &mut Context<Self>) {
+        if let Some(tok) = self.cancel_token.clone() {
+            let _ = execution_cancel_impl(runtime(cx).state(), tok);
+            self.status_msg = Some((
+                Tone::Warning,
+                self.t("正在取消流程运行…", "Cancelling flow run…")
+                    .to_owned(),
+            ));
+            cx.notify();
+        }
+    }
+}

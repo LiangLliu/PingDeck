@@ -1,49 +1,161 @@
-//! Flow Orchestration module (`NavModule::Flows`).
+//! Complete Flows orchestration module (`NavModule::Flows`).
 //!
-//! Directly wired to `flow_list_impl`, `flow_save_impl`, `flow_delete_impl`, and `flow_run_impl`
-//! with real-time `FlowEvent` streaming.
+//! Multi-step API pipeline builder & runner backed by `pingdeck_core::app::flow_service`:
+//! - Master sidebar with search, step counts, and last-run pass/fail/cancelled badges
+//! - Ordered step pipeline with inline or saved-request steps, reorder, duplicate, partial run
+//!   ("Run up to step" / "Run only this step"), and live streaming `FlowEvent` progress
+//! - Step inspector for Request Overrides, Extractions, Assertions, Condition/Retries, and Output
+//! - Execution console showing live run progress, masked captured variables, and past 20 runs.
+
+pub mod actions;
+pub mod inspector;
+pub mod inspector_exec;
+pub mod modals;
+pub mod run_panel;
+pub mod sidebar;
+pub mod state;
+pub mod steps_pane;
+
+use std::collections::HashMap;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Task, Window, div, px,
+    AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
+    Window, div, px,
 };
-use pingdeck_desktop::core::app::{
-    FlowListEntryDto, current_time_ms, flow_delete_impl, flow_list_impl, flow_run_impl,
-    flow_save_impl, settings_get_impl,
-};
-use pingdeck_desktop::core::flows::FlowEvent;
-use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::core::model::{Flow, WorkspaceId};
-use pingdeck_desktop::streams::channel_sink;
+use pingdeck_desktop::core::app::settings_get_impl;
+use pingdeck_desktop::core::model::items::FlowExtractionSource;
 
-use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
+use crate::bridge::runtime;
 use crate::ui::{
-    InputState, ScrollableElement as _, Tone, UiIcon, badge, btn_danger, btn_primary, card,
-    empty_state, h_row, list_row, palette, section_heading, text_input, to_hsla, v_col,
+    EditorState, InputEvent, InputState, Tone, UiIcon, btn_danger, btn_icon, btn_primary,
+    btn_secondary, choice_chip, dismissible_banner, empty_state_with_actions, h_resizable, h_row,
+    icon_xs, palette, resizable_panel, text_input, to_hsla, toolbar_strip, v_col, v_resizable,
 };
 
-pub struct FlowsView {
-    workspace_id: Option<String>,
-    flows: Vec<FlowListEntryDto>,
-    selected_id: Option<String>,
-    new_flow_input: Entity<InputState>,
-    running: bool,
-    live_events: Vec<String>,
-    status_msg: Option<(Tone, String)>,
-    _tasks: Vec<Task<()>>,
-}
+pub use state::FlowsView;
+use state::{FlowModal, FlowRunTab, FlowStepTab};
 
 impl FlowsView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let new_flow_input = cx.new(|cx| InputState::new(window, cx).placeholder("New flow name…"));
+        let lang = settings_get_impl(runtime(cx).state()).general.language;
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("筛选流程 / Filter…"));
+        let flow_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Flow name"));
+        let flow_desc_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("流程描述 / Description…"));
+        let step_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Step name"));
+        let step_url_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com/..."));
+        let step_body_editor = cx.new(|cx| {
+            let mut ed = EditorState::new(window, cx)
+                .soft_wrap(true)
+                .placeholder("Optional body override (JSON / text)…");
+            ed.set_highlighter("json", cx);
+            ed
+        });
+        let step_delay_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
+        let step_timeout_input = cx.new(|cx| InputState::new(window, cx).placeholder("inherit"));
+        let step_cond_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("e.g. {{status}} == active"));
+        let step_retries_input = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
+        let step_retry_wait_input = cx.new(|cx| InputState::new(window, cx).placeholder("500"));
+        let kv_key_input = cx.new(|cx| InputState::new(window, cx).placeholder("Header name"));
+        let kv_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Header value"));
+        let ext_var_input = cx.new(|cx| InputState::new(window, cx).placeholder("var_name"));
+        let ext_expr_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("$.data.token / Header name"));
+        let assert_path_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Header key / JSONPath"));
+        let assert_val_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Expected value (e.g. 200)"));
+        let seed_key_input = cx.new(|cx| InputState::new(window, cx).placeholder("Variable key"));
+        let seed_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Seed value"));
+        let req_picker_search =
+            cx.new(|cx| InputState::new(window, cx).placeholder("搜索已保存请求…"));
+
+        let mut subs = Vec::new();
+        for inp in [
+            &flow_name_input,
+            &flow_desc_input,
+            &step_name_input,
+            &step_url_input,
+            &step_delay_input,
+            &step_timeout_input,
+            &step_cond_input,
+            &step_retries_input,
+            &step_retry_wait_input,
+        ] {
+            subs.push(cx.subscribe(inp, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) && !this.syncing {
+                    this.dirty = true;
+                    cx.notify();
+                }
+            }));
+        }
+        subs.push(
+            cx.subscribe(&step_body_editor, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) && !this.syncing {
+                    this.dirty = true;
+                    cx.notify();
+                }
+            }),
+        );
+        for filter_inp in [&search_input, &req_picker_search] {
+            subs.push(cx.subscribe(filter_inp, |_, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    cx.notify();
+                }
+            }));
+        }
+
         let mut view = Self {
             workspace_id: workspace_id.clone(),
-            flows: Vec::new(),
-            selected_id: None,
-            new_flow_input,
+            lang,
+            entries: Vec::new(),
+            requests: Vec::new(),
+            environments: Vec::new(),
+            selected_flow_id: None,
+            draft: None,
+            dirty: false,
+            selected_step_id: None,
+            selected_env_id: None,
+            step_tab: FlowStepTab::Request,
+            run_tab: FlowRunTab::LiveRun,
             running: false,
-            live_events: Vec::new(),
+            cancel_token: None,
+            live_total: 0,
+            live_steps: HashMap::new(),
+            last_result: None,
+            past_runs: Vec::new(),
+            selected_past_run_id: None,
+            new_ext_source: FlowExtractionSource::BodyJsonPath,
+            new_ext_secret: false,
+            new_assert_kind_idx: 0,
+            search_input,
+            flow_name_input,
+            flow_desc_input,
+            step_name_input,
+            step_url_input,
+            step_body_editor,
+            step_delay_input,
+            step_timeout_input,
+            step_cond_input,
+            step_retries_input,
+            step_retry_wait_input,
+            kv_key_input,
+            kv_val_input,
+            ext_var_input,
+            ext_expr_input,
+            assert_val_input,
+            assert_path_input,
+            seed_key_input,
+            seed_val_input,
+            req_picker_search,
+            active_modal: None,
             status_msg: None,
+            pending_sync: false,
+            syncing: false,
+            _subscriptions: subs,
             _tasks: Vec::new(),
         };
         if let Some(ws) = workspace_id {
@@ -57,344 +169,238 @@ impl FlowsView {
             return;
         }
         self.workspace_id = workspace_id.clone();
-        self.flows.clear();
-        self.selected_id = None;
-        self.live_events.clear();
+        self.entries.clear();
+        self.requests.clear();
+        self.environments.clear();
+        self.selected_flow_id = None;
+        self.draft = None;
+        self.dirty = false;
+        self.selected_step_id = None;
+        self.selected_env_id = None;
+        self.live_steps.clear();
+        self.last_result = None;
+        self.past_runs.clear();
+        self.active_modal = None;
         if let Some(ws) = workspace_id {
             self.reload(ws, cx);
         }
         cx.notify();
     }
 
-    pub fn reload(&mut self, workspace_id: String, cx: &mut Context<Self>) {
-        let task = spawn_blocking_into(
-            cx,
-            move |state| flow_list_impl(state, workspace_id),
-            |this, res, cx| {
-                if let Ok(list) = res {
-                    if this
-                        .selected_id
-                        .as_deref()
-                        .is_none_or(|id| !list.iter().any(|f| f.flow.id == id))
-                    {
-                        this.selected_id = list.first().map(|f| f.flow.id.clone());
-                    }
-                    this.flows = list;
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    fn create_flow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ws_id) = self.workspace_id.clone() else {
-            return;
-        };
-        let name = self.new_flow_input.read(cx).value().trim().to_owned();
-        if name.is_empty() {
-            return;
+    pub fn refresh_catalog(&mut self, cx: &mut Context<Self>) {
+        self.lang = settings_get_impl(runtime(cx).state()).general.language;
+        if let Some(ws) = self.workspace_id.clone() {
+            self.reload(ws, cx);
         }
-        self.new_flow_input
-            .update(cx, |i, cx| i.set_value("", window, cx));
-        let Ok(workspace_id) = WorkspaceId::new(&ws_id) else {
-            return;
-        };
-        let flow = Flow {
-            id: format!("flow-{}", current_time_ms()),
-            workspace_id,
-            name,
-            description: String::new(),
-            steps: Vec::new(),
-            updated_at_ms: current_time_ms(),
-            options: Default::default(),
-        };
-        let task = spawn_blocking_into(
-            cx,
-            move |state| flow_save_impl(state, flow),
-            move |this, res, cx| {
-                match res {
-                    Ok(saved) => {
-                        this.selected_id = Some(saved.id.clone());
-                        this.reload(ws_id, cx);
-                    }
-                    Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
     }
 
-    fn run_selected(&mut self, cx: &mut Context<Self>) {
-        let (Some(ws_id), Some(flow_id)) = (self.workspace_id.clone(), self.selected_id.clone())
-        else {
-            return;
-        };
-        self.running = true;
-        self.live_events.clear();
-        let (sink, rx) = channel_sink::<FlowEvent>();
-        self._tasks
-            .push(subscribe_stream_into(cx, rx, 16, |this, batch, cx| {
-                for ev in batch {
-                    this.live_events.push(format!("{ev:?}"));
-                }
-                cx.notify();
-            }));
-        let ws_reload = ws_id.clone();
-        let task = spawn_async_into(
-            cx,
-            move |state| async move {
-                flow_run_impl(
-                    &state,
-                    ws_id,
-                    flow_id,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(true),
-                    sink.as_ref(),
-                )
-                .await
-            },
-            move |this, res, cx| {
-                this.running = false;
-                match res {
-                    Ok(summary) => {
-                        this.status_msg = Some((
-                            Tone::Success,
-                            format!("Finished {} step(s)", summary.steps.len()),
-                        ));
-                        this.reload(ws_reload, cx);
-                    }
-                    Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-        cx.notify();
-    }
-
-    fn delete_selected(&mut self, cx: &mut Context<Self>) {
-        let (Some(ws_id), Some(flow_id)) = (self.workspace_id.clone(), self.selected_id.clone())
-        else {
-            return;
-        };
-        let ws_reload = ws_id.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| flow_delete_impl(state, ws_id, flow_id),
-            move |this, res, cx| {
-                if res.is_ok() {
-                    this.selected_id = None;
-                    this.reload(ws_reload, cx);
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
+    pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.active_modal.take().is_some() {
+            cx.notify();
+            true
+        } else {
+            false
+        }
     }
 }
 
 impl Render for FlowsView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.pending_sync {
+            self.sync_inputs(window, cx);
+        }
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
+        let left = sidebar::render_sidebar(self, cx);
 
-        let Some(_ws) = self.workspace_id.as_ref() else {
-            return empty_state(
-                UiIcon::Workflow,
-                if zh {
-                    "未选择工作区"
-                } else {
-                    "No workspace selected"
-                },
-                if zh {
-                    "选择工作区后可编排和运行多步骤 API 流程。"
-                } else {
-                    "Select a workspace to author and run multi-step API flows."
-                },
-                cx,
-            );
-        };
+        let right = if let Some(flow) = self.draft.clone() {
+            let fid_del = flow.id.clone();
+            let fname_del = flow.name.clone();
 
-        let mut list = v_col()
-            .flex_1()
-            .gap(px(4.0))
-            .p(px(10.0))
-            .overflow_y_scrollbar();
-        for entry in &self.flows {
-            let id = entry.flow.id.clone();
-            let sel = self.selected_id.as_deref() == Some(entry.flow.id.as_str());
-            list = list.child(
-                list_row(
-                    SharedString::from(format!("flow-row-{id}")),
-                    sel,
+            let mut env_bar = h_row().gap(px(4.0)).flex_wrap().child(
+                choice_chip(
+                    "flow-env-none",
+                    self.t("无环境", "No Env"),
+                    self.selected_env_id.is_none(),
                     cx,
-                    cx.listener(move |this, _, _, cx| {
-                        this.selected_id = Some(id.clone());
-                        cx.notify();
-                    }),
                 )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.selected_env_id = None;
+                    cx.notify();
+                })),
+            );
+            for env in &self.environments {
+                let eid = env.id.clone();
+                let active = self.selected_env_id.as_deref() == Some(env.id.as_str());
+                env_bar = env_bar.child(
+                    choice_chip(
+                        SharedString::from(format!("flow-env-{}", env.id)),
+                        env.name.clone(),
+                        active,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.selected_env_id = Some(eid.clone());
+                        cx.notify();
+                    })),
+                );
+            }
+
+            let top_bar = toolbar_strip(cx)
                 .justify_between()
+                .child(
+                    h_row()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(8.0))
+                        .child(div().w(px(210.0)).child(text_input(&self.flow_name_input)))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(text_input(&self.flow_desc_input)),
+                        ),
+                )
+                .child(
+                    h_row()
+                        .gap(px(6.0))
+                        .flex_shrink_0()
+                        .child(
+                            btn_secondary("flow-opt-btn", self.t("选项", "Options"))
+                                .icon(icon_xs(UiIcon::Sliders))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.active_modal = Some(FlowModal::Options);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(if self.dirty {
+                            btn_primary("flow-save-btn", self.t("保存", "Save"))
+                                .icon(icon_xs(UiIcon::Check))
+                                .on_click(cx.listener(|this, _, _, cx| this.save_flow(cx)))
+                        } else {
+                            btn_secondary("flow-save-btn", self.t("已保存", "Saved"))
+                                .on_click(cx.listener(|this, _, _, cx| this.save_flow(cx)))
+                        })
+                        .child(if self.running {
+                            btn_danger("flow-run-btn", self.t("停止", "Stop"))
+                                .icon(icon_xs(UiIcon::Stop))
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx)))
+                        } else {
+                            btn_primary("flow-run-btn", self.t("运行流程", "Run Flow"))
+                                .icon(icon_xs(UiIcon::Play))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.run_flow(None, None, None, cx);
+                                }))
+                        })
+                        .child(
+                            btn_icon("flow-dup-btn", UiIcon::Copy)
+                                .tooltip(self.t("复制流程", "Duplicate flow"))
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.duplicate_selected(cx)),
+                                ),
+                        )
+                        .child(
+                            btn_icon("flow-del-btn", UiIcon::Trash)
+                                .tooltip(self.t("删除流程", "Delete flow"))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.active_modal = Some(FlowModal::DeleteFlow {
+                                        id: fid_del.clone(),
+                                        name: fname_del.clone(),
+                                    });
+                                    cx.notify();
+                                })),
+                        ),
+                );
+
+            let env_strip = h_row()
+                .w_full()
+                .flex_shrink_0()
+                .gap(px(8.0))
+                .px(px(14.0))
+                .py(px(6.0))
+                .bg(to_hsla(p.pane))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
                 .child(
                     div()
                         .text_xs()
-                        .truncate()
-                        .child(SharedString::from(entry.flow.name.clone())),
+                        .text_color(to_hsla(p.muted))
+                        .child(self.t("运行环境:", "Environment:")),
                 )
-                .child(badge(
-                    format!("{} steps", entry.flow.steps.len()),
-                    Tone::Neutral,
-                    cx,
-                )),
-            );
-        }
+                .child(env_bar);
 
-        let left = v_col()
-            .w(px(260.0))
-            .h_full()
-            .bg(to_hsla(p.pane))
-            .border_r_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .child(
-                v_col()
-                    .p(px(10.0))
-                    .gap(px(6.0))
-                    .border_b_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .child(section_heading(if zh { "流程列表" } else { "Flows" }, cx))
-                    .child(
-                        h_row()
-                            .gap(px(4.0))
-                            .child(div().flex_1().child(text_input(&self.new_flow_input)))
-                            .child(btn_primary("flow-add", "+").on_click(
-                                cx.listener(|this, _, window, cx| this.create_flow(window, cx)),
-                            )),
-                    ),
-            )
-            .child(list);
-
-        let selected = self
-            .selected_id
-            .as_deref()
-            .and_then(|id| self.flows.iter().find(|f| f.flow.id == id));
-
-        let right = if let Some(entry) = selected {
-            v_col()
+            let editor_split = h_row()
                 .size_full()
-                .p(px(20.0))
-                .gap(px(14.0))
-                .overflow_y_scrollbar()
+                .min_h_0()
+                .child(steps_pane::render_steps_pane(self, cx))
                 .child(
-                    h_row()
-                        .justify_between()
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .child(inspector::render_step_inspector(self, cx)),
+                );
+
+            let mut detail = v_col()
+                .size_full()
+                .min_h_0()
+                .child(top_bar)
+                .child(env_strip);
+            if let Some((tone, msg)) = &self.status_msg {
+                detail = detail.child(div().px(px(12.0)).pt(px(8.0)).child(dismissible_banner(
+                    "flow-banner-close",
+                    *tone,
+                    msg.clone(),
+                    cx.listener(|this, _, _, cx| {
+                        this.status_msg = None;
+                        cx.notify();
+                    }),
+                    cx,
+                )));
+            }
+            detail.child(
+                div().flex_1().min_h_0().w_full().child(
+                    v_resizable("flow-vert-split")
+                        .child(resizable_panel().child(editor_split))
                         .child(
-                            div()
-                                .text_base()
-                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .child(SharedString::from(entry.flow.name.clone())),
-                        )
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(
-                                    btn_primary(
-                                        "flow-run",
-                                        if self.running {
-                                            if zh { "运行中…" } else { "Running…" }
-                                        } else if zh {
-                                            "运行流程"
-                                        } else {
-                                            "Run Flow"
-                                        },
-                                    )
-                                    .on_click(cx.listener(|this, _, _, cx| this.run_selected(cx))),
-                                )
-                                .child(
-                                    btn_danger("flow-del", if zh { "删除" } else { "Delete" })
-                                        .on_click(
-                                            cx.listener(|this, _, _, cx| this.delete_selected(cx)),
-                                        ),
-                                ),
+                            resizable_panel()
+                                .size(px(210.0))
+                                .size_range(px(120.0)..px(420.0))
+                                .child(run_panel::render_run_panel(self, cx)),
                         ),
-                )
-                .children(
-                    self.status_msg
-                        .clone()
-                        .map(|(tone, msg)| badge(msg, tone, cx)),
-                )
-                .child(
-                    card(cx).p(px(14.0)).child(
-                        v_col()
-                            .gap(px(6.0))
-                            .child(section_heading(
-                                format!(
-                                    "{} ({})",
-                                    if zh { "步骤" } else { "Steps" },
-                                    entry.flow.steps.len()
-                                ),
-                                cx,
-                            ))
-                            .children(entry.flow.steps.iter().enumerate().map(|(i, s)| {
-                                h_row()
-                                    .gap(px(8.0))
-                                    .py(px(4.0))
-                                    .child(badge(format!("#{}", i + 1), Tone::Accent, cx))
-                                    .child(
-                                        div().text_xs().child(SharedString::from(s.name.clone())),
-                                    )
-                            })),
-                    ),
-                )
-                .child(
-                    card(cx).p(px(14.0)).child(
-                        v_col()
-                            .gap(px(4.0))
-                            .child(section_heading(
-                                if zh {
-                                    "实时执行日志"
-                                } else {
-                                    "Live Run Trace"
-                                },
-                                cx,
-                            ))
-                            .children(self.live_events.iter().map(|line| {
-                                div()
-                                    .text_xs()
-                                    .text_color(to_hsla(p.ink_2))
-                                    .child(SharedString::from(line.clone()))
-                            })),
-                    ),
-                )
-                .into_any_element()
-        } else {
-            empty_state(
-                UiIcon::Workflow,
-                if zh {
-                    "暂无流程"
-                } else {
-                    "No flow selected"
-                },
-                if zh {
-                    "在左侧新建一个 API 编排流程，串联多个请求与变量提取。"
-                } else {
-                    "Create a flow on the left to chain multiple requests and variable extractions."
-                },
-                cx,
+                ),
             )
-            .into_any_element()
+        } else {
+            v_col().size_full().child(empty_state_with_actions(
+                UiIcon::Workflow,
+                self.t("还没有流程", "No Flow Selected"),
+                self.t(
+                    "创建多步骤接口编排流程，自动串联登录鉴权、参数提取、条件跳过、失败重试与断言验证。",
+                    "Create multi-step API flows with variable chaining, conditions, retries, and assertions.",
+                ),
+                Some(
+                    btn_primary("flow-empty-new", self.t("新建流程", "New Flow"))
+                        .icon(icon_xs(UiIcon::Plus))
+                        .on_click(cx.listener(|this, _, _, cx| this.create_flow(cx)))
+                        .into_any_element(),
+                ),
+                cx,
+            ))
         };
 
-        h_row()
-            .size_full()
-            .items_start()
-            .bg(to_hsla(p.surface))
-            .child(left)
-            .child(div().flex_1().h_full().min_w_0().child(right))
+        let mut root = div().relative().size_full().bg(to_hsla(p.surface)).child(
+            h_resizable("flow-main-split")
+                .child(
+                    resizable_panel()
+                        .size(px(250.0))
+                        .size_range(px(200.0)..px(360.0))
+                        .child(left),
+                )
+                .child(resizable_panel().child(right)),
+        );
+        if let Some(modal) = modals::render_modal(self, window, cx) {
+            root = root.child(modal);
+        }
+        let _ = Tone::Neutral;
+        root
     }
 }

@@ -38,6 +38,8 @@ use crate::ui::{
     InputState, apply_palette, palette as active_palette, resolve_is_dark, sync_window_scale,
     to_hsla, v_col,
 };
+use crate::views::history::HistoryHandoff;
+use crate::views::mock::MockHandoff;
 use crate::views::requests::RequestsHandoff;
 use crate::views::utility::UtilityPanel;
 
@@ -416,6 +418,47 @@ impl Render for AppShell {
                 }
             }
         }
+        if let Some(MockHandoff::OpenTestRequest { name, method, url }) =
+            self.modules.poll_mock_handoff(cx)
+            && let Some(ws_id) = self.state.active_workspace_id.clone()
+            && let Ok(mut req) = pingdeck_desktop::core::model::Request::new(
+                pingdeck_desktop::core::app::factory_service::new_entity_id("req"),
+                &ws_id,
+                name,
+                url,
+            )
+        {
+            req.method = match method.as_str() {
+                "POST" => pingdeck_desktop::core::model::HttpMethod::Post,
+                "PUT" => pingdeck_desktop::core::model::HttpMethod::Put,
+                "PATCH" => pingdeck_desktop::core::model::HttpMethod::Patch,
+                "DELETE" => pingdeck_desktop::core::model::HttpMethod::Delete,
+                "HEAD" => pingdeck_desktop::core::model::HttpMethod::Head,
+                "OPTIONS" => pingdeck_desktop::core::model::HttpMethod::Options,
+                _ => pingdeck_desktop::core::model::HttpMethod::Get,
+            };
+            self.navigate(NavModule::Requests, cx);
+            self.modules
+                .open_request_in_requests(Some(ws_id), req, window, cx);
+        }
+        if let Some(handoff) = self.modules.poll_history_handoff(cx) {
+            match handoff {
+                HistoryHandoff::OpenInRequests(req) => {
+                    let ws_id = self.state.active_workspace_id.clone();
+                    self.navigate(NavModule::Requests, cx);
+                    self.modules
+                        .open_request_in_requests(ws_id, *req, window, cx);
+                }
+                HistoryHandoff::AskAgent {
+                    title,
+                    context_markdown,
+                } => {
+                    self.navigate(NavModule::Chat, cx);
+                    self.modules
+                        .handoff_to_chat(title, context_markdown, window, cx);
+                }
+            }
+        }
 
         let p = active_palette(cx);
         sync_window_scale(&self.state.settings.appearance, window);
@@ -454,13 +497,9 @@ impl Render for AppShell {
                 this.navigate(NavModule::Settings, cx);
             }))
             .on_action(cx.listener(|this, _: &CloseOverlay, _, cx| {
-                if this.state.active_module == NavModule::Requests
-                    && this.modules.requests_dismiss_modal(cx)
-                {
-                    return;
-                }
-                if this.state.active_module == NavModule::Settings
-                    && this.modules.settings_dismiss_modal(cx)
+                if this
+                    .modules
+                    .dismiss_active_modal(this.state.active_module, cx)
                 {
                     return;
                 }

@@ -196,9 +196,14 @@ async fn idle_and_total_timeouts_keep_the_partial_stream() {
     assert_eq!(idle.body_incomplete, Some(BodyIncomplete::IdleTimeout));
     assert!(!idle.body_truncated);
 
+    let total_events = vec![
+        (0, "data: 1\n\n"),
+        (120, "data: 2\n\n"),
+        (1_200, "data: 3\n\n"),
+    ];
     let started = std::time::Instant::now();
     let total = execute_request(
-        &stream_request(stalling_server(SSE_HEAD, events), 5_000, Some(220)),
+        &stream_request(stalling_server(SSE_HEAD, total_events), 5_000, Some(600)),
         None,
         ExecutorOptions::default(),
     )
@@ -207,7 +212,7 @@ async fn idle_and_total_timeouts_keep_the_partial_stream() {
     assert!(started.elapsed() < std::time::Duration::from_secs(3));
     assert_eq!(total.body_incomplete, Some(BodyIncomplete::TotalTimeout));
     assert!(
-        total.body_text.starts_with("data: 1\n\ndata: 2"),
+        total.body_text.starts_with("data: 1\n\ndata: 2") && !total.body_text.contains("data: 3"),
         "{:?}",
         total.body_text
     );

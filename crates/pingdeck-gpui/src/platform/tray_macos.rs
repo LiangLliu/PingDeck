@@ -83,7 +83,7 @@ pub fn start(runtime: &Arc<DesktopRuntime>, window: Arc<dyn HostWindow>, cx: &mu
         .with_tooltip(&initial.status)
         .with_menu(Box::new(menu));
     if let Some(icon) = build_pingmark_tray_icon() {
-        builder = builder.with_icon(icon).with_icon_as_template(true);
+        builder = builder.with_icon_templated(icon);
     } else {
         builder = builder.with_title("PD");
     }

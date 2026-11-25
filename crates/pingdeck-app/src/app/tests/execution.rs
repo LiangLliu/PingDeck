@@ -24,9 +24,8 @@ use crate::workspace::{
     RequestBodyFileValidationStatus, RequestId, VariableResolutionSource, WorkspaceId,
 };
 
-const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-const OK_JSON: &str =
-    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}";
+const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nok";
+const OK_JSON: &str = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}";
 
 fn state_with_workspaces(ids: &[&str]) -> AppState {
     let state = AppState::open_in_memory().expect("state should open");
