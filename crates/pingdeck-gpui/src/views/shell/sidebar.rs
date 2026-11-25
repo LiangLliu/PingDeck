@@ -10,8 +10,8 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::state::{NavModule, UtilityDialog};
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, app_icon, badge, btn_icon, h_row, icon, icon_xs, kbd_chip, list_row,
-    palette, section_heading, status_indicator, to_hsla, v_col,
+    StatusShape, Tone, UiIcon, badge, btn_icon, h_row, icon, icon_xs, kbd_chip, list_row, palette,
+    pingmark, section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::AppShell;
@@ -36,7 +36,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
     let zh = shell.language() == Language::ZhCn;
     let collapsed = shell.state.sidebar_collapsed;
     let width = if collapsed {
-        px(54.0)
+        px(52.0)
     } else {
         px(shell.state.sidebar_width.clamp(196.0, 260.0))
     };
@@ -55,19 +55,23 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
             }
         });
 
-    // 1. Top macOS traffic-light integrated header + window drag area.
-    let top_header = if collapsed {
-        v_col()
-            .items_center()
-            .pt(if cfg!(target_os = "macos") {
-                px(36.0)
-            } else {
-                px(10.0)
-            })
-            .pb(px(6.0))
-            .gap(px(6.0))
-            .window_control_area(WindowControlArea::Drag)
-            .child(app_icon(24.0))
+    // 1. Dedicated top window-drag band clearing macOS traffic lights cleanly in both expanded
+    //    and collapsed rail modes (matching prototype `.sidebar-top`).
+    let top_drag = div()
+        .w_full()
+        .h(px(if cfg!(target_os = "macos") { 38.0 } else { 8.0 }))
+        .flex_shrink_0()
+        .window_control_area(WindowControlArea::Drag);
+
+    // 2. Brand + sidebar collapse/expand row at a fixed 32px height so collapsing causes zero
+    //    vertical layout shift across Workspace, Search, and Nav rows.
+    let brand_row = if collapsed {
+        h_row()
+            .w_full()
+            .h(px(32.0))
+            .flex_shrink_0()
+            .justify_center()
+            .mb(px(6.0))
             .child(
                 btn_icon("sb-toggle-rail", UiIcon::PanelLeft)
                     .tooltip(if zh {
@@ -78,40 +82,37 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
             )
     } else {
-        v_col().child(
-            h_row()
-                .h(px(40.0))
-                .pl(if cfg!(target_os = "macos") {
-                    px(76.0)
-                } else {
-                    px(12.0)
-                })
-                .pr(px(8.0))
-                .justify_between()
-                .window_control_area(WindowControlArea::Drag)
-                .child(
-                    h_row().gap(px(7.0)).child(app_icon(20.0)).child(
-                        div()
-                            .text_xs()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .text_color(to_hsla(p.ink))
-                            .child("PingDeck"),
-                    ),
-                )
-                .child(
-                    btn_icon("sb-toggle", UiIcon::PanelLeft)
-                        .tooltip(if zh {
-                            "收起侧栏 (⌘B)"
-                        } else {
-                            "Collapse sidebar (⌘B)"
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+        h_row()
+            .w_full()
+            .h(px(32.0))
+            .flex_shrink_0()
+            .pl(px(10.0))
+            .pr(px(2.0))
+            .mb(px(6.0))
+            .justify_between()
+            .window_control_area(WindowControlArea::Drag)
+            .child(
+                h_row().gap(px(8.0)).child(pingmark(15.0, cx)).child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink))
+                        .child("PingDeck"),
                 ),
-        )
+            )
+            .child(
+                btn_icon("sb-toggle", UiIcon::PanelLeft)
+                    .tooltip(if zh {
+                        "收起侧栏 (⌘B)"
+                    } else {
+                        "Collapse sidebar (⌘B)"
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
+            )
     };
 
-    // 2. Workspace switcher (expanded + collapsed rail) & ⌘K quick jump trigger.
-    let mut top = v_col().gap(px(6.0)).px(px(8.0)).pb(px(4.0));
+    // 3. Workspace switcher (expanded + collapsed rail) & ⌘K quick jump trigger.
+    let mut top = v_col().w_full().gap(px(6.0)).pb(px(6.0)).flex_shrink_0();
     if !collapsed {
         top = top
             .child(render_workspace_popover(
@@ -128,8 +129,8 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                     .flex_row()
                     .items_center()
                     .justify_between()
-                    .px(px(9.0))
-                    .py(px(5.0))
+                    .h(px(30.0))
+                    .px(px(10.0))
                     .rounded(px(7.0))
                     .bg(to_hsla(p.surface))
                     .border_1()
@@ -139,7 +140,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_palette(window, cx)))
                     .child(
                         h_row()
-                            .gap(px(6.0))
+                            .gap(px(7.0))
                             .text_xs()
                             .text_color(to_hsla(p.muted))
                             .child(icon_xs(UiIcon::Search))
@@ -163,13 +164,20 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
             ))
             .child(
                 btn_icon("sidebar-palette-rail", UiIcon::Search)
-                    .tooltip("⌘K")
+                    .tooltip(if zh {
+                        "搜索或跳转 (⌘K)"
+                    } else {
+                        "Search or jump (⌘K)"
+                    })
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_palette(window, cx))),
             );
     }
 
-    // 3. Clean 2-pillar navigation: Workspace API modules + Shared AI modules.
-    let mut nav = v_col().flex_1().gap(px(2.0)).px(px(8.0)).pt(px(6.0));
+    // 4. Clean 2-pillar navigation: Workspace API modules + Shared AI modules.
+    let mut nav = v_col().flex_1().min_h_0().w_full().gap(px(2.0)).pt(px(2.0));
+    if collapsed {
+        nav = nav.items_center();
+    }
     for module in NavModule::WORKSPACE_MODULES {
         nav = nav.child(render_nav_item(shell, module, collapsed, zh, cx));
     }
@@ -178,7 +186,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         nav = nav.child(
             div()
                 .px(px(10.0))
-                .pt(px(16.0))
+                .pt(px(14.0))
                 .pb(px(4.0))
                 .child(section_heading(
                     if zh {
@@ -192,8 +200,8 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
     } else {
         nav = nav.child(
             div()
-                .my(px(8.0))
-                .mx(px(6.0))
+                .my(px(6.0))
+                .w(px(20.0))
                 .h(px(1.0))
                 .bg(to_hsla(p.line.composite_over(p.canvas))),
         );
@@ -202,7 +210,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         nav = nav.child(render_nav_item(shell, module, collapsed, zh, cx));
     }
 
-    // 4. Footer: Running Work popover + Gateway status + Settings & quick theme/console toggles.
+    // 5. Footer: Running Work popover + Gateway status + Settings & quick theme/console toggles.
     let work = &shell.state.running_work;
     let active_jobs = work.agent_runs
         + work.subagents
@@ -210,11 +218,12 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         + work.collection_runs
         + work.mock_servers;
     let gw_running = shell.state.gateway_port.is_some();
-    let gw_text = match (shell.state.gateway_port, zh) {
-        (Some(port), true) => format!("网关 :{port}"),
-        (Some(port), false) => format!("Gateway :{port}"),
-        (None, true) => "网关已停止".into(),
-        (None, false) => "Gateway off".into(),
+    let gw_port_label = shell.state.gateway_port.map(|port| format!(":{port}"));
+    let gw_text = match (gw_running, zh) {
+        (true, true) => "网关运行中",
+        (true, false) => "Gateway live",
+        (false, true) => "网关已停止",
+        (false, false) => "Gateway off",
     };
     let work_text = if shell.state.attention.waiting_approval > 0 {
         if zh {
@@ -237,9 +246,11 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
     };
 
     let mut footer = v_col()
+        .w_full()
+        .flex_shrink_0()
         .gap(px(2.0))
-        .px(px(8.0))
-        .py(px(8.0))
+        .pt(px(8.0))
+        .mt(px(6.0))
         .border_t_1()
         .border_color(to_hsla(p.line.composite_over(p.canvas)));
 
@@ -247,6 +258,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         footer = footer
             .child(render_running_work_popover(
                 shell,
+                false,
                 active_jobs,
                 work_text,
                 zh,
@@ -258,9 +270,10 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                     .flex()
                     .flex_row()
                     .items_center()
+                    .justify_between()
+                    .h(px(28.0))
                     .gap(px(8.0))
                     .px(px(10.0))
-                    .py(px(4.0))
                     .rounded(px(6.0))
                     .cursor_pointer()
                     .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.canvas))))
@@ -268,22 +281,35 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                         this.navigate(NavModule::Providers, cx);
                         this.modules.open_providers_gateway(window, cx);
                     }))
-                    .child(status_indicator(
-                        if gw_running {
-                            StatusShape::Live
-                        } else {
-                            StatusShape::Idle
-                        },
-                        cx,
-                    ))
                     .child(
-                        div()
+                        h_row()
+                            .gap(px(8.0))
                             .flex_1()
-                            .text_xs()
-                            .text_color(to_hsla(p.ink_2))
-                            .truncate()
-                            .child(SharedString::from(gw_text)),
-                    ),
+                            .min_w_0()
+                            .child(status_indicator(
+                                if gw_running {
+                                    StatusShape::Live
+                                } else {
+                                    StatusShape::Idle
+                                },
+                                cx,
+                            ))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_xs()
+                                    .text_color(to_hsla(p.ink_2))
+                                    .truncate()
+                                    .child(gw_text),
+                            ),
+                    )
+                    .children(gw_port_label.map(|port| {
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(to_hsla(p.muted))
+                            .child(port)
+                    })),
             )
             .child(
                 h_row()
@@ -320,6 +346,37 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         footer = footer
             .items_center()
             .gap(px(4.0))
+            .child(render_running_work_popover(
+                shell,
+                true,
+                active_jobs,
+                work_text,
+                zh,
+                cx,
+            ))
+            .child(
+                div()
+                    .id("footer-gateway-rail")
+                    .size(px(34.0))
+                    .rounded(px(7.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.canvas))))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.navigate(NavModule::Providers, cx);
+                        this.modules.open_providers_gateway(window, cx);
+                    }))
+                    .child(status_indicator(
+                        if gw_running {
+                            StatusShape::Live
+                        } else {
+                            StatusShape::Idle
+                        },
+                        cx,
+                    )),
+            )
             .child(
                 btn_icon(
                     "sb-theme-rail",
@@ -340,10 +397,19 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         .h_full()
         .flex_shrink_0()
         .bg(to_hsla(p.canvas))
-        .child(top_header)
-        .child(top)
-        .child(nav)
-        .child(footer)
+        .child(top_drag)
+        .child(
+            v_col()
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .px(px(8.0))
+                .pb(px(8.0))
+                .child(brand_row)
+                .child(top)
+                .child(nav)
+                .child(footer),
+        )
 }
 
 fn render_nav_item(
@@ -379,49 +445,44 @@ fn render_nav_item(
     };
     let gw_live = module == NavModule::Providers && shell.state.gateway_port.is_some();
 
-    let mut row = list_row(
-        SharedString::from(format!("nav-{}", module.shortcut_digit())),
-        selected,
-        cx,
-        cx.listener(move |this, _, _, cx| {
-            this.navigate(module, cx);
-        }),
-    )
-    .relative()
-    .child(icon(module_icon(module)));
-
-    if !collapsed {
-        row = row
-            .justify_between()
-            .child(div().flex_1().text_xs().truncate().child(label));
-        if waiting > 0 {
-            let txt = if zh {
-                format!("{waiting} 待批")
-            } else {
-                waiting.to_string()
-            };
-            row = row.child(badge(txt, Tone::Warning, cx));
-        } else if live_mocks > 0 {
-            row = row.child(
-                h_row()
-                    .gap(px(4.0))
-                    .child(status_indicator(StatusShape::Live, cx))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(to_hsla(p.ok))
-                            .child(live_mocks.to_string()),
-                    ),
-            );
-        } else if live_flows > 0 {
-            row = row.child(status_indicator(StatusShape::Run, cx));
-        } else if prov_attn > 0 {
-            row = row.child(status_indicator(StatusShape::Bad, cx));
-        } else if gw_live {
-            row = row.child(status_indicator(StatusShape::Live, cx));
+    let id = SharedString::from(format!("nav-{}", module.shortcut_digit()));
+    if collapsed {
+        let hover_bg = to_hsla(p.hover.composite_over(p.canvas));
+        let mut tile = div()
+            .id(id)
+            .relative()
+            .size(px(34.0))
+            .rounded(px(7.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.navigate(module, cx);
+            }));
+        if selected {
+            tile = tile
+                .bg(to_hsla(p.selected))
+                .border_1()
+                .border_color(to_hsla(p.line_strong.composite_over(p.selected)))
+                .text_color(to_hsla(p.accent_ink))
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(0.0))
+                        .top(px(7.0))
+                        .bottom(px(7.0))
+                        .w(px(2.5))
+                        .rounded(px(2.0))
+                        .bg(to_hsla(p.accent)),
+                );
+        } else {
+            let hover_fg = to_hsla(p.ink);
+            tile = tile
+                .text_color(to_hsla(p.ink_2))
+                .hover(move |s| s.bg(hover_bg).text_color(hover_fg));
         }
-    } else {
-        row = row.justify_center().px(px(6.0));
+        tile = tile.child(icon(module_icon(module)));
         let mini_color = if waiting > 0 {
             Some(p.warn)
         } else if prov_attn > 0 {
@@ -432,16 +493,57 @@ fn render_nav_item(
             None
         };
         if let Some(col) = mini_color {
-            row = row.child(
+            tile = tile.child(
                 div()
                     .absolute()
-                    .top(px(5.0))
-                    .right(px(6.0))
+                    .top(px(4.0))
+                    .right(px(4.0))
                     .size(px(6.0))
                     .rounded(px(99.0))
                     .bg(to_hsla(col)),
             );
         }
+        return tile;
+    }
+
+    let mut row = list_row(
+        id,
+        selected,
+        cx,
+        cx.listener(move |this, _, _, cx| {
+            this.navigate(module, cx);
+        }),
+    )
+    .w_full()
+    .justify_between()
+    .child(icon(module_icon(module)))
+    .child(div().flex_1().min_w_0().text_xs().truncate().child(label));
+
+    if waiting > 0 {
+        let txt = if zh {
+            format!("{waiting} 待批")
+        } else {
+            waiting.to_string()
+        };
+        row = row.child(badge(txt, Tone::Warning, cx));
+    } else if live_mocks > 0 {
+        row = row.child(
+            h_row()
+                .gap(px(4.0))
+                .child(status_indicator(StatusShape::Live, cx))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.ok))
+                        .child(live_mocks.to_string()),
+                ),
+        );
+    } else if live_flows > 0 {
+        row = row.child(status_indicator(StatusShape::Run, cx));
+    } else if prov_attn > 0 {
+        row = row.child(status_indicator(StatusShape::Bad, cx));
+    } else if gw_live {
+        row = row.child(status_indicator(StatusShape::Live, cx));
     }
     row
 }

@@ -12,6 +12,7 @@ pub mod breakdown;
 pub mod call_drawer;
 pub mod call_drawer_tabs;
 pub mod calls;
+pub mod chart;
 pub mod overview;
 pub mod sidebar;
 pub mod state;

@@ -391,9 +391,11 @@ impl Render for SettingsView {
             .border_r_1()
             .border_color(to_hsla(p.line.composite_over(p.pane)))
             .child(
-                v_col()
-                    .p(px(10.0))
-                    .gap(px(8.0))
+                h_row()
+                    .w_full()
+                    .h(px(44.0))
+                    .flex_shrink_0()
+                    .px(px(10.0))
                     .border_b_1()
                     .border_color(to_hsla(p.line.composite_over(p.pane)))
                     .child(
@@ -406,6 +408,7 @@ impl Render for SettingsView {
                                 cx.notify();
                             }),
                         )
+                        .w_full()
                         .justify_between()
                         .gap(px(6.0))
                         .text_color(to_hsla(p.ink_2))
@@ -429,7 +432,16 @@ impl Render for SettingsView {
                             Tone::Neutral,
                             cx,
                         )),
-                    )
+                    ),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .px(px(10.0))
+                    .pt(px(8.0))
+                    .pb(px(6.0))
+                    .border_b_1()
+                    .border_color(to_hsla(p.line.composite_over(p.pane)))
                     .child(search_input(&self.search_input, cx)),
             )
             .child(nav);
@@ -517,9 +529,10 @@ impl Render for SettingsView {
             .bg(to_hsla(p.surface))
             .child(
                 h_row()
+                    .h(px(44.0))
+                    .flex_shrink_0()
                     .justify_between()
-                    .px(px(24.0))
-                    .py(px(12.0))
+                    .px(px(20.0))
                     .border_b_1()
                     .border_color(to_hsla(p.line.composite_over(p.surface)))
                     .child(

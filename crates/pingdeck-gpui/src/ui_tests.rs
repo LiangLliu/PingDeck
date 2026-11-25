@@ -1231,18 +1231,73 @@ mod gpui_integration {
         let (view, visual) = cx.add_window_view(UsageView::new);
         visual.run_until_parked();
 
-        // 1. Cycle all 9 time-range presets, 5 chart metrics, and 6 breakdown dimensions.
+        // 1. Populate multi-day series data so BarChart paints real bars, axes, and tooltips across
+        //    all 5 metrics, then cycle 9 time-range presets and 6 breakdown dimensions.
         visual.update(|window, cx| {
-            for preset in RangePreset::ALL {
+            use pingdeck_desktop::core::llm::usage::{
+                UsageDay, UsageRow, UsageSummary, UsageToday,
+            };
+            use std::collections::BTreeMap;
+
+            let mut cost = BTreeMap::new();
+            cost.insert("USD".to_owned(), 32_500_i64);
+            let active_row = UsageRow {
+                requests: 6,
+                ok_requests: 5,
+                failed: 1,
+                canceled: 0,
+                input_tokens: 43_900,
+                output_tokens: 777,
+                cached_tokens: 36_100,
+                cost_micro: cost,
+                ..UsageRow::default()
+            };
+            let days = [
+                ("2026-11-18", UsageRow::default()),
+                ("2026-11-19", UsageRow::default()),
+                ("2026-11-20", UsageRow::default()),
+                ("2026-11-21", UsageRow::default()),
+                ("2026-11-22", UsageRow::default()),
+                ("2026-11-23", UsageRow::default()),
+                ("2026-11-24", active_row.clone()),
+                ("2026-11-25", UsageRow::default()),
+            ];
+            let summary = UsageSummary {
+                totals: active_row,
+                currencies: vec!["USD".to_owned()],
+                models_without_price: Vec::new(),
+                series: days
+                    .into_iter()
+                    .map(|(d, u)| UsageDay {
+                        day: d.to_owned(),
+                        usage: u,
+                    })
+                    .collect(),
+                by_model: Vec::new(),
+                groups: Vec::new(),
+                top_failure: None,
+                today: UsageToday {
+                    day: "2026-11-25".to_owned(),
+                    usage: UsageRow::default(),
+                    top_failure: None,
+                },
+            };
+            view.update(cx, |v, cx| {
+                v.summary = Some(summary);
+                v.latency_by_day
+                    .insert("2026-11-24".to_owned(), (25_800, 6));
+                cx.notify();
+            });
+            for metric in ChartMetric::ALL {
                 view.update(cx, |v, cx| {
-                    v.range = preset;
+                    v.chart_metric = metric;
                     cx.notify();
                 });
                 window.refresh();
             }
-            for metric in ChartMetric::ALL {
+            for preset in RangePreset::ALL {
                 view.update(cx, |v, cx| {
-                    v.chart_metric = metric;
+                    v.range = preset;
                     cx.notify();
                 });
                 window.refresh();
@@ -1255,6 +1310,7 @@ mod gpui_integration {
                 window.refresh();
             }
         });
+        visual.run_until_parked();
 
         // 2. Switch to Calls tab, cycle quick filters & live search, open/dismiss ClearLogs modal, emit handoff.
         visual.update(|window, cx| {

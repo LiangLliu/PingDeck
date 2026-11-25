@@ -30,15 +30,15 @@ pub enum Tone {
     Danger,
 }
 
-/// Returns `TitlebarOptions` placing macOS traffic lights directly inside the left sidebar top
-/// (`--bg-shell`) so the right workspace renders as a floating rounded page card without a
-/// full-width top bar.
+/// Returns `TitlebarOptions` placing macOS traffic lights directly inside the left sidebar's
+/// dedicated 38px top drag band (`--bg-shell`) so neither expanded brand rows nor the collapsed
+/// rail collide with the window controls.
 #[must_use]
 pub fn title_bar_options() -> TitlebarOptions {
     TitlebarOptions {
         title: None,
         appears_transparent: true,
-        traffic_light_position: Some(gpui_kit::point(px(14.0), px(14.0))),
+        traffic_light_position: Some(gpui_kit::point(px(14.0), px(13.0))),
     }
 }
 
@@ -143,11 +143,11 @@ pub fn v_col() -> Div {
     div().flex().flex_col()
 }
 
-/// Elevated card container styled from the active OKLCH palette.
+/// Elevated vertical flex card container styled from the active OKLCH palette.
 #[must_use]
 pub fn card(cx: &App) -> Div {
     let p = palette(cx);
-    div()
+    v_col()
         .bg(to_hsla(p.surface))
         .border_1()
         .border_color(to_hsla(p.line_strong.composite_over(p.surface)))

@@ -13,12 +13,20 @@ use crate::ui::{
 
 use super::AppShell;
 
-/// Subtle top window-drag strip above the floating page card so users can drag the window from
-/// the top inset margin without a full-width titlebar chrome strip.
-pub fn render_top_drag_edge() -> impl IntoElement {
+/// Top window-drag strip above the floating page card.
+///
+/// In expanded mode (or on non-macOS) this provides a crisp 8px top frame matching the right and
+/// bottom shell insets. When the sidebar is collapsed into the 52px rail on macOS, it expands to
+/// 38px so the floating page card clears the macOS traffic lights (`x = 14..68px`) completely.
+pub fn render_top_drag_edge(sidebar_collapsed: bool) -> impl IntoElement {
+    let height = if cfg!(target_os = "macos") && sidebar_collapsed {
+        px(38.0)
+    } else {
+        px(8.0)
+    };
     div()
         .w_full()
-        .h(px(8.0))
+        .h(height)
         .flex_shrink_0()
         .window_control_area(WindowControlArea::Drag)
 }
@@ -31,7 +39,7 @@ pub fn render_startup_banner(
         return None;
     }
     let notice_text = shell.state.startup_notices.join(" · ");
-    Some(div().mx(px(8.0)).mb(px(6.0)).child(dismissible_banner(
+    Some(div().mb(px(6.0)).child(dismissible_banner(
         "dismiss-startup-notices",
         Tone::Warning,
         notice_text,

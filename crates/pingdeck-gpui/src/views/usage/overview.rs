@@ -10,21 +10,13 @@ use pingdeck_desktop::core::llm::usage::UsageSource;
 use pingdeck_desktop::time::format_local_date;
 
 use crate::ui::{
-    Anchor, BarChart, ScrollableElement as _, UiIcon, btn_ghost, card, choice_chip, empty_state,
-    h_row, icon_xs, kpi_card, list_row, palette, popover, popover_header, section_header,
-    select_pill, to_hsla, v_col,
+    Anchor, ScrollableElement as _, UiIcon, btn_ghost, h_row, icon_xs, kpi_card, list_row, palette,
+    popover, popover_header, select_pill, to_hsla, v_col,
 };
 
 use super::breakdown::render_breakdown_card;
-use super::state::{
-    ChartMetric, RangePreset, UsageView, fmt_compact, fmt_cost_map, fmt_latency, source_label,
-};
-
-#[derive(Clone)]
-struct ChartPoint {
-    label: SharedString,
-    value: f64,
-}
+use super::chart::render_trend_chart;
+use super::state::{RangePreset, UsageView, fmt_compact, fmt_cost_map, fmt_latency, source_label};
 
 pub fn render_overview(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let body = v_col()
@@ -451,125 +443,6 @@ fn render_kpi_grid(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement 
             Some(SharedString::from(lat_sub)),
             cx,
         ))
-        .into_any_element()
-}
-
-fn render_trend_chart(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
-    let zh = view.is_zh();
-    let cur = view.active_currency();
-    let mut metric_bar = h_row().gap(px(4.0));
-    for m in ChartMetric::ALL {
-        metric_bar = metric_bar.child(
-            choice_chip(
-                SharedString::from(format!("u-cm-{m:?}")),
-                m.label(zh),
-                view.chart_metric == m,
-                cx,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.chart_metric = m;
-                cx.notify();
-            })),
-        );
-    }
-
-    if view.chart_metric == ChartMetric::Cost
-        && let Some(sum) = &view.summary
-        && sum.currencies.len() > 1
-    {
-        for c in &sum.currencies {
-            let cc = c.clone();
-            metric_bar = metric_bar.child(
-                choice_chip(
-                    SharedString::from(format!("u-cur-{c}")),
-                    c.clone(),
-                    cur == *c,
-                    cx,
-                )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.selected_currency = Some(cc.clone());
-                    cx.notify();
-                })),
-            );
-        }
-    }
-
-    let points: Vec<ChartPoint> = view
-        .summary
-        .as_ref()
-        .map(|s| {
-            s.series
-                .iter()
-                .map(|slot| {
-                    let short_lbl = slot
-                        .day
-                        .strip_prefix("20")
-                        .and_then(|rest| rest.get(3..))
-                        .unwrap_or(&slot.day)
-                        .to_owned();
-                    let val = match view.chart_metric {
-                        ChartMetric::Calls => slot.usage.requests as f64,
-                        ChartMetric::Tokens => slot.usage.total_tokens() as f64,
-                        ChartMetric::Cost => {
-                            slot.usage.cost_micro.get(&cur).copied().unwrap_or(0) as f64
-                                / 1_000_000.0
-                        }
-                        ChartMetric::FailRate => {
-                            let d = slot.usage.requests.saturating_sub(slot.usage.canceled);
-                            if d > 0 {
-                                slot.usage.failed as f64 / d as f64 * 100.0
-                            } else {
-                                0.0
-                            }
-                        }
-                        ChartMetric::Latency => view
-                            .latency_by_day
-                            .get(&slot.day)
-                            .filter(|(_, c)| *c > 0)
-                            .map_or(0.0, |(sum, c)| *sum as f64 / *c as f64),
-                    };
-                    ChartPoint {
-                        label: SharedString::from(short_lbl),
-                        value: val,
-                    }
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let has_any = points.iter().any(|pt| pt.value > 0.0);
-    let chart_el = if !has_any {
-        empty_state(
-            UiIcon::Usage,
-            view.t("该时间范围内暂无趋势数据", "No trend data in range"),
-            view.t(
-                "通过本地网关、对话或 AI 请求发送调用后，这里将按本地时区实时聚合。",
-                "Send AI calls via Gateway, Chat, or Requests to populate this chart.",
-            ),
-            cx,
-        )
-        .into_any_element()
-    } else {
-        BarChart::new(points)
-            .band(|d: &ChartPoint| d.label.clone())
-            .value(|d: &ChartPoint| d.value)
-            .interactive(true)
-            .into_any_element()
-    };
-
-    card(cx)
-        .h(px(236.0))
-        .p(px(14.0))
-        .gap(px(8.0))
-        .child(section_header(
-            view.t(
-                "趋势图表（仅计已路由至服务商的调用）",
-                "Usage Trend (routed calls)",
-            ),
-            Some(metric_bar.into_any_element()),
-            cx,
-        ))
-        .child(div().flex_1().min_h_0().child(chart_el))
         .into_any_element()
 }
 

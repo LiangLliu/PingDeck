@@ -271,6 +271,17 @@ pub fn filter_chip(
     b
 }
 
+/// Full-width or rail-sized ghost button container suitable as a [`Popover::trigger`] with custom
+/// inner child layout (avoids `Button::label`'s forced horizontal centering on sidebar rows).
+#[must_use]
+pub fn popover_trigger_btn(id: impl Into<ElementId>, content: impl IntoElement) -> Button {
+    Button::new(id)
+        .ghost()
+        .xsmall()
+        .rounded(px(7.0))
+        .child(content)
+}
+
 /// Compact pill button suitable for toolbars and [`Popover::trigger`].
 #[must_use]
 pub fn pill_btn(

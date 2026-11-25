@@ -13,7 +13,8 @@ use super::theme::{is_compact, palette, to_hsla};
 use crate::ui::InputState;
 
 /// Unified master-pane header (`title + optional count badge` on left, actions on right,
-/// optional search/filter slot below) with consistent 1px hairline separation.
+/// optional search/filter slot below) whose top bar height matches [`toolbar_strip`] so
+/// split-pane horizontal dividers always align cleanly.
 #[must_use]
 pub fn pane_header(
     title: impl Into<SharedString>,
@@ -23,6 +24,8 @@ pub fn pane_header(
     cx: &App,
 ) -> Div {
     let p = palette(cx);
+    let compact = is_compact(cx);
+    let top_h = if compact { 40.0 } else { 44.0 };
     let mut left = h_row().gap(px(6.0)).min_w_0().child(
         div()
             .text_sm()
@@ -34,35 +37,47 @@ pub fn pane_header(
     if let Some(n) = count {
         left = left.child(badge(n.to_string(), Tone::Neutral, cx));
     }
-    let mut top = h_row().w_full().justify_between().gap(px(8.0)).child(left);
+    let mut top = h_row()
+        .w_full()
+        .h(px(top_h))
+        .flex_shrink_0()
+        .px(px(14.0))
+        .justify_between()
+        .gap(px(8.0))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .child(left);
     if let Some(actions) = right_actions {
         top = top.child(div().flex_shrink_0().child(actions));
     }
-    let mut box_el = v_col()
-        .w_full()
-        .flex_shrink_0()
-        .gap(px(8.0))
-        .p(px(10.0))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.pane)))
-        .child(top);
+    let mut box_el = v_col().w_full().flex_shrink_0().child(top);
     if let Some(extra) = below {
-        box_el = box_el.child(extra);
+        box_el = box_el.child(
+            div()
+                .w_full()
+                .px(px(10.0))
+                .pt(px(8.0))
+                .pb(px(6.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(extra),
+        );
     }
     box_el
 }
 
-/// Unified 32px master-pane footer strip (`left summary`, `right action`).
+/// Unified 34px master-pane footer strip (`left summary`, `right action`) aligned horizontally
+/// with [`pane_header`] and clearing the bottom-left page card corner cleanly.
 #[must_use]
 pub fn pane_footer(left: impl IntoElement, right: Option<AnyElement>, cx: &App) -> Div {
     let p = palette(cx);
     let mut row = h_row()
         .w_full()
-        .h(px(32.0))
+        .h(px(34.0))
         .flex_shrink_0()
         .justify_between()
         .gap(px(8.0))
-        .px(px(10.0))
+        .px(px(14.0))
         .border_t_1()
         .border_color(to_hsla(p.line.composite_over(p.pane)))
         .child(left);
@@ -197,16 +212,20 @@ pub fn number_field(
         }))
 }
 
-/// Standard surface toolbar strip with consistent horizontal padding and bottom hairline divider.
+/// Standard surface toolbar strip matching [`pane_header`]'s top row height (`44px` / `40px`
+/// compact) with consistent horizontal padding and bottom hairline divider.
 #[must_use]
 pub fn toolbar_strip(cx: &App) -> Div {
     let p = palette(cx);
+    let compact = is_compact(cx);
+    let min_h = if compact { 40.0 } else { 44.0 };
     h_row()
         .w_full()
+        .min_h(px(min_h))
         .flex_shrink_0()
         .gap(px(8.0))
-        .px(px(14.0))
-        .py(px(8.0))
+        .px(px(16.0))
+        .py(px(6.0))
         .bg(to_hsla(p.surface))
         .border_b_1()
         .border_color(to_hsla(p.line.composite_over(p.surface)))

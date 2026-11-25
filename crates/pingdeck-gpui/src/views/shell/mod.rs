@@ -493,7 +493,7 @@ impl Render for AppShell {
             .h_full()
             .pr(px(8.0))
             .pb(px(8.0))
-            .child(render_top_drag_edge());
+            .child(render_top_drag_edge(self.state.sidebar_collapsed));
 
         if let Some(banner) = render_startup_banner(self, cx) {
             right_col = right_col.child(banner);
@@ -504,12 +504,11 @@ impl Render for AppShell {
                 .flex_1()
                 .min_h_0()
                 .w_full()
-                .rounded(px(14.0))
+                .rounded(px(10.0))
                 .overflow_hidden()
                 .bg(to_hsla(p.surface))
                 .border_1()
                 .border_color(to_hsla(p.page_edge.composite_over(p.canvas)))
-                .shadow_sm()
                 .child(main_view),
         );
 

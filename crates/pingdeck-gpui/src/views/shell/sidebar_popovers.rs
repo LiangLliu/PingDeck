@@ -7,8 +7,8 @@ use pingdeck_desktop::state::{NavModule, UtilityDialog};
 
 use crate::ui::{
     Anchor, Popover, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary, h_row, icon_xs,
-    list_row, meta_pill, palette, pill_btn, popover, section_heading, status_indicator, text_input,
-    to_hsla, v_col,
+    list_row, meta_pill, palette, popover, popover_trigger_btn, section_heading, status_indicator,
+    text_input, to_hsla, v_col,
 };
 
 use super::AppShell;
@@ -52,24 +52,46 @@ pub fn render_workspace_popover(
     let ws_counts = shell.workspace_counts.clone();
     let shell_entity = cx.entity().clone();
 
+    let p = palette(cx);
     let trigger_el = if collapsed {
-        pill_btn(
+        popover_trigger_btn(
             "sidebar-workspace-rail",
-            SharedString::from(workspace_avatar_char(&active_ws_name)),
-            None,
-            true,
+            render_ws_avatar(&active_ws_name, 22.0, true, cx),
         )
-        .w(px(34.0))
-        .justify_center()
+        .size(px(34.0))
+        .p(px(0.0))
+        .tooltip(SharedString::from(if zh {
+            format!("工作区：{active_ws_name}")
+        } else {
+            format!("Workspace: {active_ws_name}")
+        }))
     } else {
-        pill_btn(
+        popover_trigger_btn(
             "sidebar-workspace-trigger",
-            SharedString::from(active_ws_name),
-            Some(UiIcon::FolderOpen),
-            false,
+            h_row()
+                .w_full()
+                .gap(px(8.0))
+                .child(render_ws_avatar(&active_ws_name, 20.0, true, cx))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink))
+                        .truncate()
+                        .child(SharedString::from(active_ws_name)),
+                )
+                .child(
+                    div()
+                        .text_color(to_hsla(p.faint))
+                        .flex_shrink_0()
+                        .child(icon_xs(UiIcon::ChevronDown)),
+                ),
         )
         .w_full()
-        .justify_between()
+        .h(px(32.0))
+        .px(px(8.0))
     };
 
     popover(if collapsed {
@@ -221,11 +243,13 @@ pub fn render_workspace_popover(
 
 pub fn render_running_work_popover(
     shell: &AppShell,
+    collapsed: bool,
     active_jobs: u32,
     work_text: String,
     zh: bool,
     cx: &mut Context<AppShell>,
 ) -> Popover {
+    let p = palette(cx);
     let approvals = shell.state.attention.approvals.clone();
     let mocks = shell.running_mock_summary.clone();
     let work = shell.state.running_work;
@@ -233,204 +257,237 @@ pub fn render_running_work_popover(
     let shell_ent = cx.entity().clone();
 
     let has_attention = !approvals.is_empty() || prov_attn > 0;
-    let trigger_icon = if has_attention {
-        UiIcon::Warning
+    let trigger_shape = if has_attention {
+        StatusShape::Warn
     } else if active_jobs > 0 {
-        UiIcon::Activity
+        StatusShape::Run
     } else {
-        UiIcon::Terminal
+        StatusShape::Idle
     };
-    let trigger = btn_ghost("footer-running", SharedString::from(work_text))
-        .icon(icon_xs(trigger_icon))
-        .w_full()
-        .justify_start();
-
-    popover("footer-running-popover")
-        .anchor(Anchor::BottomLeft)
-        .trigger(trigger)
-        .content(move |_, _, pop_cx| {
-            let pop_p = palette(pop_cx);
-            let mut body = v_col().w(px(286.0)).gap(px(6.0)).child(section_heading(
-                if zh {
-                    "后台任务与待处理"
-                } else {
-                    "Running Work & Attention"
-                },
-                pop_cx,
-            ));
-
-            let mut any_row = false;
-
-            // 1. Pending Chat approvals
-            for appr in &approvals {
-                any_row = true;
-                let sid = appr.session_id.clone();
-                let s_ent = shell_ent.clone();
-                let ph = pop_cx.entity().clone();
-                body = body.child(
-                    list_row(
-                        SharedString::from(format!("rw-appr-{}", appr.call_id)),
-                        false,
-                        pop_cx,
-                        move |_, window, cx| {
-                            s_ent.update(cx, |s, cx| {
-                                s.navigate(NavModule::Chat, cx);
-                                s.modules.open_chat_session_mounted(sid.clone(), window, cx);
-                            });
-                            ph.update(cx, |st, cx| st.dismiss(window, cx));
-                        },
-                    )
-                    .justify_between()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_xs()
-                            .truncate()
-                            .child(appr.summary.clone()),
-                    )
-                    .child(badge(
-                        if zh { "待批" } else { "Gate" },
-                        Tone::Warning,
-                        pop_cx,
-                    )),
-                );
-            }
-
-            // 2. Running Mock servers
-            for (mid, mname, port) in &mocks {
-                any_row = true;
-                let mid_go = mid.clone();
-                let s_ent = shell_ent.clone();
-                let ph = pop_cx.entity().clone();
-                body = body.child(
-                    list_row(
-                        SharedString::from(format!("rw-mock-{mid}")),
-                        false,
-                        pop_cx,
-                        move |_, window, cx| {
-                            s_ent.update(cx, |s, cx| {
-                                let ws = s.state.active_workspace_id.clone();
-                                s.navigate(NavModule::Mock, cx);
-                                s.modules.open_mock_server(ws, mid_go.clone(), window, cx);
-                            });
-                            ph.update(cx, |st, cx| st.dismiss(window, cx));
-                        },
-                    )
-                    .justify_between()
-                    .child(
-                        h_row()
-                            .gap(px(6.0))
-                            .min_w_0()
-                            .flex_1()
-                            .child(status_indicator(StatusShape::Live, pop_cx))
-                            .child(div().text_xs().truncate().child(mname.clone())),
-                    )
-                    .child(meta_pill(format!(":{port}"), pop_cx)),
-                );
-            }
-
-            // 3. Running Flows / Collection runs / Agent runs
-            if work.flow_runs > 0 {
-                any_row = true;
-                let s_ent = shell_ent.clone();
-                let ph = pop_cx.entity().clone();
-                body = body.child(
-                    list_row("rw-flows", false, pop_cx, move |_, window, cx| {
-                        s_ent.update(cx, |s, cx| s.navigate(NavModule::Flows, cx));
-                        ph.update(cx, |st, cx| st.dismiss(window, cx));
-                    })
-                    .justify_between()
-                    .child(div().text_xs().child(if zh {
-                        format!("运行中的流程 ({})", work.flow_runs)
-                    } else {
-                        format!("Running flows ({})", work.flow_runs)
-                    }))
-                    .child(status_indicator(StatusShape::Run, pop_cx)),
-                );
-            }
-            if work.agent_runs > 0 {
-                any_row = true;
-                let s_ent = shell_ent.clone();
-                let ph = pop_cx.entity().clone();
-                body = body.child(
-                    list_row("rw-agents", false, pop_cx, move |_, window, cx| {
-                        s_ent.update(cx, |s, cx| s.navigate(NavModule::Chat, cx));
-                        ph.update(cx, |st, cx| st.dismiss(window, cx));
-                    })
-                    .justify_between()
-                    .child(div().text_xs().child(if zh {
-                        format!("运行中的智能体对话 ({})", work.agent_runs)
-                    } else {
-                        format!("Active agent runs ({})", work.agent_runs)
-                    }))
-                    .child(status_indicator(StatusShape::Run, pop_cx)),
-                );
-            }
-            if prov_attn > 0 {
-                any_row = true;
-                let s_ent = shell_ent.clone();
-                let ph = pop_cx.entity().clone();
-                body = body.child(
-                    list_row("rw-prov-attn", false, pop_cx, move |_, window, cx| {
-                        s_ent.update(cx, |s, cx| s.navigate(NavModule::Providers, cx));
-                        ph.update(cx, |st, cx| st.dismiss(window, cx));
-                    })
-                    .justify_between()
-                    .child(div().text_xs().child(if zh {
-                        format!("{prov_attn} 个 AI 服务商需关注")
-                    } else {
-                        format!("{prov_attn} provider(s) need attention")
-                    }))
-                    .child(badge(
-                        if zh { "异常" } else { "Check" },
-                        Tone::Danger,
-                        pop_cx,
-                    )),
-                );
-            }
-
-            if !any_row {
-                body = body.child(
+    let trigger = if collapsed {
+        popover_trigger_btn("footer-running-rail", status_indicator(trigger_shape, cx))
+            .size(px(34.0))
+            .p(px(0.0))
+            .tooltip(SharedString::from(work_text))
+    } else {
+        let count_meta = (active_jobs > 0).then(|| active_jobs.to_string());
+        popover_trigger_btn(
+            "footer-running",
+            h_row()
+                .w_full()
+                .gap(px(8.0))
+                .child(status_indicator(trigger_shape, cx))
+                .child(
                     div()
-                        .px(px(6.0))
-                        .py(px(8.0))
+                        .flex_1()
+                        .min_w_0()
                         .text_xs()
-                        .text_color(to_hsla(pop_p.muted))
-                        .child(if zh {
-                            "当前没有运行中的后台任务或待审批项。"
-                        } else {
-                            "No running tasks or pending approvals."
-                        }),
-                );
-            }
+                        .text_color(to_hsla(if has_attention { p.warn } else { p.ink_2 }))
+                        .truncate()
+                        .child(SharedString::from(work_text)),
+                )
+                .children(count_meta.map(|m| {
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.muted))
+                        .child(m)
+                })),
+        )
+        .w_full()
+        .h(px(28.0))
+        .px(px(10.0))
+    };
 
-            let s_con = shell_ent.clone();
-            let ph_con = pop_cx.entity().clone();
-            body.child(
-                div()
-                    .my(px(2.0))
-                    .h(px(1.0))
-                    .bg(to_hsla(pop_p.line.composite_over(pop_p.overlay))),
-            )
-            .child(
-                btn_ghost(
-                    "rw-open-console",
-                    if zh {
-                        "打开诊断控制台 →"
-                    } else {
-                        "Open Diagnostics Console →"
+    popover(if collapsed {
+        "footer-running-popover-rail"
+    } else {
+        "footer-running-popover"
+    })
+    .anchor(Anchor::BottomLeft)
+    .trigger(trigger)
+    .content(move |_, _, pop_cx| {
+        let pop_p = palette(pop_cx);
+        let mut body = v_col().w(px(286.0)).gap(px(6.0)).child(section_heading(
+            if zh {
+                "后台任务与待处理"
+            } else {
+                "Running Work & Attention"
+            },
+            pop_cx,
+        ));
+
+        let mut any_row = false;
+
+        // 1. Pending Chat approvals
+        for appr in &approvals {
+            any_row = true;
+            let sid = appr.session_id.clone();
+            let s_ent = shell_ent.clone();
+            let ph = pop_cx.entity().clone();
+            body = body.child(
+                list_row(
+                    SharedString::from(format!("rw-appr-{}", appr.call_id)),
+                    false,
+                    pop_cx,
+                    move |_, window, cx| {
+                        s_ent.update(cx, |s, cx| {
+                            s.navigate(NavModule::Chat, cx);
+                            s.modules.open_chat_session_mounted(sid.clone(), window, cx);
+                        });
+                        ph.update(cx, |st, cx| st.dismiss(window, cx));
                     },
                 )
-                .icon(icon_xs(UiIcon::Terminal))
-                .w_full()
-                .justify_start()
-                .on_click(move |_, window, cx| {
-                    s_con.update(cx, |s, cx| {
-                        s.open_utility(UtilityDialog::Console, window, cx);
-                    });
-                    ph_con.update(cx, |st, cx| st.dismiss(window, cx));
-                }),
+                .justify_between()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_xs()
+                        .truncate()
+                        .child(appr.summary.clone()),
+                )
+                .child(badge(
+                    if zh { "待批" } else { "Gate" },
+                    Tone::Warning,
+                    pop_cx,
+                )),
+            );
+        }
+
+        // 2. Running Mock servers
+        for (mid, mname, port) in &mocks {
+            any_row = true;
+            let mid_go = mid.clone();
+            let s_ent = shell_ent.clone();
+            let ph = pop_cx.entity().clone();
+            body = body.child(
+                list_row(
+                    SharedString::from(format!("rw-mock-{mid}")),
+                    false,
+                    pop_cx,
+                    move |_, window, cx| {
+                        s_ent.update(cx, |s, cx| {
+                            let ws = s.state.active_workspace_id.clone();
+                            s.navigate(NavModule::Mock, cx);
+                            s.modules.open_mock_server(ws, mid_go.clone(), window, cx);
+                        });
+                        ph.update(cx, |st, cx| st.dismiss(window, cx));
+                    },
+                )
+                .justify_between()
+                .child(
+                    h_row()
+                        .gap(px(6.0))
+                        .min_w_0()
+                        .flex_1()
+                        .child(status_indicator(StatusShape::Live, pop_cx))
+                        .child(div().text_xs().truncate().child(mname.clone())),
+                )
+                .child(meta_pill(format!(":{port}"), pop_cx)),
+            );
+        }
+
+        // 3. Running Flows / Collection runs / Agent runs
+        if work.flow_runs > 0 {
+            any_row = true;
+            let s_ent = shell_ent.clone();
+            let ph = pop_cx.entity().clone();
+            body = body.child(
+                list_row("rw-flows", false, pop_cx, move |_, window, cx| {
+                    s_ent.update(cx, |s, cx| s.navigate(NavModule::Flows, cx));
+                    ph.update(cx, |st, cx| st.dismiss(window, cx));
+                })
+                .justify_between()
+                .child(div().text_xs().child(if zh {
+                    format!("运行中的流程 ({})", work.flow_runs)
+                } else {
+                    format!("Running flows ({})", work.flow_runs)
+                }))
+                .child(status_indicator(StatusShape::Run, pop_cx)),
+            );
+        }
+        if work.agent_runs > 0 {
+            any_row = true;
+            let s_ent = shell_ent.clone();
+            let ph = pop_cx.entity().clone();
+            body = body.child(
+                list_row("rw-agents", false, pop_cx, move |_, window, cx| {
+                    s_ent.update(cx, |s, cx| s.navigate(NavModule::Chat, cx));
+                    ph.update(cx, |st, cx| st.dismiss(window, cx));
+                })
+                .justify_between()
+                .child(div().text_xs().child(if zh {
+                    format!("运行中的智能体对话 ({})", work.agent_runs)
+                } else {
+                    format!("Active agent runs ({})", work.agent_runs)
+                }))
+                .child(status_indicator(StatusShape::Run, pop_cx)),
+            );
+        }
+        if prov_attn > 0 {
+            any_row = true;
+            let s_ent = shell_ent.clone();
+            let ph = pop_cx.entity().clone();
+            body = body.child(
+                list_row("rw-prov-attn", false, pop_cx, move |_, window, cx| {
+                    s_ent.update(cx, |s, cx| s.navigate(NavModule::Providers, cx));
+                    ph.update(cx, |st, cx| st.dismiss(window, cx));
+                })
+                .justify_between()
+                .child(div().text_xs().child(if zh {
+                    format!("{prov_attn} 个 AI 服务商需关注")
+                } else {
+                    format!("{prov_attn} provider(s) need attention")
+                }))
+                .child(badge(
+                    if zh { "异常" } else { "Check" },
+                    Tone::Danger,
+                    pop_cx,
+                )),
+            );
+        }
+
+        if !any_row {
+            body = body.child(
+                div()
+                    .px(px(6.0))
+                    .py(px(8.0))
+                    .text_xs()
+                    .text_color(to_hsla(pop_p.muted))
+                    .child(if zh {
+                        "当前没有运行中的后台任务或待审批项。"
+                    } else {
+                        "No running tasks or pending approvals."
+                    }),
+            );
+        }
+
+        let s_con = shell_ent.clone();
+        let ph_con = pop_cx.entity().clone();
+        body.child(
+            div()
+                .my(px(2.0))
+                .h(px(1.0))
+                .bg(to_hsla(pop_p.line.composite_over(pop_p.overlay))),
+        )
+        .child(
+            btn_ghost(
+                "rw-open-console",
+                if zh {
+                    "打开诊断控制台 →"
+                } else {
+                    "Open Diagnostics Console →"
+                },
             )
-        })
+            .icon(icon_xs(UiIcon::Terminal))
+            .w_full()
+            .justify_start()
+            .on_click(move |_, window, cx| {
+                s_con.update(cx, |s, cx| {
+                    s.open_utility(UtilityDialog::Console, window, cx);
+                });
+                ph_con.update(cx, |st, cx| st.dismiss(window, cx));
+            }),
+        )
+    })
 }

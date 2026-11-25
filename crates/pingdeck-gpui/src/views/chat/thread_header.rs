@@ -50,10 +50,12 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
     let rename_title = title.clone();
 
     h_row()
+        .min_h(px(44.0))
+        .flex_shrink_0()
         .justify_between()
         .gap(px(10.0))
         .px(px(16.0))
-        .py(px(10.0))
+        .py(px(6.0))
         .border_b_1()
         .border_color(to_hsla(p.line.composite_over(p.surface)))
         .child(

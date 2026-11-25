@@ -1,13 +1,13 @@
 //! Left master sidebar pane for `ProvidersView`:
 //! pinned Local Gateway & Test Bench cards, live search, provider status rows, and footer health summary.
 
-use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::llm::status::ProviderStatus;
 
 use crate::ui::{
     ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary,
-    card, h_row, icon_xs, list_row, palette, search_input, section_heading, status_indicator,
-    text_input, to_hsla, v_col,
+    card, h_row, icon_xs, list_row, palette, pane_footer, pane_header, search_input,
+    section_heading, status_indicator, text_input, to_hsla, v_col,
 };
 
 use super::format::{format_reason, provider_best_balance, provider_status_shape};
@@ -400,55 +400,41 @@ pub fn render_sidebar(
         foot_parts.join(" · ")
     };
 
+    let header = pane_header(
+        if zh { "服务商" } else { "Providers" },
+        None,
+        Some(
+            btn_primary("prov-add-open", if zh { "添加" } else { "Add" })
+                .icon(icon_xs(UiIcon::Plus))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_sniff_sheet(None, None, None, window, cx);
+                }))
+                .into_any_element(),
+        ),
+        Some(search_input(&view.search_input, cx).into_any_element()),
+        cx,
+    );
+
+    let footer = pane_footer(
+        div()
+            .text_size(px(11.0))
+            .text_color(to_hsla(p.faint))
+            .truncate()
+            .child(SharedString::from(foot_text)),
+        Some(
+            btn_icon("prov-sidebar-refresh", UiIcon::Refresh)
+                .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx)))
+                .into_any_element(),
+        ),
+        cx,
+    );
+
     v_col()
         .size_full()
         .bg(to_hsla(p.pane))
-        .child(
-            v_col()
-                .p(px(10.0))
-                .gap(px(8.0))
-                .border_b_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(
-                    h_row()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .text_color(to_hsla(p.ink))
-                                .child(if zh { "服务商" } else { "Providers" }),
-                        )
-                        .child(
-                            btn_primary("prov-add-open", if zh { "添加" } else { "Add" })
-                                .icon(icon_xs(UiIcon::Plus))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_sniff_sheet(None, None, None, window, cx);
-                                })),
-                        ),
-                )
-                .child(search_input(&view.search_input, cx)),
-        )
+        .child(header)
         .child(left_list)
-        .child(
-            h_row()
-                .justify_between()
-                .px(px(10.0))
-                .py(px(6.0))
-                .border_t_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(to_hsla(p.faint))
-                        .truncate()
-                        .child(SharedString::from(foot_text)),
-                )
-                .child(
-                    btn_icon("prov-sidebar-refresh", UiIcon::Refresh)
-                        .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx))),
-                ),
-        )
+        .child(footer)
 }
 
 fn render_empty_onboarding(

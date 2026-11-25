@@ -8,7 +8,7 @@ use pingdeck_desktop::core::model::ai_request::RequestMode;
 
 use crate::ui::{
     Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary,
-    doc_tab, h_row, icon_xs, menu_divider, menu_item, method_badge, palette, popover,
+    doc_tab, h_row, icon_xs, is_compact, menu_divider, menu_item, method_badge, palette, popover,
     tab_bar_segmented, tab_item, text_input, to_hsla, toolbar_strip, v_col,
 };
 
@@ -90,7 +90,7 @@ pub fn render_doc_tabbar(
 
     h_row()
         .w_full()
-        .h(px(36.0))
+        .h(px(if is_compact(cx) { 40.0 } else { 44.0 }))
         .items_end()
         .flex_shrink_0()
         .px(px(8.0))
