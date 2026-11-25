@@ -133,7 +133,7 @@ window.PingDeckOverlays = (() => {
       return;
     }
 
-    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
+    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
     if (!t) {
       if (!e.target.closest(".pop-box")) closeAllPopovers();
       return;
@@ -222,6 +222,19 @@ window.PingDeckOverlays = (() => {
       const el = byId("usage-range-btn");
       if (el) el.textContent = `时间范围 ${t.dataset.pickRange} ▾`;
       closeAllPopovers();
+      return;
+    }
+    if (t.dataset.pickProxy) {
+      const btn = byId("tb-proxy-btn");
+      const dot = byId("tb-proxy-dot");
+      if (btn) btn.title = `全局代理：${t.dataset.pickProxy}（HTTP · 流程 · AI）`;
+      if (dot) {
+        dot.classList.remove("dot-ok", "dot-accent", "dot-idle");
+        const tone = t.dataset.proxyTone;
+        dot.classList.add(tone === "accent" ? "dot-accent" : tone === "idle" ? "dot-idle" : "dot-ok");
+      }
+      closeAllPopovers();
+      toast(`已切换全局代理：${t.dataset.pickProxy}`);
       return;
     }
     if (t.dataset.pickWhich) {

@@ -89,42 +89,85 @@ ul, ol { list-style: none; }
   font-size: 10.5px; font-weight: 500; color: var(--ink-3); font-family: var(--font-ui);
 }
 
-/* ── Desktop App Shell ───────────────────────────────────────────────────── */
+/* ── Desktop App Shell (ZCode-style Unified Topbar & Four-Edge Frame) ────── */
 .stage { flex: 1; min-height: 0; padding: 8px; display: flex; }
 .stage.frameless { padding: 0; }
 .app-window {
   position: relative; flex: 1; min-width: 0; min-height: 0;
-  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  display: flex; flex-direction: column;
   background: var(--bg-shell); border-radius: var(--r-xl);
   box-shadow: var(--shadow-window); overflow: hidden;
 }
 .stage.frameless .app-window { border-radius: 0; box-shadow: none; }
 
-/* ── Left Sidebar ────────────────────────────────────────────────────────── */
-.sidebar {
-  display: flex; flex-direction: column; min-height: 0; width: var(--nav-w);
-  background: var(--bg-shell); padding: 0 6px 10px; overflow: hidden; contain: layout style;
+/* Unified 38px Top Bar — constant height across expanded & collapsed sidebar */
+.app-titlebar {
+  height: 38px; flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px 0 14px; background: var(--bg-shell); gap: 8px; user-select: none;
 }
-.app-window.rail .sidebar { width: 48px; }
-.sidebar-top { height: var(--top-h); flex: none; display: flex; align-items: center; padding: 0 4px; }
-.traffic { position: absolute; top: 14px; left: 14px; z-index: 5; display: inline-flex; align-items: center; gap: 7px; pointer-events: none; }
-.traffic span { width: 11px; height: 11px; border-radius: 50%; background: var(--border-control); flex: none; }
+.tb-left, .tb-right { display: flex; align-items: center; gap: 4px; flex: none; height: 100%; }
+.tb-drag { flex: 1; min-width: 32px; height: 100%; }
+.tb-traffic { display: inline-flex; align-items: center; gap: 7px; margin-right: 10px; }
+.tb-traffic span { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+.tb-traffic span:nth-child(1) { background: #ff5f57; }
+.tb-traffic span:nth-child(2) { background: #febc2e; }
+.tb-traffic span:nth-child(3) { background: #28c840; }
 
-.nav-ico { width: 36px; flex: none; display: grid; place-items: center; }
-.nav-head { position: relative; flex: none; display: flex; align-items: center; height: var(--control-h); margin-bottom: 4px; }
-.nav-brand { display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--ink-1); font-weight: 600; letter-spacing: -0.01em; opacity: 1; transition: opacity 100ms ease; }
-.pingmark { flex: none; fill: currentColor; }
-.pingmark-dot { fill: var(--accent); }
-.nav-toggle {
-  position: absolute; inset-block: 0; inset-inline-end: 0; width: 36px; height: var(--control-h);
-  display: grid; place-items: center; border-radius: var(--r-md); color: var(--ink-3);
+.tb-icon-btn {
+  position: relative; width: 28px; height: 28px; border-radius: 7px;
+  display: grid; place-items: center; color: var(--ink-2);
   transition: background 100ms, color 100ms;
 }
-.nav-toggle:hover { background: var(--bg-hover); color: var(--ink-1); }
-.nav-toggle .icon-expand { display: none; }
-.app-window.rail .nav-brand { opacity: 0; pointer-events: none; }
-.app-window.rail .nav-toggle .icon-collapse { display: none; }
-.app-window.rail .nav-toggle .icon-expand { display: block; }
+.tb-icon-btn .icon { width: 16px; height: 16px; }
+.tb-icon-btn:hover { background: var(--bg-hover); color: var(--ink-1); }
+.tb-icon-btn:active { background: var(--bg-press, var(--bg-hover)); }
+.tb-status-dot {
+  position: absolute; right: 3.5px; bottom: 3.5px; width: 6px; height: 6px;
+  border-radius: 50%; box-shadow: 0 0 0 1.5px var(--bg-shell);
+}
+.tb-status-dot.dot-ok { background: var(--ok); }
+.tb-status-dot.dot-accent { background: var(--accent); }
+.tb-status-dot.dot-idle { background: var(--ink-4); }
+.tb-toggle-btn .icon-expand { display: none; }
+.app-window.rail .tb-toggle-btn .icon-collapse { display: none; }
+.app-window.rail .tb-toggle-btn .icon-expand { display: block; }
+
+/* Cross-platform OS window chrome adaptation (macOS vs Windows vs Linux) */
+.tb-win-sep, .tb-win-controls { display: none; }
+.app-window[data-platform="windows"] .app-titlebar,
+.app-window[data-platform="linux"] .app-titlebar { padding: 0 0 0 10px; }
+.app-window[data-platform="windows"] .tb-traffic,
+.app-window[data-platform="linux"] .tb-traffic { display: none; }
+.app-window[data-platform="windows"] .tb-win-sep,
+.app-window[data-platform="linux"] .tb-win-sep {
+  display: block; width: 1px; height: 14px; margin: 0 4px; background: var(--border-default);
+}
+.app-window[data-platform="windows"] .tb-win-controls { display: inline-flex; align-items: stretch; height: 38px; }
+.app-window[data-platform="windows"] .tb-win-btn {
+  width: 38px; height: 38px; display: grid; place-items: center; font-size: 11px; color: var(--ink-2);
+}
+.app-window[data-platform="windows"] .tb-win-btn:hover { background: var(--bg-hover); color: var(--ink-1); }
+.app-window[data-platform="windows"] .tb-win-close:hover { background: #e81123; color: #fff; }
+.app-window[data-platform="linux"] .tb-win-controls {
+  display: inline-flex; align-items: center; gap: 6px; padding-right: 10px;
+}
+.app-window[data-platform="linux"] .tb-win-btn {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11px; color: var(--ink-2); background: var(--bg-hover);
+}
+.app-window[data-platform="linux"] .tb-win-close:hover { background: var(--bad); color: #fff; }
+
+.app-body {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* ── Left Sidebar (starts directly below unified top bar) ────────────────── */
+.sidebar {
+  display: flex; flex-direction: column; min-height: 0; width: var(--nav-w);
+  background: var(--bg-shell); padding: 0 8px 8px; overflow: hidden; contain: layout style;
+}
+.app-window.rail .sidebar { width: 52px; }
+.nav-ico { width: 36px; flex: none; display: grid; place-items: center; }
 
 .nav-search {
   display: flex; align-items: center; width: 100%; height: var(--control-h); padding: 0 8px 0 0; margin-bottom: 6px;
@@ -216,8 +259,7 @@ ul, ol { list-style: none; }
 .app-window.rail .foot-row-text, .app-window.rail .foot-row-meta { opacity: 0; pointer-events: none; }
 
 /* ── Main Page Card & 3-Column Frame ─────────────────────────────────────── */
-.main-wrap { flex: 1; min-width: 0; min-height: 0; padding: 8px 8px 8px 0; display: flex; }
-.app-window.rail .main-wrap { padding-top: 38px; }
+.main-wrap { flex: 1; min-width: 0; min-height: 0; padding: 0 8px 8px 0; display: flex; }
 .page-card {
   flex: 1; min-width: 0; min-height: 0;
   background: var(--bg-surface); border-radius: var(--r-lg);

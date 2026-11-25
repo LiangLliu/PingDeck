@@ -30,9 +30,8 @@ pub enum Tone {
     Danger,
 }
 
-/// Returns `TitlebarOptions` placing macOS traffic lights directly inside the left sidebar's
-/// dedicated 38px top drag band (`--bg-shell`) so neither expanded brand rows nor the collapsed
-/// rail collide with the window controls.
+/// Returns `TitlebarOptions` placing macOS traffic lights vertically centered inside the unified
+/// 38px top bar (`--bg-shell`).
 #[must_use]
 pub fn title_bar_options() -> TitlebarOptions {
     TitlebarOptions {
@@ -42,10 +41,22 @@ pub fn title_bar_options() -> TitlebarOptions {
     }
 }
 
-/// Native draggable overlay title bar container.
+/// Unified 38px cross-platform application title bar seamless with the outer shell canvas.
+///
+/// Clears macOS traffic lights on the left (`78px`), renders native Windows/Linux window controls
+/// automatically via `gpui-component`'s [`TitleBar`], and owns drag + double-click zoom cleanly.
 #[must_use]
-pub fn app_title_bar() -> TitleBar {
-    TitleBar::new()
+pub fn app_title_bar(cx: &App) -> TitleBar {
+    let p = palette(cx);
+    let bar = TitleBar::new()
+        .h(px(38.0))
+        .bg(to_hsla(p.canvas))
+        .border_b_0();
+    if cfg!(target_os = "macos") {
+        bar.pl(px(78.0)).pr(px(10.0))
+    } else {
+        bar.pl(px(8.0)).pr(px(0.0))
+    }
 }
 
 /// Single-line text input widget.

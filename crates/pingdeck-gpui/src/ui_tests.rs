@@ -1722,6 +1722,16 @@ mod gpui_integration {
                 cx,
                 |_, _, _| {},
             );
+
+            // 6. Exercise global outbound proxy mode switching from the unified top titlebar.
+            shell.update(cx, |s, cx| {
+                s.set_global_proxy_url("direct".to_owned(), cx);
+            });
+            window.refresh();
+            shell.update(cx, |s, cx| {
+                s.set_global_proxy_url(String::new(), cx);
+            });
+            window.refresh();
         });
 
         rt.shutdown_blocking();

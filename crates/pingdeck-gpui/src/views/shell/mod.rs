@@ -8,6 +8,7 @@ pub mod module_host;
 pub mod palette;
 pub mod sidebar;
 pub mod sidebar_popovers;
+pub mod titlebar;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,12 +19,13 @@ use gpui_kit::{
     Task, Window, div, px,
 };
 use pingdeck_desktop::core::app::{
-    agent_attention_subscribe_impl, llm_subscribe_impl, set_window_focused, settings_get_impl,
-    settings_subscribe_impl, workspace_list_impl, workspace_touch_impl,
+    ProxyTestDto, agent_attention_subscribe_impl, llm_subscribe_impl, set_window_focused,
+    settings_get_impl, settings_subscribe_impl, workspace_list_impl, workspace_touch_impl,
 };
 use pingdeck_desktop::core::llm::events::LlmEvent;
 use pingdeck_desktop::core::model::events::Sequenced;
 use pingdeck_desktop::core::model::settings::{Language, SidebarMode};
+use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::persistence::UiLocalState;
 use pingdeck_desktop::state::{NavModule, SettingsSection, ShellState, ToastKind, UtilityDialog};
 use pingdeck_desktop::streams::{StreamReceiver, channel_sink};
@@ -37,18 +39,18 @@ use crate::app::actions::{
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
 use crate::ui::{
-    InputState, WindowExt as _, apply_palette, palette as active_palette, resolve_is_dark,
+    InputState, WindowExt as _, apply_palette, h_row, palette as active_palette, resolve_is_dark,
     sync_window_scale, to_hsla, v_col,
 };
 use crate::views::utility::UtilityPanel;
 
 use chrome::{
-    render_palette_overlay, render_startup_banner, render_toast_stack, render_top_drag_edge,
-    render_utility_overlay,
+    render_palette_overlay, render_startup_banner, render_toast_stack, render_utility_overlay,
 };
 use module_host::ModuleHost;
 use palette::CommandPaletteView;
 use sidebar::render_sidebar;
+use titlebar::render_title_bar;
 
 /// Top-level PingDeck window view managing navigation, overlays, and live core subscriptions.
 pub struct AppShell {
@@ -61,6 +63,9 @@ pub struct AppShell {
     pub(crate) utility_view: Entity<UtilityPanel>,
     pub(crate) workspace_menu_open: bool,
     pub(crate) new_workspace_input: Option<Entity<InputState>>,
+    pub(crate) proxy_url_input: Entity<InputState>,
+    pub(crate) proxy_testing: bool,
+    pub(crate) proxy_test_result: Option<ProxyTestDto>,
     pub(crate) provider_attention_count: usize,
     pub(crate) running_mock_summary: Vec<(String, String, u16)>,
     pub(crate) workspace_counts: HashMap<String, (usize, usize)>,
@@ -81,6 +86,19 @@ impl AppShell {
         let local_ui = rt.load_ui_state();
         let state = ShellState::new(&local_ui, settings, workspaces);
 
+        let initial_custom_proxy = {
+            let raw = state.settings.network.proxy_url.trim();
+            if raw.is_empty() || raw.eq_ignore_ascii_case(proxy_url::DIRECT) {
+                String::new()
+            } else {
+                raw.to_owned()
+            }
+        };
+        let proxy_url_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("http://127.0.0.1:7890")
+                .default_value(initial_custom_proxy)
+        });
         let palette_view = cx.new(|cx| CommandPaletteView::new(window, cx));
         let utility_view = cx.new(|cx| UtilityPanel::new(window, cx));
 
@@ -242,6 +260,9 @@ impl AppShell {
             utility_view,
             workspace_menu_open: false,
             new_workspace_input: None,
+            proxy_url_input,
+            proxy_testing: false,
+            proxy_test_result: None,
             provider_attention_count: 0,
             running_mock_summary: Vec::new(),
             workspace_counts: HashMap::new(),
@@ -402,12 +423,31 @@ impl Render for AppShell {
         sync_window_scale(&self.state.settings.appearance, window);
         let main_view = self.render_main_content(window, cx);
 
+        let mut right_col = v_col().flex_1().min_w_0().h_full().pr(px(8.0)).pb(px(8.0));
+
+        if let Some(banner) = render_startup_banner(self, cx) {
+            right_col = right_col.child(banner);
+        }
+
+        right_col = right_col.child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(to_hsla(p.surface))
+                .border_1()
+                .border_color(to_hsla(p.page_edge.composite_over(p.canvas)))
+                .child(main_view),
+        );
+
         let mut root = div()
             .id("pingdeck-app-root")
             .relative()
             .size_full()
             .flex()
-            .flex_row()
+            .flex_col()
             .bg(to_hsla(p.canvas))
             .text_color(to_hsla(p.ink))
             .track_focus(&self.focus_handle)
@@ -485,34 +525,16 @@ impl Render for AppShell {
             .on_action(cx.listener(|this, _: &Nav7, _, cx| this.navigate(NavModule::Providers, cx)))
             .on_action(cx.listener(|this, _: &Nav8, _, cx| this.navigate(NavModule::Usage, cx)))
             .on_action(cx.listener(|this, _: &Nav9, _, cx| this.navigate(NavModule::Settings, cx)))
-            .child(render_sidebar(self, cx));
-
-        let mut right_col = v_col()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .pr(px(8.0))
-            .pb(px(8.0))
-            .child(render_top_drag_edge(self.state.sidebar_collapsed));
-
-        if let Some(banner) = render_startup_banner(self, cx) {
-            right_col = right_col.child(banner);
-        }
-
-        right_col = right_col.child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .rounded(px(10.0))
-                .overflow_hidden()
-                .bg(to_hsla(p.surface))
-                .border_1()
-                .border_color(to_hsla(p.page_edge.composite_over(p.canvas)))
-                .child(main_view),
-        );
-
-        root = root.child(right_col);
+            .child(render_title_bar(self, cx))
+            .child(
+                h_row()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .items_stretch()
+                    .child(render_sidebar(self, cx))
+                    .child(right_col),
+            );
 
         if let Some(overlay) = render_palette_overlay(self, cx) {
             root = root.child(overlay);

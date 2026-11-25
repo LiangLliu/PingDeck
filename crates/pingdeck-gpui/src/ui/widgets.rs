@@ -18,9 +18,9 @@ use gpui_kit::component::{
     tooltip::Tooltip,
 };
 use gpui_kit::{
-    AnyElement, AnyView, App, AppContext as _, Div, ElementId, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, div, px,
+    AnyElement, AnyView, App, AppContext as _, Div, ElementId, Entity, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px, transparent_black,
 };
 
 use super::icons::{UiIcon, icon_sized, icon_xs};
@@ -330,6 +330,56 @@ pub fn popover_trigger_btn(id: impl Into<ElementId>, content: impl IntoElement) 
         .xsmall()
         .rounded(px(7.0))
         .child(content)
+}
+
+/// Balanced 28x28 icon-only titlebar button with a centered 16px Lucide glyph, crisp theme-aware
+/// hover/active highlight, and optional corner status dot (e.g. Global Proxy state).
+///
+/// Works seamlessly both as a direct button and as a [`Popover::trigger`].
+#[must_use]
+pub fn titlebar_icon_btn(
+    id: impl Into<ElementId>,
+    glyph: UiIcon,
+    status_dot_color: Option<Hsla>,
+    cx: &App,
+) -> Button {
+    let p = palette(cx);
+    let hover_bg = to_hsla(p.hover.composite_over(p.canvas));
+    let active_bg = to_hsla(p.press.composite_over(p.canvas));
+    let fg = to_hsla(p.ink_2);
+    let ring = to_hsla(p.canvas);
+    let inner = div()
+        .relative()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(icon_sized(glyph, Size::Size(px(16.0))))
+        .children(status_dot_color.map(|col| {
+            div()
+                .absolute()
+                .bottom(px(3.5))
+                .right(px(3.5))
+                .size(px(6.0))
+                .rounded(px(99.0))
+                .bg(col)
+                .border_1()
+                .border_color(ring)
+        }));
+    Button::new(id)
+        .ghost()
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(transparent_black())
+                .foreground(fg)
+                .hover(hover_bg)
+                .active(active_bg),
+        )
+        .size(px(28.0))
+        .px(px(0.0))
+        .py(px(0.0))
+        .rounded(px(7.0))
+        .child(inner)
 }
 
 /// Compact pill button suitable for toolbars and [`Popover::trigger`].

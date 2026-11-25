@@ -1,17 +1,17 @@
-//! Collapsible navigation sidebar aligned with the PingDeck desktop prototype:
-//! integrated macOS traffic-light header, native anchored workspace popover, clean 2-pillar
-//! navigation (API Workspace + Shared AI) with live status badges, and Running Work popover footer.
+//! Collapsible navigation sidebar sitting cleanly beneath the unified 38px top bar:
+//! native anchored workspace popover, `⌘K` quick jump, 2-pillar navigation (API Workspace +
+//! Shared AI) with live status badges, and Running Work / Gateway / Settings footer.
 
 use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
-    StatefulInteractiveElement as _, Styled as _, WindowControlArea, div, px,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::state::{NavModule, UtilityDialog};
+use pingdeck_desktop::state::NavModule;
 
 use crate::ui::{
     StatusShape, Tone, UiIcon, badge, btn_icon, h_row, icon, icon_xs, kbd_chip, list_row, palette,
-    pingmark, section_heading, status_indicator, to_hsla, v_col,
+    section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::AppShell;
@@ -55,63 +55,8 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
             }
         });
 
-    // 1. Dedicated top window-drag band clearing macOS traffic lights cleanly in both expanded
-    //    and collapsed rail modes (matching prototype `.sidebar-top`).
-    let top_drag = div()
-        .w_full()
-        .h(px(if cfg!(target_os = "macos") { 38.0 } else { 8.0 }))
-        .flex_shrink_0()
-        .window_control_area(WindowControlArea::Drag);
-
-    // 2. Brand + sidebar collapse/expand row at a fixed 32px height so collapsing causes zero
-    //    vertical layout shift across Workspace, Search, and Nav rows.
-    let brand_row = if collapsed {
-        h_row()
-            .w_full()
-            .h(px(32.0))
-            .flex_shrink_0()
-            .justify_center()
-            .mb(px(6.0))
-            .child(
-                btn_icon("sb-toggle-rail", UiIcon::PanelLeft)
-                    .tooltip(if zh {
-                        "展开侧栏 (⌘B)"
-                    } else {
-                        "Expand sidebar (⌘B)"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-            )
-    } else {
-        h_row()
-            .w_full()
-            .h(px(32.0))
-            .flex_shrink_0()
-            .pl(px(10.0))
-            .pr(px(2.0))
-            .mb(px(6.0))
-            .justify_between()
-            .window_control_area(WindowControlArea::Drag)
-            .child(
-                h_row().gap(px(8.0)).child(pingmark(15.0, cx)).child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .child("PingDeck"),
-                ),
-            )
-            .child(
-                btn_icon("sb-toggle", UiIcon::PanelLeft)
-                    .tooltip(if zh {
-                        "收起侧栏 (⌘B)"
-                    } else {
-                        "Collapse sidebar (⌘B)"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sidebar(cx))),
-            )
-    };
-
-    // 3. Workspace switcher (expanded + collapsed rail) & ⌘K quick jump trigger.
+    // 1. Workspace switcher (expanded + collapsed rail) & ⌘K quick jump trigger.
+    //    Starts directly beneath the unified 38px top bar, top-aligned with the floating page card.
     let mut top = v_col().w_full().gap(px(6.0)).pb(px(6.0)).flex_shrink_0();
     if !collapsed {
         top = top
@@ -311,37 +256,13 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                             .child(port)
                     })),
             )
-            .child(
-                h_row()
-                    .gap(px(2.0))
-                    .pt(px(2.0))
-                    .child(div().flex_1().min_w_0().child(render_nav_item(
-                        shell,
-                        NavModule::Settings,
-                        false,
-                        zh,
-                        cx,
-                    )))
-                    .child(
-                        btn_icon("sb-console", UiIcon::Terminal)
-                            .tooltip(if zh { "诊断控制台" } else { "Console" })
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_utility(UtilityDialog::Console, window, cx);
-                            })),
-                    )
-                    .child(
-                        btn_icon(
-                            "sb-theme-quick",
-                            if p.is_dark { UiIcon::Sun } else { UiIcon::Moon },
-                        )
-                        .tooltip(if zh {
-                            "切换浅/深色"
-                        } else {
-                            "Toggle Light / Dark"
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_theme_mode(cx))),
-                    ),
-            );
+            .child(div().w_full().pt(px(2.0)).child(render_nav_item(
+                shell,
+                NavModule::Settings,
+                false,
+                zh,
+                cx,
+            )));
     } else {
         footer = footer
             .items_center()
@@ -377,18 +298,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                         cx,
                     )),
             )
-            .child(
-                btn_icon(
-                    "sb-theme-rail",
-                    if p.is_dark { UiIcon::Sun } else { UiIcon::Moon },
-                )
-                .tooltip(if zh {
-                    "切换浅/深色"
-                } else {
-                    "Toggle theme"
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_theme_mode(cx))),
-            )
             .child(render_nav_item(shell, NavModule::Settings, true, zh, cx));
     }
 
@@ -397,19 +306,11 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         .h_full()
         .flex_shrink_0()
         .bg(to_hsla(p.canvas))
-        .child(top_drag)
-        .child(
-            v_col()
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .px(px(8.0))
-                .pb(px(8.0))
-                .child(brand_row)
-                .child(top)
-                .child(nav)
-                .child(footer),
-        )
+        .px(px(8.0))
+        .pb(px(8.0))
+        .child(top)
+        .child(nav)
+        .child(footer)
 }
 
 fn render_nav_item(

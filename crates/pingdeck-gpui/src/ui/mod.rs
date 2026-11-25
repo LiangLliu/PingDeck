@@ -63,5 +63,5 @@ pub use widgets::{
     StatusShape, borderless_multiline, checkbox, collapsible_box, diff_lines_preview, filter_chip,
     kv_chip, metric_datum, pill_btn, popover, popover_trigger_btn, progress_bar, round_icon_btn,
     search_input, select_pill, slider, spinner_xs, status_indicator, tab_bar_segmented,
-    tab_bar_underline, tab_item, text_tooltip, top_accent_card, wrap_root,
+    tab_bar_underline, tab_item, text_tooltip, titlebar_icon_btn, top_accent_card, wrap_root,
 };

@@ -15,7 +15,7 @@
   const state = {
     module: "requests", reqMode: "http", provView: "gateway",
     envName: "Staging", envTab: "vars", usageView: "overview", usageScope: "全部服务商", setPage: "appearance",
-    palette: "slate", mode: "light", density: "comfortable", rail: false, frameless: false,
+    palette: "slate", mode: "light", density: "comfortable", platform: "macos", rail: false, frameless: false,
   };
 
   const TAB_TARGETS = {
@@ -315,7 +315,7 @@
     const flowStep = e.target.closest("[data-flow-step]");
     if (flowStep) { selectFlowStep(flowStep.dataset.flowStep, flowStep); return; }
 
-    const t = e.target.closest("button, tr[data-usage-view], [data-nav-to], [data-req-mode], [data-prov-view], [data-env-tab], [data-env-pick], [data-usage-view], [data-usage-scope], [data-tab-jump], [data-tab], [data-mock-server], [data-set-page], [data-set-palette], [data-set-mode], [data-set-density], [data-action]");
+    const t = e.target.closest("button, tr[data-usage-view], [data-nav-to], [data-req-mode], [data-prov-view], [data-env-tab], [data-env-pick], [data-usage-view], [data-usage-scope], [data-tab-jump], [data-tab], [data-mock-server], [data-set-page], [data-set-palette], [data-set-mode], [data-set-density], [data-set-platform], [data-action]");
     if (!t) { if (wirePop && !wirePop.hidden && !e.target.closest("#wire-popover")) wirePop.hidden = true; return; }
 
     if (t.dataset.navTo) {
@@ -356,9 +356,19 @@
     if (t.dataset.setPalette) { state.palette = t.dataset.setPalette; applyTheme(); return; }
     if (t.dataset.setMode) { state.mode = t.dataset.setMode; applyTheme(); return; }
     if (t.dataset.setDensity) { state.density = t.dataset.setDensity; applyTheme(); return; }
+    if (t.dataset.setPlatform) {
+      state.platform = t.dataset.setPlatform;
+      if (appWin) appWin.dataset.platform = state.platform;
+      document.querySelectorAll("[data-set-platform]").forEach((el) => el.classList.toggle("active", el.dataset.setPlatform === state.platform));
+      return;
+    }
 
     switch (t.dataset.action) {
       case "toggle-rail": toggleRail(); break;
+      case "toggle-mode-quick":
+        state.mode = root.dataset.mode === "dark" ? "light" : "dark";
+        applyTheme();
+        break;
       case "open-cmd": toggleCmd(true); break;
       case "close-cmd": toggleCmd(false); break;
       case "toggle-console": togglePanel("console-drawer"); break;

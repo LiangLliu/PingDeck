@@ -44,6 +44,12 @@
       <button data-set-density="compact">紧凑</button>
     </div>
 
+    <div class="proto-seg" role="group" aria-label="窗口平台">
+      <button class="active" data-set-platform="macos">macOS</button>
+      <button data-set-platform="windows">Windows</button>
+      <button data-set-platform="linux">Linux</button>
+    </div>
+
     <span class="proto-spacer"></span>
     <span class="proto-hint"><span class="kbd">⌘K</span> 命令面板 · <span class="kbd">⌘B</span> 折叠侧栏</span>
     <button class="btn btn-sm" data-action="toggle-frameless">纯净全屏 (Esc 退出)</button>
@@ -51,40 +57,52 @@
 
   <!-- ── Desktop Application Window ── -->
   <div id="stage" class="stage">
-    <div id="app-window" class="app-window">
-      <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
-
-      <!-- ── Left Sidebar ── -->
-      <aside class="sidebar" aria-label="主导航">
-        <div class="sidebar-top"></div>
-
-        <div class="nav-head">
-          <div class="nav-brand" aria-hidden="true">
-            <span class="nav-ico">
-              <svg viewBox="270 224 458 576" width="12" height="15" class="pingmark">
-                <rect x="282" y="236" width="104" height="552" rx="52" />
-                <path fill-rule="evenodd" d="M520 236a196 196 0 1 1 0 392a196 196 0 1 1 0-392zm0 98a98 98 0 1 0 0 196a98 98 0 1 0 0-196z" />
-                <circle class="pingmark-dot" cx="520" cy="432" r="54" />
-              </svg>
-            </span>
-            <span class="nav-brand-name">PingDeck</span>
-          </div>
-          <button class="nav-toggle" data-action="toggle-rail" aria-expanded="true" title="收起/展开侧边栏 (⌘B)">
+    <div id="app-window" class="app-window" data-platform="macos">
+      <!-- ── Unified 38px Cross-Platform Top Bar (fixed height across expand/collapse) ── -->
+      <header class="app-titlebar" aria-label="窗口顶栏">
+        <div class="tb-left">
+          <div class="tb-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+          <button class="tb-icon-btn tb-toggle-btn" data-action="toggle-rail" aria-expanded="true" title="收起/展开侧边栏 (⌘B)">
             <svg class="icon icon-collapse" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg>
             <svg class="icon icon-expand" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>
           </button>
         </div>
 
-        <button class="nav-search" data-action="open-cmd">
-          <span class="nav-ico"><svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <span class="nav-search-text">搜索或跳转</span>
-          <span class="kbd nav-kbd">⌘K</span>
-        </button>
+        <div class="tb-drag" aria-hidden="true"></div>
 
+        <div class="tb-right">
+          <button id="tb-proxy-btn" class="tb-icon-btn" data-popover="global-proxy" title="全局代理：系统代理（HTTP · 流程 · AI）">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+            <span id="tb-proxy-dot" class="tb-status-dot dot-ok"></span>
+          </button>
+          <button class="tb-icon-btn" data-action="toggle-console" title="诊断控制台 (⌘J)">
+            <svg class="icon" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+          </button>
+          <button class="tb-icon-btn" data-action="toggle-mode-quick" title="切换浅/深色">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          </button>
+          <div class="tb-win-sep" aria-hidden="true"></div>
+          <div class="tb-win-controls" aria-hidden="true">
+            <span class="tb-win-btn" title="最小化">─</span>
+            <span class="tb-win-btn" title="最大化">□</span>
+            <span class="tb-win-btn tb-win-close" title="关闭">×</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="app-body">
+      <!-- ── Left Sidebar (starts cleanly below unified top bar, horizontal collapse only) ── -->
+      <aside class="sidebar" aria-label="主导航">
         <button class="ws-btn" data-popover="workspace" title="切换工作区">
           <span class="nav-ico"><span class="ws-badge">B</span></span>
           <span class="ws-name">Billing platform</span>
           <svg class="icon icon-sm ws-chev" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+        </button>
+
+        <button class="nav-search" data-action="open-cmd">
+          <span class="nav-ico"><svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <span class="nav-search-text">搜索或跳转</span>
+          <span class="kbd nav-kbd">⌘K</span>
         </button>
 
         <nav class="nav-scroll">
@@ -446,7 +464,6 @@
               <div class="footbar">
                 <button data-action="toggle-console" class="row-center text-ink2 fw-600">&gt;_ 控制台 2 <span class="kbd">⌘J</span></button>
                 <span class="mono flex-1 truncate">GET https://billing.staging.acme.dev/invoices?status=open&amp;limit=25</span>
-                <button class="text-muted" data-nav-to="settings" data-set-page="network">系统代理</button>
               </div>
             </div>
           </section>
@@ -1803,6 +1820,7 @@ currency=USD</div>
           </section>
 
         </main>
+      </div>
       </div>
     </div>
   </div>

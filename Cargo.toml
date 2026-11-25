@@ -125,13 +125,16 @@ tray-icon = { version = "0.26.1", default-features = false }
 url = "2.5.8"
 uuid = { version = "1.29", default-features = false }
 
-# Dev/test builds keep line tables only: full DWARF was ~77% of object size and dominated link time and disk.
-# Panics and backtraces still resolve file:line; set `CARGO_PROFILE_DEV_DEBUG=2` for a step-debugger session.
+# Dev/test builds keep line tables only and light opt-level = 1:
+# - Full DWARF was ~77% of object size and dominated link time and disk (panics/backtraces still
+#   resolve file:line; set `CARGO_PROFILE_DEV_DEBUG=2` for a step-debugger session).
+# - opt-level = 1 across workspace crates eliminates un-inlined GPUI builder/drop-glue bloat so
+#   macOS dev/test `__eh_frame` stays well below ld64's 16 MiB compact-unwind limit while keeping
+#   debug assertions, overflow checks, unwind panics, and fast incremental rebuilds intact.
 [profile.dev]
 debug = "line-tables-only"
+opt-level = 1
 
-# Third-party deps at opt-level = 1 keep macOS dev `__eh_frame` well below ld64's 16 MiB compact-unwind cap
-# while leaving workspace crates unoptimized for fast incremental rebuilds.
 [profile.dev.package."*"]
 debug = false
 opt-level = 1

@@ -1,8 +1,8 @@
 //! Shell overlays: startup notice banner, command palette modal, utility modal, and toast stack.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
-    StatefulInteractiveElement as _, Styled as _, WindowControlArea, div, px,
+    Context, InteractiveElement as _, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::state::ToastKind;
 
@@ -12,24 +12,6 @@ use crate::ui::{
 };
 
 use super::AppShell;
-
-/// Top window-drag strip above the floating page card.
-///
-/// In expanded mode (or on non-macOS) this provides a crisp 8px top frame matching the right and
-/// bottom shell insets. When the sidebar is collapsed into the 52px rail on macOS, it expands to
-/// 38px so the floating page card clears the macOS traffic lights (`x = 14..68px`) completely.
-pub fn render_top_drag_edge(sidebar_collapsed: bool) -> impl IntoElement {
-    let height = if cfg!(target_os = "macos") && sidebar_collapsed {
-        px(38.0)
-    } else {
-        px(8.0)
-    };
-    div()
-        .w_full()
-        .h(height)
-        .flex_shrink_0()
-        .window_control_area(WindowControlArea::Drag)
-}
 
 pub fn render_startup_banner(
     shell: &AppShell,

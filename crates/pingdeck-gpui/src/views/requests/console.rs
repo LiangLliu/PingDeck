@@ -5,14 +5,13 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::script_result::ConsoleLevel;
-use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
     ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, kbd_chip,
     palette, to_hsla, v_col,
 };
 
-use super::model::{OpenTab, RequestsHandoff, format_time_hms};
+use super::model::{OpenTab, format_time_hms};
 use super::{RequestsView, model};
 
 pub fn render_console_drawer(
@@ -192,23 +191,6 @@ pub fn render_footer_bar(
         None => String::new(),
     };
 
-    let proxy_label = {
-        let net = &view.settings.network;
-        let raw = net.proxy_url.trim();
-        if raw.is_empty() {
-            if zh { "系统代理" } else { "System proxy" }.to_owned()
-        } else if raw.eq_ignore_ascii_case("direct") {
-            if zh {
-                "直连（无代理）"
-            } else {
-                "Direct"
-            }
-            .to_owned()
-        } else {
-            format!("Proxy: {raw}")
-        }
-    };
-
     let unresolved_count = view.active_unresolved_var_names(cx).len();
 
     h_row()
@@ -270,27 +252,4 @@ pub fn render_footer_bar(
                 cx,
             )
         }))
-        .child(
-            div()
-                .id("req-foot-proxy-btn")
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(4.0))
-                .px(px(6.0))
-                .py(px(2.0))
-                .rounded(px(4.0))
-                .cursor_pointer()
-                .text_size(px(11.0))
-                .text_color(to_hsla(p.muted))
-                .hover(|s| {
-                    s.bg(to_hsla(p.hover.composite_over(p.pane)))
-                        .text_color(to_hsla(p.ink))
-                })
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.emit_handoff(RequestsHandoff::OpenSettings(SettingsSection::Network), cx);
-                }))
-                .child(icon_xs(UiIcon::Globe))
-                .child(SharedString::from(proxy_label)),
-        )
 }

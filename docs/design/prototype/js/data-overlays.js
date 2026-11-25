@@ -2,6 +2,14 @@
 window.PD = window.PD || {};
 
 window.PD.POPOVER_TEMPLATES = {
+  "global-proxy": () => `
+    <div class="pop-head"><span>全局出站代理</span><button class="text-accent" data-nav-to="settings" data-set-page="network">网络设置 ↗</button></div>
+    <div style="padding:4px 8px 6px;font-size:11px;color:var(--ink-3);line-height:1.45">应用于所有 HTTP 请求、流程与 AI 调用；单条请求或单个服务商仍可单独覆盖。</div>
+    <button class="pop-opt active" data-pick-proxy="系统代理" data-proxy-tone="ok"><span class="dot dot-ok"></span><div class="pop-opt-col"><span>跟随系统代理</span><span class="pop-opt-sub">自动使用操作系统或环境变量代理</span></div><span>✓</span></button>
+    <button class="pop-opt" data-pick-proxy="直连" data-proxy-tone="idle"><span class="dot dot-idle"></span><div class="pop-opt-col"><span>直连（不使用代理）</span><span class="pop-opt-sub">绕过系统代理，直接访问目标主机</span></div></button>
+    <button class="pop-opt" data-pick-proxy="127.0.0.1:7890" data-proxy-tone="accent"><span class="dot" style="background:var(--accent)"></span><div class="pop-opt-col"><span>自定义代理</span><span class="pop-opt-sub mono">http://127.0.0.1:7890</span></div></button>
+    <div class="pop-sep"></div>
+    <button class="pop-opt" data-pop-toast="代理连通测试通过 · system 路由 (42 ms)">测试当前代理连通性…</button>`,
   workspace: () => `
     <div class="pop-head"><span>切换工作区</span><span class="tag">本地存储</span></div>
     <button class="pop-opt active" data-pop-toast="当前工作区：Billing platform"><span class="ws-badge" style="width:18px;height:18px;font-size:10px">B</span><div class="pop-opt-col"><span>Billing platform</span><span class="pop-opt-sub">17 个请求 · 3 个环境 · 仅本机</span></div><span>✓</span></button>

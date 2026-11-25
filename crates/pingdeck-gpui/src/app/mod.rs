@@ -114,6 +114,7 @@ pub fn run() {
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: Some(title_bar_options()),
+            app_owns_titlebar_drag: true,
             window_min_size: Some(size(px(900.0), px(600.0))),
             ..WindowOptions::default()
         };
