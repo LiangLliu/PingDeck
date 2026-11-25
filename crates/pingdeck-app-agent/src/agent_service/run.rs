@@ -50,8 +50,8 @@ use super::tools::Role;
 use crate::app::factory_service::new_entity_id;
 use crate::app::{AppState, command_error, current_time_ms};
 
-/// Words of a message that name a new chat, in characters.
-const TITLE_CHARS: usize = 48;
+/// Maximum characters retained when deriving a provisional title from the user's first question.
+pub(super) const PROVISIONAL_TITLE_MAX_CHARS: usize = 30;
 /// Runs `agent_run_list` returns when the caller names no limit: the chat store reads the end of
 /// finished turns through it, so it must reach well past a long chat.
 const RUN_LIST_DEFAULT: u32 = 500;
@@ -106,14 +106,19 @@ pub(super) fn title_of(parts: &[HubPart]) -> String {
     }
 }
 
-/// A title from the first words of a message.
+/// Derives a single-line provisional title from the user's first question, collapsing whitespace
+/// and truncating overly long questions to `PROVISIONAL_TITLE_MAX_CHARS` characters.
 pub(super) fn title_from(text: &str) -> String {
-    text.split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(TITLE_CHARS)
-        .collect()
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= PROVISIONAL_TITLE_MAX_CHARS {
+        collapsed
+    } else {
+        let prefix: String = collapsed
+            .chars()
+            .take(PROVISIONAL_TITLE_MAX_CHARS.saturating_sub(1))
+            .collect();
+        format!("{}…", prefix.trim_end())
+    }
 }
 
 /// The message parts of a user message: text, then the attachments (checked for sending).
@@ -239,15 +244,23 @@ fn begin(state: &AppState, session_id: &str, turn: Turn) -> Result<Begun, AppErr
                     && !session.title_locked
                     && settings.ai.agent.auto_title
                 {
-                    let named = title_of(&parts);
-                    if !named.is_empty() {
-                        session.title.clone_from(&named);
-                        session.updated_at_ms = current_time_ms();
-                        state
-                            .store()
-                            .save_agent_session(&session)
-                            .map_err(command_error)?;
-                        title = Some(named);
+                    let has_prior_user_turn = state
+                        .store()
+                        .list_agent_messages(session_id)
+                        .map_err(command_error)?
+                        .iter()
+                        .any(|m| m.role == AgentRole::User);
+                    if !has_prior_user_turn {
+                        let named = title_of(&parts);
+                        if !named.is_empty() {
+                            session.title.clone_from(&named);
+                            session.updated_at_ms = current_time_ms();
+                            state
+                                .store()
+                                .save_agent_session(&session)
+                                .map_err(command_error)?;
+                            title = Some(named);
+                        }
                     }
                 }
                 let mut message =

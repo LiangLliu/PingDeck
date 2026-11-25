@@ -1,10 +1,10 @@
 //! Chat metrics formatting, cost/speed calculation, and inline `<think>` tag extraction
 //! for AI Chat messages and live streaming turns.
 
-use gpui_kit::{IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{IntoElement as _, ParentElement as _, SharedString, Styled as _, px};
 use pingdeck_desktop::core::agent::model::{AgentMessage, AgentStopReason, ReasoningEffort};
 
-use crate::ui::{Tone, badge, h_row, kv_chip, palette, to_hsla};
+use crate::ui::{Tone, UiIcon, badge, h_row, kv_chip, metric_datum};
 
 /// Extracts inline `<think>...</think>` or `<thinking>...</thinking>` blocks from text
 /// (common on OpenAI-compatible relays that embed thinking inside `content`).
@@ -67,6 +67,21 @@ pub fn format_duration_ms(ms: u64) -> String {
     } else {
         let secs = ms / 1_000;
         format!("{}m {}s", secs / 60, secs % 60)
+    }
+}
+
+/// Formats token counts compactly (`<1000` as exact integer, `>=1000` as `12.4K` / `1.2M`) so
+/// long sessions never overflow the per-message statistics footer.
+#[must_use]
+pub fn format_tokens_compact(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.2}M", n as f64 / 1_000_000.0)
+    } else if n >= 10_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else if n >= 1_000 {
+        format!("{:.2}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
     }
 }
 
@@ -149,18 +164,20 @@ pub const fn format_effort_short(effort: ReasoningEffort, zh: bool) -> &'static 
     }
 }
 
-/// Renders the complete per-request statistics footer below an assistant message:
-/// sources, token breakdown (input/output/cached/cache-write/reasoning/total),
-/// timing (TTFT / stream / total / tok/s), cost, and non-normal stop reasons.
+/// Renders a concise, overflow-proof per-message statistics footer below an assistant reply
+/// using monochrome theme-adaptive vector icons for the 6 essential metrics:
+/// Input (`CornerDownRight`), Output (`CornerUpRight`), Context (`Database`),
+/// Duration (`Timer`), Speed (`Zap`), and Cost (`Coins`), each with a full-detail hover tooltip.
 pub fn render_message_footer(
     msg: &AgentMessage,
+    context_limit_tokens: Option<u64>,
     fallback_currency: Option<&str>,
     zh: bool,
     cx: &gpui_kit::App,
 ) -> Option<gpui_kit::Div> {
-    let p = palette(cx);
     let mut chips: Vec<gpui_kit::AnyElement> = Vec::new();
-    let mut stat_parts: Vec<String> = Vec::new();
+    let mut datums: Vec<gpui_kit::AnyElement> = Vec::new();
+    let mid = &msg.id;
 
     for src in msg.meta.sources.iter().take(4) {
         chips.push(
@@ -173,93 +190,183 @@ pub fn render_message_footer(
         let in_tok = u.input_tokens.unwrap_or(0);
         let out_tok = u.output_tokens.unwrap_or(0);
         out_tok_val = out_tok;
-        let total = in_tok + out_tok;
-        if total > 0 {
-            if zh {
-                stat_parts.push(format!(
-                    "输入 {} · 输出 {} · 共 {} tok",
-                    format_tokens_int(in_tok),
-                    format_tokens_int(out_tok),
-                    format_tokens_int(total),
-                ));
-            } else {
-                stat_parts.push(format!(
-                    "In {} · Out {} · {} tok",
-                    format_tokens_int(in_tok),
-                    format_tokens_int(out_tok),
-                    format_tokens_int(total),
-                ));
-            }
+
+        if in_tok > 0 || out_tok > 0 {
+            datums.push(
+                metric_datum(
+                    SharedString::from(format!("stat-in-{mid}")),
+                    UiIcon::CornerDownRight,
+                    format_tokens_compact(in_tok),
+                    if zh {
+                        format!("输入 Token: {}", format_tokens_int(in_tok))
+                    } else {
+                        format!("Input tokens: {}", format_tokens_int(in_tok))
+                    },
+                    Tone::Neutral,
+                    cx,
+                )
+                .into_any_element(),
+            );
+            datums.push(
+                metric_datum(
+                    SharedString::from(format!("stat-out-{mid}")),
+                    UiIcon::CornerUpRight,
+                    format_tokens_compact(out_tok),
+                    if zh {
+                        format!("输出 Token: {}", format_tokens_int(out_tok))
+                    } else {
+                        format!("Output tokens: {}", format_tokens_int(out_tok))
+                    },
+                    Tone::Neutral,
+                    cx,
+                )
+                .into_any_element(),
+            );
         }
-        if let Some(cached) = u.cached_input_tokens.filter(|&n| n > 0) {
-            stat_parts.push(if zh {
-                format!("缓存读 {}", format_tokens_int(cached))
-            } else {
-                format!("Cached {}", format_tokens_int(cached))
-            });
-        }
-        if let Some(cw) = u.cache_write_tokens.filter(|&n| n > 0) {
-            stat_parts.push(if zh {
-                format!("缓存写 {}", format_tokens_int(cw))
-            } else {
-                format!("Cache write {}", format_tokens_int(cw))
-            });
-        }
-        if let Some(rtok) = u.reasoning_tokens.filter(|&n| n > 0) {
-            stat_parts.push(if zh {
-                format!("思考 {} tok", format_tokens_int(rtok))
-            } else {
-                format!("Reasoning {} tok", format_tokens_int(rtok))
-            });
+
+        // Context size sent on this turn (input tokens vs model window limit when known).
+        // Escalates to theme-aware Warning (>=70%) and Danger (>=85%) tones as the window fills.
+        if in_tok > 0 {
+            let (ctx_val, ctx_tip, ctx_tone) = match context_limit_tokens.filter(|&lim| lim > 0) {
+                Some(lim) => {
+                    let pct = ((in_tok as f64 / lim as f64) * 100.0).min(100.0);
+                    let tone = if pct >= 85.0 {
+                        Tone::Danger
+                    } else if pct >= 70.0 {
+                        Tone::Warning
+                    } else {
+                        Tone::Neutral
+                    };
+                    let val = format!(
+                        "{}/{} ({:.0}%)",
+                        format_tokens_compact(in_tok),
+                        format_tokens_compact(lim),
+                        pct,
+                    );
+                    let tip = if zh {
+                        format!(
+                            "上下文窗口: {} / {} ({:.1}%)",
+                            format_tokens_int(in_tok),
+                            format_tokens_int(lim),
+                            pct,
+                        )
+                    } else {
+                        format!(
+                            "Context window: {} / {} ({:.1}%)",
+                            format_tokens_int(in_tok),
+                            format_tokens_int(lim),
+                            pct,
+                        )
+                    };
+                    (val, tip, tone)
+                }
+                None => (
+                    format_tokens_compact(in_tok),
+                    if zh {
+                        format!("上下文窗口: {} token", format_tokens_int(in_tok))
+                    } else {
+                        format!("Context window: {} tokens", format_tokens_int(in_tok))
+                    },
+                    Tone::Neutral,
+                ),
+            };
+            datums.push(
+                metric_datum(
+                    SharedString::from(format!("stat-ctx-{mid}")),
+                    UiIcon::Database,
+                    ctx_val,
+                    ctx_tip,
+                    ctx_tone,
+                    cx,
+                )
+                .into_any_element(),
+            );
         }
     }
 
-    match (msg.meta.ttft_ms, msg.meta.stream_ms) {
-        (Some(ttft), Some(stream)) => {
-            let total_ms = ttft.saturating_add(stream);
-            stat_parts.push(if zh {
-                format!(
-                    "首字 {} · 生成 {} · 总耗时 {}",
-                    format_duration_ms(ttft),
-                    format_duration_ms(stream),
-                    format_duration_ms(total_ms),
-                )
-            } else {
-                format!(
-                    "TTFT {} · Gen {} · Total {}",
-                    format_duration_ms(ttft),
-                    format_duration_ms(stream),
-                    format_duration_ms(total_ms),
-                )
-            });
-        }
-        (Some(ttft), None) => {
-            stat_parts.push(if zh {
-                format!("首字 {}", format_duration_ms(ttft))
-            } else {
-                format!("TTFT {}", format_duration_ms(ttft))
-            });
-        }
-        (None, Some(stream)) => {
-            stat_parts.push(if zh {
-                format!("耗时 {}", format_duration_ms(stream))
-            } else {
-                format!("Duration {}", format_duration_ms(stream))
-            });
-        }
-        (None, None) => {}
+    let total_ms = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
+        (Some(ttft), Some(stream)) => Some(ttft.saturating_add(stream)),
+        (Some(ttft), None) => Some(ttft),
+        (None, Some(stream)) => Some(stream),
+        (None, None) => None,
+    };
+    if let Some(ms) = total_ms.filter(|&v| v > 0) {
+        let dur_val = format_duration_ms(ms);
+        let dur_tip = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
+            (Some(ttft), Some(stream)) if ttft > 0 && stream > 0 => {
+                if zh {
+                    format!(
+                        "总耗时: {dur_val}（首字 {} · 生成 {}）",
+                        format_duration_ms(ttft),
+                        format_duration_ms(stream),
+                    )
+                } else {
+                    format!(
+                        "Duration: {dur_val} (TTFT {} · stream {})",
+                        format_duration_ms(ttft),
+                        format_duration_ms(stream),
+                    )
+                }
+            }
+            _ => {
+                if zh {
+                    format!("总耗时: {dur_val}")
+                } else {
+                    format!("Duration: {dur_val}")
+                }
+            }
+        };
+        datums.push(
+            metric_datum(
+                SharedString::from(format!("stat-dur-{mid}")),
+                UiIcon::Timer,
+                dur_val,
+                dur_tip,
+                Tone::Neutral,
+                cx,
+            )
+            .into_any_element(),
+        );
     }
 
     if out_tok_val > 0
         && let Some(stream_ms) = msg.meta.stream_ms.filter(|&ms| ms > 0)
     {
         let tps = out_tok_val as f64 / (stream_ms as f64 / 1_000.0);
-        stat_parts.push(format!("{tps:.1} tok/s"));
+        datums.push(
+            metric_datum(
+                SharedString::from(format!("stat-tps-{mid}")),
+                UiIcon::Zap,
+                format!("{tps:.1}/s"),
+                if zh {
+                    format!("生成速度: {tps:.1} tok/s")
+                } else {
+                    format!("Output speed: {tps:.1} tok/s")
+                },
+                Tone::Neutral,
+                cx,
+            )
+            .into_any_element(),
+        );
     }
 
     let currency = msg.cost_currency.as_deref().or(fallback_currency);
     if let Some(cost_str) = format_cost_micro(msg.cost_micro_usd, currency) {
-        stat_parts.push(cost_str);
+        datums.push(
+            metric_datum(
+                SharedString::from(format!("stat-cost-{mid}")),
+                UiIcon::Coins,
+                cost_str.clone(),
+                if zh {
+                    format!("估算费用: {cost_str}")
+                } else {
+                    format!("Estimated cost: {cost_str}")
+                },
+                Tone::Neutral,
+                cx,
+            )
+            .into_any_element(),
+        );
     }
 
     if let Some(stop) = msg.meta.stop_reason
@@ -308,23 +415,18 @@ pub fn render_message_footer(
         }
     }
 
-    if chips.is_empty() && stat_parts.is_empty() {
+    if chips.is_empty() && datums.is_empty() {
         return None;
     }
 
-    let mut row = h_row()
-        .pl(px(30.0))
-        .pt(px(2.0))
-        .gap(px(8.0))
-        .flex_wrap()
-        .children(chips);
-    if !stat_parts.is_empty() {
-        row = row.child(
-            div()
-                .text_size(px(11.0))
-                .text_color(to_hsla(p.faint))
-                .child(SharedString::from(stat_parts.join("  ·  "))),
-        );
-    }
-    Some(row)
+    Some(
+        h_row()
+            .pl(px(30.0))
+            .pt(px(2.0))
+            .gap_x(px(12.0))
+            .gap_y(px(4.0))
+            .flex_wrap()
+            .children(chips)
+            .children(datums),
+    )
 }

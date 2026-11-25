@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 
 use super::icons::{UiIcon, icon_xs};
-use super::primitives::{h_row, list_row};
+use super::primitives::h_row;
 use super::theme::{palette, to_hsla};
 
 /// Semantic OKLCH foreground color for an HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, ...).
@@ -128,6 +128,10 @@ pub fn menu_divider(cx: &App) -> Div {
 }
 
 /// Standard clickable popover menu item with leading icon and optional danger red tint.
+///
+/// Builds its own `Stateful<Div>` with a single `.hover(...)` style (never layering on top of
+/// `list_row`, which already sets `.hover(...)` and would trigger GPUI's `hover style already set`
+/// panic when customized for danger items).
 pub fn menu_item(
     id: impl Into<ElementId>,
     glyph: UiIcon,
@@ -137,14 +141,32 @@ pub fn menu_item(
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let p = palette(cx);
-    let mut row = list_row(id, false, cx, on_click).gap(px(7.0));
-    if danger {
+    let compact = super::theme::is_compact(cx);
+    let py_px = if compact { 4.5 } else { 6.0 };
+    let (fg, hover_bg, hover_fg) = if danger {
         let bad = to_hsla(p.bad);
-        let bad_bg = to_hsla(p.bad_soft);
-        row = row
-            .text_color(bad)
-            .hover(move |s| s.bg(bad_bg).text_color(bad));
-    }
-    row.child(icon_xs(glyph))
+        (bad, to_hsla(p.bad_soft), bad)
+    } else {
+        (
+            to_hsla(p.ink_2),
+            to_hsla(p.hover.composite_over(p.overlay)),
+            to_hsla(p.ink),
+        )
+    };
+    div()
+        .id(id)
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .pl(px(10.0))
+        .pr(px(8.0))
+        .py(px(py_px))
+        .rounded(px(7.0))
+        .cursor_pointer()
+        .text_color(fg)
+        .hover(move |s| s.bg(hover_bg).text_color(hover_fg))
+        .on_click(on_click)
+        .child(icon_xs(glyph))
         .child(div().flex_1().text_xs().truncate().child(label.into()))
 }

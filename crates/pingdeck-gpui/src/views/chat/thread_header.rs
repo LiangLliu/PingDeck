@@ -9,8 +9,8 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-    Anchor, Tone, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, list_row, palette, pill_btn,
-    popover, popover_header, section_heading, to_hsla, v_col,
+    Anchor, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, list_row, palette, pill_btn,
+    popover, popover_header, section_heading, text_tooltip, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -28,7 +28,16 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
         .session
         .as_ref()
         .and_then(|s| s.target.as_ref())
-        .map(|t| view.format_target_label(t));
+        .map(|t| view.format_target_label(t))
+        .or_else(|| {
+            view.available_models.first().map(|m| {
+                if zh {
+                    format!("自动 · {}", m.display_label())
+                } else {
+                    format!("Auto · {}", m.display_label())
+                }
+            })
+        });
     let pinned = view
         .session
         .as_ref()
@@ -49,46 +58,65 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
     let rename_sid = view.thread.session_id.clone();
     let rename_title = title.clone();
 
-    h_row()
-        .min_h(px(44.0))
-        .flex_shrink_0()
+    let title_hover_bg = to_hsla(p.hover.composite_over(p.surface));
+    let title_row = h_row()
+        .w_full()
         .justify_between()
         .gap(px(10.0))
-        .px(px(16.0))
-        .py(px(6.0))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.surface)))
         .child(
-            h_row()
-                .flex_1()
-                .min_w_0()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .id("chat-hdr-title")
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .truncate()
-                        .when(can_rename, |el| {
-                            el.cursor_pointer()
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.modal_input.update(cx, |s, cx| {
-                                        s.set_value(rename_title.clone(), window, cx);
-                                    });
-                                    this.active_modal = Some(ChatModal::RenameSession {
-                                        session_id: rename_sid.clone(),
-                                    });
-                                    cx.notify();
-                                }))
-                        })
-                        .child(SharedString::from(title)),
-                )
-                .children(model_label.map(|m| badge(m, Tone::Neutral, cx)))
-                .child(render_binding_popover(view, zh, cx)),
+            // Non-clickable spacer fills remaining width so clicking empty header whitespace
+            // never triggers rename; the clickable trigger inside shrinks tightly to text width.
+            h_row().flex_1().min_w_0().child(
+                h_row()
+                    .id("chat-hdr-title")
+                    .group("chat-hdr-title")
+                    .max_w_full()
+                    .min_w_0()
+                    .gap(px(5.0))
+                    .px(px(5.0))
+                    .ml(px(-5.0))
+                    .py(px(2.0))
+                    .rounded(px(6.0))
+                    .when(can_rename, |el| {
+                        el.cursor_pointer()
+                            .hover(move |s| s.bg(title_hover_bg))
+                            .tooltip(text_tooltip(if zh {
+                                "点击修改标题"
+                            } else {
+                                "Click to rename"
+                            }))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.modal_input.update(cx, |s, cx| {
+                                    s.set_value(rename_title.clone(), window, cx);
+                                });
+                                this.active_modal = Some(ChatModal::RenameSession {
+                                    session_id: rename_sid.clone(),
+                                });
+                                cx.notify();
+                            }))
+                    })
+                    .child(
+                        div()
+                            .min_w_0()
+                            .text_sm()
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(to_hsla(p.ink))
+                            .truncate()
+                            .child(SharedString::from(title)),
+                    )
+                    .children(can_rename.then(|| {
+                        div()
+                            .flex_shrink_0()
+                            .text_color(to_hsla(p.faint))
+                            .opacity(0.0)
+                            .group_hover("chat-hdr-title", |s| s.opacity(1.0))
+                            .child(icon_xs(UiIcon::Pencil))
+                    })),
+            ),
         )
         .child(
             h_row()
+                .flex_shrink_0()
                 .gap(px(4.0))
                 .children(
                     view.status_msg
@@ -157,7 +185,48 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                         .tooltip(if zh { "删除对话" } else { "Delete chat" })
                         .on_click(cx.listener(|this, _, _, cx| this.request_delete_current(cx))),
                 ),
-        )
+        );
+
+    let meta_row = h_row()
+        .w_full()
+        .gap(px(8.0))
+        .flex_wrap()
+        .children(model_label.map(|m| {
+            h_row()
+                .gap(px(5.0))
+                .px(px(7.0))
+                .py(px(2.0))
+                .rounded(px(6.0))
+                .bg(to_hsla(p.sunken))
+                .border_1()
+                .border_color(to_hsla(p.line.composite_over(p.sunken)))
+                .max_w(px(280.0))
+                .child(
+                    div()
+                        .text_color(to_hsla(p.muted))
+                        .flex_shrink_0()
+                        .child(icon_xs(UiIcon::Cpu)),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.ink_2))
+                        .truncate()
+                        .child(SharedString::from(m)),
+                )
+        }))
+        .child(render_binding_popover(view, zh, cx));
+
+    v_col()
+        .w_full()
+        .flex_shrink_0()
+        .gap(px(5.0))
+        .px(px(16.0))
+        .py(px(8.0))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(title_row)
+        .child(meta_row)
 }
 
 fn render_binding_popover(
@@ -191,16 +260,35 @@ fn render_binding_popover(
             .map(|w| w.name.clone())
     });
 
-    let label = match (&folder_name, &git_branch, &ws_name) {
-        (Some(f), Some(br), _) => format!("{f} ({br})"),
-        (Some(f), None, _) => f.clone(),
-        (None, _, Some(w)) => w.clone(),
-        _ => if zh {
+    let env_name = bound_env_id.as_deref().and_then(|id| {
+        view.environments
+            .iter()
+            .find(|e| e.id == id)
+            .map(|e| e.name.clone())
+    });
+
+    let mut parts: Vec<String> = Vec::new();
+    match (&folder_name, &git_branch) {
+        (Some(f), Some(br)) => parts.push(format!("{f} ({br})")),
+        (Some(f), None) => parts.push(f.clone()),
+        _ => {}
+    }
+    if let Some(w) = &ws_name {
+        if let Some(e) = &env_name {
+            parts.push(format!("{w} · {e}"));
+        } else {
+            parts.push(w.clone());
+        }
+    }
+    let label = if parts.is_empty() {
+        if zh {
             "绑定目录 / 工作区"
         } else {
             "Bind folder / workspace"
         }
-        .to_owned(),
+        .to_owned()
+    } else {
+        parts.join(" · ")
     };
     let workspaces = view.workspaces.clone();
     let envs = view.environments.clone();

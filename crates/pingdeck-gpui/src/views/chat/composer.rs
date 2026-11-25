@@ -22,12 +22,12 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
 
     let mut dock = v_col()
         .w_full()
-        .max_w(px(760.0))
+        .max_w(px(1080.0))
         .mx_auto()
         .gap(px(8.0))
-        .px(px(20.0))
+        .px(px(16.0))
         .pt(px(6.0))
-        .pb(px(14.0));
+        .pb(px(12.0));
 
     for (run_id, gate) in &view.thread.open_gates {
         dock = dock.child(render_human_gate(view, run_id, gate, zh, cx));

@@ -425,6 +425,13 @@
         ov()?.toast(on ? "已开启智能体联网搜索" : "已关闭智能体联网搜索");
         break;
       }
+      case "chat-jump-bottom": {
+        const scroller = byId("chat-thread-scroll");
+        if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+        const btn = byId("chat-jump-btn");
+        if (btn) btn.hidden = true;
+        break;
+      }
       case "send-chat": {
         const inp = byId("chat-composer-input");
         const val = inp?.value.trim();
@@ -466,6 +473,13 @@
   });
 
   cmdModal?.addEventListener("click", (e) => { if (e.target === cmdModal) toggleCmd(false); });
+  byId("chat-thread-scroll")?.addEventListener("scroll", (e) => {
+    const el = e.currentTarget;
+    const jump = byId("chat-jump-btn");
+    if (!jump) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    jump.hidden = dist <= 40;
+  });
 
   const MODULE_ORDER = ["requests", "mock", "flows", "history", "environments", "chat", "providers", "usage"];
   document.addEventListener("keydown", (e) => {

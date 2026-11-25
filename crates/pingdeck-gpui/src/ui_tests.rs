@@ -1419,6 +1419,50 @@ mod gpui_integration {
                 assert!(view.read(cx).active_modal.is_none());
             }
 
+            // Exercise 2-row header, simplified 6-item metrics footer, and stick-to-bottom toggle.
+            view.update(cx, |v, cx| {
+                use pingdeck_desktop::core::agent::model::{AgentMessage, AgentRole};
+                use pingdeck_desktop::core::model::hub::{HubPart, HubUsage};
+                v.thread.title = "修复网关 429 熔断与退避".into();
+                v.thread.context_limit_tokens = Some(128_000);
+                v.thread.cost_currency = Some("USD".into());
+                let mut msg = AgentMessage {
+                    id: "m-assist-stats".into(),
+                    session_id: "s-1".into(),
+                    run_id: None,
+                    seq: 2,
+                    role: AgentRole::Assistant,
+                    parts: vec![HubPart::text("已拆分 429 退避策略。")],
+                    attachments: Vec::new(),
+                    model: Some("deepseek/deepseek-v4-pro".into()),
+                    usage: Some(HubUsage {
+                        input_tokens: Some(18_400),
+                        output_tokens: Some(1_120),
+                        cached_input_tokens: Some(12_000),
+                        cache_write_tokens: None,
+                        reasoning_tokens: Some(420),
+                        ..HubUsage::default()
+                    }),
+                    parent_id: None,
+                    branch_index: 0,
+                    partial: false,
+                    cost_micro_usd: 18_500,
+                    cost_currency: Some("USD".into()),
+                    meta: Default::default(),
+                    branch_siblings: Vec::new(),
+                    error: None,
+                    created_at_ms: 1000,
+                };
+                msg.meta.ttft_ms = Some(620);
+                msg.meta.stream_ms = Some(3_680);
+                v.thread.messages.push(msg);
+                assert!(v.stick_to_bottom);
+                v.stick_to_bottom = false;
+                cx.notify();
+            });
+            window.refresh();
+            assert!(!view.read(cx).stick_to_bottom);
+
             view.update(cx, |v, cx| {
                 v.pending_handoff.set(Some(ChatHandoff::OpenProviders));
                 cx.notify();
@@ -1659,6 +1703,25 @@ mod gpui_integration {
             window.refresh();
             shell.update(cx, |s, cx| s.toggle_sidebar(cx));
             window.refresh();
+
+            // 5. Regression guard: both normal and danger popover menu items must construct
+            //    without triggering GPUI's `hover style already set` panic.
+            let _normal = crate::ui::menu_item(
+                "reg-menu-normal",
+                crate::ui::UiIcon::Pencil,
+                "Rename",
+                false,
+                cx,
+                |_, _, _| {},
+            );
+            let _danger = crate::ui::menu_item(
+                "reg-menu-danger",
+                crate::ui::UiIcon::Trash,
+                "Delete",
+                true,
+                cx,
+                |_, _, _| {},
+            );
         });
 
         rt.shutdown_blocking();

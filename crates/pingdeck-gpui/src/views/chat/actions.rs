@@ -7,7 +7,7 @@ use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::agent::approvals::ApprovalAnswer;
 use pingdeck_desktop::core::agent::dto::AgentRunInput;
 use pingdeck_desktop::core::agent::model::{
-    AgentRunStatus, AgentSessionInput, AgentSessionPatch, AgentTarget, ApprovalDecision,
+    AgentRole, AgentRunStatus, AgentSessionInput, AgentSessionPatch, AgentTarget, ApprovalDecision,
     ApprovalScope, ReasoningEffort,
 };
 use pingdeck_desktop::core::app::{
@@ -197,6 +197,7 @@ impl ChatView {
         self.collapsed_live_reasoning = false;
         self.thread.last_error = None;
         self.status_msg = None;
+        self.stick_to_bottom = true;
         self.scroll_handle.scroll_to_bottom();
         cx.notify();
 
@@ -256,38 +257,48 @@ impl ChatView {
     ) {
         let original_text = text.clone();
         let needs_model = self.session.as_ref().is_none_or(|s| s.target.is_none());
+        let check_first_turn = !self.title_generated_sessions.contains(&sid);
         let sid_for_cb = sid.clone();
         let rt_bind = runtime(cx);
         let task = spawn_async_into(
             cx,
             move |state| async move {
                 let mut auto_session = None;
-                if needs_model {
-                    let sid_bind = sid.clone();
-                    if let Ok(Ok(Some(updated))) = rt_bind
+                let mut eligible_for_auto_title = false;
+                if needs_model || check_first_turn {
+                    let sid_pre = sid.clone();
+                    if let Ok(Ok((updated, eligible))) = rt_bind
                         .run_state(move |st| {
                             let detail =
-                                agent_session_get_impl(st, &sid_bind, AgentPageRequest::default())?;
-                            if detail.session.target.is_none()
+                                agent_session_get_impl(st, &sid_pre, AgentPageRequest::default())?;
+                            let eligible = check_first_turn
+                                && st.settings().ai.agent.auto_title
+                                && !detail.session.title_locked
+                                && detail.messages.iter().all(|m| m.role != AgentRole::User);
+                            let mut updated = None;
+                            if needs_model
+                                && detail.session.target.is_none()
                                 && let Some(target) = resolve_fallback_target(st)
                             {
                                 let s = agent_session_update_impl(
                                     st,
-                                    &sid_bind,
+                                    &sid_pre,
                                     AgentSessionPatch {
                                         target: Some(target),
                                         ..AgentSessionPatch::default()
                                     },
                                 )?;
-                                return Ok::<_, pingdeck_desktop::core::error::AppError>(Some(s));
+                                updated = Some(s);
                             }
-                            Ok(None)
+                            Ok::<_, pingdeck_desktop::core::error::AppError>((updated, eligible))
                         })
                         .await
                     {
-                        auto_session = Some(updated);
+                        auto_session = updated;
+                        eligible_for_auto_title = eligible;
                     }
                 }
+                let sid_post = sid.clone();
                 let input = AgentRunInput {
                     session_id: sid,
                     text,
@@ -299,9 +310,21 @@ impl ChatView {
                     context_use: Default::default(),
                 };
                 let res = agent_run_start_impl(&state, input).await;
-                (res, auto_session)
+                let mut provisional_title = None;
+                if res.is_ok()
+                    && eligible_for_auto_title
+                    && let Ok(Ok(after)) = rt_bind
+                        .run_state(move |st| {
+                            agent_session_get_impl(st, &sid_post, AgentPageRequest::default())
+                        })
+                        .await
+                    && !after.session.title_locked
+                {
+                    provisional_title = Some(after.session.title);
+                }
+                (res, auto_session, provisional_title)
             },
-            move |this, (res, auto_session), cx| {
+            move |this, (res, auto_session, provisional_title), cx| {
                 if let Some(updated) = auto_session
                     && this.thread.session_id == updated.id
                 {
@@ -309,6 +332,16 @@ impl ChatView {
                 }
                 match res {
                     Ok(_) => {
+                        if let Some(provisional) = provisional_title
+                            && this.title_generated_sessions.insert(sid_for_cb.clone())
+                        {
+                            this.apply_session_title_locally(&sid_for_cb, &provisional, false);
+                            this.spawn_auto_title_upgrade(
+                                sid_for_cb.clone(),
+                                Some(provisional),
+                                cx,
+                            );
+                        }
                         if this.thread.session_id == sid_for_cb
                             && this.thread.active_run.as_ref().is_some_and(|r| {
                                 matches!(
@@ -321,7 +354,7 @@ impl ChatView {
                         {
                             this.submitting = false;
                         }
-                        this.scroll_handle.scroll_to_bottom();
+                        this.auto_scroll_if_following();
                     }
                     Err(err) => {
                         this.submitting = false;
@@ -332,7 +365,7 @@ impl ChatView {
                         let msg = err.message().to_owned();
                         this.thread.last_error = Some(msg.clone());
                         this.status_msg = Some((Tone::Danger, msg));
-                        this.scroll_handle.scroll_to_bottom();
+                        this.auto_scroll_if_following();
                     }
                 }
                 cx.notify();

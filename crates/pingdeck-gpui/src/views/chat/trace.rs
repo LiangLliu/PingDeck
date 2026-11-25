@@ -1,18 +1,20 @@
 //! Structured tool-call trace timeline cards, inline diff previews, and collapsible reasoning
 //! blocks for the AI Chat thread stream.
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use pingdeck_desktop::core::agent::model::ToolCallStatus;
+use pingdeck_desktop::core::agent::model::{AgentToolCallRecord, ToolCallStatus};
+use pingdeck_desktop::core::model::hub::HubPart;
 use pingdeck_desktop::state::LiveToolCall;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, collapsible_box, diff_lines_preview, h_row, icon_xs, palette,
-    status_indicator, streaming_markdown_view, to_hsla, v_col,
+    StatusShape, Tone, UiIcon, badge, btn_ghost, collapsible_box, diff_lines_preview, h_row,
+    icon_xs, palette, status_indicator, streaming_markdown_view, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -209,6 +211,117 @@ pub fn render_live_turn(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
     }
 
     body
+}
+
+/// Renders the collapsible tool-call trace card attached to a persisted assistant message.
+pub fn render_message_tool_traces(
+    view: &ChatView,
+    tool_calls: &[(&str, &str, &str)],
+    tool_results: &HashMap<&str, (&[HubPart], bool)>,
+    audit_map: &HashMap<&str, &AgentToolCallRecord>,
+    zh: bool,
+    cx: &mut Context<ChatView>,
+) -> gpui_kit::Div {
+    let p = palette(cx);
+    let any_err = tool_calls
+        .iter()
+        .any(|(id, _, _)| tool_results.get(id).is_some_and(|(_, is_err)| *is_err));
+    let header_label = if zh {
+        format!("执行了 {} 个工具调用", tool_calls.len())
+    } else if tool_calls.len() == 1 {
+        "1 tool call".into()
+    } else {
+        format!("{} tool calls", tool_calls.len())
+    };
+
+    let mut trace_box = v_col()
+        .w_full()
+        .rounded(px(10.0))
+        .overflow_hidden()
+        .bg(to_hsla(p.pane))
+        .border_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .child(
+            h_row()
+                .px(px(10.0))
+                .py(px(7.0))
+                .gap(px(6.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(status_indicator(
+                    if any_err {
+                        StatusShape::Bad
+                    } else {
+                        StatusShape::Ok
+                    },
+                    cx,
+                ))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(to_hsla(p.ink))
+                        .child(SharedString::from(header_label)),
+                ),
+        );
+
+    for &(call_id, name, args) in tool_calls {
+        let expanded = view.expanded_traces.contains(call_id);
+        let audit = audit_map.get(call_id).copied();
+        let result = tool_results.get(call_id).copied();
+        let out_text = result.map(|(parts, _)| {
+            parts
+                .iter()
+                .filter_map(|pt| match pt {
+                    HubPart::Text { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
+        let is_err = result.is_some_and(|(_, e)| e);
+        let dur = audit.and_then(|a| match (a.started_ms, a.ended_ms) {
+            (Some(s), Some(e)) if e >= s => Some((e - s) as u64),
+            _ => None,
+        });
+        let cid_click = call_id.to_owned();
+        let cid_full = call_id.to_owned();
+        let name_full = name.to_owned();
+        trace_box = trace_box.child(render_trace_step(
+            call_id,
+            name,
+            args,
+            out_text.as_deref(),
+            if is_err {
+                StatusShape::Bad
+            } else {
+                StatusShape::Ok
+            },
+            dur,
+            audit.and_then(|a| a.exit_code),
+            expanded,
+            cx.listener(move |this, _, _, cx| this.toggle_trace(cid_click.clone(), cx)),
+            cx,
+        ));
+        if expanded {
+            trace_box = trace_box.child(
+                h_row().justify_end().px(px(10.0)).pb(px(6.0)).child(
+                    btn_ghost(
+                        SharedString::from(format!("tout-full-{call_id}")),
+                        if zh {
+                            "查看完整输出"
+                        } else {
+                            "View full output"
+                        },
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_tool_output(cid_full.clone(), name_full.clone(), cx);
+                    })),
+                ),
+            );
+        }
+    }
+    trace_box
 }
 
 pub fn render_live_tool_step(

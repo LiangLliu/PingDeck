@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, ScrollEvent, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::agent::model::{AgentMessage, AgentRole, AgentToolCallRecord};
@@ -13,17 +13,17 @@ use pingdeck_desktop::core::model::hub::HubPart;
 use pingdeck_desktop::services::clipboard;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary,
-    h_row, icon_xs, kv_chip, markdown_view, palette, status_indicator, to_hsla, v_col,
+    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon, btn_secondary, h_row,
+    icon_xs, kv_chip, markdown_view, palette, status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
-use super::metrics::{format_duration_ms, format_effort_short, render_message_footer};
+use super::metrics::{format_effort_short, render_message_footer};
 use super::reasoning::{
     ReasoningKind, extract_message_reasoning, render_no_reasoning_panel, render_reasoning_block,
     render_reasoning_header_chip, render_sealed_reasoning_card,
 };
-use super::trace::{render_live_turn, render_trace_step};
+use super::trace::{render_live_turn, render_message_tool_traces};
 use super::types::ChatModal;
 use super::welcome::render_welcome_empty;
 
@@ -37,11 +37,11 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
 
     let mut col = v_col()
         .w_full()
-        .max_w(px(760.0))
+        .max_w(px(1080.0))
         .mx_auto()
-        .gap(px(18.0))
-        .py(px(20.0))
-        .px(px(20.0));
+        .gap(px(16.0))
+        .py(px(16.0))
+        .px(px(16.0));
 
     if view.thread.messages.is_empty() && !has_live && !has_pending_user {
         col = col.child(render_welcome_empty(zh, cx));
@@ -117,7 +117,20 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         );
     }
 
-    let show_jump = view.thread.messages.len() >= 6;
+    let max_scroll_y = view.scroll_handle.max_offset().y.as_f32().max(0.0);
+    let show_jump =
+        max_scroll_y > 40.0 && (!view.stick_to_bottom || view.distance_from_bottom() > 48.0);
+    let jump_label = if has_live {
+        if zh {
+            "跳到最新 ↓"
+        } else {
+            "Jump to latest ↓"
+        }
+    } else if zh {
+        "回到底部 ↓"
+    } else {
+        "Latest ↓"
+    };
 
     div()
         .relative()
@@ -130,19 +143,38 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
                 .size_full()
                 .overflow_y_scroll()
                 .track_scroll(&view.scroll_handle)
+                .on_scroll(cx.listener(|this, ev: &ScrollEvent, window, cx| {
+                    let delta_y = ev.delta.pixel_delta(window.line_height()).y.as_f32();
+                    if delta_y > 0.5 {
+                        // Scrolling upward toward earlier messages: immediately release follow lock.
+                        if this.stick_to_bottom {
+                            this.stick_to_bottom = false;
+                            cx.notify();
+                        }
+                    } else if delta_y < -0.5 && !this.stick_to_bottom {
+                        let max_y = this.scroll_handle.max_offset().y.as_f32().max(0.0);
+                        let cur_y = this.scroll_handle.offset().y.as_f32();
+                        let dist_now = (max_y + cur_y).max(0.0);
+                        let next_y = (cur_y + delta_y).clamp(-max_y, 0.0);
+                        let dist_est = (max_y + next_y).max(0.0);
+                        if dist_now <= 24.0 || dist_est <= 16.0 {
+                            this.stick_to_bottom = true;
+                            cx.notify();
+                        }
+                    }
+                }))
                 .child(col),
         )
         .vertical_scrollbar(&view.scroll_handle)
         .children(show_jump.then(|| {
-            div().absolute().right(px(20.0)).bottom(px(10.0)).child(
-                btn_secondary(
-                    "chat-jump-bottom",
-                    if zh { "回到底部 ↓" } else { "Latest ↓" },
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.scroll_handle.scroll_to_bottom();
-                    cx.notify();
-                })),
+            div().absolute().right(px(18.0)).bottom(px(10.0)).child(
+                btn_secondary("chat-jump-bottom", jump_label).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.stick_to_bottom = true;
+                        this.scroll_handle.scroll_to_bottom();
+                        cx.notify();
+                    },
+                )),
             )
         }))
 }
@@ -151,7 +183,7 @@ fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElemen
     let p = palette(cx);
     v_col().w_full().items_end().child(
         div()
-            .max_w(px(580.0))
+            .max_w(px(780.0))
             .px(px(14.0))
             .py(px(10.0))
             .rounded(px(16.0))
@@ -183,7 +215,7 @@ fn render_user_message(
         .gap(px(4.0))
         .child(
             div()
-                .max_w(px(580.0))
+                .max_w(px(780.0))
                 .px(px(14.0))
                 .py(px(10.0))
                 .rounded(px(16.0))
@@ -288,17 +320,6 @@ fn render_assistant_message(
         })
         .collect();
 
-    let header_timing = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
-        (Some(ttft), Some(stream)) => Some(format!(
-            "{} (TTFT {})",
-            format_duration_ms(ttft.saturating_add(stream)),
-            format_duration_ms(ttft),
-        )),
-        (Some(ttft), None) => Some(format!("TTFT {}", format_duration_ms(ttft))),
-        (None, Some(stream)) => Some(format_duration_ms(stream)),
-        (None, None) => None,
-    };
-
     let r_key = format!("reason-{}", msg.id);
     let reason_open = view.expanded_reasoning.contains(&r_key);
 
@@ -329,12 +350,6 @@ fn render_assistant_message(
                     .reasoning_effort
                     .map(|eff| badge(format_effort_short(eff, zh), Tone::Accent, cx)),
             )
-            .children(header_timing.map(|t| {
-                div()
-                    .text_xs()
-                    .text_color(to_hsla(p.faint))
-                    .child(SharedString::from(t))
-            }))
             .child(render_reasoning_header_chip(
                 &msg.id,
                 &r_info,
@@ -377,96 +392,14 @@ fn render_assistant_message(
     }
 
     if !tool_calls.is_empty() {
-        let any_err = tool_calls
-            .iter()
-            .any(|(id, _, _)| tool_results.get(id).is_some_and(|(_, is_err)| *is_err));
-        let header_label = if zh {
-            format!("执行了 {} 个工具调用", tool_calls.len())
-        } else if tool_calls.len() == 1 {
-            "1 tool call".into()
-        } else {
-            format!("{} tool calls", tool_calls.len())
-        };
-
-        let mut trace_box = v_col()
-            .w_full()
-            .rounded(px(10.0))
-            .overflow_hidden()
-            .bg(to_hsla(p.pane))
-            .border_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .child(
-                h_row()
-                    .px(px(10.0))
-                    .py(px(7.0))
-                    .gap(px(6.0))
-                    .border_b_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .child(status_indicator(
-                        if any_err {
-                            StatusShape::Bad
-                        } else {
-                            StatusShape::Ok
-                        },
-                        cx,
-                    ))
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(gpui_kit::FontWeight::MEDIUM)
-                            .text_color(to_hsla(p.ink))
-                            .child(SharedString::from(header_label)),
-                    ),
-            );
-
-        for (call_id, name, args) in tool_calls {
-            let expanded = view.expanded_traces.contains(call_id);
-            let audit = audit_map.get(call_id).copied();
-            let result = tool_results.get(call_id).copied();
-            let out_text = result.map(|(parts, _)| extract_text_parts(parts));
-            let is_err = result.is_some_and(|(_, e)| e);
-            let dur = audit.and_then(|a| match (a.started_ms, a.ended_ms) {
-                (Some(s), Some(e)) if e >= s => Some((e - s) as u64),
-                _ => None,
-            });
-            let cid_click = call_id.to_owned();
-            let cid_full = call_id.to_owned();
-            let name_full = name.to_owned();
-            trace_box = trace_box.child(render_trace_step(
-                call_id,
-                name,
-                args,
-                out_text.as_deref(),
-                if is_err {
-                    StatusShape::Bad
-                } else {
-                    StatusShape::Ok
-                },
-                dur,
-                audit.and_then(|a| a.exit_code),
-                expanded,
-                cx.listener(move |this, _, _, cx| this.toggle_trace(cid_click.clone(), cx)),
-                cx,
-            ));
-            if expanded {
-                trace_box = trace_box.child(
-                    h_row().justify_end().px(px(10.0)).pb(px(6.0)).child(
-                        btn_ghost(
-                            SharedString::from(format!("tout-full-{call_id}")),
-                            if zh {
-                                "查看完整输出"
-                            } else {
-                                "View full output"
-                            },
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.open_tool_output(cid_full.clone(), name_full.clone(), cx);
-                        })),
-                    ),
-                );
-            }
-        }
-        body = body.child(trace_box);
+        body = body.child(render_message_tool_traces(
+            view,
+            &tool_calls,
+            tool_results,
+            audit_map,
+            zh,
+            cx,
+        ));
     }
 
     let joined_text = text_chunks.join("\n");
@@ -544,7 +477,13 @@ fn render_assistant_message(
         }));
 
     body = body.child(actions_row);
-    if let Some(footer) = render_message_footer(msg, view.thread.cost_currency.as_deref(), zh, cx) {
+    if let Some(footer) = render_message_footer(
+        msg,
+        view.thread.context_limit_tokens,
+        view.thread.cost_currency.as_deref(),
+        zh,
+        cx,
+    ) {
         body = body.child(footer);
     }
 

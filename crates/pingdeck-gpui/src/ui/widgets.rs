@@ -5,7 +5,7 @@
 //! binding directly to third-party widget types.
 
 use gpui_kit::component::{
-    Root, Sizable as _,
+    Root, Sizable as _, Size,
     button::{Button, ButtonCustomVariant, ButtonVariants as _},
     checkbox::Checkbox,
     collapsible::Collapsible,
@@ -15,13 +15,15 @@ use gpui_kit::component::{
     slider::{Slider, SliderState},
     spinner::Spinner,
     tab::{Tab, TabBar},
+    tooltip::Tooltip,
 };
 use gpui_kit::{
-    AnyElement, AnyView, App, AppContext as _, Div, ElementId, Entity, IntoElement,
-    ParentElement as _, SharedString, Styled as _, Window, div, px,
+    AnyElement, AnyView, App, AppContext as _, Div, ElementId, Entity, InteractiveElement as _,
+    IntoElement, ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, Window, div, px,
 };
 
-use super::icons::{UiIcon, icon_xs};
+use super::icons::{UiIcon, icon_sized, icon_xs};
 use super::primitives::{Tone, h_row, v_col};
 use super::theme::{palette, to_hsla};
 
@@ -96,6 +98,54 @@ pub fn status_indicator(shape: StatusShape, cx: &App) -> AnyElement {
             .color(to_hsla(p.accent))
             .into_any_element(),
     }
+}
+
+/// Builds a native GPUI tooltip closure for any stateful element without exposing
+/// `gpui_kit::component::tooltip::Tooltip` outside `src/ui/`.
+pub fn text_tooltip(
+    tip: impl Into<SharedString>,
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let tip_text: SharedString = tip.into();
+    move |window, cx| Tooltip::new(tip_text.clone()).build(window, cx)
+}
+
+/// Compact, theme-adaptive monochrome icon + value metric datum with a native hover tooltip.
+///
+/// Uses `currentColor` vector SVG icons tinted from the active OKLCH palette (never fixed-color
+/// emoji) so legibility and visual harmony stay consistent across all 16 light and dark themes.
+#[must_use]
+pub fn metric_datum(
+    id: impl Into<ElementId>,
+    glyph: UiIcon,
+    value: impl Into<SharedString>,
+    tip: impl Into<SharedString>,
+    tone: Tone,
+    cx: &App,
+) -> Stateful<Div> {
+    let p = palette(cx);
+    let fg = match tone {
+        Tone::Neutral => to_hsla(p.muted),
+        Tone::Accent => to_hsla(p.accent),
+        Tone::Success => to_hsla(p.ok),
+        Tone::Warning => to_hsla(p.warn),
+        Tone::Danger => to_hsla(p.bad),
+    };
+    let hover_fg = match tone {
+        Tone::Neutral => to_hsla(p.ink),
+        _ => fg,
+    };
+    div()
+        .id(id)
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(4.0))
+        .text_size(px(11.0))
+        .text_color(fg)
+        .hover(move |s| s.text_color(hover_fg))
+        .tooltip(text_tooltip(tip))
+        .child(icon_sized(glyph, Size::Size(px(11.5))))
+        .child(value.into())
 }
 
 /// Native anchored floating popover menu.

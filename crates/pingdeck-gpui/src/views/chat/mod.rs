@@ -92,11 +92,15 @@ pub struct ChatView {
     pub thinking_durations: HashMap<String, u64>,
     pub pending_user_text: Option<String>,
     pub scroll_handle: ScrollHandle,
+    /// True while the thread viewport is pinned to the latest output; disengaged immediately when
+    /// the user scrolls upward so reading earlier content never flickers or jumps back down.
+    pub stick_to_bottom: bool,
     pub details_open: bool,
     pub details_tab: DetailsTab,
     pub active_modal: Option<ChatModal>,
     pub status_msg: Option<(Tone, String)>,
     pub pending_handoff: Cell<Option<ChatHandoff>>,
+    pub(super) title_generated_sessions: HashSet<String>,
     pub(super) pending_draft_sync: Option<String>,
     pub(super) pending_instructions_sync: Option<String>,
     pub(super) active_sub_id: Option<u64>,
@@ -199,11 +203,13 @@ impl ChatView {
             thinking_durations: HashMap::new(),
             pending_user_text: None,
             scroll_handle: ScrollHandle::new(),
+            stick_to_bottom: true,
             details_open: false,
             details_tab: DetailsTab::Progress,
             active_modal: None,
             status_msg: None,
             pending_handoff: Cell::new(None),
+            title_generated_sessions: HashSet::new(),
             pending_draft_sync: None,
             pending_instructions_sync: None,
             active_sub_id: None,
@@ -215,6 +221,30 @@ impl ChatView {
         };
         view.reload_sessions(cx);
         view
+    }
+
+    /// Distance in pixels between the current scroll offset and the bottom of the thread.
+    #[must_use]
+    pub fn distance_from_bottom(&self) -> f32 {
+        let max_y = self.scroll_handle.max_offset().y.as_f32().max(0.0);
+        if max_y <= 0.5 {
+            return 0.0;
+        }
+        let cur_y = self.scroll_handle.offset().y.as_f32();
+        (max_y + cur_y).max(0.0)
+    }
+
+    /// Scrolls to bottom only when the viewport is actively following live output.
+    /// If the user dragged the scrollbar thumb away from the bottom, respects that position.
+    pub(super) fn auto_scroll_if_following(&mut self) {
+        if !self.stick_to_bottom {
+            return;
+        }
+        if self.distance_from_bottom() > 64.0 {
+            self.stick_to_bottom = false;
+            return;
+        }
+        self.scroll_handle.scroll_to_bottom();
     }
 
     pub fn is_run_active(&self) -> bool {

@@ -932,3 +932,160 @@ async fn an_acknowledged_chat_shells_outside_the_sandbox_and_the_step_records_it
     // The command's exit status reaches the stored row, where the UI reads it.
     assert_eq!(audit[0].exit_code, Some(0));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn model_title_generation_follows_six_rule_lifecycle() {
+    use super::super::agent_session_generate_title_impl;
+    use super::super::run::{PROVISIONAL_TITLE_MAX_CHARS, title_from};
+    use super::super::title::GENERATED_TITLE_MAX_CHARS;
+
+    // Rule 2: overly long first question is truncated to PROVISIONAL_TITLE_MAX_CHARS.
+    let long_question = "为什么网关遇到上游返回 429 限流状态码时就直接熔断 60 秒而不先遵循 Retry-After 响应头进行退避重试？";
+    let expected_provisional = title_from(long_question);
+    assert_eq!(
+        expected_provisional.chars().count(),
+        PROVISIONAL_TITLE_MAX_CHARS
+    );
+    assert!(expected_provisional.ends_with('…'));
+
+    // --- Scenario A: Rules 1, 2, 3, 4, 6 (first turn -> truncated -> AI summary -> locked -> Turn 2 unchanged) ---
+    let w = world(|_, req| {
+        let is_title_call = req.body["messages"][0]["content"]
+            .as_str()
+            .is_some_and(|s| s.contains("concise, clear title"));
+        if is_title_call {
+            json_answer("修复网关 429 熔断与退避")
+        } else {
+            text_answer("好的，我来检查网关熔断逻辑。")
+        }
+    });
+    let session = chat(&w, ToolApproval::Ask, None);
+    let seen = watch(&w, &session);
+
+    // Rule 1 & 2: first question sets truncated provisional title and emits SessionTitleUpdated.
+    agent_run_start_impl(&w.state, input(&session, long_question))
+        .await
+        .unwrap();
+    wait_terminal(&seen, 1).await;
+    let after_turn1 = agent_session_get_impl(&w.state, &session.id, AgentPageRequest::default())
+        .unwrap()
+        .session;
+    assert_eq!(after_turn1.title, expected_provisional);
+    assert!(!after_turn1.title_locked);
+
+    // Mismatched expected_current_title skips overwrite (protects manual rename race).
+    let skipped = agent_session_generate_title_impl(&w.state, &session.id, Some("other"))
+        .await
+        .unwrap();
+    assert_eq!(skipped, None);
+
+    // Rule 3 & 4: AI request summarizes within GENERATED_TITLE_MAX_CHARS, updates title, and locks it.
+    let updated =
+        agent_session_generate_title_impl(&w.state, &session.id, Some(&expected_provisional))
+            .await
+            .unwrap();
+    assert_eq!(updated.as_deref(), Some("修复网关 429 熔断与退避"));
+    assert!(
+        updated
+            .as_deref()
+            .is_some_and(|t| t.chars().count() <= GENERATED_TITLE_MAX_CHARS)
+    );
+    let after_ai = agent_session_get_impl(&w.state, &session.id, AgentPageRequest::default())
+        .unwrap()
+        .session;
+    assert_eq!(after_ai.title, "修复网关 429 熔断与退避");
+    assert!(after_ai.title_locked);
+
+    // Rule 6: subsequent turns never alter the title and emit no further SessionTitleUpdated.
+    let title_events_before = events(&seen)
+        .into_iter()
+        .filter(|e| matches!(e, AgentEvent::SessionTitleUpdated { .. }))
+        .count();
+    agent_run_start_impl(&w.state, input(&session, "接下来帮我顺便优化日志导出功能"))
+        .await
+        .unwrap();
+    wait_terminal(&seen, 2).await;
+    let after_turn2 = agent_session_get_impl(&w.state, &session.id, AgentPageRequest::default())
+        .unwrap()
+        .session;
+    assert_eq!(after_turn2.title, "修复网关 429 熔断与退避");
+    assert!(after_turn2.title_locked);
+    let title_events_after = events(&seen)
+        .into_iter()
+        .filter(|e| matches!(e, AgentEvent::SessionTitleUpdated { .. }))
+        .count();
+    assert_eq!(title_events_before, title_events_after);
+
+    // A second automatic generation call is permanently blocked by title_locked.
+    let repeat_skip =
+        agent_session_generate_title_impl(&w.state, &session.id, Some("修复网关 429 熔断与退避"))
+            .await
+            .unwrap();
+    assert_eq!(repeat_skip, None);
+
+    // --- Scenario B: Rule 5 & 6 (AI title fails -> keep truncated title, lock forever, no retries) ---
+    let title_attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_clone = Arc::clone(&title_attempts);
+    let wf = world(move |_, req| {
+        let is_title_call = req.body["messages"][0]["content"]
+            .as_str()
+            .is_some_and(|s| s.contains("concise, clear title"));
+        if is_title_call {
+            attempts_clone.fetch_add(1, Ordering::SeqCst);
+            Reply::Json(400, json!({"error": {"message": "bad title request"}}))
+        } else {
+            text_answer("收到。")
+        }
+    });
+    let sf = chat(&wf, ToolApproval::Ask, None);
+    let seen_f = watch(&wf, &sf);
+    agent_run_start_impl(&wf.state, input(&sf, long_question))
+        .await
+        .unwrap();
+    wait_terminal(&seen_f, 1).await;
+
+    // AI title call fails: returns Ok(None), keeps provisional title untouched, locks permanently.
+    let failed_res =
+        agent_session_generate_title_impl(&wf.state, &sf.id, Some(&expected_provisional))
+            .await
+            .unwrap();
+    assert_eq!(failed_res, None);
+    assert_eq!(title_attempts.load(Ordering::SeqCst), 1);
+    let locked_after_fail = agent_session_get_impl(&wf.state, &sf.id, AgentPageRequest::default())
+        .unwrap()
+        .session;
+    assert_eq!(locked_after_fail.title, expected_provisional);
+    assert!(locked_after_fail.title_locked);
+
+    // Retrying automatic generation does NOT hit the model again and never alters the title.
+    let no_retry =
+        agent_session_generate_title_impl(&wf.state, &sf.id, Some(&expected_provisional))
+            .await
+            .unwrap();
+    assert_eq!(no_retry, None);
+    assert_eq!(title_attempts.load(Ordering::SeqCst), 1);
+
+    // Subsequent Turn 2 also leaves the failed-to-upgrade title untouched.
+    agent_run_start_impl(&wf.state, input(&sf, "第二个完全不同的问题"))
+        .await
+        .unwrap();
+    wait_terminal(&seen_f, 2).await;
+    let after_fail_turn2 = agent_session_get_impl(&wf.state, &sf.id, AgentPageRequest::default())
+        .unwrap()
+        .session;
+    assert_eq!(after_fail_turn2.title, expected_provisional);
+    assert!(after_fail_turn2.title_locked);
+
+    // --- Scenario C: auto_title = false skips automatic title entirely ---
+    settings_update_impl(
+        &w.state,
+        SettingsSection::Ai,
+        &json!({"agent": {"auto_title": false}}),
+    )
+    .unwrap();
+    let s2 = chat(&w, ToolApproval::Ask, None);
+    let disabled_skip = agent_session_generate_title_impl(&w.state, &s2.id, Some(&s2.title))
+        .await
+        .unwrap();
+    assert_eq!(disabled_skip, None);
+}

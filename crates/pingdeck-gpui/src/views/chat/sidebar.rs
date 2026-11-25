@@ -253,15 +253,6 @@ fn render_session_row(
     } else {
         s.title.clone()
     };
-    let subtitle = if !s.preview.trim().is_empty() {
-        s.preview.trim().to_owned()
-    } else if let Some(target) = &s.target {
-        target.label()
-    } else if zh {
-        "空对话".into()
-    } else {
-        "Empty thread".into()
-    };
     let rel = format_relative_time(s.updated_at_ms, now_ms, zh);
     let chat_ent = cx.entity().clone();
     let sid_m = s.id.clone();
@@ -292,7 +283,7 @@ fn render_session_row(
             let (s1, s2, s3, s4) = (sid_m.clone(), sid_m.clone(), sid_m.clone(), sid_m.clone());
             let (t1, t4) = (title_m.clone(), title_m.clone());
             v_col()
-                .w(px(150.0))
+                .w(px(164.0))
                 .gap(px(2.0))
                 .child(menu_item(
                     "chat-rm-ren",
@@ -397,74 +388,52 @@ fn render_session_row(
         cx,
         cx.listener(move |this, _, _, cx| this.open_session(id.clone(), cx)),
     )
-    .items_start()
-    .py(px(7.0))
+    .items_center()
+    .py(px(6.0))
     .gap(px(4.0))
     .child(
-        v_col()
+        h_row()
             .flex_1()
             .min_w_0()
-            .gap(px(3.0))
+            .gap(px(5.0))
+            .children(if needs_approval {
+                Some(status_indicator(StatusShape::Warn, cx))
+            } else if s.running {
+                Some(status_indicator(StatusShape::Run, cx))
+            } else {
+                None
+            })
+            .children(s.pinned.then(|| {
+                div()
+                    .flex_shrink_0()
+                    .text_color(to_hsla(p.muted))
+                    .child(icon_xs(UiIcon::Pin))
+            }))
             .child(
-                h_row()
-                    .justify_between()
-                    .gap(px(4.0))
-                    .child(
-                        h_row()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(5.0))
-                            .children(if needs_approval {
-                                Some(status_indicator(StatusShape::Warn, cx))
-                            } else if s.running {
-                                Some(status_indicator(StatusShape::Run, cx))
-                            } else {
-                                None
-                            })
-                            .children(s.pinned.then(|| {
-                                div()
-                                    .text_color(to_hsla(p.muted))
-                                    .child(icon_xs(UiIcon::Pin))
-                            }))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_xs()
-                                    .font_weight(if sel {
-                                        gpui_kit::FontWeight::SEMIBOLD
-                                    } else {
-                                        gpui_kit::FontWeight::MEDIUM
-                                    })
-                                    .text_color(to_hsla(p.ink))
-                                    .truncate()
-                                    .child(SharedString::from(title)),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_xs()
-                            .text_color(to_hsla(p.faint))
-                            .child(SharedString::from(rel)),
-                    ),
-            )
-            .child(
-                h_row()
-                    .gap(px(4.0))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .truncate()
-                            .child(SharedString::from(subtitle)),
-                    )
-                    .children(
-                        s.archived
-                            .then(|| badge(if zh { "归档" } else { "Arch" }, Tone::Neutral, cx)),
-                    ),
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_xs()
+                    .font_weight(if sel {
+                        gpui_kit::FontWeight::SEMIBOLD
+                    } else {
+                        gpui_kit::FontWeight::MEDIUM
+                    })
+                    .text_color(to_hsla(p.ink))
+                    .truncate()
+                    .child(SharedString::from(title)),
             ),
+    )
+    .children(
+        s.archived
+            .then(|| badge(if zh { "归档" } else { "Arch" }, Tone::Neutral, cx)),
+    )
+    .child(
+        div()
+            .flex_shrink_0()
+            .text_size(px(11.0))
+            .text_color(to_hsla(p.faint))
+            .child(SharedString::from(rel)),
     )
     .child(menu)
 }

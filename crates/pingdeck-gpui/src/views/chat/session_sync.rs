@@ -8,14 +8,14 @@ use pingdeck_desktop::core::agent::model::{AgentEvent, AgentSessionFilter};
 use pingdeck_desktop::core::app::{
     AgentPageRequest, agent_board_impl, agent_changes_list_impl, agent_process_list_impl,
     agent_queue_list_impl, agent_run_subscribe_impl, agent_run_unsubscribe_impl,
-    agent_session_get_impl, agent_session_list_impl, agent_skill_list_impl,
-    agent_workspace_info_impl, environment_list_impl, workspace_list_impl,
+    agent_session_generate_title_impl, agent_session_get_impl, agent_session_list_impl,
+    agent_skill_list_impl, agent_workspace_info_impl, environment_list_impl, workspace_list_impl,
 };
 use pingdeck_desktop::core::logging::{LogLevel, log_line};
 use pingdeck_desktop::state::ChatThreadState;
 use pingdeck_desktop::streams::coalesced_agent_sink;
 
-use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 
 use super::actions::load_model_options;
 use super::{ChatView, reasoning};
@@ -137,7 +137,7 @@ impl ChatView {
                 self.stream_task = Some(subscribe_stream_into(cx, rx, 32, |this, batch, cx| {
                     let mut got_user_msg = false;
                     let mut got_run_started = false;
-                    let mut got_title = false;
+                    let mut got_title: Option<(String, String)> = None;
                     let mut got_finished = false;
                     let mut got_scroll_worthy = false;
                     let mut auto_expand_reasoning_ids: Vec<String> = Vec::new();
@@ -199,8 +199,8 @@ impl ChatView {
                             | AgentEvent::GateOpened { .. } => {
                                 got_scroll_worthy = true;
                             }
-                            AgentEvent::SessionTitleUpdated { .. } => {
-                                got_title = true;
+                            AgentEvent::SessionTitleUpdated { session_id, title } => {
+                                got_title = Some((session_id.clone(), title.clone()));
                             }
                             AgentEvent::Done { .. } | AgentEvent::Error { .. } => {
                                 got_finished = true;
@@ -226,21 +226,28 @@ impl ChatView {
                         this.run_started_at.get_or_insert_with(Instant::now);
                         this.start_elapsed_ticker(cx);
                     }
+                    if let Some((title_sid, updated_title)) = got_title {
+                        this.apply_session_title_locally(&title_sid, &updated_title, false);
+                        if this.title_generated_sessions.insert(title_sid.clone()) {
+                            this.spawn_auto_title_upgrade(title_sid, Some(updated_title), cx);
+                        }
+                        if !got_finished {
+                            this.refresh_catalog(cx);
+                        }
+                    }
                     if got_finished {
                         this.submitting = false;
                         this.run_started_at = None;
                         this.tick_task = None;
                         this.pending_user_text = None;
                         this.refresh_after_turn(cx);
-                    } else if got_title {
-                        this.refresh_catalog(cx);
                     }
                     if changed {
                         if this.thread.needs_reload {
                             let sid = this.thread.session_id.clone();
                             this.open_session(sid, cx);
                         } else if got_scroll_worthy {
-                            this.scroll_handle.scroll_to_bottom();
+                            this.auto_scroll_if_following();
                         }
                         cx.notify();
                     }
@@ -257,6 +264,65 @@ impl ChatView {
                 );
             }
         }
+    }
+
+    /// Reflects a session title update immediately in the active header and sidebar list.
+    pub(super) fn apply_session_title_locally(
+        &mut self,
+        session_id: &str,
+        title: &str,
+        lock: bool,
+    ) {
+        if self.thread.session_id == session_id {
+            self.thread.title = title.to_owned();
+            if let Some(session) = &mut self.session {
+                session.title = title.to_owned();
+                if lock {
+                    session.title_locked = true;
+                }
+            }
+        }
+        for row in &mut self.sessions {
+            if row.id == session_id {
+                row.title = title.to_owned();
+            }
+        }
+    }
+
+    /// Asynchronously asks the session's model to summarize the user's first question into a
+    /// concise title. Succeeding updates and locks the title; failing keeps the provisional title
+    /// untouched and locks it so it is never retried or modified again.
+    pub fn spawn_auto_title_upgrade(
+        &mut self,
+        session_id: String,
+        expected_current_title: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let sid_for_cb = session_id.clone();
+        let automatic = expected_current_title.is_some();
+        let task = spawn_async_into(
+            cx,
+            move |state| async move {
+                agent_session_generate_title_impl(
+                    &state,
+                    &session_id,
+                    expected_current_title.as_deref(),
+                )
+                .await
+            },
+            move |this, res, cx| {
+                if let Ok(Some(new_title)) = res {
+                    this.apply_session_title_locally(&sid_for_cb, &new_title, true);
+                    cx.notify();
+                } else if automatic
+                    && this.thread.session_id == sid_for_cb
+                    && let Some(session) = &mut this.session
+                {
+                    session.title_locked = true;
+                }
+            },
+        );
+        self._tasks.push(task);
     }
 
     pub(super) fn refresh_after_turn(&mut self, cx: &mut Context<Self>) {
@@ -289,12 +355,25 @@ impl ChatView {
                     this.thread.todos = detail.session.todos.clone();
                     this.thread.context_used_tokens = detail.session.last_context_tokens;
                     this.thread.cost_micro_usd = detail.session.total_cost_micro_usd;
+                    let keep_newer_locked_title = this.session.as_ref().is_some_and(|cur| {
+                        cur.id == detail.session.id
+                            && cur.title_locked
+                            && !detail.session.title_locked
+                    });
+                    let mut session = detail.session;
+                    if keep_newer_locked_title {
+                        session.title = this.thread.title.clone();
+                        session.title_locked = true;
+                    }
                     if !this.is_run_active() && detail.messages.len() >= this.thread.messages.len()
                     {
                         this.thread
-                            .replace_snapshot(detail.session.title.clone(), detail.messages);
+                            .replace_snapshot(session.title.clone(), detail.messages);
                     }
-                    this.session = Some(detail.session);
+                    if session.title_locked {
+                        this.title_generated_sessions.insert(session.id.clone());
+                    }
+                    this.session = Some(session);
                     cx.notify();
                 }
             },
@@ -323,6 +402,7 @@ impl ChatView {
         self.thinking_started_at = None;
         self.thinking_ended_at = None;
         self.collapsed_live_reasoning = false;
+        self.stick_to_bottom = true;
         self.pending_draft_sync = Some(self.drafts.get(&session_id).unwrap_or_default().to_owned());
 
         self.ensure_subscribed(&session_id, cx);
@@ -390,6 +470,10 @@ impl ChatView {
                     this.pending_instructions_sync =
                         Some(detail.session.instructions.clone().unwrap_or_default());
                     this.audit_tool_calls = detail.tool_calls;
+                    if detail.session.title_locked {
+                        this.title_generated_sessions
+                            .insert(detail.session.id.clone());
+                    }
                     this.session = Some(detail.session);
                     this.scroll_handle.scroll_to_bottom();
                 }

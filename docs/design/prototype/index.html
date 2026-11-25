@@ -1016,34 +1016,51 @@ currency=USD</div>
                 <div class="input-box sunken"><input placeholder="搜索对话…" /></div>
               </div>
               <div class="pane-body" data-select-list="chat-threads">
-                <div class="list-group-head"><span class="text-warn">▲ 需要你</span><span>1</span></div>
-                <button class="list-row selected">
-                  <div class="list-row-col">
-                    <span class="list-row-title">429s from the gateway</span>
-                    <span class="list-row-sub"><span class="text-warn">等待批准 · cargo clippy</span></span>
-                  </div>
+                <div class="list-group-head"><span class="text-warn">▲ 待你处理</span><span>1</span></div>
+                <button class="list-row chat-list-row selected">
+                  <span class="dot dot-warn"></span>
+                  <span class="list-row-title">修复网关 429 熔断与退避</span>
+                  <span class="chat-list-time">刚刚</span>
                 </button>
-                <div class="list-group-head"><span>已固定</span></div>
-                <button class="list-row"><div class="list-row-col"><span class="list-row-title">Gateway failover rules</span><span class="list-row-sub">Never switch after first token…</span></div></button>
-                <div class="list-group-head"><span>今天</span></div>
-                <button class="list-row"><div class="list-row-col"><span class="list-row-title">Compare TTFT across relays</span><span class="list-row-sub"><span class="dot dot-run" style="width:6px;height:6px"></span>运行中 · 2 分</span></div></button>
-                <button class="list-row"><div class="list-row-col"><span class="list-row-title">Summarise today's trace</span><span class="list-row-sub">1,284 requests · 37 failed</span></div></button>
+                <div class="list-group-head"><span>已置顶</span></div>
+                <button class="list-row chat-list-row">
+                  <span class="list-row-title">网关备用路由切换规则</span>
+                  <span class="chat-list-time">1时</span>
+                </button>
+                <div class="list-group-head"><span>最近对话</span></div>
+                <button class="list-row chat-list-row">
+                  <span class="dot dot-run" style="width:6px;height:6px"></span>
+                  <span class="list-row-title">中转站首字延迟对比分析</span>
+                  <span class="chat-list-time">2分</span>
+                </button>
+                <button class="list-row chat-list-row">
+                  <span class="list-row-title">今日网关调用故障汇总</span>
+                  <span class="chat-list-time">3时</span>
+                </button>
               </div>
               <div class="pane-foot"><button class="text-muted" data-toast="已归档对话：0 条">已归档</button><button class="text-muted" data-toast="回收站：2 条（14 天内可恢复）">最近删除</button></div>
             </div>
 
             <div class="work chat-main">
-              <div class="work-head">
-                <span class="work-title">429s from the gateway</span>
-                <button class="tag tag-accent" data-popover="chat-ws">工作区：Billing platform ▾</button>
-                <button class="tag mono" data-popover="chat-ws">~/me/PingDeck · main</button>
-                <div class="work-actions">
-                  <button class="btn btn-sm btn-ghost" data-toast="已导出对话 Markdown">导出</button>
-                  <button class="btn btn-sm" data-action="toggle-chat-details">详情栏</button>
+              <div class="chat-head">
+                <div class="chat-head-top">
+                  <div class="chat-head-title-wrap">
+                    <span class="work-title chat-head-title-trigger" title="点击修改标题">修复网关 429 熔断与退避</span>
+                  </div>
+                  <div class="work-actions">
+                    <button class="btn btn-sm btn-ghost" data-toast="已导出对话 Markdown">导出</button>
+                    <button class="btn btn-sm" data-action="toggle-chat-details">详情栏</button>
+                  </div>
+                </div>
+                <div class="chat-head-meta">
+                  <span class="tag mono">DeepSeek / deepseek-v4-pro</span>
+                  <button class="tag tag-accent" data-popover="chat-ws">工作区：Billing platform ▾</button>
+                  <button class="tag mono" data-popover="chat-ws">~/me/PingDeck · main</button>
                 </div>
               </div>
 
-              <div class="chat-thread">
+              <div class="chat-thread-wrap">
+              <div id="chat-thread-scroll" class="chat-thread">
                 <div class="chat-col">
                   <div class="user-bubble">网关遇到上游 429 时直接熔断了 60 秒，帮我查下 router.rs 并改成优先遵循一次 Retry-After 头。</div>
 
@@ -1090,8 +1107,18 @@ currency=USD</div>
                       2. 若等待后重试仍失败或未携带该头，在首个内容事件发出前按网关备用规则平滑切换下一目标；<code>router</code> 模块 14 项单测均已通过。<br/>
                       3. 接下来我需要运行一次 <code>cargo clippy</code> 检查无新增编译警告，请在下方确认执行。
                     </div>
+                    <div class="msg-stats">
+                      <span class="msg-stat" title="输入 Token: 18,400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>18.4K</span>
+                      <span class="msg-stat" title="输出 Token: 1,100"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>1.10K</span>
+                      <span class="msg-stat" title="上下文窗口: 18,400 / 128,000 (14%)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>18.4K/128K (14%)</span>
+                      <span class="msg-stat" title="总耗时: 4.30s（首字 1.20s · 生成 3.10s）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg>4.30s</span>
+                      <span class="msg-stat" title="生成速度: 52.4 tok/s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>52.4/s</span>
+                      <span class="msg-stat" title="估算费用: $0.018"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>$0.018</span>
+                    </div>
                   </div>
                 </div>
+              </div>
+              <button id="chat-jump-btn" class="btn btn-sm chat-jump-btn" hidden data-action="chat-jump-bottom">跳到最新 ↓</button>
               </div>
 
               <!-- Separated Floating Action-Required Gate Card + Composer -->
@@ -1116,7 +1143,7 @@ currency=USD</div>
                   </div>
                 </div>
 
-                <div id="chat-gate-resolved" hidden style="max-width:780px;width:100%;margin:0 auto;padding:8px 14px;border-radius:var(--r-md);background:var(--ok-soft);border:1px solid var(--ok-border);font-size:12px;color:var(--ok);display:flex;align-items:center;justify-content:space-between">
+                <div id="chat-gate-resolved" hidden style="max-width:1080px;width:100%;margin:0 auto;padding:8px 14px;border-radius:var(--r-md);background:var(--ok-soft);border:1px solid var(--ok-border);font-size:12px;color:var(--ok);display:flex;align-items:center;justify-content:space-between">
                   <span id="chat-gate-resolved-text">✓ 已批准执行命令，智能体继续运行中…</span>
                   <button class="btn btn-sm" data-action="reset-gate">还原审批演示</button>
                 </div>

@@ -220,8 +220,8 @@ ul, ol { list-style: none; }
 .app-window.rail .main-wrap { padding-top: 38px; }
 .page-card {
   flex: 1; min-width: 0; min-height: 0;
-  background: var(--bg-surface); border-radius: var(--r-xl);
-  border: 1px solid var(--page-edge); box-shadow: var(--shadow-card), var(--highlight);
+  background: var(--bg-surface); border-radius: var(--r-lg);
+  border: 1px solid var(--page-edge);
   overflow: hidden; display: flex; contain: layout style;
 }
 .module-view { display: none; flex: 1; min-width: 0; min-height: 0; }

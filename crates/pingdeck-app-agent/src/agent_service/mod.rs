@@ -30,6 +30,7 @@ mod skill_delivery;
 mod subagent;
 #[cfg(test)]
 mod tests;
+mod title;
 mod tool_output;
 mod tools;
 mod trust;
@@ -98,6 +99,7 @@ pub use sessions::{
     agent_session_set_head_impl, agent_session_update_impl,
 };
 pub(crate) use subagent::run_subagent;
+pub use title::agent_session_generate_title_impl;
 pub(crate) use tool_output::agent_tool_output_read_all_impl;
 pub use tool_output::{agent_tool_output_delete_impl, agent_tool_output_read_impl};
 pub use trust::{

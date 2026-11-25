@@ -172,10 +172,31 @@
 
 /* ── Module 6: Chat / Agent (Worked Trace + Assistant Summary + Gate Dock) ─ */
 .chat-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-thread { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; }
-.chat-col { width: 100%; max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.chat-head {
+  flex: none; padding: 8px 16px; border-bottom: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column; gap: 5px; background: var(--bg-surface);
+}
+.chat-head-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.chat-head-title-wrap { flex: 1; min-width: 0; display: flex; align-items: center; }
+.chat-head-title-trigger {
+  max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 6px; margin-left: -6px; border-radius: 6px; cursor: pointer;
+  transition: background .12s ease;
+}
+.chat-head-title-trigger:hover { background: var(--bg-hover); }
+.chat-head-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.chat-list-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px; }
+.chat-list-row .list-row-title { flex: 1; min-width: 0; }
+.chat-list-time { flex: none; font-size: 11px; color: var(--ink-4); }
+.chat-thread-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-thread { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.chat-col { width: 100%; max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.chat-jump-btn {
+  position: absolute; right: 18px; bottom: 10px; z-index: 4;
+  box-shadow: var(--shadow-pop);
+}
 .user-bubble {
-  align-self: flex-end; max-width: 82%; padding: 9px 14px; border-radius: 14px 14px 4px 14px;
+  align-self: flex-end; max-width: 78%; padding: 9px 14px; border-radius: 14px 14px 4px 14px;
   background: var(--bg-bubble-user); color: var(--ink-1); font-size: 13.5px; line-height: 1.55;
 }
 .trace-card { border: 1px solid var(--border-subtle); border-radius: var(--r-lg); background: var(--bg-elevated); overflow: hidden; }
@@ -202,10 +223,21 @@
   border: 1px solid var(--border-subtle); font-size: 13px; line-height: 1.6; color: var(--ink-1);
   display: flex; flex-direction: column; gap: 8px;
 }
+.msg-stats {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px;
+  padding-top: 6px; border-top: 1px solid var(--border-subtle);
+  font-size: 11px; color: var(--ink-3); font-family: var(--font-mono);
+}
+.msg-stat {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--ink-3); transition: color .12s ease; cursor: default;
+}
+.msg-stat:hover { color: var(--ink-1); }
+.msg-stat svg { width: 11.5px; height: 11.5px; flex: none; opacity: .88; }
 
-.chat-dock { flex: none; padding: 6px 24px 14px; display: flex; flex-direction: column; gap: 10px; }
+.chat-dock { flex: none; padding: 6px 16px 12px; display: flex; flex-direction: column; gap: 10px; }
 .gate-card {
-  position: relative; width: 100%; max-width: 780px; margin: 0 auto;
+  position: relative; width: 100%; max-width: 1080px; margin: 0 auto;
   border-radius: var(--r-lg); background: var(--bg-elevated);
   border: 1px solid var(--warn-border);
   box-shadow: var(--shadow-gate); overflow: hidden;
@@ -223,7 +255,7 @@
 .gate-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 .composer-card {
-  width: 100%; max-width: 780px; margin: 0 auto;
+  width: 100%; max-width: 1080px; margin: 0 auto;
   border-radius: 18px; background: var(--bg-surface);
   border: 1px solid var(--border-control); box-shadow: var(--shadow-card);
   padding: 8px 10px 8px 12px; display: flex; flex-direction: column; gap: 8px;
