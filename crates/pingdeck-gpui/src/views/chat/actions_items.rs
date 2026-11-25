@@ -69,7 +69,10 @@ impl ChatView {
                     Ok(forked) => {
                         this.refresh_catalog(cx);
                         this.open_session(forked.id, cx);
-                        this.status_msg = Some((Tone::Success, "已从此处分支出新对话".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).chat().act_branched().into(),
+                        ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -182,7 +185,10 @@ impl ChatView {
                 match res {
                     Ok(list) => {
                         this.persisted_changes = list;
-                        this.status_msg = Some((Tone::Success, "已还原文件变更".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).chat().act_reverted_change().into(),
+                        ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -215,7 +221,10 @@ impl ChatView {
         if sid.is_empty() || self.is_run_active() {
             return;
         }
-        self.status_msg = Some((Tone::Accent, "正在压缩上下文…".into()));
+        self.status_msg = Some((
+            Tone::Accent,
+            crate::ui::tr(cx).chat().act_compacting().into(),
+        ));
         cx.notify();
         let task = spawn_async_into(
             cx,
@@ -223,7 +232,10 @@ impl ChatView {
             |this, res, cx| {
                 match res {
                     Ok(_) => {
-                        this.status_msg = Some((Tone::Success, "已完成上下文压缩".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).chat().act_compacted().into(),
+                        ));
                         this.refresh_after_turn(cx);
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),

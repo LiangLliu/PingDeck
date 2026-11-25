@@ -24,7 +24,6 @@ use super::resp_http_timing::render_timing_popover;
 
 pub fn render_http_response(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -40,42 +39,41 @@ pub fn render_http_response(
             .gap(px(10.0))
             .bg(to_hsla(p.surface))
             .child(status_indicator(StatusShape::Run, cx))
-            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "正在等待服务器响应…（可随时点击上方「停止请求」）"
-            } else {
-                "Waiting for response… (click Stop request above to cancel)"
-            }))
+            .child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .exchange()
+                        .resp_http_waiting_for_response_click_stop(),
+                ),
+            )
             .into_any_element();
     }
 
     if let Some(fail) = &tab.failure
         && tab.last_http.is_none()
     {
-        return render_failure_card(fail, zh, cx).into_any_element();
+        return render_failure_card(fail, cx).into_any_element();
     }
 
     let Some(resp) = &tab.last_http else {
         return empty_state_with_actions(
             UiIcon::Send,
-            if zh {
-                "准备就绪，发送请求以检视实时响应"
-            } else {
-                "Ready to send"
-            },
-            if zh {
-                "支持状态码、阶段耗时瀑布图、响应头、Cookie 罐追踪、JSONPath 筛选及声明式断言检查。"
-            } else {
-                "Inspect status, timing waterfall, headers, cookies, JSONPath filter, and assertions."
-            },
+            crate::ui::tr(cx).exchange().resp_http_ready_to_send(),
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_inspect_status_timing_waterfall_headers(),
             Some(
                 h_row()
                     .gap(px(8.0))
                     .child(
-                        btn_primary("resp-empty-send", if zh { "立即发送" } else { "Send now" })
-                            .icon(icon_xs(UiIcon::Send))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.send_active_request(None, None, window, cx);
-                            })),
+                        btn_primary(
+                            "resp-empty-send",
+                            crate::ui::tr(cx).exchange().resp_ai_send_now(),
+                        )
+                        .icon(icon_xs(UiIcon::Send))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.send_active_request(None, None, window, cx);
+                        })),
                     )
                     .child(kbd_chip("⌘↵", cx))
                     .into_any_element(),
@@ -136,11 +134,16 @@ pub fn render_http_response(
                     status_tone,
                     cx,
                 ))
-                .child(render_timing_popover(resp, zh, cx))
-                .child(kv_chip(if zh { "大小" } else { "Size" }, size_text, cx))
+                .child(render_timing_popover(resp, cx))
+                .child(kv_chip(
+                    crate::ui::tr(cx).exchange().view_size(),
+                    size_text,
+                    cx,
+                ))
                 .child(badge(proto_text, Tone::Neutral, cx))
                 .children(tab.last_http_at_ms.map(|ts| {
-                    let age = format_relative_age(ts, current_time_ms(), zh);
+                    let lang = crate::ui::active_language(cx);
+                    let age = format_relative_age(ts, current_time_ms(), lang);
                     div()
                         .text_size(px(11.0))
                         .text_color(to_hsla(p.faint))
@@ -148,22 +151,16 @@ pub fn render_http_response(
                 }))
                 .children(has_check_fail.then(|| {
                     badge(
-                        if zh {
-                            format!("检查未通过 ({tests_passed}/{tests_total})")
-                        } else {
-                            format!("Checks failed ({tests_passed}/{tests_total})")
-                        },
+                        crate::ui::tr(cx)
+                            .exchange()
+                            .resp_http_checks_failed(tests_passed, tests_total),
                         Tone::Danger,
                         cx,
                     )
                 }))
                 .children((!resp.history_saved).then(|| {
                     badge(
-                        if zh {
-                            "未写入历史"
-                        } else {
-                            "Not in history"
-                        },
+                        crate::ui::tr(cx).exchange().resp_http_not_in_history(),
                         Tone::Warning,
                         cx,
                     )
@@ -174,31 +171,33 @@ pub fn render_http_response(
                 .gap(px(4.0))
                 .flex_shrink_0()
                 .child(
-                    btn_ghost("resp-save-file", if zh { "保存正文" } else { "Save" })
-                        .icon(icon_xs(UiIcon::Download))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.save_response_body_to_file(cx);
-                        })),
+                    btn_ghost(
+                        "resp-save-file",
+                        crate::ui::tr(cx).exchange().resp_http_save(),
+                    )
+                    .icon(icon_xs(UiIcon::Download))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.save_response_body_to_file(cx);
+                    })),
                 )
                 .child(
                     btn_secondary(
                         "resp-ask-agent",
-                        if zh { "询问智能体" } else { "Ask Agent" },
+                        crate::ui::tr(cx).exchange().resp_ai_ask_agent(),
                     )
                     .icon(icon_xs(UiIcon::Sparkles))
                     .on_click(cx.listener(|this, _, _, cx| this.handoff_ask_agent_http(cx))),
                 )
                 .child(
                     btn_icon("resp-copy-body", UiIcon::Copy)
-                        .tooltip(if zh {
-                            "复制响应正文"
-                        } else {
-                            "Copy response"
-                        })
+                        .tooltip(crate::ui::tr(cx).exchange().resp_http_copy_response())
                         .on_click(cx.listener(|this, _, _, cx| {
                             let txt = this.response_editor.read(cx).value().to_string();
                             let _ = clipboard::set_text(&txt);
-                            this.status_msg = Some((Tone::Success, "已复制响应正文".into()));
+                            this.status_msg = Some((
+                                Tone::Success,
+                                crate::ui::tr(cx).exchange().resp_http_copied_body().into(),
+                            ));
                             cx.notify();
                         })),
                 ),
@@ -207,27 +206,23 @@ pub fn render_http_response(
     // 2. Response Sub-tabs + Pretty/Raw & Format Picker
     let ent_t = cx.entity().clone();
     let test_lbl = if tests_total > 0 {
-        if zh {
-            format!("测试 ({tests_passed}/{tests_total})")
-        } else {
-            format!("Tests ({tests_passed}/{tests_total})")
-        }
-    } else if zh {
-        "测试".into()
+        crate::ui::tr(cx)
+            .exchange()
+            .resp_http_tests(tests_passed, tests_total)
     } else {
-        "Tests".into()
+        crate::ui::tr(cx).exchange().resp_ai_tests_2().into()
     };
 
     let tabs = tab_bar_underline("req-http-resp-tabs")
         .selected_index(tab.http_resp_tab.index())
-        .child(tab_item(if zh { "正文" } else { "Body" }))
-        .child(tab_item(if zh {
-            format!("响应头 ({})", resp.headers.len())
-        } else {
-            format!("Headers ({})", resp.headers.len())
-        }))
+        .child(tab_item(crate::ui::tr(cx).exchange().resp_http_body()))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_headers(resp.headers.len()),
+        ))
         .child(tab_item(format!("Cookie ({})", resp.cookies.len())))
-        .child(tab_item(if zh { "追踪" } else { "Trace" }))
+        .child(tab_item(crate::ui::tr(cx).exchange().trace_region()))
         .child(tab_item(test_lbl))
         .on_click(move |idx, _, cx| {
             let next = HttpRespTab::from_index(*idx);
@@ -249,8 +244,8 @@ pub fn render_http_response(
         .child(
             tab_bar_segmented("resp-pretty-seg")
                 .selected_index(usize::from(!cur_pretty))
-                .child(tab_item(if zh { "格式化" } else { "Pretty" }))
-                .child(tab_item(if zh { "原文" } else { "Raw" }))
+                .child(tab_item(crate::ui::tr(cx).exchange().body_pretty()))
+                .child(tab_item(crate::ui::tr(cx).exchange().body_raw()))
                 .on_click(move |idx, window, cx| {
                     ent_pr.update(cx, |this, cx| {
                         this.set_http_response_format(cur_fmt, *idx == 0, window, cx);
@@ -296,54 +291,44 @@ pub fn render_http_response(
     // Optional banners for incomplete / truncated / saved-to-file / failed retry.
     if let Some(reason) = resp.body_incomplete {
         let msg = match reason {
-            BodyIncomplete::IdleTimeout => {
-                if zh {
-                    "响应正文提前结束（空闲超时）；已保留状态码、响应头和已收到的正文。"
-                } else {
-                    "Body ended early (idle timeout); partial bytes kept."
-                }
-            }
-            BodyIncomplete::TotalTimeout => {
-                if zh {
-                    "响应正文提前结束（达到总时限）；已保留已收到的部分。"
-                } else {
-                    "Body ended early (total timeout); partial bytes kept."
-                }
-            }
-            BodyIncomplete::Cancelled => {
-                if zh {
-                    "用户停止了响应读取；已保留状态码、响应头和已收到的正文。"
-                } else {
-                    "Stopped by user after headers; partial bytes kept."
-                }
-            }
+            BodyIncomplete::IdleTimeout => crate::ui::tr(cx)
+                .exchange()
+                .resp_http_body_ended_early_idle_timeout(),
+            BodyIncomplete::TotalTimeout => crate::ui::tr(cx)
+                .exchange()
+                .resp_http_body_ended_early_total_timeout(),
+            BodyIncomplete::Cancelled => crate::ui::tr(cx)
+                .exchange()
+                .resp_http_stopped_by_user_after_headers(),
         };
         root = root.child(warning_strip(msg, cx));
     } else if resp.body_truncated {
         root = root.child(warning_strip(
-            if zh {
-                "响应正文超过捕获上限，当前显示已捕获前缀。可点击「保存正文」或「发送并保存到文件」获取完整内容。"
-            } else {
-                "Response body exceeded capture limit. Use Send & Save to File for the full payload."
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_response_body_exceeded_capture_limit(),
             cx,
         ));
     }
     if let Some(saved_path) = &resp.saved_body_path {
-        root = root.child(div().px(px(12.0)).pt(px(6.0)).child(alert_banner(
-            Tone::Success,
-            format!("完整正文已流式写入：{saved_path}"),
-            None,
-            cx,
-        )));
+        root = root.child(
+            div().px(px(12.0)).pt(px(6.0)).child(alert_banner(
+                Tone::Success,
+                crate::ui::tr(cx)
+                    .exchange()
+                    .resp_http_streamed_to(saved_path),
+                None,
+                cx,
+            )),
+        );
     }
 
     let content: gpui_kit::AnyElement = match tab.http_resp_tab {
-        HttpRespTab::Body => render_resp_body(view, zh, cx).into_any_element(),
-        HttpRespTab::Headers => render_resp_headers(resp, zh, cx).into_any_element(),
-        HttpRespTab::Cookies => render_resp_cookies(resp, zh, cx).into_any_element(),
-        HttpRespTab::Trace => render_resp_trace(resp, zh, cx).into_any_element(),
-        HttpRespTab::Tests => render_resp_tests(resp, zh, cx).into_any_element(),
+        HttpRespTab::Body => render_resp_body(view, cx).into_any_element(),
+        HttpRespTab::Headers => render_resp_headers(resp, cx).into_any_element(),
+        HttpRespTab::Cookies => render_resp_cookies(resp, cx).into_any_element(),
+        HttpRespTab::Trace => render_resp_trace(resp, cx).into_any_element(),
+        HttpRespTab::Tests => render_resp_tests(resp, cx).into_any_element(),
     };
 
     let right_fmt =
@@ -356,7 +341,6 @@ pub fn render_http_response(
 
 fn render_failure_card(
     fail: &RequestFailureInfo,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -374,11 +358,7 @@ fn render_failure_card(
                 .child(badge(fail.kind_label.clone(), tone, cx))
                 .children(fail.attempt_count.map(|n| {
                     badge(
-                        if zh {
-                            format!("已尝试 {n} 次")
-                        } else {
-                            format!("{n} attempts")
-                        },
+                        crate::ui::tr(cx).exchange().resp_http_attempts(n),
                         Tone::Neutral,
                         cx,
                     )
@@ -399,27 +379,26 @@ fn render_failure_card(
         card_body = card_body.child(chips);
     }
     if fail.history_unsaved {
-        card_body = card_body.child(div().text_size(px(11.0)).text_color(to_hsla(p.warn)).child(
-            if zh {
-                "本次失败记录未能写入历史。"
-            } else {
-                "Failed to record this failure in history."
-            },
-        ));
+        card_body = card_body.child(
+            div().text_size(px(11.0)).text_color(to_hsla(p.warn)).child(
+                crate::ui::tr(cx)
+                    .exchange()
+                    .resp_http_failed_to_record_this_failure(),
+            ),
+        );
     }
 
     card_body = card_body.child(
         h_row()
             .gap(px(8.0))
             .child(
-                btn_secondary("fail-retry", if zh { "重试发送" } else { "Retry" }).on_click(
-                    cx.listener(|this, _, window, cx| {
+                btn_secondary("fail-retry", crate::ui::tr(cx).exchange().resp_http_retry())
+                    .on_click(cx.listener(|this, _, window, cx| {
                         this.send_active_request(None, None, window, cx);
-                    }),
-                ),
+                    })),
             )
             .child(
-                btn_ghost("fail-ask", if zh { "询问智能体" } else { "Ask Agent" })
+                btn_ghost("fail-ask", crate::ui::tr(cx).exchange().resp_ai_ask_agent())
                     .on_click(cx.listener(|this, _, _, cx| this.handoff_ask_agent_http(cx))),
             ),
     );

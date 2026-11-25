@@ -4,10 +4,14 @@
 use pingdeck_core::{
     agent::attention::AgentAttention,
     app::RunningWork,
-    model::{Workspace, settings::Settings},
+    model::{
+        Workspace,
+        settings::{Language, Settings},
+    },
 };
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::tr;
 use crate::persistence::UiLocalState;
 use crate::theme::PaletteId;
 
@@ -102,19 +106,20 @@ impl NavModule {
         }
     }
 
-    /// Bilingual `(zh-CN, en)` module label (also resolvable via `i18n`).
+    /// Localized module label sourced from `locales/shell/`.
     #[must_use]
-    pub const fn label_pair(self) -> (&'static str, &'static str) {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let sh = tr(lang).shell();
         match self {
-            Self::Requests => ("请求", "Requests"),
-            Self::Mock => ("Mock 服务", "Mock"),
-            Self::Flows => ("流程", "Flows"),
-            Self::History => ("历史", "History"),
-            Self::Environments => ("环境", "Environments"),
-            Self::Chat => ("对话", "Chat"),
-            Self::Providers => ("服务商", "Providers"),
-            Self::Usage => ("用量与日志", "Usage & Logs"),
-            Self::Settings => ("设置", "Settings"),
+            Self::Requests => sh.nav_requests(),
+            Self::Mock => sh.nav_mock_short(),
+            Self::Flows => sh.nav_flows(),
+            Self::History => sh.nav_history(),
+            Self::Environments => sh.nav_environments(),
+            Self::Chat => sh.nav_chat(),
+            Self::Providers => sh.nav_providers(),
+            Self::Usage => sh.nav_usage_short(),
+            Self::Settings => sh.nav_settings(),
         }
     }
 }
@@ -141,14 +146,15 @@ impl UtilityDialog {
     ];
 
     #[must_use]
-    pub const fn label_pair(self) -> (&'static str, &'static str) {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let sh = tr(lang).shell();
         match self {
-            Self::ImportExport => ("导入与导出", "Import & Export"),
-            Self::Sync => ("文件夹同步", "Folder Sync"),
-            Self::Cookies => ("Cookie 管理器", "Cookies"),
-            Self::Certificates => ("客户端证书与 CA", "Certificates"),
-            Self::Console => ("诊断控制台", "Console"),
-            Self::Runner => ("集合运行器", "Collection Runner"),
+            Self::ImportExport => sh.util_import_export(),
+            Self::Sync => sh.util_sync(),
+            Self::Cookies => sh.util_cookies(),
+            Self::Certificates => sh.util_certificates(),
+            Self::Console => sh.util_console(),
+            Self::Runner => sh.util_runner(),
         }
     }
 }
@@ -173,13 +179,14 @@ impl SettingsGroup {
     ];
 
     #[must_use]
-    pub const fn label_pair(self) -> (&'static str, &'static str) {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let sh = tr(lang).shell();
         match self {
-            Self::General => ("通用", "General"),
-            Self::RequestsAndData => ("请求与数据", "Requests & Data"),
-            Self::Agent => ("智能体", "Agent"),
-            Self::Models => ("模型", "Models"),
-            Self::System => ("系统", "System"),
+            Self::General => sh.settings_group_general(),
+            Self::RequestsAndData => sh.settings_group_requests_and_data(),
+            Self::Agent => sh.settings_group_agent(),
+            Self::Models => sh.settings_group_models(),
+            Self::System => sh.settings_group_system(),
         }
     }
 }
@@ -256,28 +263,29 @@ impl SettingsSection {
     }
 
     #[must_use]
-    pub const fn label_pair(self) -> (&'static str, &'static str) {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let sh = tr(lang).shell();
         match self {
-            Self::General => ("通用", "General"),
-            Self::Appearance => ("外观", "Appearance"),
-            Self::Shortcuts => ("快捷键", "Shortcuts"),
-            Self::Requests => ("请求默认值", "Request Defaults"),
-            Self::Network => ("网络", "Network"),
-            Self::Mock => ("Mock 服务", "Mock"),
-            Self::Data => ("数据与同步", "Data & Sync"),
-            Self::Agent => ("默认", "Defaults"),
-            Self::Personalization => ("个性与指令", "Personalization"),
-            Self::Memory => ("项目指令与信任", "Project Instructions & Trust"),
-            Self::Subagents => ("子智能体", "Subagents"),
-            Self::Tools => ("工具", "Tools"),
-            Self::Permissions => ("权限", "Permissions"),
-            Self::Mcp => ("MCP 服务器", "MCP Servers"),
-            Self::Skills => ("技能", "Skills"),
-            Self::Routing => ("重试与故障转移", "Routing & Failover"),
-            Self::Catalog => ("模型与价格", "Models & Pricing"),
-            Self::Usage => ("用量统计", "Usage"),
-            Self::Advanced => ("高级", "Advanced"),
-            Self::About => ("关于", "About"),
+            Self::General => sh.settings_section_general(),
+            Self::Appearance => sh.settings_section_appearance(),
+            Self::Shortcuts => sh.settings_section_shortcuts(),
+            Self::Requests => sh.settings_section_requests(),
+            Self::Network => sh.settings_section_network(),
+            Self::Mock => sh.settings_section_mock(),
+            Self::Data => sh.settings_section_data(),
+            Self::Agent => sh.settings_section_agent(),
+            Self::Personalization => sh.settings_section_personalization(),
+            Self::Memory => sh.settings_section_memory(),
+            Self::Subagents => sh.settings_section_subagents(),
+            Self::Tools => sh.settings_section_tools(),
+            Self::Permissions => sh.settings_section_permissions(),
+            Self::Mcp => sh.settings_section_mcp(),
+            Self::Skills => sh.settings_section_skills(),
+            Self::Routing => sh.settings_section_routing(),
+            Self::Catalog => sh.settings_section_catalog(),
+            Self::Usage => sh.settings_section_usage(),
+            Self::Advanced => sh.settings_section_advanced(),
+            Self::About => sh.settings_section_about(),
         }
     }
 }

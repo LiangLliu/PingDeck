@@ -26,7 +26,7 @@ use pingdeck_desktop::core::model::model_catalog::{
     CatalogKind, CatalogSource, ModelCatalogPage, ModelCatalogQuery, ModelCatalogRow,
     ModelCatalogStatus, ModelCatalogSyncReport, PricingFilter,
 };
-use pingdeck_desktop::core::model::settings::{Language, Settings, SettingsSection as CoreSection};
+use pingdeck_desktop::core::model::settings::{Settings, SettingsSection as CoreSection};
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::{InputEvent, InputState, Tone, WindowExt as _, v_col};
@@ -62,13 +62,12 @@ pub struct CatalogSettingsView {
 impl CatalogSettingsView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = settings_get_impl(runtime(cx).state());
-        let zh = settings.general.language == Language::ZhCn;
         let search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(if zh {
-                "按名称、ID、厂商或分发商搜索…"
-            } else {
-                "Search by name, ID, publisher or distributor…"
-            })
+            InputState::new(window, cx).placeholder(
+                crate::ui::tr(cx)
+                    .settings()
+                    .catalog_search_by_name_id_publisher(),
+            )
         });
         let search_sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
@@ -329,7 +328,6 @@ impl CatalogSettingsView {
         provider_id: String,
         provider_name: String,
         catalog_family: Option<String>,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let task = spawn_async_into(
@@ -341,11 +339,9 @@ impl CatalogSettingsView {
                 match res {
                     Ok(views) => {
                         this.provider_pricing = views;
-                        let msg = if zh {
-                            format!("已保存 {provider_name} 的计价")
-                        } else {
-                            format!("Saved pricing for {provider_name}")
-                        };
+                        let msg = crate::ui::tr(cx)
+                            .settings()
+                            .catalog_saved_pricing_for(provider_name);
                         this.flash_msg = Some((Tone::Success, msg));
                         this.load_page(false, cx);
                     }
@@ -401,24 +397,22 @@ impl CatalogSettingsView {
 
 impl Render for CatalogSettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
-
         let mut root = v_col().w_full().gap(px(18.0)).pb(px(24.0));
 
         if let Some((tone, msg)) = &self.flash_msg {
             root = root.child(sync_section::render_flash_banner(*tone, msg, cx));
         }
 
-        root = root.child(sync_section::render_sync_section(self, zh, cx));
+        root = root.child(sync_section::render_sync_section(self, cx));
 
         if !self.provider_pricing.is_empty() {
-            root = root.child(sync_section::render_provider_pricing_section(self, zh, cx));
+            root = root.child(sync_section::render_provider_pricing_section(self, cx));
         }
 
-        root = root.child(models_table::render_models_section(self, zh, cx));
+        root = root.child(models_table::render_models_section(self, cx));
 
         if !self.unlisted.is_empty() {
-            root = root.child(models_table::render_unlisted_section(self, zh, cx));
+            root = root.child(models_table::render_unlisted_section(self, cx));
         }
 
         root

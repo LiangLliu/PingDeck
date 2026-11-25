@@ -384,12 +384,11 @@ impl RequestsView {
                 }
                 match res {
                     Ok(dto) => {
-                        let summary = format!(
-                            "AI {} → {} ({} ms, {} 帧)",
-                            dto.model,
+                        let summary = crate::ui::tr(cx).requests().act_ai_console_summary(
+                            &dto.model,
                             dto.status.label(),
                             dto.total_ms,
-                            dto.event_count
+                            dto.event_count,
                         );
                         this.push_console("AI", ConsoleLevel::Info, summary, dto.message.clone());
                         for c in &dto.console {
@@ -422,7 +421,7 @@ impl RequestsView {
                         );
                         if let Some(t) = this.tab_req_mut(&tid) {
                             t.failure = Some(RequestFailureInfo {
-                                kind_label: "AI 执行失败 / AI Error".into(),
+                                kind_label: crate::ui::tr(cx).requests().act_ai_fail_kind().into(),
                                 message: err.message().to_owned(),
                                 attempt_count: None,
                                 connect_phase: None,

@@ -15,7 +15,6 @@ use super::state::FlowsView;
 
 pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let q = view.search_input.read(cx).value().trim().to_lowercase();
 
     let filtered: Vec<_> = view
@@ -29,15 +28,18 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
         .collect();
 
     let header = pane_header(
-        view.t("流程", "Flows"),
+        crate::ui::Tr(view.lang).flows().pane_title(),
         Some(view.entries.len()),
         Some(
-            btn_primary("flow-new-btn", view.t("新建", "New"))
-                .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_create_flow_modal(window, cx);
-                }))
-                .into_any_element(),
+            btn_primary(
+                "flow-new-btn",
+                crate::ui::Tr(view.lang).flows().sidebar_new(),
+            )
+            .icon(icon_xs(UiIcon::Plus))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_create_flow_modal(window, cx);
+            }))
+            .into_any_element(),
         ),
         Some(search_input(&view.search_input, cx).into_any_element()),
         cx,
@@ -47,14 +49,15 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
     if filtered.is_empty() {
         list = list.child(empty_inline(
             if view.entries.is_empty() {
-                view.t("暂无流程", "No flows yet")
+                crate::ui::Tr(view.lang).flows().sidebar_no_flows_yet()
             } else {
-                view.t("没有匹配的流程", "No matching flows")
+                crate::ui::Tr(view.lang).flows().sidebar_no_matching_flows()
             },
-            Some(SharedString::from(view.t(
-                "将多个 API 请求按步骤串联，自动提取变量并验证断言。",
-                "Chain API requests step-by-step with variable extractions and assertions.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .sidebar_chain_api_requests_step_by(),
+            )),
             None,
             cx,
         ));
@@ -73,11 +76,9 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
                     None => StatusShape::Idle,
                 }
             };
-            let steps_text = if zh {
-                format!("{} 步", entry.flow.steps.len())
-            } else {
-                format!("{} steps", entry.flow.steps.len())
-            };
+            let steps_text = crate::ui::tr(cx)
+                .flows()
+                .sidebar_steps(entry.flow.steps.len());
 
             let mut row = list_row(
                 SharedString::from(format!("flow-item-{}", entry.flow.id)),
@@ -107,18 +108,24 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
                         h_row()
                             .gap(px(6.0))
                             .child(meta_pill(steps_text, cx))
-                            .children(
-                                is_running_row.then(|| {
-                                    badge(view.t("↻ 运行中", "↻ Running"), Tone::Accent, cx)
-                                }),
-                            )
+                            .children(is_running_row.then(|| {
+                                badge(
+                                    crate::ui::Tr(view.lang).flows().sidebar_running(),
+                                    Tone::Accent,
+                                    cx,
+                                )
+                            }))
                             .children(
                                 (!is_running_row)
                                     .then_some(entry.last_run.as_ref())
                                     .flatten()
                                     .map(|r| {
                                         if r.cancelled {
-                                            badge(view.t("已取消", "Cancelled"), Tone::Warning, cx)
+                                            badge(
+                                                crate::ui::Tr(view.lang).flows().row_cancelled(),
+                                                Tone::Warning,
+                                                cx,
+                                            )
                                         } else if r.passed {
                                             badge(format!("{} ms", r.elapsed_ms), Tone::Success, cx)
                                         } else {
@@ -150,11 +157,7 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
         div()
             .text_size(px(11.0))
             .text_color(to_hsla(p.muted))
-            .child(if zh {
-                format!("共 {} 条流程", view.entries.len())
-            } else {
-                format!("{} flows", view.entries.len())
-            }),
+            .child(crate::ui::tr(cx).flows().sidebar_flows(view.entries.len())),
         Some(
             btn_icon("flow-refresh-btn", UiIcon::Refresh)
                 .on_click(cx.listener(|this, _, _, cx| {

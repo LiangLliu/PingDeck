@@ -23,7 +23,6 @@ pub fn render_provider_family_picker(
     sug_name: Option<String>,
     current_label: String,
     fams: Vec<ModelCatalogFamily>,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement + use<> {
     let view_ent = cx.entity().clone();
@@ -57,17 +56,19 @@ pub fn render_provider_family_picker(
                     pop_cx,
                     move |_, window, cx| {
                         e1.update(cx, |this, cx| {
-                            this.save_provider_pricing(pid1.clone(), pname1.clone(), None, zh, cx);
+                            this.save_provider_pricing(pid1.clone(), pname1.clone(), None, cx);
                         });
                         ph1.update(cx, |st, cx| st.dismiss(window, cx));
                     },
                 )
                 .justify_between()
-                .child(div().text_xs().child(if zh {
-                    "跟随官方价（默认）"
-                } else {
-                    "Follow official prices"
-                }))
+                .child(
+                    div().text_xs().child(
+                        crate::ui::tr(pop_cx)
+                            .settings()
+                            .filters_follow_official_prices(),
+                    ),
+                )
                 .children(sel_off.then(|| {
                     div()
                         .text_color(to_hsla(pop_p.accent))
@@ -77,11 +78,7 @@ pub fn render_provider_family_picker(
 
             if let Some(sf) = &sug_fam {
                 let sname = sug_name.as_deref().unwrap_or(sf.as_str());
-                let label = if zh {
-                    format!("{sname}（建议）")
-                } else {
-                    format!("{sname} (suggested)")
-                };
+                let label = crate::ui::tr(pop_cx).settings().filters_suggested(sname);
                 let sel = cur_fam.as_deref() == Some(sf.as_str());
                 let e2 = view_ent.clone();
                 let pid2 = pid.clone();
@@ -99,7 +96,6 @@ pub fn render_provider_family_picker(
                                     pid2.clone(),
                                     pname2.clone(),
                                     Some(sf_val.clone()),
-                                    zh,
                                     cx,
                                 );
                             });
@@ -144,7 +140,6 @@ pub fn render_provider_family_picker(
                                         pidf.clone(),
                                         pnamef.clone(),
                                         Some(fid.clone()),
-                                        zh,
                                         cx,
                                     );
                                 });
@@ -170,7 +165,6 @@ pub fn render_provider_family_picker(
 
 pub fn render_publisher_filter(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let pubs: Vec<ModelCatalogFamily> = view
@@ -182,13 +176,7 @@ pub fn render_publisher_filter(
     let label = active
         .as_deref()
         .and_then(|id| pubs.iter().find(|f| f.id == id).map(|f| f.name.clone()))
-        .unwrap_or_else(|| {
-            if zh {
-                "全部厂商".into()
-            } else {
-                "All publishers".into()
-            }
-        });
+        .unwrap_or_else(|| crate::ui::tr(cx).settings().catalog_all_publishers().into());
     let ent = cx.entity().clone();
 
     popover("cat-flt-pub-pop")
@@ -221,7 +209,7 @@ pub fn render_publisher_filter(
                 .child(
                     div()
                         .text_xs()
-                        .child(if zh { "全部厂商" } else { "All publishers" }),
+                        .child(crate::ui::tr(pop_cx).settings().catalog_all_publishers()),
                 )
                 .children(sel_all.then(|| {
                     div()
@@ -269,25 +257,25 @@ pub fn render_publisher_filter(
 
 pub fn render_kind_filter(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let active = view.kind;
-    let label = match (active, zh) {
-        (None, true) => "全部类型",
-        (None, false) => "All kinds",
-        (Some(CatalogKind::Chat), true) => "对话",
-        (Some(CatalogKind::Chat), false) => "Chat",
-        (Some(CatalogKind::Embedding), true) => "嵌入",
-        (Some(CatalogKind::Embedding), false) => "Embedding",
+    let s = crate::ui::tr(cx).settings();
+    let label = match active {
+        None => s.catalog_filter_all_kinds(),
+        Some(CatalogKind::Chat) => s.catalog_filter_kind_chat(),
+        Some(CatalogKind::Embedding) => s.catalog_filter_kind_embedding(),
     };
     let ent = cx.entity().clone();
     let opts: [(Option<CatalogKind>, &str); 3] = [
-        (None, if zh { "全部类型" } else { "All kinds" }),
-        (Some(CatalogKind::Chat), if zh { "对话" } else { "Chat" }),
+        (None, crate::ui::tr(cx).settings().filters_all_kinds()),
+        (
+            Some(CatalogKind::Chat),
+            crate::ui::tr(cx).settings().catalog_kind_chat(),
+        ),
         (
             Some(CatalogKind::Embedding),
-            if zh { "嵌入" } else { "Embedding" },
+            crate::ui::tr(cx).common().cap_embedding(),
         ),
     ];
 
@@ -329,24 +317,22 @@ pub fn render_kind_filter(
 
 pub fn render_source_filter(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let active = view.source;
-    let label = match (active, zh) {
-        (None, true) => "全部来源",
-        (None, false) => "All sources",
-        (Some(CatalogSource::ModelsDev), _) => "models.dev",
-        (Some(CatalogSource::User), true) => "自建",
-        (Some(CatalogSource::User), false) => "Custom",
+    let s = crate::ui::tr(cx).settings();
+    let label = match active {
+        None => s.catalog_filter_all_sources(),
+        Some(CatalogSource::ModelsDev) => "models.dev",
+        Some(CatalogSource::User) => s.catalog_filter_source_user(),
     };
     let ent = cx.entity().clone();
     let opts: [(Option<CatalogSource>, &str); 3] = [
-        (None, if zh { "全部来源" } else { "All sources" }),
+        (None, crate::ui::tr(cx).settings().catalog_all_sources()),
         (Some(CatalogSource::ModelsDev), "models.dev"),
         (
             Some(CatalogSource::User),
-            if zh { "自建" } else { "Custom" },
+            crate::ui::tr(cx).settings().catalog_source_user(),
         ),
     ];
 
@@ -388,40 +374,35 @@ pub fn render_source_filter(
 
 pub fn render_mode_filter(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let active = view.mode;
-    let label = match (active, zh) {
-        (None, true) => "全部计价",
-        (None, false) => "All pricing",
-        (Some(PricingFilter::Dynamic), true) => "跟随目录",
-        (Some(PricingFilter::Dynamic), false) => "Catalog",
-        (Some(PricingFilter::Custom), true) => "自定义",
-        (Some(PricingFilter::Custom), false) => "Custom",
-        (Some(PricingFilter::Fixed), true) => "按次",
-        (Some(PricingFilter::Fixed), false) => "Per call",
-        (Some(PricingFilter::None), true) => "无价格",
-        (Some(PricingFilter::None), false) => "No price",
+    let s = crate::ui::tr(cx).settings();
+    let label = match active {
+        None => s.catalog_filter_all_pricing(),
+        Some(PricingFilter::Dynamic) => s.catalog_filter_pricing_dynamic(),
+        Some(PricingFilter::Custom) => s.catalog_filter_pricing_custom(),
+        Some(PricingFilter::Fixed) => s.catalog_filter_pricing_fixed(),
+        Some(PricingFilter::None) => s.catalog_filter_pricing_none(),
     };
     let ent = cx.entity().clone();
     let opts: [(Option<PricingFilter>, &str); 5] = [
-        (None, if zh { "全部计价" } else { "All pricing" }),
+        (None, crate::ui::tr(cx).settings().catalog_all_modes()),
         (
             Some(PricingFilter::Dynamic),
-            if zh { "跟随目录" } else { "Catalog" },
+            crate::ui::tr(cx).settings().drawer_forms_catalog(),
         ),
         (
             Some(PricingFilter::Custom),
-            if zh { "自定义" } else { "Custom" },
+            crate::ui::tr(cx).settings().network_mode_custom(),
         ),
         (
             Some(PricingFilter::Fixed),
-            if zh { "按次" } else { "Per call" },
+            crate::ui::tr(cx).settings().catalog_mode_fixed(),
         ),
         (
             Some(PricingFilter::None),
-            if zh { "无价格" } else { "No price" },
+            crate::ui::tr(cx).settings().catalog_mode_none(),
         ),
     ];
 

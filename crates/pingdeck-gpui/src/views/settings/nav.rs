@@ -2,6 +2,7 @@
 //! live bilingual search, and MCP attention indicator.
 
 use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
+use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::state::{SettingsGroup, SettingsSection};
 
 use crate::ui::{
@@ -14,10 +15,10 @@ use super::{SettingsView, agent};
 
 pub(super) fn render_settings_sidebar(
     view: &SettingsView,
-    zh: bool,
     cx: &mut Context<SettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
+    let lang = crate::ui::active_language(cx);
     let query = view.search_input.read(cx).value().trim().to_lowercase();
 
     let mcp_attn = view
@@ -43,7 +44,6 @@ pub(super) fn render_settings_sidebar(
             continue;
         }
         nav_hits += matching.len();
-        let (gz, ge) = group.label_pair();
         let mut grp_hdr = h_row()
             .justify_between()
             .px(px(8.0))
@@ -52,7 +52,7 @@ pub(super) fn render_settings_sidebar(
             .text_size(px(11.0))
             .font_weight(gpui_kit::FontWeight::MEDIUM)
             .text_color(to_hsla(p.faint))
-            .child(if zh { gz } else { ge })
+            .child(group.label(lang))
             .child(
                 div()
                     .text_size(px(10.5))
@@ -68,7 +68,7 @@ pub(super) fn render_settings_sidebar(
         group_idx += 1;
         nav = nav.child(grp_hdr);
         for sec in matching {
-            let (zl, el) = sec.label_pair();
+            let el = sec.label(Language::En);
             let is_active = view.active == sec;
             let show_mcp_warn = sec == SettingsSection::Mcp && mcp_attn > 0;
             nav = nav.child(
@@ -90,7 +90,7 @@ pub(super) fn render_settings_sidebar(
                         } else {
                             gpui_kit::FontWeight::MEDIUM
                         })
-                        .child(if zh { zl } else { el }),
+                        .child(sec.label(lang)),
                 )
                 .children(show_mcp_warn.then(|| {
                     h_row()
@@ -99,7 +99,7 @@ pub(super) fn render_settings_sidebar(
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.warn))
                         .child(status_indicator(StatusShape::Warn, cx))
-                        .child(if zh { "需要处理" } else { "Attention" })
+                        .child(crate::ui::tr(cx).settings().nav_attention())
                 })),
             );
         }
@@ -107,18 +107,14 @@ pub(super) fn render_settings_sidebar(
 
     if nav_hits == 0 {
         nav = nav.child(empty_inline(
-            if zh {
-                "没有匹配的设置项"
-            } else {
-                "No matching settings"
-            },
-            Some(SharedString::from(if zh {
-                "尝试搜索：代理、超时、备份、快捷键、MCP"
-            } else {
-                "Try: proxy, timeout, backup, shortcuts, MCP"
-            })),
+            crate::ui::tr(cx).settings().nav_no_matching_settings(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .nav_try_proxy_timeout_backup_shortcuts(),
+            )),
             Some(
-                btn_secondary("set-nav-clear", if zh { "清除搜索" } else { "Clear" })
+                btn_secondary("set-nav-clear", crate::ui::tr(cx).settings().nav_clear())
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.search_input
                             .update(cx, |i, cx| i.set_value("", window, cx));
@@ -166,15 +162,13 @@ pub(super) fn render_settings_sidebar(
                                 div()
                                     .text_xs()
                                     .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                    .child(if zh { "返回工作区" } else { "Back" }),
+                                    .child(crate::ui::tr(cx).settings().nav_back()),
                             ),
                     )
                     .child(badge(
-                        if zh {
-                            format!("{} 页", SettingsSection::ALL.len())
-                        } else {
-                            format!("{} pages", SettingsSection::ALL.len())
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .nav_pages(SettingsSection::ALL.len()),
                         Tone::Neutral,
                         cx,
                     )),

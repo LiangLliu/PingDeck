@@ -16,7 +16,6 @@ use super::state::{EnvModal, EnvironmentsView};
 
 pub fn render_certs_tab(view: &EnvironmentsView, cx: &mut Context<EnvironmentsView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
 
     let bar = toolbar_strip(cx)
         .justify_between()
@@ -28,10 +27,11 @@ pub fn render_certs_tab(view: &EnvironmentsView, cx: &mut Context<EnvironmentsVi
                         .text_sm()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(view.t(
-                            "工作区 TLS 证书（mTLS 客户端证书 & 自定义 CA）",
-                            "Workspace TLS Certificates (mTLS & Custom CA)",
-                        )),
+                        .child(
+                            crate::ui::Tr(view.lang)
+                                .environments()
+                                .tab_certs_workspace_tls_certificates_mtls_custom(),
+                        ),
                 )
                 .child(badge(
                     view.certificates.len().to_string(),
@@ -40,49 +40,62 @@ pub fn render_certs_tab(view: &EnvironmentsView, cx: &mut Context<EnvironmentsVi
                 )),
         )
         .child(
-            btn_primary("cert-add-btn", view.t("+ 添加证书", "+ Add Certificate"))
-                .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.cert_host_input
-                        .update(cx, |s, cx| s.set_value("", window, cx));
-                    this.cert_path_input
-                        .update(cx, |s, cx| s.set_value("", window, cx));
-                    this.cert_key_input
-                        .update(cx, |s, cx| s.set_value("", window, cx));
-                    this.cert_pass_input
-                        .update(cx, |s, cx| s.set_value("", window, cx));
-                    this.active_modal = Some(EnvModal::AddCert {
-                        kind: TlsCertificateKind::Client,
-                    });
-                    cx.notify();
-                })),
+            btn_primary(
+                "cert-add-btn",
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .tab_certs_add_certificate(),
+            )
+            .icon(icon_xs(UiIcon::Plus))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.cert_host_input
+                    .update(cx, |s, cx| s.set_value("", window, cx));
+                this.cert_path_input
+                    .update(cx, |s, cx| s.set_value("", window, cx));
+                this.cert_key_input
+                    .update(cx, |s, cx| s.set_value("", window, cx));
+                this.cert_pass_input
+                    .update(cx, |s, cx| s.set_value("", window, cx));
+                this.active_modal = Some(EnvModal::AddCert {
+                    kind: TlsCertificateKind::Client,
+                });
+                cx.notify();
+            })),
         );
 
     let body = if view.certificates.is_empty() {
         empty_state_with_actions(
             UiIcon::Certificate,
-            view.t("暂无工作区 TLS 证书", "No TLS Certificates Configured"),
-            view.t(
-                "添加双向 TLS (mTLS) 客户端证书或私有根 CA，按主机通配符自动匹配请求。",
-                "Add mTLS client certificates or custom CA bundles matched by host pattern.",
-            ),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_certs_no_tls_certificates_configured(),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_certs_add_mtls_client_certificates_or(),
             Some(
-                btn_primary("cert-empty-add", view.t("+ 添加证书", "+ Add Certificate"))
-                    .icon(icon_xs(UiIcon::Plus))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.active_modal = Some(EnvModal::AddCert {
-                            kind: TlsCertificateKind::Client,
-                        });
-                        cx.notify();
-                    }))
-                    .into_any_element(),
+                btn_primary(
+                    "cert-empty-add",
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .tab_certs_add_certificate(),
+                )
+                .icon(icon_xs(UiIcon::Plus))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.active_modal = Some(EnvModal::AddCert {
+                        kind: TlsCertificateKind::Client,
+                    });
+                    cx.notify();
+                }))
+                .into_any_element(),
             ),
             cx,
         )
         .into_any_element()
     } else {
         let mut list = card(cx).p(px(14.0)).gap(px(8.0)).child(section_header(
-            view.t("已配置证书", "Configured Certificates"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_certs_configured_certificates(),
             None,
             cx,
         ));
@@ -129,7 +142,12 @@ pub fn render_certs_tab(view: &EnvironmentsView, cx: &mut Context<EnvironmentsVi
                                             .child(host_label),
                                     )
                                     .children(cert.has_passphrase.then(|| {
-                                        meta_pill(view.t("已存私钥口令", "Passphrase set"), cx)
+                                        meta_pill(
+                                            crate::ui::Tr(view.lang)
+                                                .environments()
+                                                .tab_certs_passphrase_set(),
+                                            cx,
+                                        )
                                     })),
                             )
                             .child(
@@ -180,11 +198,9 @@ pub fn render_certs_tab(view: &EnvironmentsView, cx: &mut Context<EnvironmentsVi
                     .gap(px(12.0))
                     .child(alert_banner(
                         Tone::Neutral,
-                        if zh {
-                            "证书私钥口令保存于本地仅当前用户可读（0600 权限）的明文 .secrets 保险库，不会写入主配置库。"
-                        } else {
-                            "Private-key passphrases are stored in the local owner-only (0600) plaintext .secrets vault."
-                        },
+                        crate::ui::tr(cx)
+                            .environments()
+                            .tab_certs_private_key_passphrases_are_stored(),
                         None,
                         cx,
                     ))

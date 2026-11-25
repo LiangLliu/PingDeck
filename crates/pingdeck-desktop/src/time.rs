@@ -1,6 +1,9 @@
 //! Local-timezone date, time, range-bound, and relative-age formatting helpers for desktop views.
 
 use chrono::{Datelike as _, Local, NaiveDate, TimeZone as _, Utc};
+use pingdeck_core::model::settings::Language;
+
+use crate::i18n::tr;
 
 const MS_PER_MIN: i64 = 60_000;
 const MS_PER_DAY: i64 = 86_400_000;
@@ -42,28 +45,19 @@ pub fn format_local_datetime(ms: i64) -> String {
         .unwrap_or_else(|| "—".to_owned())
 }
 
-/// Formats a Unix millisecond timestamp as local `今天 HH:MM:SS` / `昨天 HH:MM:SS` / `MM-DD HH:MM`.
+/// Formats a Unix millisecond timestamp as local smart timestamp (Today / Yesterday / date).
 #[must_use]
-pub fn format_smart_timestamp(ms: i64, now_ms: i64, zh: bool) -> String {
+pub fn format_smart_timestamp(ms: i64, now_ms: i64, lang: Language) -> String {
     let (Some(dt), Some(now)) = (to_local(ms), to_local(now_ms)) else {
         return format_local_datetime(ms);
     };
+    let c = tr(lang).common();
     let today = now.date_naive();
     let date = dt.date_naive();
     if date == today {
-        let t = dt.format("%H:%M:%S");
-        if zh {
-            format!("今天 {t}")
-        } else {
-            format!("Today {t}")
-        }
+        c.time_today(dt.format("%H:%M:%S"))
     } else if today.signed_duration_since(date).num_days() == 1 {
-        let t = dt.format("%H:%M:%S");
-        if zh {
-            format!("昨天 {t}")
-        } else {
-            format!("Yesterday {t}")
-        }
+        c.time_yesterday(dt.format("%H:%M:%S"))
     } else if date.year() == today.year() {
         dt.format("%m-%d %H:%M").to_string()
     } else {
@@ -71,36 +65,25 @@ pub fn format_smart_timestamp(ms: i64, now_ms: i64, zh: bool) -> String {
     }
 }
 
-/// Returns a human-readable relative age label (`刚刚` / `2 分钟前` / `3 小时前` / `MM-DD`).
+/// Returns a localized human-readable relative age label.
 #[must_use]
-pub fn format_relative_age(ms: i64, now_ms: i64, zh: bool) -> String {
+pub fn format_relative_age(ms: i64, now_ms: i64, lang: Language) -> String {
+    let c = tr(lang).common();
     let diff_ms = now_ms.saturating_sub(ms);
     if diff_ms < 45_000 {
-        return if zh { "刚刚" } else { "just now" }.to_owned();
+        return c.time_just_now().to_owned();
     }
     if diff_ms < 3_600_000 {
         let mins = (diff_ms / MS_PER_MIN).max(1);
-        return if zh {
-            format!("{mins} 分钟前")
-        } else {
-            format!("{mins}m ago")
-        };
+        return c.time_minutes_ago(mins);
     }
     if diff_ms < MS_PER_DAY {
         let hrs = (diff_ms / 3_600_000).max(1);
-        return if zh {
-            format!("{hrs} 小时前")
-        } else {
-            format!("{hrs}h ago")
-        };
+        return c.time_hours_ago(hrs);
     }
     let days = diff_ms / MS_PER_DAY;
     if days < 7 {
-        return if zh {
-            format!("{days} 天前")
-        } else {
-            format!("{days}d ago")
-        };
+        return c.time_days_ago(days);
     }
     format_local_date(ms)
 }

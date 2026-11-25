@@ -35,7 +35,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn save_rule_editor(&mut self, zh: bool, cx: &mut Context<Self>) {
+    pub fn save_rule_editor(&mut self, cx: &mut Context<Self>) {
         let Some(ed) = self.rule_editor.take() else {
             return;
         };
@@ -49,11 +49,10 @@ impl ProvidersView {
                 match res {
                     Ok(saved) => {
                         let msg = if saved.warnings.is_empty() {
-                            if zh {
-                                "备用规则已保存".into()
-                            } else {
-                                "Fallback rule saved".into()
-                            }
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_rules_fallback_rule_saved()
+                                .into()
                         } else {
                             let ws: Vec<String> = saved
                                 .warnings
@@ -69,11 +68,9 @@ impl ProvidersView {
                                     )
                                 })
                                 .collect();
-                            if zh {
-                                format!("已保存（能力提示）：{}", ws.join("；"))
-                            } else {
-                                format!("Saved (capability notes): {}", ws.join("; "))
-                            }
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_act_saved_cap_notes(ws.join(" · "))
                         };
                         this.status_msg = Some((
                             if saved.warnings.is_empty() {
@@ -93,7 +90,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn delete_gateway_rule(&mut self, primary: ModelRef, zh: bool, cx: &mut Context<Self>) {
+    pub fn delete_gateway_rule(&mut self, primary: ModelRef, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -109,11 +106,10 @@ impl ProvidersView {
                     Ok(_) => {
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                "备用规则已删除".into()
-                            } else {
-                                "Fallback rule deleted".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_rules_fallback_rule_deleted()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }

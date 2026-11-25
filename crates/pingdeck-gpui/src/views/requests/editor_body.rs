@@ -16,7 +16,6 @@ use super::model::{BodyKind, raw_lang_label};
 
 pub(super) fn render_body_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -28,7 +27,7 @@ pub(super) fn render_body_tab(
 
     let seg = tab_bar_segmented("req-body-kind-seg")
         .selected_index(kind.index())
-        .child(tab_item(if zh { "无正文" } else { "None" }))
+        .child(tab_item(crate::ui::tr(cx).requests().editor_body_none_2()))
         .child(tab_item("JSON"))
         .child(tab_item("Raw"))
         .child(tab_item("Form"))
@@ -75,18 +74,20 @@ pub(super) fn render_body_tab(
     let mut top_bar = h_row().w_full().justify_between().gap(px(8.0)).child(seg);
     if kind == BodyKind::Json {
         top_bar = top_bar.child(
-            btn_ghost("req-body-fmt", if zh { "格式化 JSON" } else { "Prettify" }).on_click(
-                cx.listener(|this, _, window, cx| {
-                    let raw = this.body_editor.read(cx).value().to_string();
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw)
-                        && let Ok(pretty) = serde_json::to_string_pretty(&val)
-                    {
-                        this.body_editor
-                            .update(cx, |e, cx| e.set_value(pretty, window, cx));
-                        this.mark_active_dirty(cx);
-                    }
-                }),
-            ),
+            btn_ghost(
+                "req-body-fmt",
+                crate::ui::tr(cx).requests().editor_body_prettify(),
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                let raw = this.body_editor.read(cx).value().to_string();
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw)
+                    && let Ok(pretty) = serde_json::to_string_pretty(&val)
+                {
+                    this.body_editor
+                        .update(cx, |e, cx| e.set_value(pretty, window, cx));
+                    this.mark_active_dirty(cx);
+                }
+            })),
         );
     } else if let RequestBody::RawText { language, .. } = &tab.draft.body {
         let cur_lang = *language;
@@ -118,16 +119,12 @@ pub(super) fn render_body_tab(
 
     let detail: gpui_kit::AnyElement = match &tab.draft.body {
         RequestBody::None => empty_inline(
-            if zh {
-                "当前请求不附带请求体"
-            } else {
-                "No request body"
-            },
-            Some(SharedString::from(if zh {
-                "切换上方类型（JSON / Raw / Form / Multipart / GraphQL / Binary）即可编辑。"
-            } else {
-                "Select JSON, Raw, Form, Multipart, GraphQL, or Binary above to attach a payload."
-            })),
+            crate::ui::tr(cx).requests().editor_body_no_request_body(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .editor_body_select_json_raw_form_multipart(),
+            )),
             None,
             cx,
         )
@@ -150,8 +147,12 @@ pub(super) fn render_body_tab(
                         .child(div().w(px(180.0)).child(text_input(&view.kv_key_input)))
                         .child(div().flex_1().child(text_input(&view.kv_val_input)))
                         .child(
-                            btn_secondary("form-kv-add", if zh { "添加字段" } else { "Add field" })
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            btn_secondary(
+                                "form-kv-add",
+                                crate::ui::tr(cx).requests().editor_body_add_field(),
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     let k = this.kv_key_input.read(cx).value().trim().to_owned();
                                     let v = this.kv_val_input.read(cx).value().to_string();
                                     if k.is_empty() {
@@ -174,15 +175,19 @@ pub(super) fn render_body_tab(
                                     this.kv_val_input
                                         .update(cx, |i, cx| i.set_value("", window, cx));
                                     cx.notify();
-                                })),
+                                },
+                            )),
                         ),
                 );
             if !fields.is_empty() {
                 col = col.child(table_header(
                     &[
                         ("", Some(22.0)),
-                        (if zh { "字段名" } else { "Field" }, Some(180.0)),
-                        (if zh { "值" } else { "Value" }, None),
+                        (
+                            crate::ui::tr(cx).requests().editor_body_field(),
+                            Some(180.0),
+                        ),
+                        (crate::ui::tr(cx).common().secret_value_placeholder(), None),
                         ("", Some(28.0)),
                     ],
                     cx,
@@ -249,34 +254,37 @@ pub(super) fn render_body_tab(
                         .child(div().flex_1().child(text_input(&view.kv_val_input)))
                         .child(div().w(px(180.0)).child(text_input(&view.kv_file_input)))
                         .child(
-                            btn_ghost("mp-pick-file", if zh { "文件…" } else { "File…" }).on_click(
-                                cx.listener(|this, _, window, cx| {
-                                    this.pick_multipart_file(window, cx)
-                                }),
-                            ),
+                            btn_ghost(
+                                "mp-pick-file",
+                                crate::ui::tr(cx).requests().editor_body_file(),
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| this.pick_multipart_file(window, cx),
+                            )),
                         )
                         .child(
-                            btn_secondary("mp-add", if zh { "添加" } else { "Add" }).on_click(
-                                cx.listener(|this, _, window, cx| {
-                                    this.add_multipart_part(window, cx)
-                                }),
-                            ),
+                            btn_secondary(
+                                "mp-add",
+                                crate::ui::tr(cx).requests().container_settings_add(),
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| this.add_multipart_part(window, cx),
+                            )),
                         ),
                 );
             if !parts.is_empty() {
                 col = col.child(table_header(
                     &[
                         ("", Some(22.0)),
-                        (if zh { "字段名" } else { "Field" }, Some(140.0)),
-                        (if zh { "类型" } else { "Type" }, Some(56.0)),
                         (
-                            if zh {
-                                "值 / 文件路径"
-                            } else {
-                                "Value / File"
-                            },
-                            None,
+                            crate::ui::tr(cx).requests().editor_body_field(),
+                            Some(140.0),
                         ),
+                        (
+                            crate::ui::tr(cx).requests().editor_auth_token_type(),
+                            Some(56.0),
+                        ),
+                        (crate::ui::tr(cx).requests().editor_body_value_file(), None),
                         ("", Some(28.0)),
                     ],
                     cx,
@@ -387,16 +395,24 @@ pub(super) fn render_body_tab(
                         .gap(px(8.0))
                         .child(div().flex_1().child(text_input(&view.binary_path_input)))
                         .child(
-                            btn_secondary("bin-pick", if zh { "选择文件…" } else { "Browse…" })
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            btn_secondary(
+                                "bin-pick",
+                                crate::ui::tr(cx).requests().editor_body_browse(),
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.pick_binary_body_file(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .child(
-                            btn_ghost("bin-check", if zh { "校验文件" } else { "Validate" })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.validate_binary_body_file(cx);
-                                })),
+                            btn_ghost(
+                                "bin-check",
+                                crate::ui::tr(cx).requests().editor_body_validate(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.validate_binary_body_file(cx);
+                            })),
                         ),
                 )
                 .children(status_el)

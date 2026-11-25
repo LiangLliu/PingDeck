@@ -19,18 +19,16 @@ pub(super) fn render_key_picker(
     ent: Entity<BenchView>,
     cx: &mut Context<BenchView>,
 ) -> impl gpui_kit::IntoElement + use<> {
-    let zh = view.zh;
     let cur_key_name = view
         .selected_key_id
         .as_ref()
         .and_then(|kid| enabled_keys.iter().find(|k| &k.id == kid))
         .map(|k| k.name.clone())
         .unwrap_or_else(|| {
-            if zh {
-                "自动选密钥".into()
-            } else {
-                "Auto key".into()
-            }
+            crate::ui::tr(cx)
+                .providers()
+                .prov_bench_panels_auto_key()
+                .into()
         });
     let keys_for_pop = enabled_keys.to_vec();
     popover("bench-key-pop")
@@ -54,11 +52,11 @@ pub(super) fn render_key_picker(
                     });
                     pop0.update(cx, |s, cx| s.dismiss(window, cx));
                 })
-                .child(div().text_xs().child(if zh {
-                    "自动选择密钥"
-                } else {
-                    "Auto key"
-                })),
+                .child(
+                    div()
+                        .text_xs()
+                        .child(crate::ui::tr(cx).providers().prov_bench_panels_auto_key_2()),
+                ),
             );
             for (i, k) in keys_for_pop.iter().enumerate() {
                 let kid = k.id.clone();
@@ -90,17 +88,14 @@ pub(super) fn render_conc_picker(
     ent: Entity<BenchView>,
     cx: &mut Context<BenchView>,
 ) -> impl gpui_kit::IntoElement + use<> {
-    let zh = view.zh;
     let cur_conc = view.concurrency;
     popover("bench-conc-pop")
         .anchor(Anchor::TopLeft)
         .trigger(select_pill(
             "bench-conc-trig",
-            if zh {
-                format!("并发 {cur_conc}")
-            } else {
-                format!("×{cur_conc}")
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_bench_panels_label(cur_conc),
             false,
             cx,
         ))
@@ -122,11 +117,13 @@ pub(super) fn render_conc_picker(
                             pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                         },
                     )
-                    .child(div().text_xs().child(SharedString::from(if zh {
-                        format!("{c} 并发")
-                    } else {
-                        format!("{c} concurrent")
-                    }))),
+                    .child(
+                        div().text_xs().child(SharedString::from(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_panels_concurrent(c),
+                        )),
+                    ),
                 );
             }
             col
@@ -134,7 +131,6 @@ pub(super) fn render_conc_picker(
 }
 
 pub(super) fn render_confirm_banners(view: &BenchView, cx: &mut Context<BenchView>) -> Div {
-    let zh = view.zh;
     let mut confirm_banners = v_col().px(px(20.0)).gap(px(6.0));
     if let Some(retry_opt) = view.pending_cost_confirm.clone() {
         let est_summary = view
@@ -144,18 +140,14 @@ pub(super) fn render_confirm_banners(view: &BenchView, cx: &mut Context<BenchVie
             .unwrap_or_default();
         confirm_banners = confirm_banners.child(alert_banner(
             Tone::Warning,
-            if zh {
-                format!("本次实测预计产生调用费用（{est_summary}）。是否确认继续运行？")
-            } else {
-                format!(
-                    "This benchmark run incurs estimated cost ({est_summary}). Confirm to proceed?"
-                )
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_bench_panels_this_benchmark_run_incurs_estimated(est_summary),
             Some(
                 h_row()
                     .gap(px(6.0))
                     .child(
-                        btn_ghost("bench-cost-cancel", if zh { "取消" } else { "Cancel" })
+                        btn_ghost("bench-cost-cancel", crate::ui::tr(cx).common().cancel())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pending_cost_confirm = None;
                                 cx.notify();
@@ -164,11 +156,9 @@ pub(super) fn render_confirm_banners(view: &BenchView, cx: &mut Context<BenchVie
                     .child(
                         btn_primary(
                             "bench-cost-go",
-                            if zh {
-                                "确认并运行"
-                            } else {
-                                "Confirm & Run"
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_panels_confirm_run(),
                         )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.start_run(retry_opt.clone(), true, cx);
@@ -185,32 +175,27 @@ pub(super) fn render_confirm_banners(view: &BenchView, cx: &mut Context<BenchVie
         let cr = prev.plan.create.len();
         confirm_banners = confirm_banners.child(alert_banner(
             Tone::Accent,
-            if zh {
-                format!(
-                    "将向「{}」应用实测结果：启用 {en} 个 · 停用 {dis} 个 · 新增 {cr} 个模型（可撤销）。",
-                    prev.provider_name
-                )
-            } else {
-                format!(
-                    "Apply probe results to {}: enable {en} · disable {dis} · create {cr} (undoable).",
-                    prev.provider_name
-                )
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_bench_panels_apply_probe_results_to_enable(&prev.provider_name, en, dis, cr),
             Some(
                 h_row()
                     .gap(px(6.0))
                     .child(
-                        btn_ghost("bench-app-cancel", if zh { "取消" } else { "Cancel" })
+                        btn_ghost("bench-app-cancel", crate::ui::tr(cx).common().cancel())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pending_apply_preview = None;
                                 cx.notify();
                             })),
                     )
                     .child(
-                        btn_primary("bench-app-go", if zh { "确认应用" } else { "Apply" })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.confirm_apply_results(cx);
-                            })),
+                        btn_primary(
+                            "bench-app-go",
+                            crate::ui::tr(cx).providers().prov_bench_panels_apply(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.confirm_apply_results(cx);
+                        })),
                     )
                     .into_any_element(),
             ),
@@ -225,7 +210,6 @@ pub(super) fn render_status_bar(view: &BenchView, cx: &mut Context<BenchView>) -
         return None;
     }
     let p = palette(cx);
-    let zh = view.zh;
     let pct = if view.progress_total > 0 {
         (view.progress_done as f32 / view.progress_total as f32) * 100.0
     } else {
@@ -250,11 +234,9 @@ pub(super) fn render_status_bar(view: &BenchView, cx: &mut Context<BenchView>) -
                         div().text_xs().child(SharedString::from(format!(
                             "{} {}/{}",
                             if view.running {
-                                if zh { "探测进度" } else { "Progress" }
-                            } else if zh {
-                                "上次运行"
+                                crate::ui::tr(cx).providers().prov_bench_panels_progress()
                             } else {
-                                "Last run"
+                                crate::ui::tr(cx).providers().prov_bench_panels_last_run()
                             },
                             view.progress_done,
                             view.progress_total
@@ -288,8 +270,7 @@ pub(super) fn render_cell_detail_bar(view: &BenchView, cx: &mut Context<BenchVie
     let (mid, ck) = view.selected_cell.as_ref()?;
     let cell = view.cells.get(&(mid.clone(), ck.clone()))?;
     let p = palette(cx);
-    let zh = view.zh;
-    let (lbl, tone) = format_probe_status(cell.status, zh);
+    let (lbl, tone) = format_probe_status(cell.status, crate::ui::active_language(cx));
     let detail_line = cell
         .result
         .as_ref()
@@ -323,7 +304,11 @@ pub(super) fn render_cell_detail_bar(view: &BenchView, cx: &mut Context<BenchVie
                     .flex_1()
                     .min_w_0()
                     .child(badge(SharedString::from(mid.clone()), Tone::Accent, cx))
-                    .child(badge(format_probe_test(cell.test, zh), Tone::Neutral, cx))
+                    .child(badge(
+                        format_probe_test(cell.test, crate::ui::active_language(cx)),
+                        Tone::Neutral,
+                        cx,
+                    ))
                     .child(badge(lbl, tone, cx))
                     .child(
                         div()

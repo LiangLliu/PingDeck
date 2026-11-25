@@ -16,7 +16,7 @@ use super::composer_popovers::{
 use super::gates::{render_approval_gate, render_human_gate};
 use super::gates_extra::{render_cost_pause, render_queued_bar};
 
-pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
+pub fn render_dock(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let running = view.is_run_active();
 
@@ -30,16 +30,16 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
         .pb(px(12.0));
 
     for (run_id, gate) in &view.thread.open_gates {
-        dock = dock.child(render_human_gate(view, run_id, gate, zh, cx));
+        dock = dock.child(render_human_gate(view, run_id, gate, cx));
     }
     for appr in &view.thread.pending_approvals {
-        dock = dock.child(render_approval_gate(appr, zh, cx));
+        dock = dock.child(render_approval_gate(appr, cx));
     }
     if let Some(pause) = &view.thread.cost_pause {
-        dock = dock.child(render_cost_pause(pause, zh, cx));
+        dock = dock.child(render_cost_pause(pause, cx));
     }
     if !view.thread.queued_turns.is_empty() {
-        dock = dock.child(render_queued_bar(view, zh, cx));
+        dock = dock.child(render_queued_bar(view, cx));
     }
 
     if running {
@@ -47,31 +47,17 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
         let steps = view.thread.active_run.as_ref().map_or(0, |r| r.iterations);
         let phase =
             if !view.thread.pending_approvals.is_empty() || !view.thread.open_gates.is_empty() {
-                if zh {
-                    "等待你确认"
-                } else {
-                    "Waiting for you"
-                }
+                crate::ui::tr(cx).chat().composer_waiting_for_you()
             } else if !view.thread.tool_calls.is_empty()
                 && view.thread.tool_calls.iter().any(|t| t.status.is_none())
             {
-                if zh {
-                    "正在调用工具…"
-                } else {
-                    "Running tools…"
-                }
+                crate::ui::tr(cx).chat().composer_running_tools()
             } else if !view.thread.streaming_reasoning.is_empty()
                 && view.thread.streaming_text.is_empty()
             {
-                if zh {
-                    "正在深度思考…"
-                } else {
-                    "Thinking…"
-                }
-            } else if zh {
-                "正在生成回复…"
+                crate::ui::tr(cx).chat().composer_thinking()
             } else {
-                "Generating…"
+                crate::ui::tr(cx).chat().composer_generating()
             };
         dock = dock.child(
             h_row()
@@ -92,11 +78,11 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
                                 .child(format!("Step {steps} · {elapsed_s}s")),
                         )
                         .children(view.plan_mode.then(|| {
-                            badge(if zh { "计划模式" } else { "Plan" }, Tone::Accent, cx)
+                            badge(crate::ui::tr(cx).chat().composer_plan(), Tone::Accent, cx)
                         })),
                 )
                 .child(
-                    btn_danger("chat-status-stop", if zh { "停止运行" } else { "Stop run" })
+                    btn_danger("chat-status-stop", crate::ui::tr(cx).chat().card_stop())
                         .icon(icon_xs(UiIcon::Stop))
                         .on_click(cx.listener(|this, _, _, cx| this.stop_active_run(cx))),
                 ),
@@ -115,21 +101,10 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
             Some(t) => (view.format_target_label(t), false),
             None => match view.available_models.first() {
                 Some(m) => (
-                    if zh {
-                        format!("自动 · {}", m.display_label())
-                    } else {
-                        format!("Auto · {}", m.display_label())
-                    },
+                    crate::ui::tr(cx).chat().composer_auto(m.display_label()),
                     false,
                 ),
-                None => (
-                    if zh {
-                        "未配置模型".into()
-                    } else {
-                        "No model".into()
-                    },
-                    true,
-                ),
+                None => (crate::ui::tr(cx).chat().composer_no_model().into(), true),
             },
         };
     let missing_reasoning_quirk = view.active_provider_missing_reasoning_quirk();
@@ -221,39 +196,30 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
                         .flex_wrap()
                         .child(
                             btn_icon("chat-attach-btn", UiIcon::Plus)
-                                .tooltip(if zh {
-                                    "添加附件文件"
-                                } else {
-                                    "Attach files"
-                                })
+                                .tooltip(crate::ui::tr(cx).chat().composer_attach_files())
                                 .on_click(cx.listener(|this, _, _, cx| this.pick_attachments(cx))),
                         )
-                        .child(render_skills_popover(view, zh, cx))
+                        .child(render_skills_popover(view, cx))
                         .child(
                             pill_btn(
                                 "chat-plan-toggle",
-                                if zh { "计划" } else { "Plan" },
+                                crate::ui::tr(cx).chat().plan_region(),
                                 Some(UiIcon::ListChecks),
                                 view.plan_mode,
                             )
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_plan_mode(cx))),
                         )
-                        .child(render_perm_popover(perm_mode, zh, cx))
+                        .child(render_perm_popover(perm_mode, cx))
                         .child(
                             pill_btn(
                                 "chat-web-toggle",
-                                if zh { "联网" } else { "Web" },
+                                crate::ui::tr(cx).chat().composer_web(),
                                 Some(UiIcon::Globe),
                                 web_on,
                             )
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_web_enabled(cx))),
                         )
-                        .child(render_effort_popover(
-                            effort,
-                            missing_reasoning_quirk,
-                            zh,
-                            cx,
-                        )),
+                        .child(render_effort_popover(effort, missing_reasoning_quirk, cx)),
                 )
                 .child(
                     h_row()
@@ -263,25 +229,27 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
                             view,
                             active_model_label,
                             no_model_configured,
-                            zh,
                             cx,
                         ))
                         .child(if running {
                             h_row()
                                 .gap(px(4.0))
                                 .child(
-                                    btn_ghost("chat-queue-send", if zh { "排队" } else { "Queue" })
-                                        .on_click(cx.listener(|this, _, window, cx| {
+                                    btn_ghost(
+                                        "chat-queue-send",
+                                        crate::ui::tr(cx).common().wire_queue(),
+                                    )
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| {
                                             this.send_message(window, cx);
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
                                     round_icon_btn("chat-steer", UiIcon::ArrowUp, Tone::Accent)
-                                        .tooltip(if zh {
-                                            "立即插队引导 (⌘Enter)"
-                                        } else {
-                                            "Steer run now (⌘Enter)"
-                                        })
+                                        .tooltip(
+                                            crate::ui::tr(cx).chat().composer_steer_run_now_enter(),
+                                        )
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.steer_active_run(window, cx);
                                         })),
@@ -289,7 +257,7 @@ pub fn render_dock(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> imp
                                 .into_any_element()
                         } else {
                             round_icon_btn("chat-send", UiIcon::ArrowUp, Tone::Accent)
-                                .tooltip(if zh { "发送 (Enter)" } else { "Send (Enter)" })
+                                .tooltip(crate::ui::tr(cx).chat().composer_send_enter())
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.send_message(window, cx);
                                 }))

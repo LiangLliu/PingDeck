@@ -35,8 +35,8 @@ pub use state::{HistoryHandoff, HistoryView};
 impl HistoryView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("搜索 URL / 名称 / 状态码…"));
+        let ph = crate::ui::tr(cx).history().search_placeholder();
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder(ph));
         let sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
                 this.reload_page(true, cx);
@@ -117,6 +117,7 @@ impl HistoryView {
 
 impl Render for HistoryView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.lang = crate::ui::active_language(cx);
         let p = palette(cx);
         let left = sidebar::render_sidebar(self, cx);
         let right = detail::render_detail(self, cx);
@@ -144,32 +145,37 @@ impl Render for HistoryView {
             let body = div()
                 .text_sm()
                 .text_color(to_hsla(p.ink))
-                .child(if self.is_zh() {
-                    format!("确定要永久清空当前筛选匹配的 {count} 条执行历史吗？此操作无法撤销。")
-                } else {
-                    format!(
-                        "Permanently clear {count} matching history entries? This cannot be undone."
-                    )
-                })
+                .child(
+                    crate::ui::Tr(self.lang)
+                        .history()
+                        .history_permanently_clear_matching_history_entries(count),
+                )
                 .into_any_element();
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("hist-clr-cancel", self.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "hist-clr-cancel",
+                        crate::ui::Tr(self.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_danger("hist-clr-confirm", self.t("确认清空", "Clear History"))
-                        .on_click(cx.listener(|this, _, _, cx| this.clear_filtered(cx))),
+                    btn_danger(
+                        "hist-clr-confirm",
+                        crate::ui::Tr(self.lang).history().history_clear_history(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.clear_filtered(cx))),
                 )
                 .into_any_element();
             root = root.child(modal_dialog(
                 "hist-clear-modal",
-                self.t("清空历史记录", "Clear Filtered History"),
+                crate::ui::Tr(self.lang)
+                    .history()
+                    .history_clear_filtered_history(),
                 440.0,
                 body,
                 footer,

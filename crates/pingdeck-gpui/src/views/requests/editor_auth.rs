@@ -16,7 +16,6 @@ use super::{RequestsView, default_auth_for_kind};
 
 pub fn render_auth_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -28,8 +27,12 @@ pub fn render_auth_tab(
 
     let seg = tab_bar_segmented("req-auth-kind-seg")
         .selected_index(kind.index())
-        .child(tab_item(if zh { "继承" } else { "Inherit" }))
-        .child(tab_item(if zh { "无" } else { "None" }))
+        .child(tab_item(
+            crate::ui::tr(cx).requests().container_settings_inherit(),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx).requests().editor_auth_token_no_scope(),
+        ))
         .child(tab_item("Bearer"))
         .child(tab_item("Basic"))
         .child(tab_item("API Key"))
@@ -65,32 +68,20 @@ pub fn render_auth_tab(
     // Live effective-auth & masked preview card.
     if let Some(ea) = &tab.effective_auth {
         let src_lbl = match &ea.source {
-            AuthSource::Collection { name, .. } => {
-                if zh {
-                    format!("继承自集合「{name}」")
-                } else {
-                    format!("Inherited from collection \"{name}\"")
-                }
-            }
-            AuthSource::Folder { name, .. } => {
-                if zh {
-                    format!("继承自文件夹「{name}」")
-                } else {
-                    format!("Inherited from folder \"{name}\"")
-                }
-            }
-            AuthSource::Request => if zh {
-                "本请求独立配置"
-            } else {
-                "Defined on this request"
-            }
-            .into(),
-            AuthSource::None => if zh {
-                "当前无生效认证"
-            } else {
-                "No effective auth"
-            }
-            .into(),
+            AuthSource::Collection { name, .. } => crate::ui::tr(cx)
+                .requests()
+                .editor_auth_inherited_from_collection(name),
+            AuthSource::Folder { name, .. } => crate::ui::tr(cx)
+                .requests()
+                .editor_auth_inherited_from_folder(name),
+            AuthSource::Request => crate::ui::tr(cx)
+                .requests()
+                .editor_auth_defined_on_this_request()
+                .into(),
+            AuthSource::None => crate::ui::tr(cx)
+                .requests()
+                .editor_auth_no_effective_auth()
+                .into(),
         };
         if kind == AuthKind::Inherit || ea.preview.is_some() {
             let preview_str = ea
@@ -98,12 +89,10 @@ pub fn render_auth_tab(
                 .as_ref()
                 .map(|pr| format!("{}: {}", pr.name, pr.value))
                 .unwrap_or_else(|| {
-                    if zh {
-                        "不发送认证头"
-                    } else {
-                        "No auth header"
-                    }
-                    .into()
+                    crate::ui::tr(cx)
+                        .requests()
+                        .editor_auth_no_auth_header()
+                        .into()
                 });
             col = col.child(
                 card(cx).p(px(10.0)).child(
@@ -148,11 +137,11 @@ pub fn render_auth_tab(
         AuthConfig::Bearer { .. } => {
             col = col.child(field_row(
                 "Bearer Token",
-                Some(SharedString::from(if zh {
-                    "推荐使用 {{token}} 引用环境机密变量"
-                } else {
-                    "Use {{token}} to reference a secret variable"
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .requests()
+                        .editor_auth_use_to_reference_a_secret(),
+                )),
                 div().w(px(360.0)).child(text_input(&view.auth_f1)),
                 cx,
             ));
@@ -160,17 +149,13 @@ pub fn render_auth_tab(
         AuthConfig::Basic { .. } | AuthConfig::Digest { .. } => {
             col = col
                 .child(field_row(
-                    if zh { "用户名" } else { "Username" },
+                    crate::ui::tr(cx).requests().editor_auth_username(),
                     None,
                     div().w(px(320.0)).child(text_input(&view.auth_f1)),
                     cx,
                 ))
                 .child(field_row(
-                    if zh {
-                        "密码 / 引用"
-                    } else {
-                        "Password / ref"
-                    },
+                    crate::ui::tr(cx).requests().editor_auth_password_ref(),
                     None,
                     div().w(px(320.0)).child(text_input(&view.auth_f2)),
                     cx,
@@ -181,23 +166,19 @@ pub fn render_auth_tab(
             let ent_l = cx.entity().clone();
             col = col
                 .child(field_row(
-                    if zh { "参数名" } else { "Key name" },
+                    crate::ui::tr(cx).requests().editor_auth_key_name_2(),
                     None,
                     div().w(px(300.0)).child(text_input(&view.auth_f1)),
                     cx,
                 ))
                 .child(field_row(
-                    if zh {
-                        "值 / {{变量}}"
-                    } else {
-                        "Value / {{var}}"
-                    },
+                    crate::ui::tr(cx).requests().editor_auth_value(),
                     None,
                     div().w(px(300.0)).child(text_input(&view.auth_f2)),
                     cx,
                 ))
                 .child(field_row(
-                    if zh { "传递位置" } else { "Add to" },
+                    crate::ui::tr(cx).requests().editor_auth_add_to_2(),
                     None,
                     tab_bar_segmented("apikey-loc-seg")
                         .selected_index(loc_idx)
@@ -238,7 +219,7 @@ pub fn render_auth_tab(
 
             col = col
                 .child(field_row(
-                    if zh { "授权类型" } else { "Grant Type" },
+                    crate::ui::tr(cx).requests().editor_auth_grant_type_2(),
                     None,
                     tab_bar_segmented("oauth-grant-seg")
                         .selected_index(g_idx)
@@ -298,22 +279,14 @@ pub fn render_auth_tab(
                 )
                 .children((*grant_type == OAuth2GrantType::Password).then(|| {
                     field_row(
-                        if zh {
-                            "用户名:密码"
-                        } else {
-                            "user:password"
-                        },
+                        crate::ui::tr(cx).requests().editor_auth_user_password(),
                         None,
                         div().w(px(300.0)).child(text_input(&view.auth_f1)),
                         cx,
                     )
                 }))
                 .child(field_row(
-                    if zh {
-                        "客户端凭据位置"
-                    } else {
-                        "Client Auth"
-                    },
+                    crate::ui::tr(cx).requests().editor_auth_client_auth(),
                     None,
                     tab_bar_segmented("oauth-ca-seg")
                         .selected_index(ca_idx)
@@ -338,7 +311,7 @@ pub fn render_auth_tab(
                     cx,
                 ))
                 // OAuth 2.0 Token Card
-                .child(render_oauth_token_card(view, zh, cx));
+                .child(render_oauth_token_card(view, cx));
         }
         AuthConfig::AwsSignatureV4 { .. } => {
             col = col
@@ -378,11 +351,7 @@ pub fn render_auth_tab(
     col.into_any_element()
 }
 
-fn render_oauth_token_card(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::Div {
+fn render_oauth_token_card(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return div();
@@ -397,11 +366,9 @@ fn render_oauth_token_card(
                 h_row()
                     .justify_between()
                     .child(section_heading(
-                        if zh {
-                            "OAuth 2.0 令牌卡片（存本机 0600 保险库）"
-                        } else {
-                            "OAuth 2.0 Token Card"
-                        },
+                        crate::ui::tr(cx)
+                            .requests()
+                            .editor_auth_oauth_2_0_token_card(),
                         cx,
                     ))
                     .child(match info {
@@ -410,7 +377,11 @@ fn render_oauth_token_card(
                             Tone::Success,
                             cx,
                         ),
-                        None => badge(if zh { "未获取" } else { "No token" }, Tone::Neutral, cx),
+                        None => badge(
+                            crate::ui::tr(cx).requests().editor_auth_no_token(),
+                            Tone::Neutral,
+                            cx,
+                        ),
                     }),
             )
             .child(
@@ -421,24 +392,28 @@ fn render_oauth_token_card(
                         btn_secondary(
                             "oauth-fetch",
                             if busy {
-                                if zh { "获取中…" } else { "Fetching…" }
-                            } else if zh {
-                                "获取新令牌"
+                                crate::ui::tr(cx).requests().editor_auth_fetching()
                             } else {
-                                "Get token"
+                                crate::ui::tr(cx).requests().editor_auth_get_token()
                             },
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.oauth_fetch_token(false, cx))),
                     )
                     .children(info.is_some_and(|i| i.has_refresh).then(|| {
-                        btn_ghost("oauth-refresh", if zh { "刷新令牌" } else { "Refresh" })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.oauth_fetch_token(true, cx);
-                            }))
+                        btn_ghost(
+                            "oauth-refresh",
+                            crate::ui::tr(cx).requests().editor_auth_refresh(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.oauth_fetch_token(true, cx);
+                        }))
                     }))
                     .children(info.is_some().then(|| {
-                        btn_ghost("oauth-clear", if zh { "清除" } else { "Clear" })
-                            .on_click(cx.listener(|this, _, _, cx| this.oauth_clear_token(cx)))
+                        btn_ghost(
+                            "oauth-clear",
+                            crate::ui::tr(cx).requests().editor_auth_token_clear(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.oauth_clear_token(cx)))
                     }))
                     .children(info.is_some().then(|| {
                         h_row()
@@ -447,11 +422,7 @@ fn render_oauth_token_card(
                             .child(
                                 btn_ghost(
                                     "oauth-store-var",
-                                    if zh {
-                                        "存为环境变量"
-                                    } else {
-                                        "Store as var"
-                                    },
+                                    crate::ui::tr(cx).requests().editor_auth_store_as_var(),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {

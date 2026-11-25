@@ -12,7 +12,7 @@ use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::state::ToastKind;
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
-use crate::ui::{InputState, palette as active_palette};
+use crate::ui::{InputState, apply_language, palette as active_palette, tr};
 
 use super::AppShell;
 
@@ -58,7 +58,9 @@ impl AppShell {
             move |state| settings_update_impl(state, CoreSettingsSection::General, &patch),
             |this, res, cx| match res {
                 Ok(settings) => {
+                    apply_language(settings.general.language, cx);
                     this.state.settings = settings;
+                    cx.refresh_windows();
                     cx.notify();
                 }
                 Err(err) => {
@@ -70,11 +72,7 @@ impl AppShell {
     }
 
     pub fn start_create_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let placeholder = if self.language() == Language::ZhCn {
-            "新工作区名称…"
-        } else {
-            "New workspace name…"
-        };
+        let placeholder = tr(cx).shell().workspace_new_placeholder();
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
         self.new_workspace_input = Some(input);
         self.workspace_menu_open = true;
@@ -104,11 +102,7 @@ impl AppShell {
                     this.persist_local(cx);
                     this.push_toast_auto(
                         ToastKind::Success,
-                        if this.language() == Language::ZhCn {
-                            "已创建工作区"
-                        } else {
-                            "Workspace created"
-                        },
+                        tr(cx).shell().workspace_created(),
                         None,
                         cx,
                     );
@@ -124,23 +118,13 @@ impl AppShell {
 
     pub fn set_global_proxy_url(&mut self, url: String, cx: &mut Context<Self>) {
         self.proxy_test_result = None;
-        let zh = self.language() == Language::ZhCn;
+        let sh = tr(cx).shell();
         let label = if url.trim().is_empty() {
-            if zh {
-                "已切换为跟随系统代理"
-            } else {
-                "Switched to system proxy"
-            }
+            sh.proxy_toast_system()
         } else if url.trim().eq_ignore_ascii_case(proxy_url::DIRECT) {
-            if zh {
-                "已切换为直连（无代理）"
-            } else {
-                "Switched to direct connection"
-            }
-        } else if zh {
-            "已应用全局自定义代理"
+            sh.proxy_toast_direct()
         } else {
-            "Applied custom global proxy"
+            sh.proxy_toast_custom()
         };
         let patch = serde_json::json!({ "proxy_url": url });
         let task = spawn_blocking_into(
@@ -163,15 +147,9 @@ impl AppShell {
     pub fn apply_custom_global_proxy(&mut self, cx: &mut Context<Self>) {
         let raw = self.proxy_url_input.read(cx).value().trim().to_owned();
         if raw.is_empty() {
-            let zh = self.language() == Language::ZhCn;
             self.push_toast_auto(
                 ToastKind::Warning,
-                if zh {
-                    "请输入代理地址（如 http://127.0.0.1:7890）"
-                } else {
-                    "Enter a proxy URL (e.g. http://127.0.0.1:7890)"
-                }
-                .to_owned(),
+                tr(cx).shell().proxy_toast_enter_url().to_owned(),
                 None,
                 cx,
             );

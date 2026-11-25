@@ -39,15 +39,11 @@ pub fn group_label(
         )
 }
 
-pub fn render_board_list(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> AnyElement {
+pub fn render_board_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     let mut list = v_col().w_full().gap(px(4.0)).p(px(8.0));
     let Some(board) = &view.board else {
         return empty_inline(
-            if zh {
-                "正在加载运行看板…"
-            } else {
-                "Loading board…"
-            },
+            crate::ui::tr(cx).chat().sidebar_board_loading_board(),
             None,
             None,
             cx,
@@ -56,44 +52,42 @@ pub fn render_board_list(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) 
     };
     if !board.needs_you.is_empty() {
         list = list.child(group_label(
-            if zh { "待确认" } else { "Needs you" },
+            crate::ui::tr(cx).chat().sidebar_board_needs_you(),
             board.needs_you.len(),
             Some(StatusShape::Warn),
             cx,
         ));
         for row in &board.needs_you {
-            list = list.child(render_board_row(view, row, StatusShape::Warn, zh, cx));
+            list = list.child(render_board_row(view, row, StatusShape::Warn, cx));
         }
     }
     if !board.running.is_empty() {
         list = list.child(group_label(
-            if zh { "运行中" } else { "Running" },
+            crate::ui::tr(cx).chat().pane_state_running(),
             board.running.len(),
             Some(StatusShape::Run),
             cx,
         ));
         for row in &board.running {
-            list = list.child(render_board_row(view, row, StatusShape::Run, zh, cx));
+            list = list.child(render_board_row(view, row, StatusShape::Run, cx));
         }
     }
     if !board.done.is_empty() {
         list = list.child(group_label(
-            if zh { "24h 已完成" } else { "Done (24h)" },
+            crate::ui::tr(cx).chat().sidebar_board_done_24h(),
             board.done.len(),
             Some(StatusShape::Ok),
             cx,
         ));
         for row in &board.done {
-            list = list.child(render_board_row(view, row, StatusShape::Ok, zh, cx));
+            list = list.child(render_board_row(view, row, StatusShape::Ok, cx));
         }
     }
     if board.needs_you.is_empty() && board.running.is_empty() && board.done.is_empty() {
         list = list.child(empty_inline(
-            if zh {
-                "当前无活跃或近期运行"
-            } else {
-                "No active or recent runs"
-            },
+            crate::ui::tr(cx)
+                .chat()
+                .sidebar_board_no_active_or_recent_runs(),
             None,
             None,
             cx,
@@ -111,7 +105,6 @@ fn render_board_row(
     view: &ChatView,
     row: &AgentBoardRow,
     shape: StatusShape,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> AnyElement {
     let p = palette(cx);
@@ -165,29 +158,22 @@ fn render_board_row(
                     .child(sub),
             )
             .children((row.plan_total > 0).then(|| {
-                div()
-                    .text_xs()
-                    .text_color(to_hsla(p.accent_ink))
-                    .child(if zh {
-                        format!("计划 {}/{}", row.plan_done, row.plan_total)
-                    } else {
-                        format!("Plan {}/{}", row.plan_done, row.plan_total)
-                    })
+                div().text_xs().text_color(to_hsla(p.accent_ink)).child(
+                    crate::ui::tr(cx)
+                        .chat()
+                        .sidebar_board_plan(row.plan_done, row.plan_total),
+                )
             })),
     )
     .into_any_element()
 }
 
-pub fn render_trash_list(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> AnyElement {
+pub fn render_trash_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     let p = palette(cx);
     let mut list = v_col().w_full().gap(px(4.0)).p(px(8.0));
     if view.trash_sessions.is_empty() {
         list = list.child(empty_inline(
-            if zh {
-                "最近删除为空"
-            } else {
-                "Trash is empty"
-            },
+            crate::ui::tr(cx).chat().sidebar_board_trash_is_empty(),
             None,
             None,
             cx,
@@ -215,7 +201,7 @@ pub fn render_trash_list(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) 
                     .child(
                         btn_ghost(
                             SharedString::from(format!("chat-tr-res-{}", s.id)),
-                            if zh { "恢复" } else { "Restore" },
+                            crate::ui::tr(cx).chat().pane_deleted_restore(),
                         )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.restore_session(sid.clone(), cx);

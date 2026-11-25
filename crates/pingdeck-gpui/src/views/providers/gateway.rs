@@ -16,7 +16,6 @@ use super::{
 
 pub fn render_gateway_cockpit(
     view: &ProvidersView,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -29,22 +28,20 @@ pub fn render_gateway_cockpit(
     let rules_count = view.gateway_rules.len();
     let ent = cx.entity().clone();
 
-    let clients_lbl = if zh {
-        format!("客户端 ({active_clients})")
-    } else {
-        format!("Clients ({active_clients})")
-    };
-    let rules_lbl = if zh {
-        format!("备用路由 ({rules_count})")
-    } else {
-        format!("Fallback Rules ({rules_count})")
-    };
+    let clients_lbl = crate::ui::tr(cx)
+        .providers()
+        .prov_gateway_clients(active_clients);
+    let rules_lbl = crate::ui::tr(cx)
+        .providers()
+        .prov_gateway_fallback_rules(rules_count);
 
     let tabs = tab_bar_underline("gw-cockpit-tabs")
         .selected_index(view.gateway_tab.index())
-        .child(tab_item(if zh { "概览" } else { "Overview" }))
+        .child(tab_item(crate::ui::tr(cx).providers().prov_tab_overview()))
         .child(tab_item(clients_lbl))
-        .child(tab_item(if zh { "访问控制" } else { "Access" }))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().prov_gateway_access(),
+        ))
         .child(tab_item(rules_lbl))
         .on_click(move |idx, _, cx| {
             let next = GatewayTab::from_index(*idx);
@@ -71,7 +68,7 @@ pub fn render_gateway_cockpit(
                         .text_sm()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh { "本地网关" } else { "Local Gateway" }),
+                        .child(crate::ui::tr(cx).providers().prov_gateway_local_gateway()),
                 )
                 .child(tabs),
         )
@@ -89,34 +86,37 @@ pub fn render_gateway_cockpit(
                     )
                 }))
                 .child(
-                    btn_ghost("gw-open-usage", if zh { "查看日志 ↗" } else { "Logs ↗" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.pending_handoff
-                                .set(Some(super::ProvidersHandoff::OpenUsageProvider(None)));
-                            cx.notify();
-                        }),
-                    ),
+                    btn_ghost(
+                        "gw-open-usage",
+                        crate::ui::tr(cx).providers().prov_gateway_logs(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.pending_handoff
+                            .set(Some(super::ProvidersHandoff::OpenUsageProvider(None)));
+                        cx.notify();
+                    })),
                 )
                 .children(gw_running.then(|| {
-                    btn_secondary("gw-restart", if zh { "重启" } else { "Restart" })
+                    btn_secondary("gw-restart", crate::ui::tr(cx).providers().gw_restart())
                         .on_click(cx.listener(|this, _, _, cx| this.gateway_action("restart", cx)))
                 }))
                 .child(if gw_running {
-                    btn_secondary("gw-stop", if zh { "停止网关" } else { "Stop" })
+                    btn_secondary("gw-stop", crate::ui::tr(cx).providers().prov_gateway_stop())
                         .on_click(cx.listener(|this, _, _, cx| this.gateway_action("stop", cx)))
                 } else {
-                    btn_primary("gw-start", if zh { "启动网关" } else { "Start Gateway" })
-                        .on_click(cx.listener(|this, _, _, cx| this.gateway_action("start", cx)))
+                    btn_primary(
+                        "gw-start",
+                        crate::ui::tr(cx).providers().prov_gateway_start_gateway(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.gateway_action("start", cx)))
                 }),
         );
 
     let body = match view.gateway_tab {
-        GatewayTab::Overview => {
-            render_overview_tab(view, active_clients, zh, cx).into_any_element()
-        }
-        GatewayTab::Clients => gateway_clients::render_clients_tab(view, zh, cx).into_any_element(),
-        GatewayTab::Access => gateway_access::render_access_tab(view, zh, cx).into_any_element(),
-        GatewayTab::Rules => gateway_rules::render_rules_tab(view, zh, cx).into_any_element(),
+        GatewayTab::Overview => render_overview_tab(view, active_clients, cx).into_any_element(),
+        GatewayTab::Clients => gateway_clients::render_clients_tab(view, cx).into_any_element(),
+        GatewayTab::Access => gateway_access::render_access_tab(view, cx).into_any_element(),
+        GatewayTab::Rules => gateway_rules::render_rules_tab(view, cx).into_any_element(),
     };
 
     v_col().size_full().child(header).child(
@@ -133,7 +133,6 @@ pub fn render_gateway_cockpit(
 fn render_overview_tab(
     view: &ProvidersView,
     active_clients: usize,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -170,7 +169,11 @@ fn render_overview_tab(
                             .gap(px(8.0))
                             .flex_wrap()
                             .child(status_indicator(
-                                if gw_running { StatusShape::Live } else { StatusShape::Idle },
+                                if gw_running {
+                                    StatusShape::Live
+                                } else {
+                                    StatusShape::Idle
+                                },
                                 cx,
                             ))
                             .child(
@@ -179,11 +182,9 @@ fn render_overview_tab(
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                     .text_color(to_hsla(p.ink))
                                     .child(if gw_running {
-                                        if zh { "正在监听" } else { "Listening" }
-                                    } else if zh {
-                                        "网关已停止"
+                                        crate::ui::tr(cx).providers().prov_gateway_listening()
                                     } else {
-                                        "Gateway stopped"
+                                        crate::ui::tr(cx).providers().strip_state_stopped()
                                     }),
                             )
                             .child(
@@ -196,20 +197,27 @@ fn render_overview_tab(
                                         let _ = clipboard::set_text(&copy_base);
                                         this.status_msg = Some((
                                             Tone::Success,
-                                            if zh { "网关地址已复制".into() } else { "Gateway URL copied".into() },
+                                            crate::ui::tr(cx)
+                                                .providers()
+                                                .prov_gateway_gateway_url_copied()
+                                                .into(),
                                         ));
                                         cx.notify();
                                     })),
                             )
                             .child(badge(
                                 if require_tok {
-                                    if zh { "令牌鉴权已开启" } else { "Token auth on" }
-                                } else if zh {
-                                    "允许匿名调用"
+                                    crate::ui::tr(cx).providers().prov_gateway_token_auth_on()
                                 } else {
-                                    "Anonymous allowed"
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_gateway_anonymous_allowed()
                                 },
-                                if require_tok { Tone::Success } else { Tone::Warning },
+                                if require_tok {
+                                    Tone::Success
+                                } else {
+                                    Tone::Warning
+                                },
                                 cx,
                             )),
                     )
@@ -218,32 +226,31 @@ fn render_overview_tab(
                             .text_xs()
                             .text_color(to_hsla(p.muted))
                             .child(SharedString::from(if gw_running {
-                                if zh {
-                                    format!(
-                                        "已运行 {} · {} · Host / Origin 防重绑定保护已启用",
-                                        format_uptime(uptime_s, true),
-                                        if serve_lan { "局域网监听 (0.0.0.0)" } else { "仅本机回环 (127.0.0.1)" }
-                                    )
+                                let lang = crate::ui::active_language(cx);
+                                let pr = crate::ui::tr(cx).providers();
+                                let bind = if serve_lan {
+                                    pr.prov_gw_bind_lan()
                                 } else {
-                                    format!(
-                                        "Up {} · {} · Host/Origin guard active",
-                                        format_uptime(uptime_s, false),
-                                        if serve_lan { "LAN enabled" } else { "Loopback only" }
-                                    )
-                                }
-                            } else if zh {
-                                "启动网关后，本地编码助手即可通过统一协议地址和备用链路由请求。".into()
+                                    pr.prov_gw_bind_loopback()
+                                };
+                                pr.prov_gw_status_running(format_uptime(uptime_s, lang), bind)
                             } else {
-                                "Start the gateway to route local coding tools with unified failover.".into()
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_gateway_start_the_gateway_to_route()
+                                    .into()
                             })),
                     ),
             )
             .child(
-                btn_primary("gw-connect-btn", if zh { "接入编码工具…" } else { "Connect client…" })
-                    .icon(icon_xs(UiIcon::Terminal))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_connect_sheet(None, window, cx);
-                    })),
+                btn_primary(
+                    "gw-connect-btn",
+                    crate::ui::tr(cx).providers().prov_gateway_connect_client(),
+                )
+                .icon(icon_xs(UiIcon::Terminal))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_connect_sheet(None, window, cx);
+                })),
             ),
     );
 
@@ -291,73 +298,38 @@ fn render_overview_tab(
     let kpis = h_row()
         .gap(px(10.0))
         .child(kpi_card(
-            if zh {
-                "今日网关转发"
-            } else {
-                "Requests Today"
-            },
+            crate::ui::tr(cx).providers().prov_gateway_requests_today(),
             today_reqs.to_string(),
-            if zh {
-                format!("{today_ok} 次成功 · {today_fail} 次失败 · 费用 {today_cost}")
-            } else {
-                format!("{today_ok} ok · {today_fail} failed · Cost {today_cost}")
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_gateway_ok_failed_cost(today_ok, today_fail, today_cost),
             cx,
         ))
         .child(kpi_card(
-            if zh {
-                "转发成功率"
-            } else {
-                "Success Rate"
-            },
+            crate::ui::tr(cx).providers().prov_gateway_success_rate(),
             ok_rate,
-            if zh {
-                "仅统计本地今日已路由请求".into()
-            } else {
-                "Routed calls today".into()
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_gateway_routed_calls_today()
+                .into(),
             cx,
         ))
         .child(kpi_card(
-            if zh { "今日 Tokens" } else { "Tokens Today" },
+            crate::ui::tr(cx).providers().prov_gateway_tokens_today(),
             format_tokens(today_in + today_out),
-            if zh {
-                format!(
-                    "输入 {} · 输出 {} · 缓存 {}",
-                    format_tokens(today_in),
-                    format_tokens(today_out),
-                    format_tokens(today_cached)
-                )
-            } else {
-                format!(
-                    "In {} · Out {} · Cache {}",
-                    format_tokens(today_in),
-                    format_tokens(today_out),
-                    format_tokens(today_cached)
-                )
-            },
+            crate::ui::tr(cx).providers().prov_gateway_in_out_cache(
+                format_tokens(today_in),
+                format_tokens(today_out),
+                format_tokens(today_cached),
+            ),
             cx,
         ))
         .child(kpi_card(
-            if zh {
-                "客户端 / 可用模型"
-            } else {
-                "Clients / Models"
-            },
+            crate::ui::tr(cx).providers().prov_gateway_clients_models(),
             format!("{active_clients} / {enabled_models}"),
-            if zh {
-                format!(
-                    "{} 个服务商 · {} 条备用规则",
-                    view.providers.len(),
-                    view.gateway_rules.len()
-                )
-            } else {
-                format!(
-                    "{} providers · {} rules",
-                    view.providers.len(),
-                    view.gateway_rules.len()
-                )
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_gateway_providers_rules(view.providers.len(), view.gateway_rules.len()),
             cx,
         ));
 
@@ -372,17 +344,20 @@ fn render_overview_tab(
                     h_row()
                         .justify_between()
                         .gap(px(8.0))
-                        .child(div().text_xs().text_color(to_hsla(p.bad)).child(
-                            SharedString::from(if zh {
-                                format!("网关启动失败：{err}")
-                            } else {
-                                format!("Gateway start error: {err}")
-                            }),
-                        ))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(p.bad))
+                                .child(SharedString::from(
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_gateway_gateway_start_error(err),
+                                )),
+                        )
                         .child(
                             btn_secondary(
                                 "gw-err-access",
-                                if zh { "换端口" } else { "Change port" },
+                                crate::ui::tr(cx).providers().gw_err_change_port(),
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.gateway_tab = GatewayTab::Access;
@@ -396,7 +371,6 @@ fn render_overview_tab(
         .child(gateway_overview::render_overview_panels(
             view,
             active_clients,
-            zh,
             cx,
         ))
 }

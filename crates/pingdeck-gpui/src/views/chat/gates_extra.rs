@@ -10,11 +10,7 @@ use crate::ui::{
 
 use super::ChatView;
 
-pub fn render_cost_pause(
-    pause: &LiveCostPause,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
+pub fn render_cost_pause(pause: &LiveCostPause, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let rid_go = pause.run_id.clone();
     let rid_stop = pause.run_id.clone();
@@ -45,11 +41,11 @@ pub fn render_cost_pause(
                                     .text_xs()
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                     .text_color(to_hsla(p.ink))
-                                    .child(if zh {
-                                        "达到单次运行预算上限，已暂停"
-                                    } else {
-                                        "Run paused at budget limit"
-                                    }),
+                                    .child(
+                                        crate::ui::tr(cx)
+                                            .chat()
+                                            .gates_extra_run_paused_at_budget_limit(),
+                                    ),
                             )
                             .child(
                                 div()
@@ -63,26 +59,25 @@ pub fn render_cost_pause(
                 h_row()
                     .gap(px(6.0))
                     .child(
-                        btn_danger("cost-stop", if zh { "停止当前运行" } else { "Stop run" })
+                        btn_danger("cost-stop", crate::ui::tr(cx).chat().gates_extra_stop_run())
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.continue_cost_pause(rid_stop.clone(), false, cx);
                             })),
                     )
                     .child(
-                        btn_primary("cost-continue", if zh { "继续运行" } else { "Continue" })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.continue_cost_pause(rid_go.clone(), true, cx);
-                            })),
+                        btn_primary(
+                            "cost-continue",
+                            crate::ui::tr(cx).chat().gates_extra_continue(),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.continue_cost_pause(rid_go.clone(), true, cx);
+                        })),
                     ),
             ),
     )
 }
 
-pub fn render_queued_bar(
-    view: &ChatView,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
+pub fn render_queued_bar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let mut box_el = v_col()
         .w_full()
@@ -99,11 +94,9 @@ pub fn render_queued_bar(
                     h_row()
                         .gap(px(6.0))
                         .child(badge(
-                            if zh {
-                                format!("待发队列 ({})", view.thread.queued_turns.len())
-                            } else {
-                                format!("Queued ({})", view.thread.queued_turns.len())
-                            },
+                            crate::ui::tr(cx)
+                                .chat()
+                                .gates_extra_queued(view.thread.queued_turns.len()),
                             if view.thread.queue_paused {
                                 Tone::Warning
                             } else {
@@ -112,22 +105,24 @@ pub fn render_queued_bar(
                             cx,
                         ))
                         .children(view.thread.queue_paused.then(|| {
-                            div().text_xs().text_color(to_hsla(p.warn)).child(if zh {
-                                "已暂停"
-                            } else {
-                                "Paused"
-                            })
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(p.warn))
+                                .child(crate::ui::tr(cx).chat().gates_extra_paused())
                         })),
                 )
                 .child(
                     h_row()
                         .gap(px(4.0))
                         .children(view.thread.queue_paused.then(|| {
-                            btn_primary("chat-q-resume", if zh { "恢复队列" } else { "Resume" })
-                                .on_click(cx.listener(|this, _, _, cx| this.queue_resume(cx)))
+                            btn_primary(
+                                "chat-q-resume",
+                                crate::ui::tr(cx).chat().gates_extra_resume(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.queue_resume(cx)))
                         }))
                         .child(
-                            btn_ghost("chat-q-clear", if zh { "清空" } else { "Clear" })
+                            btn_ghost("chat-q-clear", crate::ui::tr(cx).chat().queue_clear())
                                 .on_click(cx.listener(|this, _, _, cx| this.queue_clear(cx))),
                         ),
                 ),
@@ -166,7 +161,7 @@ pub fn render_queued_bar(
                 .child(
                     btn_ghost(
                         SharedString::from(format!("chat-q-steer-{}", q.id)),
-                        if zh { "立即插队" } else { "Steer now" },
+                        crate::ui::tr(cx).chat().gates_extra_steer_now(),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.queue_steer(qid_st.clone(), cx);

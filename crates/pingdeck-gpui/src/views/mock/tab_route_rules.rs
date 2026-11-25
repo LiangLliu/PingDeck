@@ -44,7 +44,9 @@ pub fn render_resp_headers(
 ) -> AnyElement {
     let p = palette(cx);
     let mut box_el = v_col().w_full().gap(px(6.0)).child(section_header(
-        view.t("分支响应头", "Response Headers"),
+        crate::ui::Tr(view.lang)
+            .mock()
+            .tab_route_rules_response_headers(),
         Some(badge(headers.len().to_string(), Tone::Neutral, cx).into_any_element()),
         cx,
     ));
@@ -113,29 +115,32 @@ pub fn render_resp_headers(
                     .child(text_input(&view.kv_val_input)),
             )
             .child(
-                btn_secondary("mock-rh-add", view.t("+ 响应头", "+ Header"))
-                    .icon(icon_xs(UiIcon::Plus))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let k = this.kv_key_input.read(cx).value().trim().to_owned();
-                        let v = this.kv_val_input.read(cx).value().to_string();
-                        if k.is_empty() {
-                            return;
-                        }
-                        if let Some(rp) = this.selected_response_mut() {
-                            rp.headers.push(KeyValue {
-                                key: k,
-                                value: v,
-                                enabled: true,
-                                description: None,
-                            });
-                            this.dirty = true;
-                        }
-                        this.kv_key_input
-                            .update(cx, |s, cx| s.set_value("", window, cx));
-                        this.kv_val_input
-                            .update(cx, |s, cx| s.set_value("", window, cx));
-                        cx.notify();
-                    })),
+                btn_secondary(
+                    "mock-rh-add",
+                    crate::ui::Tr(view.lang).mock().tab_route_rules_header(),
+                )
+                .icon(icon_xs(UiIcon::Plus))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let k = this.kv_key_input.read(cx).value().trim().to_owned();
+                    let v = this.kv_val_input.read(cx).value().to_string();
+                    if k.is_empty() {
+                        return;
+                    }
+                    if let Some(rp) = this.selected_response_mut() {
+                        rp.headers.push(KeyValue {
+                            key: k,
+                            value: v,
+                            enabled: true,
+                            description: None,
+                        });
+                        this.dirty = true;
+                    }
+                    this.kv_key_input
+                        .update(cx, |s, cx| s.set_value("", window, cx));
+                    this.kv_val_input
+                        .update(cx, |s, cx| s.set_value("", window, cx));
+                    cx.notify();
+                })),
             ),
     );
     box_el.into_any_element()
@@ -144,7 +149,6 @@ pub fn render_resp_headers(
 pub fn render_matching_rules(
     view: &MockView,
     resp: &MockResponse,
-    zh: bool,
     cx: &mut Context<MockView>,
 ) -> AnyElement {
     let p = palette(cx);
@@ -153,11 +157,7 @@ pub fn render_matching_rules(
         .child(
             choice_chip(
                 "mock-rop-and",
-                if zh {
-                    "全部满足 AND"
-                } else {
-                    "Match ALL (AND)"
-                },
+                crate::ui::tr(cx).mock().tab_route_rules_match_all_and(),
                 resp.rules_operator == MockRulesOperator::And,
                 cx,
             )
@@ -172,11 +172,7 @@ pub fn render_matching_rules(
         .child(
             choice_chip(
                 "mock-rop-or",
-                if zh {
-                    "任一满足 OR"
-                } else {
-                    "Match ANY (OR)"
-                },
+                crate::ui::tr(cx).mock().tab_route_rules_match_any_or(),
                 resp.rules_operator == MockRulesOperator::Or,
                 cx,
             )
@@ -191,7 +187,9 @@ pub fn render_matching_rules(
         .into_any_element();
 
     let mut box_el = v_col().w_full().gap(px(6.0)).child(section_header(
-        view.t("匹配规则", "Matching Rules"),
+        crate::ui::Tr(view.lang)
+            .mock()
+            .tab_route_rules_matching_rules(),
         Some(op_toggle),
         cx,
     ));
@@ -288,11 +286,13 @@ pub fn render_matching_rules(
                     .child(text_input(&view.rule_val_input)),
             )
             .child(
-                btn_secondary("mock-rule-add", view.t("+ 规则", "+ Rule")).on_click(cx.listener(
-                    |this, _, window, cx| {
-                        this.add_rule_to_response(window, cx);
-                    },
-                )),
+                btn_secondary(
+                    "mock-rule-add",
+                    crate::ui::Tr(view.lang).mock().tab_route_rules_rule(),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.add_rule_to_response(window, cx);
+                })),
             ),
     );
     box_el.into_any_element()

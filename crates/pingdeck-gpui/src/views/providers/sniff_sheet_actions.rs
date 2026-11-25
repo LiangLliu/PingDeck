@@ -55,11 +55,10 @@ impl SniffProviderSheet {
         if base_url.is_empty() && self.resniff_provider_id.is_none() {
             self.flash = Some((
                 Tone::Warning,
-                if self.zh {
-                    "请先输入基础 URL 或选择一个预设".into()
-                } else {
-                    "Enter a Base URL or pick a preset first".into()
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_need_url_or_preset()
+                    .into(),
             ));
             cx.notify();
             return;
@@ -203,7 +202,6 @@ impl SniffProviderSheet {
         self.saving = true;
         cx.notify();
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_provider_create_from_preset_impl(state, input),
@@ -213,21 +211,17 @@ impl SniffProviderSheet {
                     Ok(saved) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已通过预设添加「{}」", saved.name)
-                            } else {
-                                format!("Added {} from preset", saved.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sniff_sheet_actions_added_from_preset(&saved.name),
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
                             p.status_msg = Some((
                                 Tone::Success,
-                                if zh {
-                                    format!("已添加服务商「{}」", saved.name)
-                                } else {
-                                    format!("Added provider {}", saved.name)
-                                },
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_sniff_sheet_actions_added_provider(saved.name),
                             ));
                             p.reload_all(cx);
                         });
@@ -252,7 +246,6 @@ impl SniffProviderSheet {
         self.saving = true;
         cx.notify();
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -273,21 +266,17 @@ impl SniffProviderSheet {
                     Ok(saved) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已添加未验证服务商「{}」", saved.name)
-                            } else {
-                                format!("Added unverified provider {}", saved.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sniff_sheet_actions_added_unverified_provider(&saved.name),
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
                             p.status_msg = Some((
                                 Tone::Success,
-                                if zh {
-                                    format!("已添加服务商「{}」", saved.name)
-                                } else {
-                                    format!("Added provider {}", saved.name)
-                                },
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_sniff_sheet_actions_added_provider(saved.name),
                             ));
                             p.reload_all(cx);
                         });
@@ -354,7 +343,6 @@ impl SniffProviderSheet {
         cx.notify();
 
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| match resniff_id {
@@ -374,21 +362,17 @@ impl SniffProviderSheet {
                     Ok(saved) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已保存服务商「{}」", saved.name)
-                            } else {
-                                format!("Saved provider {}", saved.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sniff_sheet_actions_saved_provider(&saved.name),
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
                             p.status_msg = Some((
                                 Tone::Success,
-                                if zh {
-                                    format!("已添加服务商「{}」", saved.name)
-                                } else {
-                                    format!("Added provider {}", saved.name)
-                                },
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_sniff_sheet_actions_added_provider(saved.name),
                             ));
                             p.reload_all(cx);
                         });
@@ -408,7 +392,6 @@ impl SniffProviderSheet {
             return;
         }
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_provider_add_key_from_sniff_impl(state, &existing_id, &key_raw, None),
@@ -417,11 +400,9 @@ impl SniffProviderSheet {
                     Ok(k) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已将密钥添加到已有服务商（{}）", k.name)
-                            } else {
-                                format!("Added key {} to existing provider", k.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sniff_sheet_actions_added_key_to_existing_provider(k.name),
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(k.provider_id);
@@ -438,113 +419,57 @@ impl SniffProviderSheet {
     }
 }
 
-pub(super) fn format_sniff_warning(w: &SniffWarning, zh: bool) -> String {
+pub(super) fn format_sniff_warning(
+    w: &SniffWarning,
+    lang: pingdeck_desktop::core::model::settings::Language,
+) -> String {
+    let p = crate::ui::Tr(lang).providers();
     match w {
-        SniffWarning::UserinfoIgnored => if zh {
-            "已忽略 URL 中的用户信息"
-        } else {
-            "Ignored userinfo in URL"
+        SniffWarning::UserinfoIgnored => {
+            p.prov_sniff_sheet_actions_ignored_userinfo_in_url().into()
         }
-        .into(),
-        SniffWarning::KeyInUrlIgnored => if zh {
-            "已忽略 URL 查询参数中的密钥"
-        } else {
-            "Ignored API key in URL query"
+        SniffWarning::KeyInUrlIgnored => p.prov_sniff_sheet_actions_ignored_api_key_in_url().into(),
+        SniffWarning::DashboardPathIgnored => {
+            p.prov_sniff_sheet_actions_trimmed_dashboard_path().into()
         }
-        .into(),
-        SniffWarning::DashboardPathIgnored => if zh {
-            "已截断控制台页面路径"
-        } else {
-            "Trimmed dashboard path"
-        }
-        .into(),
-        SniffWarning::PlainHttpPublic => if zh {
-            "公网地址使用明文 HTTP"
-        } else {
-            "Plain HTTP on public host"
-        }
-        .into(),
+        SniffWarning::PlainHttpPublic => p
+            .prov_sniff_sheet_actions_plain_http_on_public_host()
+            .into(),
         SniffWarning::RedirectIgnored { location_host } => match location_host {
-            Some(h) if zh => format!("忽略了指向 {h} 的重定向"),
-            Some(h) => format!("Ignored redirect to {h}"),
-            None if zh => "忽略了 3xx 重定向".into(),
-            None => "Ignored 3xx redirect".into(),
+            Some(h) => p.prov_sniff_redirect_host(h),
+            None => p.prov_sniff_redirect_3xx().into(),
         },
-        SniffWarning::BodyTruncated => if zh {
-            "响应体超限已截断"
-        } else {
-            "Response body truncated"
-        }
-        .into(),
-        SniffWarning::ListTruncated => if zh {
-            "模型列表超过分页上限（前 5 页）"
-        } else {
-            "Model list truncated (first 5 pages)"
-        }
-        .into(),
-        SniffWarning::RateLimited => if zh {
-            "探测触发限流"
-        } else {
-            "Rate limited during scan"
-        }
-        .into(),
-        SniffWarning::LookalikeHost => if zh {
-            "疑似仿冒域名，未发送密钥"
-        } else {
-            "Lookalike host — key not sent"
-        }
-        .into(),
-        SniffWarning::VendorKeyOnOtherHost => if zh {
-            "密钥前缀与其他厂商不匹配，未发送密钥"
-        } else {
-            "Vendor key prefix mismatch — key not sent"
-        }
-        .into(),
+        SniffWarning::BodyTruncated => p.prov_sniff_sheet_actions_response_body_truncated().into(),
+        SniffWarning::ListTruncated => p
+            .prov_sniff_sheet_actions_model_list_truncated_first_5()
+            .into(),
+        SniffWarning::RateLimited => p.prov_sniff_sheet_actions_rate_limited_during_scan().into(),
+        SniffWarning::LookalikeHost => p
+            .prov_sniff_sheet_actions_lookalike_host_key_not_sent()
+            .into(),
+        SniffWarning::VendorKeyOnOtherHost => p
+            .prov_sniff_sheet_actions_vendor_key_prefix_mismatch_key()
+            .into(),
         SniffWarning::PresetRouteMismatch { protocol } => {
-            if zh {
-                format!("预设路由 {:?} 与主机响应不符", protocol)
-            } else {
-                format!("Preset route {:?} differs from host", protocol)
-            }
+            p.prov_sniff_sheet_actions_preset_route_differs_from_host(format!("{protocol:?}"))
         }
         SniffWarning::RegionMismatch {
             suggested_region_id,
-        } => {
-            if zh {
-                format!("密钥可能属于区域 {suggested_region_id}")
-            } else {
-                format!("Key may belong to region {suggested_region_id}")
-            }
-        }
-        SniffWarning::HtmlPage => if zh {
-            "目标返回网页而非 API 响应"
-        } else {
-            "Host returned HTML page instead of API"
-        }
-        .into(),
-        SniffWarning::ChallengePage => if zh {
-            "目标触发人机验证拦截页"
-        } else {
-            "Host returned bot-challenge page"
-        }
-        .into(),
-        SniffWarning::ScanTimeout => if zh {
-            "扫描超时，以下为部分结果"
-        } else {
-            "Scan timed out; partial results shown"
-        }
-        .into(),
-        SniffWarning::ScanCancelled => if zh {
-            "已取消扫描，保留已探测结果"
-        } else {
-            "Scan cancelled; partial results kept"
-        }
-        .into(),
-        SniffWarning::BrandThirdParty => if zh {
-            "厂商识别基于第三方特征"
-        } else {
-            "Brand inferred from third-party signals"
-        }
-        .into(),
+        } => p.prov_sniff_sheet_actions_key_may_belong_to_region(suggested_region_id),
+        SniffWarning::HtmlPage => p
+            .prov_sniff_sheet_actions_host_returned_html_page_instead()
+            .into(),
+        SniffWarning::ChallengePage => p
+            .prov_sniff_sheet_actions_host_returned_bot_challenge_page()
+            .into(),
+        SniffWarning::ScanTimeout => p
+            .prov_sniff_sheet_actions_scan_timed_out_partial_results()
+            .into(),
+        SniffWarning::ScanCancelled => p
+            .prov_sniff_sheet_actions_scan_cancelled_partial_results_kept()
+            .into(),
+        SniffWarning::BrandThirdParty => p
+            .prov_sniff_sheet_actions_brand_inferred_from_third_party()
+            .into(),
     }
 }

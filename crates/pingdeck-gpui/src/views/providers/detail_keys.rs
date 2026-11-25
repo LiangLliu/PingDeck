@@ -18,7 +18,6 @@ pub fn render_keys_card(
     view: &ProvidersView,
     prov: &Provider,
     keys: &[ProviderKey],
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -35,9 +34,15 @@ pub fn render_keys_card(
 
     let strat_seg = tab_bar_segmented("prov-key-strat")
         .selected_index(strat_idx)
-        .child(tab_item(if zh { "固定主密钥" } else { "Primary" }))
-        .child(tab_item(if zh { "轮询" } else { "Round-robin" }))
-        .child(tab_item(if zh { "随机" } else { "Random" }))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().prov_detail_keys_primary(),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().prov_detail_keys_round_robin(),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().prov_key_strategy_random(),
+        ))
         .on_click(move |idx, _, cx| {
             let next = match *idx {
                 1 => KeyStrategy::RoundRobin,
@@ -46,7 +51,7 @@ pub fn render_keys_card(
             };
             let pid = pid_strat.clone();
             ent.update(cx, |this, cx| {
-                this.update_provider_key_policy(pid, Some(next), None, zh, cx);
+                this.update_provider_key_policy(pid, Some(next), None, cx);
             });
         });
 
@@ -59,28 +64,29 @@ pub fn render_keys_card(
                 v_col()
                     .gap(px(2.0))
                     .child(section_heading(
-                        if zh {
-                            format!("密钥池（{} 把密钥）", keys.len())
-                        } else {
-                            format!("API Keys ({})", keys.len())
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_keys_api_keys(keys.len()),
                         cx,
                     ))
-                    .child(div().text_size(px(11.0)).text_color(to_hsla(p.faint)).child(if zh {
-                        "明文 0600 保险库仅存本机；支持多密钥轮换与 429/401 自动冷却隔离。"
-                    } else {
-                        "Stored locally (0600 vault); supports multi-key rotation and cooldown isolation."
-                    })),
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(to_hsla(p.faint))
+                            .child(
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_detail_keys_stored_locally_0600_vault_supports(),
+                            ),
+                    ),
             )
             .child(
                 btn_secondary(
                     "prov-toggle-add-key",
                     if view.adding_key_open {
-                        if zh { "收起" } else { "Close" }
-                    } else if zh {
-                        "+ 添加密钥"
+                        crate::ui::tr(cx).providers().prov_detail_keys_close()
                     } else {
-                        "+ Add key"
+                        crate::ui::tr(cx).providers().prov_detail_add_key()
                     },
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -105,28 +111,28 @@ pub fn render_keys_card(
                     .child(
                         h_row()
                             .gap(px(8.0))
-                            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                                "轮换方式"
-                            } else {
-                                "Rotation"
-                            }))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(to_hsla(p.muted))
+                                    .child(crate::ui::tr(cx).providers().prov_key_strategy()),
+                            )
                             .child(strat_seg),
                     )
                     .child(
                         h_row()
                             .gap(px(6.0))
-                            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                                "失败后冷却"
-                            } else {
-                                "Cooldown"
-                            }))
+                            .child(
+                                div().text_xs().text_color(to_hsla(p.muted)).child(
+                                    crate::ui::tr(cx).providers().prov_detail_keys_cooldown(),
+                                ),
+                            )
                             .child(toggle_switch("prov-key-cd", cooldown_on).on_click(
                                 cx.listener(move |this, _, _, cx| {
                                     this.update_provider_key_policy(
                                         pid_cd.clone(),
                                         None,
                                         Some(!cooldown_on),
-                                        zh,
                                         cx,
                                     );
                                 }),
@@ -182,11 +188,11 @@ pub fn render_keys_card(
                         .child(
                             btn_primary(
                                 "prov-save-new-key",
-                                if zh { "保存密钥" } else { "Save key" },
+                                crate::ui::tr(cx).providers().cfg_secret_save(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
-                                    this.add_provider_key(pid_save.clone(), zh, window, cx);
+                                    this.add_provider_key(pid_save.clone(), window, cx);
                                 },
                             )),
                         ),
@@ -195,11 +201,13 @@ pub fn render_keys_card(
     }
 
     if keys.is_empty() {
-        box_col = box_col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "还没有密钥。"
-        } else {
-            "No API keys configured."
-        }));
+        box_col = box_col.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_keys_no_api_keys_configured(),
+            ),
+        );
     } else {
         for (i, key) in keys.iter().enumerate() {
             let kid = key.id.clone();
@@ -219,37 +227,27 @@ pub fn render_keys_card(
             };
             let status_line = match runtime_state {
                 KeyRunState::Disabled => {
-                    if zh {
-                        "已停用".into()
-                    } else {
-                        "Disabled".into()
-                    }
+                    crate::ui::tr(cx).providers().prov_status_disabled().into()
                 }
-                KeyRunState::Cooling => {
-                    if zh {
-                        "冷却中（限流/拒接）".into()
-                    } else {
-                        "Cooling down".into()
-                    }
-                }
-                KeyRunState::CircuitOpen => {
-                    if zh {
-                        "熔断打开".into()
-                    } else {
-                        "Circuit open".into()
-                    }
-                }
+                KeyRunState::Cooling => crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_keys_cooling_down()
+                    .into(),
+                KeyRunState::CircuitOpen => crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_keys_circuit_open()
+                    .into(),
                 KeyRunState::Ready => {
                     if let Some(ms) = key.last_used_ms {
-                        if zh {
-                            format!("可用 · {}用过", format_relative_time(ms, true))
-                        } else {
-                            format!("Ready · used {}", format_relative_time(ms, false))
-                        }
-                    } else if zh {
-                        "可用 · 从未使用".into()
+                        let lang = crate::ui::active_language(cx);
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_keys_ready_used(format_relative_time(ms, lang))
                     } else {
-                        "Ready · never used".into()
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_keys_ready_never_used()
+                            .into()
                     }
                 }
             };
@@ -258,7 +256,7 @@ pub fn render_keys_card(
                 .as_ref()
                 .and_then(|b| b.last_good.as_ref())
                 .filter(|r| r.supported)
-                .map(|r| format_balance_report(r, zh));
+                .map(|r| format_balance_report(r, crate::ui::active_language(cx)));
             let revealed = view
                 .revealed_provider_key
                 .as_ref()
@@ -307,11 +305,10 @@ pub fn render_keys_card(
                                             )
                                             .child(badge(
                                                 SharedString::from(if key.secret_hint.is_empty() {
-                                                    if zh {
-                                                        "未设置".into()
-                                                    } else {
-                                                        "Empty".into()
-                                                    }
+                                                    crate::ui::tr(cx)
+                                                        .providers()
+                                                        .prov_detail_keys_empty()
+                                                        .into()
                                                 } else {
                                                     key.secret_hint.clone()
                                                 }),
@@ -347,25 +344,24 @@ pub fn render_keys_card(
                             .children((runtime_state == KeyRunState::Cooling).then(|| {
                                 btn_ghost(
                                     SharedString::from(format!("key-cd-{i}")),
-                                    if zh { "清冷却" } else { "Clear" },
+                                    crate::ui::tr(cx).providers().prov_detail_keys_clear(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.clear_key_cooldown(kid_cd.clone(), zh, cx);
+                                        this.clear_key_cooldown(kid_cd.clone(), cx);
                                     },
                                 ))
                             }))
                             .child(
                                 btn_ghost(
                                     SharedString::from(format!("key-list-{i}")),
-                                    if zh { "读模型" } else { "Models" },
+                                    crate::ui::tr(cx).providers().prov_detail_keys_models(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.refresh_provider_models(
                                             pid_k.clone(),
                                             Some(kid_list.clone()),
-                                            zh,
                                             cx,
                                         );
                                     },
@@ -382,14 +378,14 @@ pub fn render_keys_card(
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.toggle_reveal_key(kid_rev.clone(), zh, cx);
+                                        this.toggle_reveal_key(kid_rev.clone(), cx);
                                     },
                                 )),
                             )
                             .child(
                                 btn_ghost(
                                     SharedString::from(format!("key-probe-{i}")),
-                                    if zh { "探测" } else { "Probe" },
+                                    crate::ui::tr(cx).providers().prov_detail_keys_probe(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
@@ -448,17 +444,20 @@ pub fn render_keys_card(
                             .child(
                                 toggle_switch(("key-en", i), key.enabled).on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.toggle_key_enabled(key_clone.clone(), zh, cx);
+                                        this.toggle_key_enabled(key_clone.clone(), cx);
                                     },
                                 )),
                             )
                             .child(if is_confirm_del {
-                                btn_danger(("key-del-ok", i), if zh { "确认删" } else { "Confirm" })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.confirm_delete_key = None;
-                                        this.delete_provider_key(kid_del.clone(), zh, cx);
-                                    }))
-                                    .into_any_element()
+                                btn_danger(
+                                    ("key-del-ok", i),
+                                    crate::ui::tr(cx).providers().prov_detail_keys_confirm(),
+                                )
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.confirm_delete_key = None;
+                                    this.delete_provider_key(kid_del.clone(), cx);
+                                }))
+                                .into_any_element()
                             } else {
                                 let k_arm = kid_del.clone();
                                 btn_icon(("key-del", i), UiIcon::Trash)
@@ -489,17 +488,13 @@ pub fn render_keys_card(
                                 .child(SharedString::from(secret)),
                         )
                         .child(
-                            btn_ghost(("key-copy-sec", i), if zh { "复制" } else { "Copy" })
+                            btn_ghost(("key-copy-sec", i), crate::ui::tr(cx).common().copy())
                                 .icon(icon_xs(UiIcon::Copy))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let _ = clipboard::set_text(&copy_s);
                                     this.status_msg = Some((
                                         Tone::Success,
-                                        if zh {
-                                            "已复制密钥".into()
-                                        } else {
-                                            "Key copied".into()
-                                        },
+                                        crate::ui::tr(cx).providers().prov_key_copied().into(),
                                     ));
                                     cx.notify();
                                 })),
@@ -540,16 +535,11 @@ pub fn render_keys_card(
                                 .child(
                                     btn_primary(
                                         ("key-ed-save", i),
-                                        if zh { "保存" } else { "Save" },
+                                        crate::ui::tr(cx).common().save(),
                                     )
                                     .on_click(cx.listener(
                                         move |this, _, window, cx| {
-                                            this.save_edited_key(
-                                                key_for_save.clone(),
-                                                zh,
-                                                window,
-                                                cx,
-                                            );
+                                            this.save_edited_key(key_for_save.clone(), window, cx);
                                         },
                                     )),
                                 ),

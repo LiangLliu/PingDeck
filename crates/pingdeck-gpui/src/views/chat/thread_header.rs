@@ -17,10 +17,10 @@ use super::ChatView;
 use super::reasoning::message_has_reasoning;
 use super::types::ChatModal;
 
-pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
+pub fn render_header(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let title = if view.thread.title.trim().is_empty() {
-        if zh { "新对话" } else { "New chat" }.to_owned()
+        crate::ui::tr(cx).chat().header_new_chat().to_owned()
     } else {
         view.thread.title.clone()
     };
@@ -30,13 +30,9 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
         .and_then(|s| s.target.as_ref())
         .map(|t| view.format_target_label(t))
         .or_else(|| {
-            view.available_models.first().map(|m| {
-                if zh {
-                    format!("自动 · {}", m.display_label())
-                } else {
-                    format!("Auto · {}", m.display_label())
-                }
-            })
+            view.available_models
+                .first()
+                .map(|m| crate::ui::tr(cx).chat().composer_auto(m.display_label()))
         });
     let pinned = view
         .session
@@ -80,11 +76,9 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                     .when(can_rename, |el| {
                         el.cursor_pointer()
                             .hover(move |s| s.bg(title_hover_bg))
-                            .tooltip(text_tooltip(if zh {
-                                "点击修改标题"
-                            } else {
-                                "Click to rename"
-                            }))
+                            .tooltip(text_tooltip(
+                                crate::ui::tr(cx).chat().thread_header_click_to_rename(),
+                            ))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.modal_input.update(cx, |s, cx| {
                                     s.set_value(rename_title.clone(), window, cx);
@@ -126,25 +120,21 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                 .children(has_any_reasoning.then(|| {
                     btn_icon("chat-hdr-reasoning-all", UiIcon::Brain)
                         .tooltip(if all_reasoning_open {
-                            if zh {
-                                "收起全部思考过程"
-                            } else {
-                                "Collapse all thinking"
-                            }
-                        } else if zh {
-                            "展开全部思考过程"
+                            crate::ui::tr(cx)
+                                .chat()
+                                .thread_header_collapse_all_thinking()
                         } else {
-                            "Expand all thinking"
+                            crate::ui::tr(cx).chat().thread_header_expand_all_thinking()
                         })
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_all_reasoning(cx)))
                 }))
                 .children((!view.thread.session_id.is_empty()).then(|| {
                     btn_icon("chat-hdr-export", UiIcon::Download)
-                        .tooltip(if zh {
-                            "导出脱敏对话 Markdown"
-                        } else {
-                            "Export redacted chat"
-                        })
+                        .tooltip(
+                            crate::ui::tr(cx)
+                                .chat()
+                                .thread_header_export_redacted_chat(),
+                        )
                         .on_click(cx.listener(|this, _, _, cx| this.export_chat_redacted(cx)))
                 }))
                 .child(
@@ -153,11 +143,9 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                         if pinned { UiIcon::PinOff } else { UiIcon::Pin },
                     )
                     .tooltip(if pinned {
-                        if zh { "取消置顶" } else { "Unpin" }
-                    } else if zh {
-                        "置顶对话"
+                        crate::ui::tr(cx).chat().sidebar_unpin()
                     } else {
-                        "Pin chat"
+                        crate::ui::tr(cx).chat().thread_header_pin_chat()
                     })
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
                 )
@@ -170,11 +158,11 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                             UiIcon::PanelRightOpen
                         },
                     )
-                    .tooltip(if zh {
-                        "对话详情与变更"
-                    } else {
-                        "Thread details & changes"
-                    })
+                    .tooltip(
+                        crate::ui::tr(cx)
+                            .chat()
+                            .thread_header_thread_details_changes(),
+                    )
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.details_open = !this.details_open;
                         cx.notify();
@@ -182,7 +170,7 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                 )
                 .child(
                     btn_icon("chat-hdr-del", UiIcon::Trash)
-                        .tooltip(if zh { "删除对话" } else { "Delete chat" })
+                        .tooltip(crate::ui::tr(cx).chat().thread_header_delete_chat())
                         .on_click(cx.listener(|this, _, _, cx| this.request_delete_current(cx))),
                 ),
         );
@@ -215,7 +203,7 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
                         .child(SharedString::from(m)),
                 )
         }))
-        .child(render_binding_popover(view, zh, cx));
+        .child(render_binding_popover(view, cx));
 
     v_col()
         .w_full()
@@ -229,11 +217,7 @@ pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> i
         .child(meta_row)
 }
 
-fn render_binding_popover(
-    view: &ChatView,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
+fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let folder_name = view
         .session
         .as_ref()
@@ -281,12 +265,10 @@ fn render_binding_popover(
         }
     }
     let label = if parts.is_empty() {
-        if zh {
-            "绑定目录 / 工作区"
-        } else {
-            "Bind folder / workspace"
-        }
-        .to_owned()
+        crate::ui::tr(cx)
+            .chat()
+            .thread_header_bind_folder_workspace()
+            .to_owned()
     } else {
         parts.join(" · ")
     };
@@ -306,11 +288,7 @@ fn render_binding_popover(
         .content(move |_, _, pop_cx| {
             let pp = palette(pop_cx);
             let mut m = v_col().w(px(280.0)).gap(px(6.0)).child(popover_header(
-                if zh {
-                    "上下文绑定"
-                } else {
-                    "Session Context"
-                },
+                crate::ui::tr(pop_cx).chat().thread_header_session_context(),
                 None,
                 pop_cx,
             ));
@@ -321,7 +299,7 @@ fn render_binding_popover(
                 v_col()
                     .gap(px(4.0))
                     .child(section_heading(
-                        if zh { "本地目录" } else { "Local folder" },
+                        crate::ui::tr(pop_cx).chat().thread_header_local_folder(),
                         pop_cx,
                     ))
                     .child(
@@ -330,22 +308,16 @@ fn render_binding_popover(
                             .text_color(to_hsla(pp.muted))
                             .truncate()
                             .child(cur_folder.clone().unwrap_or_else(|| {
-                                if zh {
-                                    "未绑定目录"
-                                } else {
-                                    "No folder bound"
-                                }
-                                .to_owned()
+                                crate::ui::tr(pop_cx)
+                                    .chat()
+                                    .thread_header_no_folder_bound()
+                                    .to_owned()
                             })),
                     )
                     .child(
                         btn_ghost(
                             "chat-bind-pick-folder",
-                            if zh {
-                                "选择本地文件夹…"
-                            } else {
-                                "Choose folder…"
-                            },
+                            crate::ui::tr(pop_cx).chat().thread_header_choose_folder(),
                         )
                         .icon(icon_xs(UiIcon::FolderOpen))
                         .on_click(move |_, w, cx| {
@@ -357,11 +329,9 @@ fn render_binding_popover(
 
             if !workspaces.is_empty() {
                 m = m.child(section_heading(
-                    if zh {
-                        "PingDeck 工作区"
-                    } else {
-                        "PingDeck Workspace"
-                    },
+                    crate::ui::tr(pop_cx)
+                        .chat()
+                        .thread_header_pingdeck_workspace(),
                     pop_cx,
                 ));
                 for ws in &workspaces {
@@ -392,7 +362,7 @@ fn render_binding_popover(
                 && !envs.is_empty()
             {
                 m = m.child(section_heading(
-                    if zh { "绑定环境" } else { "Environment" },
+                    crate::ui::tr(pop_cx).chat().thread_header_environment(),
                     pop_cx,
                 ));
                 for env in &envs {

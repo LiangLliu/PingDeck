@@ -76,17 +76,12 @@ pub fn render_currency_popover(
         })
 }
 
-pub fn render_model_facts(
-    row: &ModelCatalogRow,
-    offer_count: usize,
-    zh: bool,
-    cx: &App,
-) -> gpui_kit::Div {
+pub fn render_model_facts(row: &ModelCatalogRow, offer_count: usize, cx: &App) -> gpui_kit::Div {
     let p = palette(cx);
     let mut caps = h_row().gap(px(5.0)).flex_wrap();
     caps = caps.child(badge(
         if row.source == CatalogSource::User {
-            if zh { "自建模型" } else { "Custom model" }
+            crate::ui::tr(cx).settings().drawer_forms_custom_model()
         } else {
             "models.dev"
         },
@@ -99,17 +94,21 @@ pub fn render_model_facts(
     ));
     if row.reasoning {
         caps = caps.child(badge(
-            if zh { "推理" } else { "Reasoning" },
+            crate::ui::tr(cx).common().cap_reasoning(),
             Tone::Accent,
             cx,
         ));
     }
     if row.vision {
-        caps = caps.child(badge(if zh { "视觉" } else { "Vision" }, Tone::Neutral, cx));
+        caps = caps.child(badge(
+            crate::ui::tr(cx).common().cap_vision(),
+            Tone::Neutral,
+            cx,
+        ));
     }
     if row.tools {
         caps = caps.child(badge(
-            if zh { "工具调用" } else { "Tools" },
+            crate::ui::tr(cx).settings().drawer_forms_tools(),
             Tone::Neutral,
             cx,
         ));
@@ -144,11 +143,9 @@ pub fn render_model_facts(
                             ),
                     )
                     .child(badge(
-                        if zh {
-                            format!("{offer_count} 家目录报价")
-                        } else {
-                            format!("{offer_count} offer(s)")
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .drawer_forms_offer_s(offer_count),
                         Tone::Neutral,
                         cx,
                     )),
@@ -160,12 +157,12 @@ pub fn render_model_facts(
                     .text_color(to_hsla(p.muted))
                     .child(SharedString::from(format!(
                         "{}: {}",
-                        if zh { "上下文" } else { "Context" },
+                        crate::ui::tr(cx).settings().sec_agent_context(),
                         format_tokens(row.context_tokens)
                     )))
                     .child(SharedString::from(format!(
                         "{}: {}",
-                        if zh { "最大输出" } else { "Max output" },
+                        crate::ui::tr(cx).settings().catalog_col_max_output(),
                         format_tokens(row.max_output_tokens)
                     ))),
             )
@@ -176,7 +173,6 @@ pub fn render_model_facts(
 pub fn render_pricing_editor_fields(
     drawer: &CatalogDrawer,
     offers: &[ModelCatalogRow],
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -189,9 +185,11 @@ pub fn render_pricing_editor_fields(
 
     let seg = tab_bar_segmented("cat-drawer-mode-seg")
         .selected_index(mode_idx)
-        .child(tab_item(if zh { "跟随目录" } else { "Catalog" }))
-        .child(tab_item(if zh { "自定义" } else { "Custom" }))
-        .child(tab_item(if zh { "按次" } else { "Per call" }))
+        .child(tab_item(
+            crate::ui::tr(cx).settings().drawer_forms_catalog(),
+        ))
+        .child(tab_item(crate::ui::tr(cx).settings().network_mode_custom()))
+        .child(tab_item(crate::ui::tr(cx).settings().catalog_mode_fixed()))
         .on_click(move |idx, _, cx| {
             let next = match *idx {
                 1 => PricingMode::Custom,
@@ -209,13 +207,15 @@ pub fn render_pricing_editor_fields(
     match drawer.pricing_mode {
         PricingMode::Dynamic => {
             if offers.len() > 1 {
-                box_el = box_el.child(render_offer_family_row(drawer, offers, zh, cx));
+                box_el = box_el.child(render_offer_family_row(drawer, offers, cx));
             } else {
-                box_el = box_el.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "跟随 models.dev 同步价格；目录更新时自动生效。"
-                } else {
-                    "Follows synced models.dev catalog pricing automatically."
-                }));
+                box_el = box_el.child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .drawer_forms_follows_synced_models_dev_catalog(),
+                    ),
+                );
             }
         }
         PricingMode::Custom => {
@@ -224,11 +224,13 @@ pub fn render_pricing_editor_fields(
                 .child(
                     h_row()
                         .justify_between()
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                            "币种（每百万 token）"
-                        } else {
-                            "Currency (per 1M tokens)"
-                        }))
+                        .child(
+                            div().text_xs().text_color(to_hsla(p.muted)).child(
+                                crate::ui::tr(cx)
+                                    .settings()
+                                    .drawer_forms_currency_per_1m_tokens(),
+                            ),
+                        )
                         .child(render_currency_popover(
                             "cat-dr-cur",
                             &drawer.currency,
@@ -245,12 +247,12 @@ pub fn render_pricing_editor_fields(
                     h_row()
                         .gap(px(10.0))
                         .child(labeled_input(
-                            if zh { "输入 *" } else { "Input *" },
+                            crate::ui::tr(cx).settings().drawer_forms_input(),
                             &drawer.in_price,
                             cx,
                         ))
                         .child(labeled_input(
-                            if zh { "输出 *" } else { "Output *" },
+                            crate::ui::tr(cx).settings().drawer_forms_output(),
                             &drawer.out_price,
                             cx,
                         )),
@@ -259,17 +261,17 @@ pub fn render_pricing_editor_fields(
                     h_row()
                         .gap(px(10.0))
                         .child(labeled_input(
-                            if zh { "缓存读取" } else { "Cache read" },
+                            crate::ui::tr(cx).settings().catalog_offers_cache_read(),
                             &drawer.cache_read_price,
                             cx,
                         ))
                         .child(labeled_input(
-                            if zh { "缓存写入" } else { "Cache write" },
+                            crate::ui::tr(cx).settings().catalog_field_cache_write(),
                             &drawer.cache_write_price,
                             cx,
                         ))
                         .child(labeled_input(
-                            if zh { "推理输出" } else { "Reasoning" },
+                            crate::ui::tr(cx).settings().drawer_forms_reasoning(),
                             &drawer.reasoning_price,
                             cx,
                         )),
@@ -283,11 +285,9 @@ pub fn render_pricing_editor_fields(
                         .gap(px(10.0))
                         .items_end()
                         .child(labeled_input(
-                            if zh {
-                                "每次成功请求价格 *"
-                            } else {
-                                "Price per successful call *"
-                            },
+                            crate::ui::tr(cx)
+                                .settings()
+                                .drawer_forms_price_per_successful_call(),
                             &drawer.per_call_price,
                             cx,
                         ))
@@ -303,11 +303,13 @@ pub fn render_pricing_editor_fields(
                             cx,
                         )),
                 )
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "按每次成功请求固定计费，忽略 token 数量。"
-                } else {
-                    "Flat fee per successful request regardless of token count."
-                }));
+                .child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .drawer_forms_flat_fee_per_successful_request(),
+                    ),
+                );
         }
     }
 
@@ -317,7 +319,6 @@ pub fn render_pricing_editor_fields(
 fn render_offer_family_row(
     drawer: &CatalogDrawer,
     offers: &[ModelCatalogRow],
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -327,11 +328,10 @@ fn render_offer_family_row(
         .and_then(|f| offers.iter().find(|o| o.family == f))
         .map(|o| o.family_name.clone())
         .unwrap_or_else(|| {
-            if zh {
-                "官方 / 参考默认价".into()
-            } else {
-                "Official / reference default".into()
-            }
+            crate::ui::tr(cx)
+                .settings()
+                .drawer_forms_official_reference_default()
+                .into()
         });
     let ent_f = cx.entity().clone();
     let offers_owned: Vec<(String, String)> = offers
@@ -362,11 +362,13 @@ fn render_offer_family_row(
                     ph0.update(cx, |st, cx| st.dismiss(window, cx));
                 })
                 .justify_between()
-                .child(div().text_xs().child(if zh {
-                    "官方 / 参考默认价"
-                } else {
-                    "Official / reference default"
-                }))
+                .child(
+                    div().text_xs().child(
+                        crate::ui::tr(pop_cx)
+                            .settings()
+                            .drawer_forms_official_reference_default(),
+                    ),
+                )
                 .children(sel0.then(|| {
                     div()
                         .text_color(to_hsla(pop_p.accent))
@@ -406,35 +408,36 @@ fn render_offer_family_row(
     h_row()
         .justify_between()
         .gap(px(8.0))
-        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "按哪家的目录报价"
-        } else {
-            "Follow catalog offer"
-        }))
+        .child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .drawer_forms_follow_catalog_offer(),
+            ),
+        )
         .child(pick)
 }
 
 pub fn render_provider_overrides_list(
     detail: &ModelPriceDetail,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
     let box_el = v_col().gap(px(6.0)).child(section_heading(
-        if zh {
-            format!("你的服务商（{}）", detail.providers.len())
-        } else {
-            format!("Your providers ({})", detail.providers.len())
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .catalog_drawer_yours(detail.providers.len()),
         cx,
     ));
 
     if detail.providers.is_empty() {
-        return box_el.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "你配置的服务商里还没有提供这个模型的。"
-        } else {
-            "None of your configured providers currently serve this model."
-        }));
+        return box_el.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .drawer_forms_none_of_your_configured_providers(),
+            ),
+        );
     }
 
     let mut list = v_col();
@@ -443,7 +446,6 @@ pub fn render_provider_overrides_list(
             i,
             pm,
             i + 1 < detail.providers.len(),
-            zh,
             cx,
         ));
     }
@@ -454,27 +456,21 @@ fn render_provider_model_row(
     idx: usize,
     pm: &ProviderModelPrice,
     border: bool,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
+    let lang = crate::ui::active_language(cx);
     let eff = pm
         .effective
         .as_ref()
         .map(|e| {
             format!(
                 "{} · {}",
-                format_effective_price(e, zh),
-                format_basis(&e.basis, zh)
+                format_effective_price(e, lang),
+                format_basis(&e.basis, lang)
             )
         })
-        .unwrap_or_else(|| {
-            if zh {
-                "无价格".into()
-            } else {
-                "No price".into()
-            }
-        });
+        .unwrap_or_else(|| crate::ui::tr(cx).settings().catalog_mode_none().into());
     let has_override = pm.pricing.is_some();
     let pid_del = pm.provider_id.clone();
     let mid_del = pm.model_id.clone();
@@ -501,7 +497,11 @@ fn render_provider_model_row(
                                 .child(SharedString::from(pm.provider_name.clone())),
                         )
                         .children((!pm.listed).then(|| {
-                            badge(if zh { "已下架" } else { "Unlisted" }, Tone::Warning, cx)
+                            badge(
+                                crate::ui::tr(cx).settings().drawer_forms_unlisted(),
+                                Tone::Warning,
+                                cx,
+                            )
                         })),
                 )
                 .child(
@@ -519,11 +519,9 @@ fn render_provider_model_row(
                     btn_ghost(
                         SharedString::from(format!("cat-pm-ovr-{idx}")),
                         if has_override {
-                            if zh { "编辑覆盖" } else { "Edit" }
-                        } else if zh {
-                            "另计覆盖"
+                            crate::ui::tr(cx).settings().drawer_forms_edit()
                         } else {
-                            "Override"
+                            crate::ui::tr(cx).settings().drawer_forms_override()
                         },
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -533,7 +531,7 @@ fn render_provider_model_row(
                 .children(has_override.then(|| {
                     btn_ghost(
                         SharedString::from(format!("cat-pm-del-{idx}")),
-                        if zh { "清除覆盖" } else { "Reset" },
+                        crate::ui::tr(cx).settings().drawer_forms_reset(),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.delete_provider_override(pid_del.clone(), mid_del.clone(), window, cx);

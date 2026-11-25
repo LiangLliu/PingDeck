@@ -46,10 +46,11 @@ use state::{MockModal, MockSubTab, TrafficFilter};
 impl MockView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
+        let m_tr = crate::ui::tr(cx).mock();
         let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选 Mock 服务 / Filter…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(m_tr.ph_filter_servers()));
         let route_search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选路由 / Filter routes…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(m_tr.ph_filter_routes()));
         let new_srv_name_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Payment Mock API"));
         let new_srv_port_input = cx.new(|cx| InputState::new(window, cx).placeholder("3001"));
@@ -106,7 +107,7 @@ impl MockView {
         let proxy_url_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com"));
         let traffic_search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选路径/方法…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(m_tr.ph_filter_traffic()));
         let import_editor = cx.new(|cx| {
             let mut ed = EditorState::new(window, cx)
                 .soft_wrap(true)
@@ -280,11 +281,11 @@ impl MockView {
 
 impl Render for MockView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.lang = crate::ui::active_language(cx);
         if self.pending_sync {
             self.sync_inputs(window, cx);
         }
         let p = palette(cx);
-        let zh = self.is_zh();
 
         let left = sidebar::render_sidebar(self, cx);
         let right = if let Some(srv) = self.draft.clone() {
@@ -329,12 +330,15 @@ impl Render for MockView {
                         )
                         .child(
                             btn_icon("mock-copy-url", UiIcon::Copy)
-                                .tooltip(self.t("复制本地地址", "Copy local URL"))
+                                .tooltip(crate::ui::Tr(self.lang).mock().mock_copy_local_url())
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let _ = clipboard::set_text(&url_copy);
                                     this.status_msg = Some((
                                         Tone::Success,
-                                        this.t("已复制本地服务地址", "Copied local URL").to_owned(),
+                                        crate::ui::Tr(this.lang)
+                                            .mock()
+                                            .mock_copied_local_url()
+                                            .to_owned(),
                                     ));
                                     cx.notify();
                                 })),
@@ -345,39 +349,49 @@ impl Render for MockView {
                         .gap(px(6.0))
                         .flex_shrink_0()
                         .child(if self.dirty {
-                            btn_primary("mock-save-btn", self.t("保存", "Save"))
+                            btn_primary("mock-save-btn", crate::ui::Tr(self.lang).common().save())
                                 .icon(icon_xs(UiIcon::Check))
                                 .on_click(cx.listener(|this, _, _, cx| this.save_draft(cx)))
                         } else {
-                            btn_secondary("mock-save-btn", self.t("已保存", "Saved"))
-                                .on_click(cx.listener(|this, _, _, cx| this.save_draft(cx)))
+                            btn_secondary(
+                                "mock-save-btn",
+                                crate::ui::Tr(self.lang).common().save_saved(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.save_draft(cx)))
                         })
                         .child(if running {
-                            btn_danger("mock-run-btn", self.t("停止", "Stop"))
+                            btn_danger("mock-run-btn", crate::ui::Tr(self.lang).mock().mock_stop())
                                 .icon(icon_xs(UiIcon::Stop))
                                 .on_click(cx.listener(|this, _, _, cx| this.toggle_start_stop(cx)))
                         } else {
-                            btn_primary("mock-run-btn", self.t("启动", "Start"))
-                                .icon(icon_xs(UiIcon::Play))
-                                .on_click(cx.listener(|this, _, _, cx| this.toggle_start_stop(cx)))
+                            btn_primary(
+                                "mock-run-btn",
+                                crate::ui::Tr(self.lang).mock().mock_start(),
+                            )
+                            .icon(icon_xs(UiIcon::Play))
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_start_stop(cx)))
                         })
                         .children(running.then(|| {
                             btn_icon("mock-reset-state", UiIcon::RotateCcw)
-                                .tooltip(self.t("重置计数与轮询游标", "Reset counters & cursors"))
+                                .tooltip(
+                                    crate::ui::Tr(self.lang)
+                                        .mock()
+                                        .mock_reset_counters_cursors(),
+                                )
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.reset_runtime_state(cx);
                                 }))
                         }))
                         .child(
                             btn_icon("mock-dup-srv", UiIcon::Copy)
-                                .tooltip(self.t("复制服务", "Duplicate server"))
+                                .tooltip(crate::ui::Tr(self.lang).mock().mock_duplicate_server())
                                 .on_click(
                                     cx.listener(|this, _, _, cx| this.duplicate_selected(cx)),
                                 ),
                         )
                         .child(
                             btn_icon("mock-del-srv", UiIcon::Trash)
-                                .tooltip(self.t("删除服务", "Delete server"))
+                                .tooltip(crate::ui::Tr(self.lang).mock().settings_delete())
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.active_modal = Some(MockModal::DeleteServer {
                                         id: srv_id_del.clone(),
@@ -408,8 +422,8 @@ impl Render for MockView {
                     _ => None,
                 };
                 let label = match count {
-                    Some(n) => SharedString::from(format!("{} ({n})", tab.label(zh))),
-                    None => SharedString::from(tab.label(zh)),
+                    Some(n) => SharedString::from(format!("{} ({n})", tab.label(self.lang))),
+                    None => SharedString::from(tab.label(self.lang)),
                 };
                 tab_bar = tab_bar.child(tab_item(label));
             }
@@ -431,15 +445,8 @@ impl Render for MockView {
                 .child(subtab_strip(
                     tab_bar,
                     st.as_ref().filter(|s| s.running).map(|s| {
-                        meta_pill(
-                            if zh {
-                                format!("{} 次命中", s.hit_count)
-                            } else {
-                                format!("{} hits", s.hit_count)
-                            },
-                            cx,
-                        )
-                        .into_any_element()
+                        meta_pill(crate::ui::tr(cx).mock().mock_hits(s.hit_count), cx)
+                            .into_any_element()
                     }),
                     cx,
                 ));
@@ -461,30 +468,38 @@ impl Render for MockView {
         } else {
             v_col().size_full().child(empty_state_with_actions(
                 UiIcon::Server,
-                self.t("还没有 Mock 服务", "No Mock Server Selected"),
-                self.t(
-                    "在本地 127.0.0.1 端口启动多分支 HTTP / CRUD / SSE 模拟服务，或直接从 OpenAPI / Mockoon 导入。",
-                    "Run local loopback HTTP, CRUD, and SSE mock servers, or import from OpenAPI / Mockoon.",
-                ),
+                crate::ui::Tr(self.lang)
+                    .mock()
+                    .mock_no_mock_server_selected(),
+                crate::ui::Tr(self.lang)
+                    .mock()
+                    .mock_run_local_loopback_http_crud(),
                 Some(
                     h_row()
                         .gap(px(8.0))
                         .child(
                             btn_primary(
                                 "mock-empty-new",
-                                self.t("新建 Mock 服务", "New Mock Server"),
+                                crate::ui::Tr(self.lang).mock().mock_new_mock_server(),
                             )
                             .icon(icon_xs(UiIcon::Plus))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_create_server_modal(window, cx);
-                            })),
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.open_create_server_modal(window, cx);
+                                },
+                            )),
                         )
                         .child(
-                            btn_secondary("mock-empty-imp", self.t("导入…", "Import…"))
-                                .icon(icon_xs(UiIcon::Upload))
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            btn_secondary(
+                                "mock-empty-imp",
+                                crate::ui::Tr(self.lang).mock().empty_import(),
+                            )
+                            .icon(icon_xs(UiIcon::Upload))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.open_import_modal(window, cx);
-                                })),
+                                },
+                            )),
                         )
                         .into_any_element(),
                 ),

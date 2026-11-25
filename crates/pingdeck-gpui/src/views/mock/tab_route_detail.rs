@@ -22,8 +22,8 @@ pub fn render_response_branches(
     route: &MockRoute,
     cx: &mut Context<MockView>,
 ) -> AnyElement {
+    let mk = crate::ui::Tr(view.lang).mock();
     let p = palette(cx);
-    let zh = view.is_zh();
 
     let mut branch_strip = h_row().gap(px(6.0)).flex_wrap();
     for resp in &route.responses {
@@ -53,11 +53,11 @@ pub fn render_response_branches(
     let branch_actions = h_row()
         .gap(px(4.0))
         .child(
-            btn_secondary("mock-resp-add", view.t("+ 分支", "+ Branch"))
+            btn_secondary("mock-resp-add", mk.tab_route_detail_branch())
                 .on_click(cx.listener(|this, _, _, cx| this.add_response(cx))),
         )
         .child(
-            btn_ghost("mock-resp-dup", view.t("复制", "Duplicate"))
+            btn_ghost("mock-resp-dup", mk.menu_duplicate())
                 .on_click(cx.listener(|this, _, _, cx| this.duplicate_selected_response(cx))),
         )
         .into_any_element();
@@ -66,7 +66,7 @@ pub fn render_response_branches(
         .p(px(14.0))
         .gap(px(12.0))
         .child(section_header(
-            view.t("响应分支配置", "Response Branches"),
+            mk.tab_route_detail_response_branches(),
             Some(branch_actions),
             cx,
         ))
@@ -92,7 +92,7 @@ pub fn render_response_branches(
                     div()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(view.t("分支名称", "Label")),
+                        .child(mk.tab_route_detail_label()),
                 )
                 .child(text_input(&view.resp_label_input)),
         )
@@ -104,7 +104,7 @@ pub fn render_response_branches(
                     div()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(view.t("状态码", "Status")),
+                        .child(mk.response_status()),
                 )
                 .child(number_field(&view.resp_status_input, None, 86.0, cx)),
         )
@@ -116,14 +116,14 @@ pub fn render_response_branches(
                     div()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(view.t("额外延迟", "Latency")),
+                        .child(mk.tab_route_detail_latency()),
                 )
                 .child(number_field(&view.resp_latency_input, Some("ms"), 86.0, cx)),
         );
     if !resp.is_default {
         let rid_def = resp_id.clone();
         top_fields = top_fields.child(
-            btn_ghost("mock-resp-set-def", view.t("设为默认", "Set Default")).on_click(
+            btn_ghost("mock-resp-set-def", mk.tab_route_detail_set_default()).on_click(
                 cx.listener(move |this, _, _, cx| {
                     if let Some(r) = this.selected_route_mut() {
                         for x in &mut r.responses {
@@ -140,7 +140,7 @@ pub fn render_response_branches(
         let rid_del = resp_id.clone();
         top_fields = top_fields.child(
             btn_icon("mock-resp-del", UiIcon::Trash)
-                .tooltip(view.t("删除分支", "Delete branch"))
+                .tooltip(mk.tab_route_detail_delete_branch())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.snapshot_inputs(cx);
                     if let Some(r) = this.selected_route_mut() {
@@ -167,12 +167,12 @@ pub fn render_response_branches(
             div()
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(view.t("故障注入:", "Fault:")),
+                .child(mk.tab_route_detail_fault()),
         )
         .child(
             choice_chip(
                 "mock-fault-none",
-                view.t("正常响应", "None"),
+                mk.tab_route_detail_none(),
                 resp.fault.is_none(),
                 cx,
             )
@@ -187,7 +187,7 @@ pub fn render_response_branches(
         .child(
             choice_chip(
                 "mock-fault-hang",
-                view.t("挂起超时 Hang", "Hang"),
+                mk.tab_route_detail_hang(),
                 resp.fault == Some(MockFault::Hang),
                 cx,
             )
@@ -202,7 +202,7 @@ pub fn render_response_branches(
         .child(
             choice_chip(
                 "mock-fault-drop",
-                view.t("直接断开 Drop", "Drop"),
+                mk.tab_route_detail_drop(),
                 resp.fault == Some(MockFault::Drop),
                 cx,
             )
@@ -231,12 +231,12 @@ pub fn render_response_branches(
             div()
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(view.t("正文模式:", "Body:")),
+                .child(mk.tab_route_detail_body()),
         )
         .child(
             choice_chip(
                 "mock-bm-tpl",
-                view.t("模板文本", "Template"),
+                mk.tab_route_detail_template(),
                 mode_idx == 0,
                 cx,
             )
@@ -254,7 +254,7 @@ pub fn render_response_branches(
         .child(
             choice_chip(
                 "mock-bm-file",
-                view.t("本地文件", "File"),
+                mk.tab_route_detail_file(),
                 mode_idx == 1,
                 cx,
             )
@@ -286,7 +286,7 @@ pub fn render_response_branches(
         .child(
             choice_chip(
                 "mock-bm-sse",
-                view.t("SSE 流式", "SSE Stream"),
+                mk.tab_route_detail_sse_stream(),
                 mode_idx == 3,
                 cx,
             )
@@ -326,7 +326,7 @@ pub fn render_response_branches(
                         .child(text_input(&view.resp_file_input)),
                 )
                 .child(
-                    btn_secondary("mock-pick-body-file", view.t("选择文件…", "Browse…")).on_click(
+                    btn_secondary("mock-pick-body-file", mk.tab_route_detail_browse()).on_click(
                         cx.listener(|this, _, window, cx| {
                             if let Some(path) = RfdDialog.pick_file(&FilePickerSpec::default()) {
                                 let s = path.display().to_string();
@@ -365,37 +365,47 @@ pub fn render_response_branches(
                                 .text_color(to_hsla(p.muted))
                                 .truncate()
                                 .child(if mode_idx == 2 {
-                                    view.t("Base64 编码字节内容", "Base64-encoded binary payload")
+                                    mk.tab_route_detail_base64_encoded_binary_payload()
                                 } else {
-                                    view.t(
-                                        "模板：{{urlParam 'id'}} · {{queryParam 'q'}} · {{body 'key'}} · {{data 'bucket'}} · {{faker.uuid}}",
-                                        "Templates: {{urlParam 'id'}} · {{queryParam 'q'}} · {{body 'key'}} · {{data 'bucket'}} · {{faker.uuid}}",
-                                    )
+                                    mk.tab_route_detail_templates()
                                 }),
                         )
                         .children((mode_idx == 0 && !body_val.trim().is_empty()).then(|| {
                             badge(
-                                if json_valid { "JSON ✓" } else { view.t("模板/文本", "Template") },
-                                if json_valid { Tone::Success } else { Tone::Neutral },
+                                if json_valid {
+                                    "JSON ✓"
+                                } else {
+                                    mk.tab_route_detail_template_2()
+                                },
+                                if json_valid {
+                                    Tone::Success
+                                } else {
+                                    Tone::Neutral
+                                },
                                 cx,
                             )
                         })),
                 )
-                .child(div().w_full().h(px(180.0)).child(code_editor(&view.resp_body_editor))),
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(180.0))
+                        .child(code_editor(&view.resp_body_editor)),
+                ),
         );
     }
 
     // Response Headers
     box_el = box_el.child(render_resp_headers(view, &resp.headers, cx));
     // Matching Rules
-    box_el = box_el.child(render_matching_rules(view, resp, zh, cx));
+    box_el = box_el.child(render_matching_rules(view, resp, cx));
     // Attached Callbacks
     if !srv.callbacks.is_empty() {
         let mut cb_row = h_row().gap(px(6.0)).flex_wrap().child(
             div()
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(view.t("触发回调:", "Callbacks:")),
+                .child(mk.tab_route_detail_callbacks()),
         );
         for cb in &srv.callbacks {
             let cid = cb.id.clone();
@@ -431,6 +441,7 @@ fn render_sse_editor(
     stream: &MockStream,
     cx: &mut Context<MockView>,
 ) -> AnyElement {
+    let mk = crate::ui::Tr(view.lang).mock();
     let p = palette(cx);
     let mut box_el = v_col()
         .w_full()
@@ -449,7 +460,7 @@ fn render_sse_editor(
                     div()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(view.t("事件间隔", "Interval")),
+                        .child(mk.tab_route_detail_interval()),
                 )
                 .child(number_field(
                     &view.stream_interval_input,
@@ -459,59 +470,27 @@ fn render_sse_editor(
                 )),
         )
         .child(
-            h_row()
-                .gap(px(4.0))
-                .child(
-                    choice_chip(
-                        "mock-sse-close",
-                        "Close",
-                        stream.end == MockStreamEnd::Close,
-                        cx,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(st) =
-                            this.selected_response_mut().and_then(|r| r.stream.as_mut())
-                        {
-                            st.end = MockStreamEnd::Close;
-                            this.dirty = true;
-                            cx.notify();
-                        }
-                    })),
-                )
-                .child(
-                    choice_chip(
-                        "mock-sse-hang",
-                        "Hang",
-                        stream.end == MockStreamEnd::Hang,
-                        cx,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(st) =
-                            this.selected_response_mut().and_then(|r| r.stream.as_mut())
-                        {
-                            st.end = MockStreamEnd::Hang;
-                            this.dirty = true;
-                            cx.notify();
-                        }
-                    })),
-                )
-                .child(
-                    choice_chip(
-                        "mock-sse-drop",
-                        "Drop",
-                        stream.end == MockStreamEnd::Drop,
-                        cx,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(st) =
-                            this.selected_response_mut().and_then(|r| r.stream.as_mut())
-                        {
-                            st.end = MockStreamEnd::Drop;
-                            this.dirty = true;
-                            cx.notify();
-                        }
-                    })),
-                ),
+            h_row().gap(px(4.0)).children(
+                [
+                    ("mock-sse-close", "Close", MockStreamEnd::Close),
+                    ("mock-sse-hang", "Hang", MockStreamEnd::Hang),
+                    ("mock-sse-drop", "Drop", MockStreamEnd::Drop),
+                ]
+                .into_iter()
+                .map(|(id, lbl, end)| {
+                    choice_chip(id, lbl, stream.end == end, cx).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            if let Some(st) =
+                                this.selected_response_mut().and_then(|r| r.stream.as_mut())
+                            {
+                                st.end = end;
+                                this.dirty = true;
+                                cx.notify();
+                            }
+                        },
+                    ))
+                }),
+            ),
         );
     box_el = box_el.child(top);
 
@@ -570,7 +549,7 @@ fn render_sse_editor(
                     .child(text_input(&view.stream_ev_data_input)),
             )
             .child(
-                btn_secondary("mock-sse-add", view.t("+ 事件", "+ Event")).on_click(cx.listener(
+                btn_secondary("mock-sse-add", mk.tab_route_detail_event()).on_click(cx.listener(
                     |this, _, window, cx| {
                         let ev = this.stream_ev_name_input.read(cx).value().to_string();
                         let data = this.stream_ev_data_input.read(cx).value().to_string();

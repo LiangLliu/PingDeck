@@ -18,15 +18,14 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::app::{
     AppInfoDto, ShellInfo, app_diagnostics_impl, app_info_impl, llm_provider_list_impl,
-    settings_get_impl, system_open_external_impl,
+    system_open_external_impl,
 };
 use pingdeck_desktop::core::llm::gateway::GatewayState;
 use pingdeck_desktop::core::logging::recent_problems;
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::{t, t_args};
 use pingdeck_desktop::services::clipboard;
 
-use crate::bridge::{runtime, spawn_blocking_into};
+use crate::bridge::spawn_blocking_into;
 use crate::ui::{
     Tone, UiIcon, alert_banner, app_icon, badge, btn_ghost, h_row, icon_xs, palette, to_hsla, v_col,
 };
@@ -259,19 +258,12 @@ impl AboutSettingsView {
         self._tasks.push(task);
     }
 
-    fn render_identity_card(
-        &self,
-        lang: Language,
-        zh: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_identity_card(&self, lang: Language, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx);
-        let version_line = t_args(
-            lang,
-            "set.about.version",
-            &[("version", APP_VERSION), ("date", BUILD_DATE)],
-        );
-        let licence_line = t(lang, "set.about.licence").to_owned();
+        let version_line = crate::ui::Tr(lang)
+            .settings()
+            .about_version(APP_VERSION, BUILD_DATE);
+        let licence_line = crate::ui::Tr(lang).settings().about_licence().to_owned();
         let release_notes = self
             .snapshot
             .as_ref()
@@ -316,7 +308,7 @@ impl AboutSettingsView {
             .hover(move |s| s.bg(hover_bg))
             .on_click(cx.listener(|this, _, _, cx| this.copy_version(cx)))
             .child(SharedString::from(if self.version_copied {
-                if zh { "已复制版本" } else { "Copied" }.to_owned()
+                crate::ui::tr(cx).settings().about_copied_2().to_owned()
             } else {
                 format!("v{APP_VERSION}")
             }))
@@ -340,7 +332,7 @@ impl AboutSettingsView {
 
         if cfg!(debug_assertions) {
             title_row = title_row.child(badge(
-                t(lang, "set.about.dev").to_owned(),
+                crate::ui::Tr(lang).settings().about_dev().to_owned(),
                 Tone::Warning,
                 cx,
             ));
@@ -365,11 +357,11 @@ impl AboutSettingsView {
                     .text_color(to_hsla(p.faint))
                     .child(SharedString::from(licence_line))
                     .child("·")
-                    .child(if zh {
-                        "无账号 · 无云同步 · 无遥测"
-                    } else {
-                        "No account · No cloud sync · No telemetry"
-                    }),
+                    .child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .about_no_account_no_cloud_sync(),
+                    ),
             );
 
         if release_notes.is_some() || issue_tracker.is_some() {
@@ -378,7 +370,7 @@ impl AboutSettingsView {
                 links = links.child(
                     btn_ghost(
                         "about-link-releases",
-                        if zh { "更新日志" } else { "Release notes" },
+                        crate::ui::tr(cx).settings().about_release_notes(),
                     )
                     .icon(icon_xs(UiIcon::ExternalLink))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -390,7 +382,7 @@ impl AboutSettingsView {
                 links = links.child(
                     btn_ghost(
                         "about-link-issues",
-                        if zh { "问题反馈" } else { "Issue tracker" },
+                        crate::ui::tr(cx).settings().about_issue_tracker(),
                     )
                     .icon(icon_xs(UiIcon::ExternalLink))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -424,11 +416,11 @@ impl AboutSettingsView {
                                     .pt(px(2.0))
                                     .text_xs()
                                     .text_color(to_hsla(p.ink_2))
-                                    .child(if zh {
-                                        "本地优先桌面 API 工作台、AI 网关与编码智能体宿主。"
-                                    } else {
-                                        "Local-first desktop API workbench, AI gateway & coding agent host."
-                                    }),
+                                    .child(
+                                        crate::ui::tr(cx)
+                                            .settings()
+                                            .about_local_first_desktop_api_workbench(),
+                                    ),
                             ),
                     ),
             )
@@ -456,15 +448,14 @@ impl AboutSettingsView {
 
 impl Render for AboutSettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let lang = settings_get_impl(runtime(cx).state()).general.language;
-        let zh = lang == Language::ZhCn;
+        let lang = crate::ui::active_language(cx);
 
         v_col()
             .w_full()
             .gap(px(20.0))
             .pb(px(24.0))
-            .child(self.render_identity_card(lang, zh, cx))
-            .child(environment::render_environment_section(self, lang, zh, cx))
-            .child(diagnostics::render_diagnostics_section(self, lang, zh, cx))
+            .child(self.render_identity_card(lang, cx))
+            .child(environment::render_environment_section(self, lang, cx))
+            .child(diagnostics::render_diagnostics_section(self, lang, cx))
     }
 }

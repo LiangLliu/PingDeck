@@ -62,11 +62,7 @@ pub(super) fn render_ai_events(
     list.into_any_element()
 }
 
-pub(super) fn render_ai_raw(
-    ai: &AiResultDto,
-    zh: bool,
-    cx: &Context<RequestsView>,
-) -> impl IntoElement {
+pub(super) fn render_ai_raw(ai: &AiResultDto, cx: &Context<RequestsView>) -> impl IntoElement {
     let p = palette(cx);
     v_col()
         .size_full()
@@ -79,11 +75,7 @@ pub(super) fn render_ai_raw(
                 v_col()
                     .gap(px(4.0))
                     .child(section_heading(
-                        if zh {
-                            "发送的请求（凭据已脱敏）"
-                        } else {
-                            "Sent Request"
-                        },
+                        crate::ui::tr(cx).exchange().resp_ai_tabs_sent_request(),
                         cx,
                     ))
                     .child(div().text_xs().child(SharedString::from(format!(
@@ -92,7 +84,9 @@ pub(super) fn render_ai_raw(
                     ))))
                     .children((!ai.dropped_headers.is_empty()).then(|| {
                         badge(
-                            format!("核心丢弃受保护头: {}", ai.dropped_headers.join(", ")),
+                            crate::ui::tr(cx)
+                                .exchange()
+                                .resp_ai_dropped_headers(ai.dropped_headers.join(", ")),
                             Tone::Warning,
                             cx,
                         )
@@ -114,11 +108,7 @@ pub(super) fn render_ai_raw(
                         v_col()
                             .gap(px(4.0))
                             .child(section_heading(
-                                if zh {
-                                    "原始响应正文"
-                                } else {
-                                    "Raw Response"
-                                },
+                                crate::ui::tr(cx).exchange().resp_ai_tabs_raw_response(),
                                 cx,
                             ))
                             .child(div().text_xs().child(SharedString::from(txt.clone()))),
@@ -166,11 +156,7 @@ pub(super) fn render_ai_headers(ai: &AiResultDto, cx: &Context<RequestsView>) ->
     list.into_any_element()
 }
 
-pub(super) fn render_ai_timing(
-    ai: &AiResultDto,
-    zh: bool,
-    cx: &Context<RequestsView>,
-) -> impl IntoElement {
+pub(super) fn render_ai_timing(ai: &AiResultDto, cx: &Context<RequestsView>) -> impl IntoElement {
     let tps = ai
         .tokens_per_second
         .map(|v| format!("{v:.1} tok/s"))
@@ -186,7 +172,7 @@ pub(super) fn render_ai_timing(
                 v_col()
                     .gap(px(6.0))
                     .child(section_heading(
-                        if zh { "流式阶段耗时" } else { "Timing" },
+                        crate::ui::tr(cx).exchange().resp_ai_tabs_timing(),
                         cx,
                     ))
                     .child(
@@ -209,17 +195,17 @@ pub(super) fn render_ai_timing(
                                 cx,
                             ))
                             .child(kv_chip("Total", format!("{} ms", ai.total_ms), cx))
-                            .child(kv_chip(if zh { "吞吐" } else { "Speed" }, tps, cx)),
+                            .child(kv_chip(
+                                crate::ui::tr(cx).exchange().resp_ai_tabs_speed(),
+                                tps,
+                                cx,
+                            )),
                     ),
             ),
         )
 }
 
-pub(super) fn render_ai_tests(
-    ai: &AiResultDto,
-    zh: bool,
-    cx: &Context<RequestsView>,
-) -> impl IntoElement {
+pub(super) fn render_ai_tests(ai: &AiResultDto, cx: &Context<RequestsView>) -> impl IntoElement {
     let p = palette(cx);
     let mut col = v_col()
         .size_full()
@@ -286,20 +272,17 @@ pub(super) fn render_ai_tests(
         );
     }
     if ai.assertion_results.is_empty() && ai.script_tests.is_empty() {
-        col = col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "暂无测试结果"
-        } else {
-            "No test results"
-        }));
+        col = col.child(
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(crate::ui::tr(cx).exchange().resp_ai_tabs_no_test_results()),
+        );
     }
     col
 }
 
-pub(super) fn render_ai_usage(
-    ai: &AiResultDto,
-    zh: bool,
-    cx: &Context<RequestsView>,
-) -> impl IntoElement {
+pub(super) fn render_ai_usage(ai: &AiResultDto, cx: &Context<RequestsView>) -> impl IntoElement {
     let u = &ai.usage;
     let cost_s = ai
         .cost
@@ -320,11 +303,9 @@ pub(super) fn render_ai_usage(
                         h_row()
                             .justify_between()
                             .child(section_heading(
-                                if zh {
-                                    "Token 与费用估算"
-                                } else {
-                                    "Usage & Estimated Cost"
-                                },
+                                crate::ui::tr(cx)
+                                    .exchange()
+                                    .resp_ai_tabs_usage_estimated_cost(),
                                 cx,
                             ))
                             .child(badge(cost_s, Tone::Accent, cx)),
@@ -365,7 +346,6 @@ pub(super) fn render_ai_usage(
 
 pub(super) fn render_compare_pane(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -388,11 +368,9 @@ pub(super) fn render_compare_pane(
             h_row()
                 .justify_between()
                 .child(section_heading(
-                    if zh {
-                        format!("多模型对比结果（{} 个模型）", rows.len())
-                    } else {
-                        format!("Model Comparison ({} models)", rows.len())
-                    },
+                    crate::ui::tr(cx)
+                        .exchange()
+                        .resp_ai_tabs_model_comparison_models(rows.len()),
                     cx,
                 ))
                 .children(
@@ -446,12 +424,20 @@ pub(super) fn render_compare_pane(
                                                     r.provider_name, r.model
                                                 ))),
                                         )
-                                        .children(
-                                            r.fastest.then(|| badge("最快", Tone::Accent, cx)),
-                                        )
-                                        .children(
-                                            r.cheapest.then(|| badge("最省", Tone::Success, cx)),
-                                        ),
+                                        .children(r.fastest.then(|| {
+                                            badge(
+                                                crate::ui::tr(cx).exchange().resp_ai_fastest(),
+                                                Tone::Accent,
+                                                cx,
+                                            )
+                                        }))
+                                        .children(r.cheapest.then(|| {
+                                            badge(
+                                                crate::ui::tr(cx).exchange().resp_ai_cheapest(),
+                                                Tone::Success,
+                                                cx,
+                                            )
+                                        })),
                                 )
                                 .child(
                                     h_row()

@@ -12,11 +12,7 @@ use crate::ui::{
 use super::RequestsView;
 use super::model::ai_protocol_label;
 
-pub fn render_ai_url_strip(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::Div {
+pub fn render_ai_url_strip(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return div();
@@ -62,8 +58,10 @@ pub fn render_ai_url_strip(
     let ent_tgt = cx.entity().clone();
     let target_seg = tab_bar_segmented("ai-target-kind-seg")
         .selected_index(usize::from(!is_provider))
-        .child(tab_item(if zh { "服务商" } else { "Provider" }))
-        .child(tab_item(if zh { "自定义 URL" } else { "Custom URL" }))
+        .child(tab_item(
+            crate::ui::tr(cx).requests().ai_url_provider_menu(),
+        ))
+        .child(tab_item(crate::ui::tr(cx).requests().ai_url_custom()))
         .on_click(move |idx, window, cx| {
             ent_tgt.update(cx, |this, cx| {
                 if *idx == 0 {
@@ -77,7 +75,7 @@ pub fn render_ai_url_strip(
         });
 
     let target_control: gpui_kit::AnyElement = if is_provider {
-        render_provider_model_picker(view, zh, cx).into_any_element()
+        render_provider_model_picker(view, cx).into_any_element()
     } else {
         h_row()
             .flex_1()
@@ -100,17 +98,13 @@ pub fn render_ai_url_strip(
     let send_btn: gpui_kit::AnyElement = if sending {
         btn_danger(
             "ai-stop-btn",
-            if zh {
-                "停止 AI 请求"
-            } else {
-                "Stop AI run"
-            },
+            crate::ui::tr(cx).requests().editor_ai_bar_stop_ai_run(),
         )
         .icon(icon_xs(UiIcon::Stop))
         .on_click(cx.listener(|this, _, _, cx| this.stop_active_request(cx)))
         .into_any_element()
     } else {
-        btn_primary("ai-send-btn", if zh { "发送" } else { "Send" })
+        btn_primary("ai-send-btn", crate::ui::tr(cx).requests().send_send())
             .icon(icon_xs(UiIcon::Send))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.send_active_ai_request(None, window, cx);
@@ -127,22 +121,14 @@ pub fn render_ai_url_strip(
         .child(
             btn_secondary(
                 "ai-compare-btn",
-                if zh {
-                    "多模型对比…"
-                } else {
-                    "Compare…"
-                },
+                crate::ui::tr(cx).requests().editor_ai_bar_compare(),
             )
             .on_click(cx.listener(|this, _, _, cx| this.open_compare_models_modal(cx))),
         )
         .child(send_btn)
 }
 
-fn render_provider_model_picker(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> Popover {
+fn render_provider_model_picker(view: &RequestsView, cx: &mut Context<RequestsView>) -> Popover {
     let cur_label = view
         .active_req()
         .and_then(|t| t.draft.ai.as_ref())
@@ -153,12 +139,10 @@ fn render_provider_model_picker(
                 ..
             } => {
                 if model.is_empty() {
-                    if zh {
-                        "选择服务商模型…"
-                    } else {
-                        "Choose model…"
-                    }
-                    .into()
+                    crate::ui::tr(cx)
+                        .requests()
+                        .editor_ai_bar_choose_model()
+                        .into()
                 } else {
                     format!("{provider_name} / {model}")
                 }
@@ -166,12 +150,10 @@ fn render_provider_model_picker(
             AiTarget::Custom { model } => model.clone(),
         })
         .unwrap_or_else(|| {
-            if zh {
-                "选择模型…"
-            } else {
-                "Choose model…"
-            }
-            .into()
+            crate::ui::tr(cx)
+                .requests()
+                .editor_ai_bar_choose_model_2()
+                .into()
         });
 
     let mut choices: Vec<(String, String, String, String)> = Vec::new();
@@ -200,7 +182,7 @@ fn render_provider_model_picker(
             "ai-model-trigger",
             SharedString::from(format!(
                 "{cur_label}  ·  {}",
-                if zh { "核心密钥" } else { "Core key" }
+                crate::ui::tr(cx).requests().editor_ai_bar_core_key()
             )),
             true,
             cx,
@@ -218,11 +200,11 @@ fn render_provider_model_picker(
                         .p(px(10.0))
                         .text_xs()
                         .text_color(to_hsla(pop_p.muted))
-                        .child(if zh {
-                            "没有已启用的服务商模型，请先在「服务商」添加并启用模型。"
-                        } else {
-                            "No enabled models. Add a provider first."
-                        }),
+                        .child(
+                            crate::ui::tr(pop_cx)
+                                .requests()
+                                .editor_ai_bar_no_enabled_models_add_a(),
+                        ),
                 );
             } else {
                 for (i, (pid, pname, base, mid)) in choices.iter().take(80).enumerate() {

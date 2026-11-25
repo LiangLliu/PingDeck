@@ -21,7 +21,7 @@ use super::ChatView;
 use super::metrics::{extract_inline_thinking, format_duration_ms};
 use super::reasoning::render_reasoning_block;
 
-pub fn render_live_turn(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
+pub fn render_live_turn(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let model_name = view
         .thread
@@ -53,39 +53,17 @@ pub fn render_live_turn(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
         .and_then(|s| s.reasoning_effort)
         .is_some();
     let phase_label = if !visible_text.is_empty() {
-        if zh {
-            "正在生成回复…"
-        } else {
-            "Generating response…"
-        }
+        crate::ui::tr(cx).chat().trace_generating_response()
     } else if !view.thread.tool_calls.is_empty() {
-        if zh {
-            "正在执行工具…"
-        } else {
-            "Running tools…"
-        }
+        crate::ui::tr(cx).chat().trace_running_tools()
     } else if !live_reasoning.is_empty() {
-        if zh {
-            "正在深度思考…"
-        } else {
-            "Thinking…"
-        }
+        crate::ui::tr(cx).chat().composer_thinking()
     } else if view.submitting {
-        if zh {
-            "正在连接模型…"
-        } else {
-            "Connecting to model…"
-        }
+        crate::ui::tr(cx).chat().trace_connecting_to_model()
     } else if effort_explicit {
-        if zh {
-            "正在深度思考…"
-        } else {
-            "Thinking…"
-        }
-    } else if zh {
-        "等待模型响应…"
+        crate::ui::tr(cx).chat().composer_thinking()
     } else {
-        "Waiting for model…"
+        crate::ui::tr(cx).chat().trace_waiting_for_model()
     };
 
     let elapsed_lbl = view
@@ -147,21 +125,16 @@ pub fn render_live_turn(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
             live_reasoning,
             live_thinking_ms,
             None,
-            zh,
             cx.listener(move |this, _, _, cx| this.toggle_reasoning(k_click.clone(), cx)),
             cx,
         ));
     } else if visible_text.is_empty() && view.thread.tool_calls.is_empty() {
         let wait_text = if effort_explicit {
-            if zh {
-                "正在深度思考，等待模型响应…"
-            } else {
-                "Thinking — waiting for model response…"
-            }
-        } else if zh {
-            "等待模型首字响应…"
+            crate::ui::tr(cx)
+                .chat()
+                .trace_thinking_waiting_for_model_response()
         } else {
-            "Waiting for first token…"
+            crate::ui::tr(cx).chat().trace_waiting_for_first_token()
         };
         body = body.child(
             h_row()
@@ -219,20 +192,13 @@ pub fn render_message_tool_traces(
     tool_calls: &[(&str, &str, &str)],
     tool_results: &HashMap<&str, (&[HubPart], bool)>,
     audit_map: &HashMap<&str, &AgentToolCallRecord>,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
     let any_err = tool_calls
         .iter()
         .any(|(id, _, _)| tool_results.get(id).is_some_and(|(_, is_err)| *is_err));
-    let header_label = if zh {
-        format!("执行了 {} 个工具调用", tool_calls.len())
-    } else if tool_calls.len() == 1 {
-        "1 tool call".into()
-    } else {
-        format!("{} tool calls", tool_calls.len())
-    };
+    let header_label = crate::ui::tr(cx).chat().trace_tool_calls(tool_calls.len());
 
     let mut trace_box = v_col()
         .w_full()
@@ -308,11 +274,7 @@ pub fn render_message_tool_traces(
                 h_row().justify_end().px(px(10.0)).pb(px(6.0)).child(
                     btn_ghost(
                         SharedString::from(format!("tout-full-{call_id}")),
-                        if zh {
-                            "查看完整输出"
-                        } else {
-                            "View full output"
-                        },
+                        crate::ui::tr(cx).chat().trace_view_full_output(),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.open_tool_output(cid_full.clone(), name_full.clone(), cx);

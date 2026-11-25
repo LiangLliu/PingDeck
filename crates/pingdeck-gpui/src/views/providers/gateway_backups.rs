@@ -14,7 +14,6 @@ use super::ProvidersView;
 pub fn render_client_policy_editor(
     view: &ProvidersView,
     client: &GatewayClient,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> Div {
     let p = palette(cx);
@@ -34,11 +33,13 @@ pub fn render_client_policy_editor(
                 .child(
                     h_row()
                         .gap(px(6.0))
-                        .child(div().text_xs().child(if zh {
-                            "允许全部模型"
-                        } else {
-                            "Allow all models"
-                        }))
+                        .child(
+                            div().text_xs().child(
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_gateway_backups_allow_all_models(),
+                            ),
+                        )
                         .child(
                             toggle_switch(
                                 SharedString::from(format!("cl-allow-all-{cid}")),
@@ -47,7 +48,7 @@ pub fn render_client_policy_editor(
                             .on_click(cx.listener({
                                 let cid2 = cid.clone();
                                 move |this, _, _, cx| {
-                                    this.toggle_client_allow_all(cid2.clone(), zh, cx);
+                                    this.toggle_client_allow_all(cid2.clone(), cx);
                                 }
                             })),
                         ),
@@ -55,11 +56,13 @@ pub fn render_client_policy_editor(
                 .child(
                     h_row()
                         .gap(px(6.0))
-                        .child(div().text_xs().child(if zh {
-                            "未知裸模型名回退到默认模型"
-                        } else {
-                            "Map unknown bare models to default"
-                        }))
+                        .child(
+                            div().text_xs().child(
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_gateway_backups_map_unknown_bare_models_to(),
+                            ),
+                        )
                         .child(
                             toggle_switch(
                                 SharedString::from(format!("cl-unknown-{cid}")),
@@ -71,7 +74,6 @@ pub fn render_client_policy_editor(
                                     this.toggle_client_unknown_default(
                                         cid2.clone(),
                                         !cur_unknown,
-                                        zh,
                                         cx,
                                     );
                                 }
@@ -105,18 +107,20 @@ pub fn render_client_policy_editor(
                     cx,
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_client_allowed_model(cid_m.clone(), mref.clone(), zh, cx);
+                    this.toggle_client_allowed_model(cid_m.clone(), mref.clone(), cx);
                 })),
             );
         }
         box_el = box_el.child(
             v_col()
                 .gap(px(4.0))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "勾选该客户端允许访问的模型："
-                } else {
-                    "Allowed models for this client:"
-                }))
+                .child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_backups_allowed_models_for_this_client(),
+                    ),
+                )
                 .child(chips),
         );
     }
@@ -134,26 +138,29 @@ pub fn render_client_policy_editor(
             .child(
                 h_row()
                     .gap(px(4.0))
-                    .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                        "最大并发"
-                    } else {
-                        "Max conc"
-                    }))
+                    .child(
+                        div().text_xs().text_color(to_hsla(p.muted)).child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_gateway_backups_max_conc(),
+                        ),
+                    )
                     .child(div().w(px(72.0)).child(text_input(&view.client_conc_input))),
             )
             .child(
-                btn_primary("cl-save-pol", if zh { "保存限额" } else { "Save limits" }).on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        this.save_client_limits(save_cid.clone(), zh, cx);
-                    }),
-                ),
+                btn_primary(
+                    "cl-save-pol",
+                    crate::ui::tr(cx).providers().gwa_gateway_limits_save(),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.save_client_limits(save_cid.clone(), cx);
+                })),
             ),
     )
 }
 
 pub fn render_managed_backups(
     view: &ProvidersView,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> Option<Div> {
     if view.managed_tools.is_empty() {
@@ -161,11 +168,9 @@ pub fn render_managed_backups(
     }
     let p = palette(cx);
     let mut ledger_box = v_col().gap(px(8.0)).child(section_heading(
-        if zh {
-            "PingDeck 改过的文件与备份"
-        } else {
-            "Files Modified by PingDeck (Backups)"
-        },
+        crate::ui::tr(cx)
+            .providers()
+            .prov_gateway_backups_files_modified_by_pingdeck_backups(),
         cx,
     ));
     for tool in &view.managed_tools {
@@ -190,11 +195,9 @@ pub fn render_managed_backups(
                                             .child(app.display_name()),
                                     )
                                     .child(badge(
-                                        if zh {
-                                            format!("{} 份备份", tool.kept.len())
-                                        } else {
-                                            format!("{} backups", tool.kept.len())
-                                        },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_gateway_backups_backups(tool.kept.len()),
                                         Tone::Neutral,
                                         cx,
                                     )),
@@ -213,41 +216,39 @@ pub fn render_managed_backups(
                             .child(
                                 btn_secondary(
                                     SharedString::from(format!("led-prev-{}", app.as_str())),
-                                    if zh {
-                                        "恢复上一次"
-                                    } else {
-                                        "Restore prev"
-                                    },
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_gateway_backups_restore_prev(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.restore_client_tool(app, false, zh, cx);
+                                        this.restore_client_tool(app, false, cx);
                                     },
                                 )),
                             )
                             .children(tool.has_original.then(|| {
                                 btn_ghost(
                                     SharedString::from(format!("led-orig-{}", app.as_str())),
-                                    if zh {
-                                        "恢复原配置"
-                                    } else {
-                                        "Restore original"
-                                    },
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_gateway_backups_restore_original(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.restore_client_tool(app, true, zh, cx);
+                                        this.restore_client_tool(app, true, cx);
                                     },
                                 ))
                             }))
                             .children((!tool.kept.is_empty()).then(|| {
                                 btn_ghost(
                                     SharedString::from(format!("led-purge-{}", app.as_str())),
-                                    if zh { "清理副本" } else { "Purge backups" },
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_gateway_backups_purge_backups(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.purge_client_backups(app, zh, cx);
+                                        this.purge_client_backups(app, cx);
                                     },
                                 ))
                             })),

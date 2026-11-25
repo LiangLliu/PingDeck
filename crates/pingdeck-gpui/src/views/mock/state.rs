@@ -63,22 +63,16 @@ impl MockSubTab {
     }
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
-        match (self, zh) {
-            (Self::Routes, true) => "路由",
-            (Self::Routes, false) => "Routes",
-            (Self::Data, true) => "数据桶",
-            (Self::Data, false) => "Data",
-            (Self::Headers, true) => "响应头",
-            (Self::Headers, false) => "Headers",
-            (Self::Callbacks, true) => "回调",
-            (Self::Callbacks, false) => "Callbacks",
-            (Self::Traffic, true) => "实时流量",
-            (Self::Traffic, false) => "Traffic",
-            (Self::Proxy, true) => "代理回源",
-            (Self::Proxy, false) => "Proxy",
-            (Self::Settings, true) => "设置",
-            (Self::Settings, false) => "Settings",
+    pub const fn label(self, lang: Language) -> &'static str {
+        let m = crate::ui::Tr(lang).mock();
+        match self {
+            Self::Routes => m.tab_routes(),
+            Self::Data => m.tab_data(),
+            Self::Headers => m.tab_headers(),
+            Self::Callbacks => m.tab_callbacks(),
+            Self::Traffic => m.tab_traffic(),
+            Self::Proxy => m.tab_proxy(),
+            Self::Settings => m.tab_settings(),
         }
     }
 }
@@ -201,16 +195,6 @@ pub struct MockView {
 }
 
 impl MockView {
-    #[must_use]
-    pub fn is_zh(&self) -> bool {
-        self.lang == Language::ZhCn
-    }
-
-    #[must_use]
-    pub fn t(&self, zh: &'static str, en: &'static str) -> &'static str {
-        if self.is_zh() { zh } else { en }
-    }
-
     #[must_use]
     pub fn status_of(&self, server_id: &str) -> Option<&MockServerStatusDto> {
         self.statuses.get(server_id)

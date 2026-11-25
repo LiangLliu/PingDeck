@@ -4,7 +4,6 @@ use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
     Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, btn_ghost, btn_secondary,
@@ -17,26 +16,26 @@ use super::AboutSettingsView;
 pub(super) fn render_diagnostics_section(
     view: &AboutSettingsView,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AboutSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
 
     let copy_btn = if view.diag_copied {
-        btn_secondary("about-diag-copy", t(lang, "set.about.copied").to_owned())
-            .icon(icon_xs(UiIcon::Check))
-            .text_color(to_hsla(p.ok))
-            .on_click(cx.listener(|this, _, _, cx| this.copy_diagnostics(cx)))
+        btn_secondary(
+            "about-diag-copy",
+            crate::ui::Tr(lang).settings().about_copied().to_owned(),
+        )
+        .icon(icon_xs(UiIcon::Check))
+        .text_color(to_hsla(p.ok))
+        .on_click(cx.listener(|this, _, _, cx| this.copy_diagnostics(cx)))
     } else {
         let label = if view.diag_copying {
-            if zh {
-                "正在生成…"
-            } else {
-                "Preparing…"
-            }
-            .to_owned()
+            crate::ui::tr(cx)
+                .settings()
+                .diagnostics_preparing()
+                .to_owned()
         } else {
-            t(lang, "set.about.copy").to_owned()
+            crate::ui::Tr(lang).settings().about_copy().to_owned()
         };
         btn_secondary("about-diag-copy", label)
             .icon(icon_xs(UiIcon::Copy))
@@ -47,11 +46,9 @@ pub(super) fn render_diagnostics_section(
     let preview_btn = btn_ghost(
         "about-diag-preview-toggle",
         if view.diag_open {
-            if zh { "收起预览" } else { "Hide preview" }
-        } else if zh {
-            "查看内容"
+            crate::ui::tr(cx).settings().diagnostics_hide_preview()
         } else {
-            "Preview"
+            crate::ui::tr(cx).settings().diagnostics_preview()
         },
     )
     .icon(icon_xs(if view.diag_open {
@@ -77,13 +74,13 @@ pub(super) fn render_diagnostics_section(
                             .text_size(px(13.5))
                             .font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(to_hsla(p.ink))
-                            .child(t(lang, "set.about.diag").to_owned()),
+                            .child(crate::ui::Tr(lang).settings().about_diag().to_owned()),
                     )
                     .child(
                         div()
                             .text_xs()
                             .text_color(to_hsla(p.muted))
-                            .child(t(lang, "set.about.copy.d").to_owned()),
+                            .child(crate::ui::Tr(lang).settings().about_copy_d().to_owned()),
                     ),
             )
             .child(
@@ -96,7 +93,7 @@ pub(super) fn render_diagnostics_section(
     );
 
     if let Some(err) = &view.diag_error {
-        let msg = t_args(lang, "set.about.copyFailed", &[("reason", err.as_str())]);
+        let msg = crate::ui::Tr(lang).settings().about_copy_failed(err);
         card_col = card_col.child(div().px(px(16.0)).pb(px(12.0)).child(dismissible_banner(
             "about-diag-err-dismiss",
             Tone::Danger,
@@ -110,11 +107,14 @@ pub(super) fn render_diagnostics_section(
     }
 
     if view.diag_open {
-        card_col = card_col.child(render_preview_panel(view, zh, cx));
+        card_col = card_col.child(render_preview_panel(view, cx));
     }
 
     settings_section_flush(
-        t(lang, "set.sec.about.diagnostics").to_owned(),
+        crate::ui::Tr(lang)
+            .settings()
+            .sec_about_diagnostics()
+            .to_owned(),
         None,
         card_col,
         cx,
@@ -123,7 +123,6 @@ pub(super) fn render_diagnostics_section(
 
 fn render_preview_panel(
     view: &AboutSettingsView,
-    zh: bool,
     cx: &mut Context<AboutSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -140,14 +139,14 @@ fn render_preview_panel(
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .child(icon_xs(UiIcon::ShieldCheck))
-                .child(if zh {
-                    "已脱敏 · 仅本机生成，可直接划选或整份复制"
-                } else {
-                    "Redacted · generated locally, selectable or copy whole report"
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .diagnostics_redacted_generated_locally_selectable_or(),
+                ),
         )
         .child(
-            btn_ghost("about-diag-refresh", if zh { "刷新" } else { "Refresh" })
+            btn_ghost("about-diag-refresh", crate::ui::tr(cx).common().refresh())
                 .icon(icon_xs(UiIcon::Refresh))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.load_diagnostics_preview(cx);
@@ -161,11 +160,11 @@ fn render_preview_panel(
             .text_xs()
             .text_color(to_hsla(p.muted))
             .child(status_indicator(StatusShape::Run, cx))
-            .child(if zh {
-                "正在生成诊断信息…"
-            } else {
-                "Generating diagnostic report…"
-            })
+            .child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .diagnostics_generating_diagnostic_report(),
+            )
             .into_any_element()
     } else if let Some(text) = &view.diag_text {
         let fenced = fence_plain_text(text.trim_end());

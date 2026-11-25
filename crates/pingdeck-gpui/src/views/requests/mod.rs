@@ -66,7 +66,7 @@ use pingdeck_desktop::core::app::{
 };
 use pingdeck_desktop::core::llm::store::ProviderModel;
 use pingdeck_desktop::core::model::script_result::ConsoleLevel;
-use pingdeck_desktop::core::model::settings::{Language, Settings};
+use pingdeck_desktop::core::model::settings::Settings;
 use pingdeck_desktop::core::model::{Folder, Request};
 
 use crate::bridge::runtime;
@@ -351,35 +351,30 @@ impl Render for RequestsView {
             self.hydrate_active_tab(window, cx);
         }
         let p = palette(cx);
-        let zh = self.settings.general.language == Language::ZhCn;
 
         if self.workspace_id.is_none() {
             return empty_state(
                 UiIcon::Send,
-                if zh {
-                    "未选择工作区"
-                } else {
-                    "No workspace selected"
-                },
-                if zh {
-                    "先在左侧选择或创建一个工作区以编辑和发送 HTTP / GraphQL / AI 请求。"
-                } else {
-                    "Select or create a workspace in the sidebar to craft and send requests."
-                },
+                crate::ui::tr(cx)
+                    .requests()
+                    .requests_no_workspace_selected(),
+                crate::ui::tr(cx)
+                    .requests()
+                    .requests_select_or_create_a_workspace(),
                 cx,
             )
             .into_any_element();
         }
 
-        let doc_tabbar = toolbar::render_doc_tabbar(self, zh, cx);
+        let doc_tabbar = toolbar::render_doc_tabbar(self, cx);
 
         let main_body: gpui_kit::AnyElement = match self.active_tab() {
             Some(OpenTab::Request(tab)) if tab.is_ai() => v_col()
                 .flex_1()
                 .min_h_0()
                 .w_full()
-                .child(toolbar::render_identity_strip(self, zh, cx))
-                .child(editor_ai::render_ai_url_strip(self, zh, cx))
+                .child(toolbar::render_identity_strip(self, cx))
+                .child(editor_ai::render_ai_url_strip(self, cx))
                 .child(
                     div().flex_1().min_h_0().w_full().child(
                         v_resizable("req-ai-vert-split")
@@ -387,12 +382,12 @@ impl Render for RequestsView {
                                 resizable_panel()
                                     .size(px(300.0))
                                     .size_range(px(160.0)..px(560.0))
-                                    .child(editor_ai::render_ai_editor(self, zh, cx)),
+                                    .child(editor_ai::render_ai_editor(self, cx)),
                             )
                             .child(
                                 resizable_panel()
                                     .size_range(px(180.0)..px(640.0))
-                                    .child(resp_ai::render_ai_response(self, zh, cx)),
+                                    .child(resp_ai::render_ai_response(self, cx)),
                             ),
                     ),
                 )
@@ -401,8 +396,8 @@ impl Render for RequestsView {
                 .flex_1()
                 .min_h_0()
                 .w_full()
-                .child(toolbar::render_identity_strip(self, zh, cx))
-                .child(toolbar::render_http_url_strip(self, zh, cx))
+                .child(toolbar::render_identity_strip(self, cx))
+                .child(toolbar::render_http_url_strip(self, cx))
                 .child(
                     div().flex_1().min_h_0().w_full().child(
                         v_resizable("req-http-vert-split")
@@ -410,34 +405,30 @@ impl Render for RequestsView {
                                 resizable_panel()
                                     .size(px(290.0))
                                     .size_range(px(160.0)..px(560.0))
-                                    .child(editor_http::render_http_editor(self, zh, cx)),
+                                    .child(editor_http::render_http_editor(self, cx)),
                             )
                             .child(
                                 resizable_panel()
                                     .size_range(px(180.0)..px(640.0))
-                                    .child(resp_http::render_http_response(self, zh, cx)),
+                                    .child(resp_http::render_http_response(self, cx)),
                             ),
                     ),
                 )
                 .into_any_element(),
             Some(OpenTab::Runner(_)) => {
-                runner_and_settings::render_runner_tab(self, zh, cx).into_any_element()
+                runner_and_settings::render_runner_tab(self, cx).into_any_element()
             }
             Some(OpenTab::Container(_)) => {
-                runner_and_settings::render_container_settings_tab(self, zh, cx).into_any_element()
+                runner_and_settings::render_container_settings_tab(self, cx).into_any_element()
             }
             None => empty_state_with_actions(
                 UiIcon::Send,
-                if zh {
-                    "打开或新建一个请求"
-                } else {
-                    "Open or create a request"
-                },
-                if zh {
-                    "从左侧集合树选择请求，或点击下方按钮立即新建 HTTP / GraphQL / AI 调试请求，也可直接导入 cURL 或 Postman。"
-                } else {
-                    "Pick a request from the sidebar, or create an HTTP, GraphQL, or AI request below — or import cURL / Postman."
-                },
+                crate::ui::tr(cx)
+                    .requests()
+                    .requests_open_or_create_a_request(),
+                crate::ui::tr(cx)
+                    .requests()
+                    .requests_pick_a_request_from_the(),
                 Some(
                     h_row()
                         .gap(px(8.0))
@@ -446,37 +437,55 @@ impl Render for RequestsView {
                         .child(
                             btn_primary(
                                 "req-empty-new-http",
-                                if zh { "新建 HTTP 请求" } else { "New HTTP" },
+                                crate::ui::tr(cx).requests().requests_new_http(),
                             )
                             .icon(icon_xs(UiIcon::Plus))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_new_request_tab(NewItemKind::HttpGet, None, None, window, cx);
-                            })),
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.open_new_request_tab(
+                                        NewItemKind::HttpGet,
+                                        None,
+                                        None,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
                         )
                         .child(
                             btn_secondary(
                                 "req-empty-new-ai",
-                                if zh { "新建 AI 调试" } else { "New AI API" },
+                                crate::ui::tr(cx).requests().requests_new_ai_api(),
                             )
                             .icon(icon_xs(UiIcon::Sparkles))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_new_request_tab(NewItemKind::AiApi, None, None, window, cx);
-                            })),
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.open_new_request_tab(
+                                        NewItemKind::AiApi,
+                                        None,
+                                        None,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
                         )
                         .child(
                             btn_secondary(
                                 "req-empty-import-btn",
-                                if zh { "导入 cURL / Postman…" } else { "Import…" },
+                                crate::ui::tr(cx).requests().requests_import(),
                             )
                             .icon(icon_xs(UiIcon::Upload))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_import_export_modal(
-                                    ImportExportTab::Import,
-                                    None,
-                                    window,
-                                    cx,
-                                );
-                            })),
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.open_import_export_modal(
+                                        ImportExportTab::Import,
+                                        None,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
                         )
                         .into_any_element(),
                 ),
@@ -507,10 +516,10 @@ impl Render for RequestsView {
 
         right_work = right_work.child(main_body);
 
-        if let Some(drawer) = console::render_console_drawer(self, zh, cx) {
+        if let Some(drawer) = console::render_console_drawer(self, cx) {
             right_work = right_work.child(drawer);
         }
-        right_work = right_work.child(console::render_footer_bar(self, zh, cx));
+        right_work = right_work.child(console::render_footer_bar(self, cx));
 
         let mut root = div().relative().size_full().child(
             h_resizable("req-main-split")
@@ -518,12 +527,12 @@ impl Render for RequestsView {
                     resizable_panel()
                         .size(px(268.0))
                         .size_range(px(200.0)..px(400.0))
-                        .child(sidebar::render_sidebar(self, zh, cx)),
+                        .child(sidebar::render_sidebar(self, cx)),
                 )
                 .child(resizable_panel().child(right_work)),
         );
 
-        if let Some(modal) = overlays::render_active_modal(self, zh, window, cx) {
+        if let Some(modal) = overlays::render_active_modal(self, window, cx) {
             root = root.child(modal);
         }
 

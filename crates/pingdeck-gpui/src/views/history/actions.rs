@@ -215,11 +215,9 @@ impl HistoryView {
                         this.last_undo = rm.undo_token.map(|tok| (tok, count));
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if this.is_zh() {
-                                format!("已删除 {count} 条历史记录")
-                            } else {
-                                format!("Deleted {count} history entry")
-                            },
+                            crate::ui::Tr(this.lang)
+                                .history()
+                                .actions_deleted_history_entry(count),
                         ));
                         this.reload_page(true, cx);
                     }
@@ -244,11 +242,9 @@ impl HistoryView {
                     Ok(ids) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已恢复 {} 条历史记录", ids.len())
-                            } else {
-                                format!("Restored {} history entry(s)", ids.len())
-                            },
+                            crate::ui::Tr(this.lang)
+                                .history()
+                                .actions_restored_history_entry_s(ids.len()),
                         ));
                         this.reload_page(true, cx);
                     }
@@ -278,11 +274,9 @@ impl HistoryView {
                         this.run_children.clear();
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已清空 {removed} 条匹配的历史记录")
-                            } else {
-                                format!("Cleared {removed} matching history entries")
-                            },
+                            crate::ui::Tr(this.lang)
+                                .history()
+                                .actions_cleared_matching_history_entries(removed),
                         ));
                         this.reload_page(true, cx);
                     }
@@ -319,14 +313,9 @@ impl HistoryView {
                     Ok(r) if r.saved => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已导出 {} 条记录至 HAR 文件（凭据已脱敏）", r.entries)
-                            } else {
-                                format!(
-                                    "Exported {} entry(s) to HAR (credentials redacted)",
-                                    r.entries
-                                )
-                            },
+                            crate::ui::Tr(this.lang)
+                                .history()
+                                .actions_exported_entry_s_to_har(r.entries),
                         ));
                     }
                     Ok(_) => {}
@@ -386,17 +375,21 @@ impl HistoryView {
                 .unwrap_or_else(|| "Transport Error".to_owned())
         };
         let preview: String = entry.response_body_preview.chars().take(1800).collect();
-        let md = format!(
-            "请帮我分析这条 API 执行历史：\n\n- **请求**: `{method} {}`\n- **状态**: `{status}` ({} ms, {} B)\n- **来源**: `{:?}`\n{}\n\n```text\n{preview}\n```",
-            entry.request_url,
+        let h = crate::ui::Tr(self.lang).history();
+        let error_line = entry
+            .error_message
+            .as_deref()
+            .map(|m| h.ask_agent_error_line(m))
+            .unwrap_or_default();
+        let md = h.ask_agent_prompt(
+            &method,
+            &entry.request_url,
+            &status,
             entry.elapsed_ms,
             entry.body_size_bytes,
-            entry.source,
-            entry
-                .error_message
-                .as_deref()
-                .map(|m| format!("- **错误**: {m}"))
-                .unwrap_or_default(),
+            format!("{:?}", entry.source),
+            error_line,
+            &preview,
         );
         self.pending_handoff.set(Some(HistoryHandoff::AskAgent {
             title: format!("{method} {}", entry.request_name),

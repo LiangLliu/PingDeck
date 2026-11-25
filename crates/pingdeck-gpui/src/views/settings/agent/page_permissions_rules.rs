@@ -5,7 +5,6 @@ use pingdeck_desktop::core::agent::permissions::PermissionAction;
 use pingdeck_desktop::core::agent::sandbox::SandboxKind;
 use pingdeck_desktop::core::app::{RuleInactive, SandboxSelftest, current_time_ms};
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{StatusShape, Tone, badge, btn_danger, h_row, palette, to_hsla, v_col};
 
@@ -15,17 +14,24 @@ use super::widgets::{format_ago_short, section_card_flush, section_card_padded};
 pub(super) fn render_remembered_rules(
     view: &AgentSettingsView,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
     let now_ms = current_time_ms();
-    let title = t(lang, "set.sec.permissions.rules").to_owned();
+    let title = crate::ui::Tr(lang)
+        .settings()
+        .sec_permissions_rules()
+        .to_owned();
     let desc = div()
         .px(px(4.0))
         .text_xs()
         .text_color(to_hsla(p.muted))
-        .child(t(lang, "set.sec.permissions.rules.d").to_owned());
+        .child(
+            crate::ui::Tr(lang)
+                .settings()
+                .sec_permissions_rules_d()
+                .to_owned(),
+        );
 
     if view.permission_rules.is_empty() {
         return v_col()
@@ -37,7 +43,7 @@ pub(super) fn render_remembered_rules(
                 div()
                     .text_xs()
                     .text_color(to_hsla(p.muted))
-                    .child(t(lang, "set.tools.rules.none").to_owned()),
+                    .child(crate::ui::Tr(lang).settings().tools_rules_none().to_owned()),
                 cx,
             ))
             .child(desc);
@@ -52,20 +58,22 @@ pub(super) fn render_remembered_rules(
             Some(arg) => format!("{}  {}", r.tool_pattern, arg),
             None => r.tool_pattern.clone(),
         };
-        let scope = r
-            .workspace_dir
-            .clone()
-            .unwrap_or_else(|| t(lang, "set.tools.rules.anyFolder").to_owned());
-        let when = format_ago_short(r.created_at_ms, now_ms, zh);
+        let scope = r.workspace_dir.clone().unwrap_or_else(|| {
+            crate::ui::Tr(lang)
+                .settings()
+                .tools_rules_any_folder()
+                .to_owned()
+        });
+        let when = format_ago_short(r.created_at_ms, now_ms, lang);
         let action_tone = match r.action {
             PermissionAction::Allow => Tone::Success,
             PermissionAction::Ask => Tone::Warning,
             PermissionAction::Block => Tone::Danger,
         };
         let action_lbl = match r.action {
-            PermissionAction::Allow => t(lang, "set.tools.value.allow"),
-            PermissionAction::Ask => t(lang, "set.tools.value.ask"),
-            PermissionAction::Block => t(lang, "set.tools.value.block"),
+            PermissionAction::Allow => crate::ui::Tr(lang).settings().tools_value_allow(),
+            PermissionAction::Ask => crate::ui::Tr(lang).settings().tools_value_ask(),
+            PermissionAction::Block => crate::ui::Tr(lang).settings().tools_value_block(),
         };
 
         let mut row = h_row()
@@ -92,19 +100,23 @@ pub(super) fn render_remembered_rules(
                             )
                             .children((!rv.folder_exists).then(|| {
                                 badge(
-                                    t(lang, "set.tools.rules.noFolder").to_owned(),
+                                    crate::ui::Tr(lang)
+                                        .settings()
+                                        .tools_rules_no_folder()
+                                        .to_owned(),
                                     Tone::Warning,
                                     cx,
                                 )
                             }))
                             .children(rv.inactive.map(|why| {
-                                let k = match why {
-                                    RuleInactive::SafetyRule => "set.tools.rules.inactive.safety",
+                                let s = crate::ui::Tr(lang).settings();
+                                let label = match why {
+                                    RuleInactive::SafetyRule => s.tools_rules_inactive_safety(),
                                     RuleInactive::ChainedCommands => {
-                                        "set.tools.rules.inactive.chained"
+                                        s.tools_rules_inactive_chained()
                                     }
                                 };
-                                badge(t(lang, k).to_owned(), Tone::Warning, cx)
+                                badge(label, Tone::Warning, cx)
                             })),
                     )
                     .child(
@@ -117,7 +129,10 @@ pub(super) fn render_remembered_rules(
             .child(
                 btn_danger(
                     SharedString::from(format!("perm-rule-del-{idx}")),
-                    t(lang, "set.tools.rules.remove").to_owned(),
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .tools_rules_remove()
+                        .to_owned(),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.delete_permission_rule(rid.clone(), cx);
@@ -146,34 +161,59 @@ pub(super) fn format_sandbox_row(
     let Some(sb) = &view.sandbox else {
         return (
             StatusShape::Run,
-            t(lang, "set.agent.sandbox.unknown").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_unknown()
+                .to_owned(),
             to_hsla(p.muted),
-            t(lang, "set.agent.sandbox.full").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_full()
+                .to_owned(),
         );
     };
     let tier = match sb.tier {
-        SandboxKind::Seatbelt => Some(t(lang, "set.agent.sandbox.tier.seatbelt")),
-        SandboxKind::Bubblewrap => Some(t(lang, "set.agent.sandbox.tier.bubblewrap")),
+        SandboxKind::Seatbelt => Some(crate::ui::Tr(lang).settings().agent_sandbox_tier_seatbelt()),
+        SandboxKind::Bubblewrap => Some(
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_tier_bubblewrap(),
+        ),
         SandboxKind::None => None,
     };
     match (tier, sb.selftest) {
         (Some(name), SandboxSelftest::Passed) => (
             StatusShape::Ok,
-            t_args(lang, "set.agent.sandbox.available", &[("tier", name)]),
+            crate::ui::Tr(lang).settings().agent_sandbox_available(name),
             to_hsla(p.ink_2),
-            t(lang, "set.agent.sandbox.full").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_full()
+                .to_owned(),
         ),
         (Some(_), SandboxSelftest::Failed) => (
             StatusShape::Warn,
-            t(lang, "set.agent.sandbox.unavailable").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_unavailable()
+                .to_owned(),
             to_hsla(p.warn),
-            t(lang, "set.agent.sandbox.asks").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_asks()
+                .to_owned(),
         ),
         _ => (
             StatusShape::Idle,
-            t(lang, "set.agent.sandbox.notInstalled").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_not_installed()
+                .to_owned(),
             to_hsla(p.muted),
-            t(lang, "set.agent.sandbox.install").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_install()
+                .to_owned(),
         ),
     }
 }

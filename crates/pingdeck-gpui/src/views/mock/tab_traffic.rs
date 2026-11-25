@@ -16,7 +16,6 @@ use super::state::{MockView, TrafficFilter};
 
 pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let Some(srv) = &view.draft else {
         return div().into_any_element();
     };
@@ -60,12 +59,17 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
         })
         .collect();
 
+    let m_tr = crate::ui::Tr(view.lang).mock();
     let filters = [
-        (TrafficFilter::All, "全部", "All"),
-        (TrafficFilter::Route, "路由命中", "Route"),
-        (TrafficFilter::Proxy, "代理回源", "Proxy"),
-        (TrafficFilter::NoMatch, "未匹配", "No Match"),
-        (TrafficFilter::Error, "错误", "Errors"),
+        (TrafficFilter::All, "all", m_tr.traffic_filter_all()),
+        (TrafficFilter::Route, "route", m_tr.traffic_filter_route()),
+        (TrafficFilter::Proxy, "proxy", m_tr.traffic_filter_proxy()),
+        (
+            TrafficFilter::NoMatch,
+            "nomatch",
+            m_tr.traffic_filter_no_match(),
+        ),
+        (TrafficFilter::Error, "error", m_tr.traffic_filter_error()),
     ];
 
     let mut bar = toolbar_strip(cx).child(
@@ -73,11 +77,11 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
             .w(px(200.0))
             .child(search_input(&view.traffic_search_input, cx)),
     );
-    for (f, zh_l, en_l) in filters {
+    for (f, tag, lbl) in filters {
         bar = bar.child(
             choice_chip(
-                SharedString::from(format!("mock-tf-{en_l}")),
-                if zh { zh_l } else { en_l },
+                SharedString::from(format!("mock-tf-{tag}")),
+                lbl,
                 view.traffic_filter == f,
                 cx,
             )
@@ -93,9 +97,9 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
             btn_secondary(
                 "mock-tf-rec",
                 if recording {
-                    view.t("停止录制", "Stop Rec")
+                    crate::ui::Tr(view.lang).mock().tab_traffic_stop_rec()
                 } else {
-                    view.t("录制回源", "Record")
+                    crate::ui::Tr(view.lang).mock().tab_traffic_record()
                 },
             )
             .on_click(cx.listener(|this, _, _, cx| this.toggle_recording(cx))),
@@ -104,11 +108,9 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
             bar = bar.child(
                 btn_primary(
                     "mock-tf-rec-save",
-                    if zh {
-                        format!("保存录制 ({rec_count})")
-                    } else {
-                        format!("Save Recorded ({rec_count})")
-                    },
+                    crate::ui::tr(cx)
+                        .mock()
+                        .tab_traffic_save_recorded(rec_count),
                 )
                 .on_click(cx.listener(|this, _, _, cx| this.save_recorded_routes(cx))),
             );
@@ -116,9 +118,12 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
     }
     if running {
         bar = bar.child(
-            btn_ghost("mock-tf-clear", view.t("清空", "Clear"))
-                .icon(icon_xs(UiIcon::Trash))
-                .on_click(cx.listener(|this, _, _, cx| this.clear_logs(cx))),
+            btn_ghost(
+                "mock-tf-clear",
+                crate::ui::Tr(view.lang).mock().tab_traffic_clear(),
+            )
+            .icon(icon_xs(UiIcon::Trash))
+            .on_click(cx.listener(|this, _, _, cx| this.clear_logs(cx))),
         );
     }
 
@@ -127,14 +132,19 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
     if filtered.is_empty() {
         rows_col = rows_col.child(empty_inline(
             if running {
-                view.t("等待传入流量…", "Waiting for incoming traffic…")
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_traffic_waiting_for_incoming_traffic()
             } else {
-                view.t("服务未启动，暂无实时日志", "Server is stopped")
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_traffic_server_is_stopped()
             },
-            Some(SharedString::from(view.t(
-                "向本地端口发送请求后，此处将实时显示匹配结果、耗时和回调状态。",
-                "Send requests to the local port to inspect matches, timings, and callbacks live.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_traffic_send_requests_to_the_local(),
+            )),
             None,
             cx,
         ));
@@ -187,11 +197,12 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
     } else {
         empty_state(
             UiIcon::Activity,
-            view.t("选择一条流量记录", "Select a traffic entry"),
-            view.t(
-                "查看完整请求/响应头、正文、分支匹配原因及 Webhook 回调结果。",
-                "Inspect headers, bodies, branch selection reason, and callbacks.",
-            ),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_traffic_select_a_traffic_entry(),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_traffic_inspect_headers_bodies_branch_selection(),
             cx,
         )
         .into_any_element()
@@ -262,11 +273,14 @@ fn render_log_inspector(
                             ),
                     )
                     .child(
-                        btn_secondary("mock-log-to-route", view.t("保存为路由", "Save as Route"))
-                            .icon(icon_xs(UiIcon::Plus))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.create_route_from_log(log_for_route.clone(), cx);
-                            })),
+                        btn_secondary(
+                            "mock-log-to-route",
+                            crate::ui::Tr(view.lang).mock().tab_traffic_save_as_route(),
+                        )
+                        .icon(icon_xs(UiIcon::Plus))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.create_route_from_log(log_for_route.clone(), cx);
+                        })),
                     ),
             )
             .child(
@@ -300,7 +314,7 @@ fn render_log_inspector(
             _ => format!("{:?}", sel.kind),
         };
         content = content.child(kv_line(
-            view.t("命中原因", "Selected By"),
+            crate::ui::Tr(view.lang).mock().tab_traffic_selected_by(),
             detail_txt,
             110.0,
             cx,
@@ -323,7 +337,7 @@ fn render_log_inspector(
         }
         if !parts.is_empty() {
             content = content.child(kv_line(
-                view.t("阶段耗时", "Phase Timing"),
+                crate::ui::Tr(view.lang).mock().tab_traffic_phase_timing(),
                 parts.join(" · "),
                 110.0,
                 cx,
@@ -333,7 +347,7 @@ fn render_log_inspector(
 
     // Request headers & body
     let mut req_card = card(cx).p(px(12.0)).gap(px(6.0)).child(section_header(
-        view.t("请求详情", "Request"),
+        crate::ui::Tr(view.lang).mock().tab_traffic_request(),
         None,
         cx,
     ));
@@ -356,7 +370,7 @@ fn render_log_inspector(
 
     // Response headers & body
     let mut resp_card = card(cx).p(px(12.0)).gap(px(6.0)).child(section_header(
-        view.t("响应详情", "Response"),
+        crate::ui::Tr(view.lang).mock().tab_traffic_response(),
         None,
         cx,
     ));
@@ -380,7 +394,9 @@ fn render_log_inspector(
     // Callbacks delivered
     if !log.callbacks.is_empty() {
         let mut cb_card = card(cx).p(px(12.0)).gap(px(6.0)).child(section_header(
-            view.t("触发的 Webhook 回调", "Callbacks Delivered"),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_traffic_callbacks_delivered(),
             None,
             cx,
         ));

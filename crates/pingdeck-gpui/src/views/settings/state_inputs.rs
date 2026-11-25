@@ -161,7 +161,7 @@ impl SettingsInputs {
             mono_font_slider,
             shortcut_filter: new_input(
                 String::new(),
-                "筛选命令或快捷键 / Filter commands…",
+                crate::ui::tr(cx).settings().shortcut_filter_placeholder(),
                 window,
                 cx,
             ),
@@ -487,63 +487,33 @@ pub fn section_matches_query(section: SettingsSection, query: &str) -> bool {
     if query.is_empty() {
         return true;
     }
-    let (zl, el) = section.label_pair();
-    if zl.to_lowercase().contains(query) || el.to_lowercase().contains(query) {
+    let zh_lbl = section.label(pingdeck_desktop::core::model::settings::Language::ZhCn);
+    let en_lbl = section.label(pingdeck_desktop::core::model::settings::Language::En);
+    if zh_lbl.to_lowercase().contains(query) || en_lbl.to_lowercase().contains(query) {
         return true;
     }
+    let s = crate::ui::Tr(pingdeck_desktop::core::model::settings::Language::En).settings();
     let keywords: &'static str = match section {
-        SettingsSection::General => {
-            "language locale startup restore session update notification dock bounce 语言 启动 恢复 标签 通知 跳动 更新"
-        }
-        SettingsSection::Appearance => {
-            "theme dark light palette oklch color font mono density compact motion sidebar rail 主题 深色 浅色 护眼 色板 字体 等宽 密度 动效 侧栏"
-        }
-        SettingsSection::Shortcuts => {
-            "hotkey keybinding keyboard command cmd ctrl 快捷键 键位 绑定 按键"
-        }
-        SettingsSection::Requests => {
-            "timeout redirect tls ssl http2 editor tab word wrap highlight response body preview inline 超时 重定向 证书 编辑器 缩进 换行 高亮 响应体 预览"
-        }
-        SettingsSection::Network => {
-            "proxy socks http no_proxy bypass ca pem bundle certificate mtls 代理 绕过 证书 根证书 直连"
-        }
-        SettingsSection::Mock => {
-            "port latency cors log capacity allowed host docker emulator 端口 延迟 跨域 日志 主机"
-        }
-        SettingsSection::Data => {
-            "storage disk vacuum compact backup database attachment capture history chat retention sync folder git cloud export import secrets 存储 空间 备份 压缩 数据库 附件 捕获 历史 对话 保留 同步 文件夹 导出 导入 秘密"
-        }
-        SettingsSection::Agent => {
-            "model target reasoning effort workspace title compact cost cap tokens iterations subagent 默认 模型 推理 预算 上限 压缩"
-        }
-        SettingsSection::Personalization => {
-            "global instructions system prompt persona 个性 全局 指令 提示词"
-        }
-        SettingsSection::Memory => {
-            "project trust folder instruction claude.md 项目 指令 信任 文件夹"
-        }
-        SettingsSection::Subagents => "subagent role fast deep vision fallback 子智能体 角色 降级",
-        SettingsSection::Tools => {
-            "web search tavily brave searxng duckduckgo approval tool 工具 搜索 审批"
-        }
-        SettingsSection::Permissions => {
-            "sandbox shell rule block allow ask env passthrough timeout 权限 沙箱 规则 拦截 环境变量"
-        }
-        SettingsSection::Mcp => "mcp server stdio sse http oauth timeout 服务器 工具",
-        SettingsSection::Skills => "skill directory scan markdown 技能 目录",
-        SettingsSection::Routing => {
-            "gateway retry failover timeout circuit breaker probe concurrency test prompt 网关 重试 故障转移 熔断 探测 并发"
-        }
-        SettingsSection::Catalog => "catalog models.dev price pricing refresh 模型 目录 价格 同步",
-        SettingsSection::Usage => {
-            "usage retention capture body balance refresh log rollup 用量 保留 捕获 余额 日志"
-        }
-        SettingsSection::Advanced => {
-            "script sandbox loop recursion pm.sendrequest console test results reset all factory 脚本 沙箱 循环 递归 控制台 重置"
-        }
-        SettingsSection::About => {
-            "version license diagnostics environment log update export 关于 版本 诊断 许可 日志"
-        }
+        SettingsSection::General => s.kw_general(),
+        SettingsSection::Appearance => s.kw_appearance(),
+        SettingsSection::Shortcuts => s.kw_shortcuts(),
+        SettingsSection::Requests => s.kw_requests(),
+        SettingsSection::Network => s.kw_network(),
+        SettingsSection::Mock => s.kw_mock(),
+        SettingsSection::Data => s.kw_data(),
+        SettingsSection::Agent => s.kw_agent(),
+        SettingsSection::Personalization => s.kw_personalization(),
+        SettingsSection::Memory => s.kw_memory(),
+        SettingsSection::Subagents => s.kw_subagents(),
+        SettingsSection::Tools => s.kw_tools(),
+        SettingsSection::Permissions => s.kw_permissions(),
+        SettingsSection::Mcp => s.kw_mcp(),
+        SettingsSection::Skills => s.kw_skills(),
+        SettingsSection::Routing => s.kw_routing(),
+        SettingsSection::Catalog => s.kw_catalog(),
+        SettingsSection::Usage => s.kw_usage(),
+        SettingsSection::Advanced => s.kw_advanced(),
+        SettingsSection::About => s.kw_about(),
     };
     keywords.to_lowercase().contains(query)
 }

@@ -65,7 +65,10 @@ impl EnvironmentsView {
                         this.globals_dirty = false;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已保存全局变量", "Saved globals").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_saved_globals()
+                                .to_owned(),
                         ));
                         this.refresh_env_analysis(cx);
                     }
@@ -114,7 +117,9 @@ impl EnvironmentsView {
                     Ok(_) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已更新 Cookie 值", "Updated cookie value")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_updated_cookie_value()
                                 .to_owned(),
                         ));
                         this.reload_cookies(ws_reload, cx);
@@ -208,11 +213,9 @@ impl EnvironmentsView {
                         this.selected_cookie_id = None;
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已清空 {count} 条 Cookie（可撤销恢复）")
-                            } else {
-                                format!("Cleared {count} cookie(s) — undo to restore")
-                            },
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_cleared_cookie_s_undo_to(count),
                         ));
                         this.reload_cookies(ws_reload, cx);
                     }
@@ -238,7 +241,9 @@ impl EnvironmentsView {
                     Ok(_) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已恢复删除的 Cookie", "Restored deleted cookie(s)")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_restored_deleted_cookie_s()
                                 .to_owned(),
                         ));
                         this.reload_cookies(ws_id, cx);
@@ -264,11 +269,9 @@ impl EnvironmentsView {
                     Ok(ids) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已清理 {} 条过期 Cookie", ids.len())
-                            } else {
-                                format!("Removed {} expired cookie(s)", ids.len())
-                            },
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_removed_expired_cookie_s(ids.len()),
                         ));
                         this.reload_cookies(ws_reload, cx);
                     }
@@ -319,7 +322,10 @@ impl EnvironmentsView {
                         this.active_modal = None;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已添加 Cookie", "Added cookie").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_added_cookie()
+                                .to_owned(),
                         ));
                         this.reload_cookies(ws_reload, cx);
                     }
@@ -352,11 +358,9 @@ impl EnvironmentsView {
                     Ok(r) if r.opened => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已导入 {} 条 Cookie", r.imported_ids.len())
-                            } else {
-                                format!("Imported {} cookie(s)", r.imported_ids.len())
-                            },
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_imported_cookie_s(r.imported_ids.len()),
                         ));
                         this.reload_cookies(ws_reload, cx);
                     }
@@ -392,7 +396,10 @@ impl EnvironmentsView {
                     Ok(r) if r.saved => {
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已导出 Cookie 罐", "Exported cookie jar").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_exported_cookie_jar()
+                                .to_owned(),
                         ));
                     }
                     Ok(_) => {}
@@ -462,7 +469,9 @@ impl EnvironmentsView {
                         this.active_modal = None;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已保存 TLS 证书", "Saved TLS certificate")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_saved_tls_certificate()
                                 .to_owned(),
                         ));
                         this.reload_certificates(ws_id, cx);
@@ -509,7 +518,9 @@ impl EnvironmentsView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已删除 TLS 证书", "Deleted TLS certificate")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_resources_deleted_tls_certificate()
                                 .to_owned(),
                         ));
                         this.reload_certificates(ws_reload, cx);

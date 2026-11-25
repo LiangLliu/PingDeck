@@ -4,6 +4,7 @@ use pingdeck_desktop::core::app::EffectivePriceView;
 use pingdeck_desktop::core::model::model_catalog::{
     CatalogSyncErrorKind, DefaultBasis, ModelCatalogRow, PriceBasis, PriceBasisKind, PricingMode,
 };
+use pingdeck_desktop::core::model::settings::Language;
 
 use crate::ui::Tone;
 
@@ -84,71 +85,42 @@ pub fn format_ymd(ts_ms: i64) -> String {
     format!("{year:04}-{m:02}-{d:02}")
 }
 
-/// Formats a relative duration string (`刚刚` / `3 分钟前` / `2 小时前` / `5 天前`).
+/// Formats a relative duration string (`just now`, `3m ago`, `2h ago`, `5d ago`).
 #[must_use]
-pub fn format_ago(ts_ms: i64, now_ms: i64, zh: bool) -> String {
+pub fn format_ago(ts_ms: i64, now_ms: i64, lang: Language) -> String {
     let diff_s = ((now_ms - ts_ms).max(0)) / 1000;
     if diff_s < 60 {
-        if zh {
-            "刚刚".into()
-        } else {
-            "just now".into()
-        }
+        crate::ui::Tr(lang).common().time_just_now().into()
     } else if diff_s < 3600 {
         let m = diff_s / 60;
-        if zh {
-            format!("{m} 分钟前")
-        } else {
-            format!("{m}m ago")
-        }
+        crate::ui::Tr(lang).settings().widgets_m_ago(m)
     } else if diff_s < 86_400 {
         let h = diff_s / 3600;
-        if zh {
-            format!("{h} 小时前")
-        } else {
-            format!("{h}h ago")
-        }
+        crate::ui::Tr(lang).settings().widgets_h_ago(h)
     } else {
         let d = diff_s / 86_400;
-        if zh {
-            format!("{d} 天前")
-        } else {
-            format!("{d}d ago")
-        }
+        crate::ui::Tr(lang).settings().widgets_d_ago(d)
     }
 }
 
 /// Formats a future due timestamp for the automatic sync schedule.
 #[must_use]
-pub fn format_next_due(next_due_ms: i64, now_ms: i64, zh: bool) -> String {
+pub fn format_next_due(next_due_ms: i64, now_ms: i64, lang: Language) -> String {
     let rem_s = (next_due_ms - now_ms) / 1000;
     if rem_s <= 60 {
-        if zh {
-            "下次检查：即将进行".into()
-        } else {
-            "Next check: due soon".into()
-        }
+        crate::ui::Tr(lang)
+            .settings()
+            .format_next_check_due_soon()
+            .into()
     } else if rem_s < 3600 {
         let m = rem_s / 60;
-        if zh {
-            format!("下次检查：{m} 分钟后")
-        } else {
-            format!("Next check: in {m}m")
-        }
+        crate::ui::Tr(lang).settings().format_next_check_in_m(m)
     } else if rem_s < 86_400 {
         let h = rem_s / 3600;
-        if zh {
-            format!("下次检查：{h} 小时后")
-        } else {
-            format!("Next check: in {h}h")
-        }
+        crate::ui::Tr(lang).settings().format_next_check_in_h(h)
     } else {
         let d = format_ymd(next_due_ms);
-        if zh {
-            format!("下次检查：{d}")
-        } else {
-            format!("Next check: {d}")
-        }
+        crate::ui::Tr(lang).settings().format_next_check(d)
     }
 }
 
@@ -158,68 +130,52 @@ pub fn format_sync_error(
     kind: Option<CatalogSyncErrorKind>,
     status: Option<u16>,
     raw: Option<&str>,
-    zh: bool,
+    lang: Language,
 ) -> String {
     match kind {
-        Some(CatalogSyncErrorKind::Network) => if zh {
-            "无法连接 models.dev，请检查网络"
-        } else {
-            "Could not reach models.dev — check your connection"
-        }
-        .into(),
-        Some(CatalogSyncErrorKind::Timeout) => if zh {
-            "models.dev 在 30 秒内没有响应"
-        } else {
-            "models.dev did not respond within 30s"
-        }
-        .into(),
+        Some(CatalogSyncErrorKind::Network) => crate::ui::Tr(lang)
+            .settings()
+            .format_could_not_reach_models_dev()
+            .into(),
+        Some(CatalogSyncErrorKind::Timeout) => crate::ui::Tr(lang)
+            .settings()
+            .format_models_dev_did_not_respond()
+            .into(),
         Some(CatalogSyncErrorKind::Http) => {
             let code = status.unwrap_or(0);
             if code >= 500 {
-                if zh {
-                    format!("models.dev 暂时不可用（HTTP {code}）")
-                } else {
-                    format!("models.dev temporarily unavailable (HTTP {code})")
-                }
-            } else if zh {
-                format!("models.dev 拒绝了请求（HTTP {code}）")
+                crate::ui::Tr(lang)
+                    .settings()
+                    .format_models_dev_temporarily_unavailable_http(code)
             } else {
-                format!("models.dev rejected the request (HTTP {code})")
+                crate::ui::Tr(lang)
+                    .settings()
+                    .format_models_dev_rejected_the_request(code)
             }
         }
-        Some(CatalogSyncErrorKind::TooLarge) => if zh {
-            "下载内容超过 16 MiB，已放弃"
-        } else {
-            "Catalog download exceeded 16 MiB limit"
-        }
-        .into(),
-        Some(CatalogSyncErrorKind::Invalid) => if zh {
-            "models.dev 返回的不是有效的模型目录"
-        } else {
-            "models.dev returned an invalid catalog payload"
-        }
-        .into(),
-        Some(CatalogSyncErrorKind::TooFew) => if zh {
-            "models.dev 返回的目录模型过少，可能不完整，已放弃"
-        } else {
-            "Catalog had too few models to trust; kept local cache"
-        }
-        .into(),
+        Some(CatalogSyncErrorKind::TooLarge) => crate::ui::Tr(lang)
+            .settings()
+            .format_catalog_download_exceeded_16_mib()
+            .into(),
+        Some(CatalogSyncErrorKind::Invalid) => crate::ui::Tr(lang)
+            .settings()
+            .format_models_dev_returned_an_invalid()
+            .into(),
+        Some(CatalogSyncErrorKind::TooFew) => crate::ui::Tr(lang)
+            .settings()
+            .format_catalog_had_too_few_models()
+            .into(),
         _ => raw.unwrap_or("Sync failed").to_owned(),
     }
 }
 
 /// Formats an [`EffectivePriceView`] concisely for inline badges and provider tables.
 #[must_use]
-pub fn format_effective_price(view: &EffectivePriceView, zh: bool) -> String {
+pub fn format_effective_price(view: &EffectivePriceView, lang: Language) -> String {
     let p = &view.price;
     if let Some(per_call) = p.per_call {
         let amt = format_money(per_call, &p.currency);
-        return if zh {
-            format!("{amt}/次")
-        } else {
-            format!("{amt}/call")
-        };
+        return crate::ui::Tr(lang).settings().format_call(amt);
     }
     let inp = format_money(p.input_per_mtok, &p.currency);
     let out = format_money(p.output_per_mtok, &p.currency);
@@ -228,58 +184,34 @@ pub fn format_effective_price(view: &EffectivePriceView, zh: bool) -> String {
 
 /// Describes the rule that produced an effective price (`PriceBasis`).
 #[must_use]
-pub fn format_basis(basis: &PriceBasis, zh: bool) -> String {
+pub fn format_basis(basis: &PriceBasis, lang: Language) -> String {
     let fam = basis
         .family_name
         .as_deref()
         .or(basis.family.as_deref())
         .unwrap_or("");
     let base = match basis.kind {
-        PriceBasisKind::ProviderModel => {
-            if zh {
-                "此服务商单独定价".into()
-            } else {
-                "Provider override".into()
-            }
-        }
-        PriceBasisKind::Provider => {
-            if zh {
-                format!("服务商目录价 ({fam})")
-            } else {
-                format!("Provider catalog ({fam})")
-            }
-        }
-        PriceBasisKind::Model => {
-            if zh {
-                "模型默认覆盖价".into()
-            } else {
-                "Model default override".into()
-            }
-        }
+        PriceBasisKind::ProviderModel => crate::ui::Tr(lang)
+            .settings()
+            .format_provider_override()
+            .into(),
+        PriceBasisKind::Provider => crate::ui::Tr(lang).settings().format_provider_catalog(fam),
+        PriceBasisKind::Model => crate::ui::Tr(lang)
+            .settings()
+            .format_model_default_override()
+            .into(),
         PriceBasisKind::Official => {
             if fam.is_empty() {
-                if zh {
-                    "官方价".into()
-                } else {
-                    "Official".into()
-                }
-            } else if zh {
-                format!("官方价 ({fam})")
+                crate::ui::Tr(lang).settings().format_official().into()
             } else {
-                format!("Official ({fam})")
+                crate::ui::Tr(lang).settings().format_official_2(fam)
             }
         }
         PriceBasisKind::Reference => {
             if fam.is_empty() {
-                if zh {
-                    "参考价".into()
-                } else {
-                    "Reference".into()
-                }
-            } else if zh {
-                format!("参考价 ({fam})")
+                crate::ui::Tr(lang).settings().format_reference().into()
             } else {
-                format!("Reference ({fam})")
+                crate::ui::Tr(lang).settings().format_reference_2(fam)
             }
         }
     };
@@ -294,8 +226,9 @@ pub fn format_basis(basis: &PriceBasis, zh: bool) -> String {
 #[must_use]
 pub fn format_row_prices(
     row: &ModelCatalogRow,
-    zh: bool,
+    lang: Language,
 ) -> (String, String, String, String, Tone) {
+    let s = crate::ui::Tr(lang).settings();
     match row.pricing.mode {
         PricingMode::Fixed => {
             let cur = &row.pricing.currency;
@@ -303,12 +236,8 @@ pub fn format_row_prices(
                 .pricing
                 .per_call
                 .map_or_else(|| "—".into(), |v| format_money(v, cur));
-            let cell = if zh {
-                format!("{amt}/次")
-            } else {
-                format!("{amt}/call")
-            };
-            let label = if zh { "按次" } else { "Per call" }.into();
+            let cell = s.format_call(amt);
+            let label = s.catalog_mode_fixed().into();
             (cell, "—".into(), "—".into(), label, Tone::Accent)
         }
         PricingMode::Custom => {
@@ -326,7 +255,7 @@ pub fn format_row_prices(
                 row.pricing.cache_write_per_mtok,
                 cur,
             );
-            let label = if zh { "自定义" } else { "Custom" }.into();
+            let label = s.network_mode_custom().into();
             (inp, out, cache, label, Tone::Accent)
         }
         PricingMode::Dynamic => {
@@ -340,36 +269,20 @@ pub fn format_row_prices(
                 .map_or_else(|| "—".into(), |v| format_money(v, cur));
             let cache = format_cache_pair(row.cache_read_per_mtok, row.cache_write_per_mtok, cur);
             if let Some(fam) = &row.pricing.catalog_family {
-                let label = if zh {
-                    format!("{fam} 目录")
-                } else {
-                    format!("{fam} catalog")
-                };
+                let label = s.format_catalog(fam);
                 (inp, out, cache, label, Tone::Accent)
             } else if !has_price {
                 (
                     "—".into(),
                     "—".into(),
                     "—".into(),
-                    if zh { "无价格" } else { "No price" }.into(),
+                    s.catalog_mode_none().into(),
                     Tone::Warning,
                 )
             } else {
                 let label = match row.price_basis {
-                    Some(DefaultBasis::Reference) => {
-                        if zh {
-                            "参考价"
-                        } else {
-                            "Reference"
-                        }
-                    }
-                    _ => {
-                        if zh {
-                            "跟随目录"
-                        } else {
-                            "Catalog"
-                        }
-                    }
+                    Some(DefaultBasis::Reference) => s.format_reference(),
+                    _ => s.drawer_forms_catalog(),
                 };
                 (inp, out, cache, label.into(), Tone::Neutral)
             }

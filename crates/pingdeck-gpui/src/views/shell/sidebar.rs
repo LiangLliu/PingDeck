@@ -6,12 +6,11 @@ use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::state::NavModule;
 
 use crate::ui::{
     StatusShape, Tone, UiIcon, badge, btn_icon, h_row, icon, icon_xs, kbd_chip, list_row, palette,
-    section_heading, status_indicator, to_hsla, v_col,
+    section_heading, status_indicator, to_hsla, tr, v_col,
 };
 
 use super::AppShell;
@@ -33,7 +32,7 @@ fn module_icon(module: NavModule) -> UiIcon {
 
 pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl IntoElement {
     let p = palette(cx);
-    let zh = shell.language() == Language::ZhCn;
+    let sh = tr(cx).shell();
     let collapsed = shell.state.sidebar_collapsed;
     let width = if collapsed {
         px(52.0)
@@ -47,26 +46,12 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         .as_deref()
         .and_then(|id| shell.state.workspaces.iter().find(|w| w.id.as_str() == id))
         .map(|w| w.name.clone())
-        .unwrap_or_else(|| {
-            if zh {
-                "默认工作区".into()
-            } else {
-                "Default workspace".into()
-            }
-        });
+        .unwrap_or_else(|| sh.workspace_default_name().to_owned());
 
-    // 1. Workspace switcher (expanded + collapsed rail) & ⌘K quick jump trigger.
-    //    Starts directly beneath the unified 38px top bar, top-aligned with the floating page card.
     let mut top = v_col().w_full().gap(px(6.0)).pb(px(6.0)).flex_shrink_0();
     if !collapsed {
         top = top
-            .child(render_workspace_popover(
-                shell,
-                false,
-                active_ws_name,
-                zh,
-                cx,
-            ))
+            .child(render_workspace_popover(shell, false, active_ws_name, cx))
             .child(
                 div()
                     .id("sidebar-palette-btn")
@@ -89,42 +74,27 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                             .text_xs()
                             .text_color(to_hsla(p.muted))
                             .child(icon_xs(UiIcon::Search))
-                            .child(if zh {
-                                "搜索或跳转"
-                            } else {
-                                "Search or jump"
-                            }),
+                            .child(sh.sidebar_search_placeholder()),
                     )
                     .child(kbd_chip("⌘K", cx)),
             );
     } else {
         top = top
             .items_center()
-            .child(render_workspace_popover(
-                shell,
-                true,
-                active_ws_name,
-                zh,
-                cx,
-            ))
+            .child(render_workspace_popover(shell, true, active_ws_name, cx))
             .child(
                 btn_icon("sidebar-palette-rail", UiIcon::Search)
-                    .tooltip(if zh {
-                        "搜索或跳转 (⌘K)"
-                    } else {
-                        "Search or jump (⌘K)"
-                    })
+                    .tooltip(sh.sidebar_search_tooltip())
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_palette(window, cx))),
             );
     }
 
-    // 4. Clean 2-pillar navigation: Workspace API modules + Shared AI modules.
     let mut nav = v_col().flex_1().min_h_0().w_full().gap(px(2.0)).pt(px(2.0));
     if collapsed {
         nav = nav.items_center();
     }
     for module in NavModule::WORKSPACE_MODULES {
-        nav = nav.child(render_nav_item(shell, module, collapsed, zh, cx));
+        nav = nav.child(render_nav_item(shell, module, collapsed, cx));
     }
 
     if !collapsed {
@@ -136,14 +106,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                 .px(px(10.0))
                 .border_t_1()
                 .border_color(to_hsla(p.line.composite_over(p.canvas)))
-                .child(section_heading(
-                    if zh {
-                        "AI · 所有工作区共用"
-                    } else {
-                        "AI · Shared"
-                    },
-                    cx,
-                )),
+                .child(section_heading(sh.sidebar_ai_shared(), cx)),
         );
     } else {
         nav = nav.child(
@@ -155,10 +118,9 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         );
     }
     for module in NavModule::AI_MODULES {
-        nav = nav.child(render_nav_item(shell, module, collapsed, zh, cx));
+        nav = nav.child(render_nav_item(shell, module, collapsed, cx));
     }
 
-    // 5. Footer: Running Work popover + Gateway status + Settings & quick theme/console toggles.
     let work = &shell.state.running_work;
     let active_jobs = work.agent_runs
         + work.subagents
@@ -167,30 +129,17 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         + work.mock_servers;
     let gw_running = shell.state.gateway_port.is_some();
     let gw_port_label = shell.state.gateway_port.map(|port| format!(":{port}"));
-    let gw_text = match (gw_running, zh) {
-        (true, true) => "网关运行中",
-        (true, false) => "Gateway live",
-        (false, true) => "网关已停止",
-        (false, false) => "Gateway off",
+    let gw_text = if gw_running {
+        sh.sidebar_gateway_live()
+    } else {
+        sh.sidebar_gateway_off()
     };
     let work_text = if shell.state.attention.waiting_approval > 0 {
-        if zh {
-            format!(
-                "{} 项待批 · {active_jobs} 运行",
-                shell.state.attention.waiting_approval
-            )
-        } else {
-            format!(
-                "{} waiting · {active_jobs} run",
-                shell.state.attention.waiting_approval
-            )
-        }
+        sh.sidebar_work_waiting(shell.state.attention.waiting_approval, active_jobs)
     } else if active_jobs == 0 {
-        if zh { "无后台任务" } else { "Idle" }.into()
-    } else if zh {
-        format!("{active_jobs} 项运行中")
+        sh.sidebar_work_idle().to_owned()
     } else {
-        format!("{active_jobs} running")
+        sh.sidebar_work_running(active_jobs)
     };
 
     let mut footer = v_col()
@@ -209,7 +158,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                 false,
                 active_jobs,
                 work_text,
-                zh,
                 cx,
             ))
             .child(
@@ -263,7 +211,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                 shell,
                 NavModule::Settings,
                 false,
-                zh,
                 cx,
             )));
     } else {
@@ -275,7 +222,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                 true,
                 active_jobs,
                 work_text,
-                zh,
                 cx,
             ))
             .child(
@@ -301,7 +247,7 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                         cx,
                     )),
             )
-            .child(render_nav_item(shell, NavModule::Settings, true, zh, cx));
+            .child(render_nav_item(shell, NavModule::Settings, true, cx));
     }
 
     v_col()
@@ -320,13 +266,12 @@ fn render_nav_item(
     shell: &AppShell,
     module: NavModule,
     collapsed: bool,
-    zh: bool,
     cx: &mut Context<AppShell>,
 ) -> impl IntoElement {
     let p = palette(cx);
+    let t = tr(cx);
     let selected = shell.state.active_module == module;
-    let (zh_label, en_label) = module.label_pair();
-    let label = if zh { zh_label } else { en_label };
+    let label = module.label(t.lang());
     let waiting = if module == NavModule::Chat {
         shell.state.attention.waiting_approval
     } else {
@@ -441,12 +386,11 @@ fn render_nav_item(
     );
 
     if waiting > 0 {
-        let txt = if zh {
-            format!("{waiting} 待批")
-        } else {
-            waiting.to_string()
-        };
-        row = row.child(badge(txt, Tone::Warning, cx));
+        row = row.child(badge(
+            t.shell().sidebar_badge_waiting(waiting),
+            Tone::Warning,
+            cx,
+        ));
     } else if live_mocks > 0 {
         row = row.child(
             h_row()

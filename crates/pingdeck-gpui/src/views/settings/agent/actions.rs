@@ -6,9 +6,7 @@ use pingdeck_desktop::core::app::{
     SettingsSecret, ai_search_test_impl, settings_reset_section_impl, settings_secret_set_impl,
     settings_update_impl,
 };
-use pingdeck_desktop::core::model::settings::{
-    Language, SearchBackend, SettingsSection as CoreSection,
-};
+use pingdeck_desktop::core::model::settings::{SearchBackend, SettingsSection as CoreSection};
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
@@ -16,10 +14,6 @@ use crate::ui::Tone;
 use super::AgentSettingsView;
 
 impl AgentSettingsView {
-    pub(super) fn zh(&self) -> bool {
-        self.settings.general.language == Language::ZhCn
-    }
-
     /// Patches the `ai` settings section on Tokio's blocking pool and reloads derived views.
     pub(super) fn patch_ai(
         &mut self,
@@ -57,7 +51,6 @@ impl AgentSettingsView {
         cx: &mut Context<Self>,
     ) {
         let key_vec: Vec<String> = keys.iter().map(|k| (*k).to_owned()).collect();
-        let zh = self.zh();
         let win_handle = window.window_handle();
         let task = spawn_blocking_into(
             cx,
@@ -67,12 +60,10 @@ impl AgentSettingsView {
                     this.settings = next;
                     this.flash = Some((
                         Tone::Success,
-                        if zh {
-                            "已恢复本区默认值"
-                        } else {
-                            "Restored section defaults"
-                        }
-                        .to_owned(),
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_restored_section_defaults()
+                            .to_owned(),
                     ));
                     let _ = win_handle.update(cx, |_, window, cx| {
                         this.sync_inputs_from_settings(window, cx);
@@ -182,11 +173,9 @@ impl AgentSettingsView {
         let Ok(val) = raw.parse::<u64>() else {
             self.flash = Some((
                 Tone::Danger,
-                if self.zh() {
-                    format!("请输入 {min}–{max} 之间的整数")
-                } else {
-                    format!("Enter a whole number between {min} and {max}")
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_enter_a_whole_number_between(min, max),
             ));
             cx.notify();
             return;
@@ -194,11 +183,9 @@ impl AgentSettingsView {
         if val < min || val > max {
             self.flash = Some((
                 Tone::Danger,
-                if self.zh() {
-                    format!("取值范围需在 {min}–{max} 之间")
-                } else {
-                    format!("Value must be between {min} and {max}")
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_value_must_be_between_and(min, max),
             ));
             cx.notify();
             return;
@@ -232,12 +219,10 @@ impl AgentSettingsView {
             _ => {
                 self.flash = Some((
                     Tone::Danger,
-                    if self.zh() {
-                        "费用上限必须大于 0，或留空表示关闭"
-                    } else {
-                        "Cost cap must be above 0, or leave empty for Off"
-                    }
-                    .to_owned(),
+                    crate::ui::tr(cx)
+                        .settings()
+                        .actions_cost_cap_must_be_above()
+                        .to_owned(),
                 ));
                 cx.notify();
             }
@@ -265,12 +250,10 @@ impl AgentSettingsView {
             _ => {
                 self.flash = Some((
                     Tone::Danger,
-                    if self.zh() {
-                        "Token 上限需在 1,000 到 1,000,000,000 之间，或留空关闭"
-                    } else {
-                        "Token limit must be 1,000–1,000,000,000, or empty for Off"
-                    }
-                    .to_owned(),
+                    crate::ui::tr(cx)
+                        .settings()
+                        .actions_token_limit_must_be_1()
+                        .to_owned(),
                 ));
                 cx.notify();
             }
@@ -279,11 +262,11 @@ impl AgentSettingsView {
 
     /// Picks a default project workspace folder via GPUI's native async OS dialog.
     pub(super) fn pick_default_workspace(&mut self, cx: &mut Context<Self>) {
-        let prompt = SharedString::from(if self.zh() {
-            "选择新对话默认文件夹"
-        } else {
-            "Choose default folder for new chats"
-        });
+        let prompt = SharedString::from(
+            crate::ui::tr(cx)
+                .settings()
+                .actions_choose_default_folder_for_new(),
+        );
         let rx = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
@@ -381,24 +364,17 @@ impl AgentSettingsView {
         if patch_map.is_empty() {
             self.flash = Some((
                 Tone::Neutral,
-                if self.zh() {
-                    "没有可推荐的空角色"
-                } else {
-                    "No empty role has a suggestion"
-                }
-                .to_owned(),
+                crate::ui::tr(cx)
+                    .settings()
+                    .agent_roles_nothing()
+                    .to_owned(),
             ));
             cx.notify();
             return;
         }
-        let msg = if self.zh() {
-            format!("已按能力推荐填入 {} 个角色模型", patch_map.len())
-        } else {
-            format!(
-                "Applied capability suggestions to {} role(s)",
-                patch_map.len()
-            )
-        };
+        let msg = crate::ui::tr(cx)
+            .settings()
+            .actions_applied_capability_suggestions_to_role(patch_map.len());
         self.patch_ai(
             serde_json::json!({ "agent": { "role_models": patch_map } }),
             Some(msg),
@@ -412,16 +388,13 @@ impl AgentSettingsView {
         if trimmed_chars > 4000 {
             self.flash = Some((
                 Tone::Danger,
-                if self.zh() {
-                    format!("最多 4,000 个字符，当前 {trimmed_chars} 个，未保存。")
-                } else {
-                    format!("At most 4,000 characters; currently {trimmed_chars}. Not saved.")
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_at_most_4_000_characters(trimmed_chars),
             ));
             cx.notify();
             return;
         }
-        let zh = self.zh();
         let synced = text.clone();
         let patch = serde_json::json!({ "agent": { "global_instructions": text } });
         let task = spawn_blocking_into(
@@ -434,12 +407,10 @@ impl AgentSettingsView {
                     this.instructions_dirty = false;
                     this.flash = Some((
                         Tone::Success,
-                        if zh {
-                            "已保存全局个性化说明"
-                        } else {
-                            "Saved global instructions"
-                        }
-                        .to_owned(),
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_saved_global_instructions()
+                            .to_owned(),
                     ));
                     cx.notify();
                 }
@@ -492,7 +463,6 @@ impl AgentSettingsView {
             ent.update(cx, |s, cx| s.set_value("", window, cx));
             typed
         };
-        let zh = self.zh();
         let task = spawn_blocking_into(
             cx,
             move |state| settings_secret_set_impl(state, secret, &val),
@@ -501,15 +471,11 @@ impl AgentSettingsView {
                     this.flash = Some((
                         Tone::Success,
                         if clear {
-                            if zh {
-                                "已移除搜索密钥"
-                            } else {
-                                "Search key removed"
-                            }
-                        } else if zh {
-                            "已保存搜索密钥（明文 0600 保险库，仅本机）"
+                            crate::ui::tr(cx).settings().actions_search_key_removed()
                         } else {
-                            "Search key saved locally"
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_search_key_saved_locally()
                         }
                         .to_owned(),
                     ));

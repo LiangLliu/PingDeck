@@ -195,11 +195,7 @@ impl MockView {
             .map(|s| s.port)
             .max()
             .map_or(3001, |p| p.saturating_add(1));
-        let default_name = if self.is_zh() {
-            format!("本地 Mock 服务 {idx}")
-        } else {
-            format!("Local Mock {idx}")
-        };
+        let default_name = crate::ui::Tr(self.lang).mock().actions_local_mock(idx);
         self.new_srv_name_input
             .update(cx, |s, cx| s.set_value(default_name, window, cx));
         self.new_srv_port_input
@@ -259,7 +255,10 @@ impl MockView {
                         this.pending_sync = true;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已新建 Mock 服务", "Created mock server").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_created_mock_server()
+                                .to_owned(),
                         ));
                         if let Some(ws) = this.workspace_id.clone() {
                             this.refresh_statuses(ws, cx);
@@ -293,12 +292,11 @@ impl MockView {
                         this.dirty = false;
                         this.pending_sync = true;
                         let msg = if this.is_running(&saved.id) {
-                            this.t(
-                                "已保存并实时热更新运行中的服务",
-                                "Saved and hot-reloaded running server",
-                            )
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_saved_and_hot_reloaded_running()
                         } else {
-                            this.t("已保存 Mock 服务配置", "Saved mock server")
+                            crate::ui::Tr(this.lang).mock().actions_saved_mock_server()
                         };
                         this.status_msg = Some((Tone::Success, msg.to_owned()));
                         if let Some(ws) = this.workspace_id.clone() {
@@ -347,14 +345,20 @@ impl MockView {
                             this.attach_live_server(&sid_ret, cx);
                             this.status_msg = Some((
                                 Tone::Success,
-                                this.t("Mock 服务已启动", "Mock server started").to_owned(),
+                                crate::ui::Tr(this.lang)
+                                    .mock()
+                                    .actions_mock_server_started()
+                                    .to_owned(),
                             ));
                         } else {
                             this.unsubscribe_logs(cx);
                             this.live_data = None;
                             this.status_msg = Some((
                                 Tone::Neutral,
-                                this.t("Mock 服务已停止", "Mock server stopped").to_owned(),
+                                crate::ui::Tr(this.lang)
+                                    .mock()
+                                    .actions_mock_server_stopped()
+                                    .to_owned(),
                             ));
                         }
                     }
@@ -384,7 +388,9 @@ impl MockView {
                         this.pending_sync = true;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已复制 Mock 服务", "Duplicated mock server")
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_duplicated_mock_server()
                                 .to_owned(),
                         ));
                     }
@@ -413,7 +419,10 @@ impl MockView {
                         this.dirty = false;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已删除 Mock 服务", "Deleted mock server").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_deleted_mock_server()
+                                .to_owned(),
                         ));
                         this.reload(ws_reload, cx);
                     }
@@ -438,11 +447,10 @@ impl MockView {
                         this.statuses.insert(st.server_id.clone(), st);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t(
-                                "已重置计数器与顺序游标",
-                                "Reset counters and sequence cursors",
-                            )
-                            .to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_reset_counters_and_sequence_cursors()
+                                .to_owned(),
                         ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
@@ -500,9 +508,13 @@ impl MockView {
                         this.status_msg = Some((
                             Tone::Accent,
                             if rec.enabled {
-                                this.t("已开启代理流量录制", "Proxy recording started")
+                                crate::ui::Tr(this.lang)
+                                    .mock()
+                                    .actions_proxy_recording_started()
                             } else {
-                                this.t("已停止代理流量录制", "Proxy recording stopped")
+                                crate::ui::Tr(this.lang)
+                                    .mock()
+                                    .actions_proxy_recording_stopped()
                             }
                             .to_owned(),
                         ));

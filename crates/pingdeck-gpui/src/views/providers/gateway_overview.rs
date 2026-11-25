@@ -14,7 +14,6 @@ use super::{GatewayTab, ProvidersView};
 pub fn render_overview_panels(
     view: &ProvidersView,
     active_clients: usize,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -23,30 +22,26 @@ pub fn render_overview_panels(
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh {
-                    "协议入口地址（同协议直通或自动转码）"
-                } else {
-                    "Protocol Base URLs (passthrough or auto-transcode)"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_overview_protocol_base_urls_passthrough_or(),
                 cx,
             ))
-            .child(div().text_xs().text_color(to_hsla(p.faint)).child(if zh {
-                "每个客户端需携带独立令牌"
-            } else {
-                "Each client needs its own token"
-            })),
+            .child(
+                div().text_xs().text_color(to_hsla(p.faint)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_overview_each_client_needs_its_own(),
+                ),
+            ),
     );
     if let Some(ov) = &view.overview {
         for (i, b) in ov.base_urls.iter().enumerate() {
             let copy_url = b.url.clone();
             let fam_lbl = match b.family.as_str() {
-                "openai" => {
-                    if zh {
-                        "OpenAI 兼容"
-                    } else {
-                        "OpenAI-style"
-                    }
-                }
+                "openai" => crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_overview_openai_style(),
                 "anthropic" => "Anthropic Messages",
                 "gemini" => "Google Gemini",
                 other => other,
@@ -85,7 +80,7 @@ pub fn render_overview_panels(
                         h_row()
                             .gap(px(6.0))
                             .child(kv_chip(
-                                if zh { "模型" } else { "models" },
+                                crate::ui::tr(cx).providers().prov_gateway_overview_models(),
                                 b.model_count.to_string(),
                                 cx,
                             ))
@@ -94,11 +89,10 @@ pub fn render_overview_panels(
                                     let _ = clipboard::set_text(&copy_url);
                                     this.status_msg = Some((
                                         Tone::Success,
-                                        if zh {
-                                            "地址已复制".into()
-                                        } else {
-                                            "URL copied".into()
-                                        },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_gateway_overview_url_copied()
+                                            .into(),
                                     ));
                                     cx.notify();
                                 }),
@@ -131,17 +125,15 @@ pub fn render_overview_panels(
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh {
-                    format!("已接入客户端（{active_clients} 个有效令牌）")
-                } else {
-                    format!("Connected Clients ({active_clients} active)")
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_overview_connected_clients_active(active_clients),
                 cx,
             ))
             .child(
                 btn_ghost(
                     "gw-jump-clients",
-                    if zh { "管理令牌 →" } else { "Manage →" },
+                    crate::ui::tr(cx).providers().prov_gateway_overview_manage(),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.gateway_tab = GatewayTab::Clients;
@@ -160,30 +152,25 @@ pub fn render_overview_panels(
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .py(px(8.0))
-                .child(if zh {
-                    "还没有客户端。点击右上角「接入编码工具…」一键写入配置或创建令牌。"
-                } else {
-                    "No clients yet. Click Connect client… to configure a tool or mint a token."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_overview_no_clients_yet_click_connect(),
+                ),
         );
     } else {
         for c in client_rows.iter().take(6) {
             let scope = if c.allow_all {
-                if zh {
-                    "全部模型".into()
-                } else {
-                    "All models".into()
-                }
+                crate::ui::tr(cx).providers().gw_clients_all().into()
             } else {
                 c.allowed_models
                     .first()
                     .map(|m| view.format_model_ref(m))
                     .unwrap_or_else(|| {
-                        if zh {
-                            "无模型".into()
-                        } else {
-                            "None".into()
-                        }
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_overview_none()
+                            .into()
                     })
             };
             clients_summary = clients_summary.child(
@@ -221,8 +208,10 @@ pub fn render_overview_panels(
                                     .text_size(px(11.0))
                                     .text_color(to_hsla(p.faint))
                                     .child(SharedString::from(c.last_used_ms.map_or_else(
-                                        || if zh { "从未".into() } else { "Never".into() },
-                                        |ms| format_relative_time(ms, zh),
+                                        || crate::ui::tr(cx).providers().gw_clients_never().into(),
+                                        |ms| {
+                                            format_relative_time(ms, crate::ui::active_language(cx))
+                                        },
                                     ))),
                             ),
                     ),
@@ -234,21 +223,17 @@ pub fn render_overview_panels(
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh {
-                    "网关备用规则（首个内容事件后不切换）"
-                } else {
-                    "Fallback Rules (locked after first content)"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_overview_fallback_rules_locked_after_first(),
                 cx,
             ))
             .child(
                 btn_ghost(
                     "gw-jump-rules",
-                    if zh {
-                        "配置规则 →"
-                    } else {
-                        "Configure →"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_overview_configure(),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.gateway_tab = GatewayTab::Rules;
@@ -262,15 +247,15 @@ pub fn render_overview_panels(
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .py(px(8.0))
-                .child(if zh {
-                    "暂无备用规则：主模型失败时直接向客户端返回错误。"
-                } else {
-                    "No fallback rules: failures return directly to the caller."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_overview_no_fallback_rules_failures_return(),
+                ),
         );
     } else {
         for r in view.gateway_rules.iter().take(6) {
-            let (st_lbl, st_tone) = format_rule_status(r.status, zh);
+            let (st_lbl, st_tone) = format_rule_status(r.status, crate::ui::active_language(cx));
             let primary_disp = format!(
                 "{}/{}",
                 view.provider_name(&r.primary.provider_id),

@@ -67,15 +67,12 @@ impl SettingsView {
     }
 
     pub fn reset_gateway_circuits(&mut self, cx: &mut Context<Self>) {
-        let zh = self.is_zh();
         let task = spawn_blocking_into(cx, llm_gateway_reset_circuits_impl, move |this, (), cx| {
             this.set_flash(
                 Tone::Success,
-                if zh {
-                    "已重置全部路由熔断器状态"
-                } else {
-                    "All open route circuits reset"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_data_all_open_route_circuits_reset(),
                 cx,
             );
         });
@@ -102,13 +99,13 @@ impl SettingsView {
         if self.data_busy {
             return;
         }
-        let zh = self.is_zh();
         let spec = SaveFileSpec {
-            title: Some(if zh {
-                "备份 PingDeck 数据库".to_owned()
-            } else {
-                "Back up PingDeck database".to_owned()
-            }),
+            title: Some(
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_data_back_up_pingdeck_database()
+                    .to_owned(),
+            ),
             file_name: Some("pingdeck-backup.db".to_owned()),
             filters: vec![FileFilter {
                 name: "SQLite Database".to_owned(),
@@ -129,31 +126,19 @@ impl SettingsView {
                 match res {
                     Ok(dto) => {
                         let vault_note = if dto.secrets_path.is_some() {
-                            if zh {
-                                "（含同目录 0600 明文 .secrets 保险库副本）"
-                            } else {
-                                " (including sidecar 0600 plaintext .secrets vault)"
-                            }
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_data_including_sidecar_0600_plaintext_secrets()
                         } else {
                             ""
                         };
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "已备份 {} 至 {}{}",
-                                    format_bytes(dto.bytes),
-                                    dto.path,
-                                    vault_note
-                                )
-                            } else {
-                                format!(
-                                    "Backed up {} to {}{}",
-                                    format_bytes(dto.bytes),
-                                    dto.path,
-                                    vault_note
-                                )
-                            },
+                            crate::ui::tr(cx).settings().actions_data_backed_up_to(
+                                format_bytes(dto.bytes),
+                                dto.path,
+                                vault_note,
+                            ),
                             cx,
                         );
                     }
@@ -168,7 +153,6 @@ impl SettingsView {
         if self.data_busy {
             return;
         }
-        let zh = self.is_zh();
         self.data_busy = true;
         cx.notify();
         let task = spawn_blocking_into(cx, data_compact_impl, move |this, res, cx| {
@@ -178,21 +162,13 @@ impl SettingsView {
                     let saved = dto.before_bytes.saturating_sub(dto.after_bytes);
                     this.set_flash(
                         Tone::Success,
-                        if zh {
-                            format!(
-                                "数据库压缩完成：{} → {}（回收 {}）",
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_data_database_compacted_reclaimed(
                                 format_bytes(dto.before_bytes),
                                 format_bytes(dto.after_bytes),
-                                format_bytes(saved)
-                            )
-                        } else {
-                            format!(
-                                "Database compacted: {} → {} (reclaimed {})",
-                                format_bytes(dto.before_bytes),
-                                format_bytes(dto.after_bytes),
-                                format_bytes(saved)
-                            )
-                        },
+                                format_bytes(saved),
+                            ),
                         cx,
                     );
                     this.refresh_data_and_sync(cx);
@@ -246,7 +222,6 @@ impl SettingsView {
         older_than_days: Option<u32>,
         cx: &mut Context<Self>,
     ) {
-        let zh = self.is_zh();
         self.modal = None;
         self.data_busy = true;
         cx.notify();
@@ -267,19 +242,12 @@ impl SettingsView {
                     Ok(report) => {
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "已清理 {} 个附件文件，释放 {}",
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_data_removed_attachment_blob_s_freed(
                                     report.removed,
-                                    format_bytes(report.freed_bytes)
-                                )
-                            } else {
-                                format!(
-                                    "Removed {} attachment blob(s), freed {}",
-                                    report.removed,
-                                    format_bytes(report.freed_bytes)
-                                )
-                            },
+                                    format_bytes(report.freed_bytes),
+                                ),
                             cx,
                         );
                         this.refresh_data_and_sync(cx);
@@ -301,7 +269,6 @@ impl SettingsView {
     }
 
     pub fn confirm_clear_captured_bodies(&mut self, cx: &mut Context<Self>) {
-        let zh = self.is_zh();
         self.modal = None;
         self.data_busy = true;
         cx.notify();
@@ -314,19 +281,12 @@ impl SettingsView {
                     Ok(report) => {
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "已清空 {} 条捕获正文（约 {}）",
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_data_cleared_captured_bodies(
                                     report.removed,
-                                    format_bytes(report.freed_bytes)
-                                )
-                            } else {
-                                format!(
-                                    "Cleared {} captured bodies ({})",
-                                    report.removed,
-                                    format_bytes(report.freed_bytes)
-                                )
-                            },
+                                    format_bytes(report.freed_bytes),
+                                ),
                             cx,
                         );
                         this.refresh_data_and_sync(cx);
@@ -368,7 +328,6 @@ impl SettingsView {
         if days == 0 || self.data_busy {
             return;
         }
-        let zh = self.is_zh();
         self.data_busy = true;
         cx.notify();
         let task = spawn_blocking_into(
@@ -380,13 +339,9 @@ impl SettingsView {
                     Ok(deleted) => {
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!("已清理 {deleted} 个过期对话（置顶与运行中的对话已保留）")
-                            } else {
-                                format!(
-                                    "Deleted {deleted} expired chat(s) (pinned & active chats kept)"
-                                )
-                            },
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_data_deleted_expired_chat_s_pinned(deleted),
                             cx,
                         );
                         this.refresh_data_and_sync(cx);

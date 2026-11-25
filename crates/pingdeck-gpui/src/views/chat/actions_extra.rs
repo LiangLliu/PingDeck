@@ -71,7 +71,10 @@ impl ChatView {
             |this, res, cx| {
                 match res {
                     Ok(restored) => {
-                        this.status_msg = Some((Tone::Success, "已恢复对话".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).chat().act_restored().into(),
+                        ));
                         this.load_trash(cx);
                         this.refresh_catalog(cx);
                         this.open_session(restored.id, cx);
@@ -119,7 +122,10 @@ impl ChatView {
                     Ok(_) => {
                         this.plan_mode = false;
                         this.thread.open_gates.clear();
-                        this.status_msg = Some((Tone::Success, "计划已批准，开始执行".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).chat().act_plan_approved().into(),
+                        ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -196,7 +202,8 @@ impl ChatView {
                 match res {
                     Ok(q) => {
                         this.thread.queued_turns = q;
-                        this.status_msg = Some((Tone::Accent, "已加入待发队列".into()));
+                        this.status_msg =
+                            Some((Tone::Accent, crate::ui::tr(cx).chat().act_queued().into()));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -224,9 +231,15 @@ impl ChatView {
             move |state| agent_run_steer_impl(state, &run_id, &text, &att_ids, skills, &[]),
             |this, res, cx| {
                 match res {
-                    Ok(true) => this.status_msg = Some((Tone::Accent, "已发送插队引导".into())),
+                    Ok(true) => {
+                        this.status_msg =
+                            Some((Tone::Accent, crate::ui::tr(cx).chat().act_steered().into()));
+                    }
                     Ok(false) => {
-                        this.status_msg = Some((Tone::Warning, "当前没有运行中的任务".into()))
+                        this.status_msg = Some((
+                            Tone::Warning,
+                            crate::ui::tr(cx).chat().act_no_active_run().into(),
+                        ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -422,7 +435,8 @@ impl ChatView {
             |this, res, cx| {
                 match res {
                     Ok(Some(path)) => {
-                        this.status_msg = Some((Tone::Success, format!("已导出脱敏对话到 {path}")));
+                        this.status_msg =
+                            Some((Tone::Success, crate::ui::tr(cx).chat().act_exported(path)));
                     }
                     Ok(None) => {}
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),

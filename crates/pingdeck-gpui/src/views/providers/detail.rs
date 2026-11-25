@@ -20,7 +20,6 @@ use super::{ProviderTab, ProvidersView, detail_keys, detail_models, detail_side}
 pub fn render_provider_detail(
     view: &ProvidersView,
     pv: &ProviderView,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -48,17 +47,15 @@ pub fn render_provider_detail(
         .count();
 
     let ent = cx.entity().clone();
-    let models_tab_lbl = if zh {
-        format!("模型 ({prov_models_cnt})")
-    } else {
-        format!("Models ({prov_models_cnt})")
-    };
+    let models_tab_lbl = crate::ui::tr(cx)
+        .providers()
+        .prov_detail_models(prov_models_cnt);
 
     let tabs = tab_bar_underline("prov-detail-tabs")
         .selected_index(view.provider_tab.index())
-        .child(tab_item(if zh { "概览" } else { "Overview" }))
+        .child(tab_item(crate::ui::tr(cx).providers().prov_tab_overview()))
         .child(tab_item(models_tab_lbl))
-        .child(tab_item(if zh { "配置" } else { "Config" }))
+        .child(tab_item(crate::ui::tr(cx).providers().prov_detail_config()))
         .on_click(move |idx, _, cx| {
             let next = ProviderTab::from_index(*idx);
             ent.update(cx, |this, cx| {
@@ -100,20 +97,25 @@ pub fn render_provider_detail(
                                         .child(SharedString::from(prov.name.clone())),
                                 )
                                 .child(badge(
-                                    provider_status_label(st, zh),
+                                    provider_status_label(st, crate::ui::active_language(cx)),
                                     provider_status_tone(st),
                                     cx,
                                 ))
                                 .child(badge(
-                                    format_family(prov.gateway_family, zh),
+                                    format_family(
+                                        prov.gateway_family,
+                                        crate::ui::active_language(cx),
+                                    ),
                                     Tone::Accent,
                                     cx,
                                 ))
-                                .children(
-                                    status_dto
-                                        .and_then(|s| s.reasons.first())
-                                        .map(|r| badge(format_reason(r, zh), Tone::Warning, cx)),
-                                ),
+                                .children(status_dto.and_then(|s| s.reasons.first()).map(|r| {
+                                    badge(
+                                        format_reason(r, crate::ui::active_language(cx)),
+                                        Tone::Warning,
+                                        cx,
+                                    )
+                                })),
                         )
                         .child(
                             h_row()
@@ -129,11 +131,7 @@ pub fn render_provider_detail(
                                         let _ = clipboard::set_text(&copy_url);
                                         this.status_msg = Some((
                                             Tone::Success,
-                                            if zh {
-                                                "基础 URL 已复制".into()
-                                            } else {
-                                                "Base URL copied".into()
-                                            },
+                                            crate::ui::tr(cx).providers().prov_pane_copied().into(),
                                         ));
                                         cx.notify();
                                     }),
@@ -142,15 +140,12 @@ pub fn render_provider_detail(
                                     div()
                                         .text_size(px(11.0))
                                         .text_color(to_hsla(p.faint))
-                                        .child(SharedString::from(if zh {
-                                            format!(
-                                                "{prov_models_cnt} 个模型 · {prov_keys_cnt} 把密钥"
-                                            )
-                                        } else {
-                                            format!(
-                                                "{prov_models_cnt} models · {prov_keys_cnt} keys"
-                                            )
-                                        })),
+                                        .child(SharedString::from(
+                                            crate::ui::tr(cx).providers().prov_detail_models_keys(
+                                                prov_models_cnt,
+                                                prov_keys_cnt,
+                                            ),
+                                        )),
                                 ),
                         ),
                 )
@@ -159,15 +154,20 @@ pub fn render_provider_detail(
                         .flex_shrink_0()
                         .gap(px(6.0))
                         .children((!prov.enabled).then(|| {
-                            btn_primary("prov-quick-enable", if zh { "启用" } else { "Enable" })
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.toggle_provider_enabled(enable_id.clone(), true, zh, cx);
-                                }))
+                            btn_primary(
+                                "prov-quick-enable",
+                                crate::ui::tr(cx).providers().prov_detail_enable(),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.toggle_provider_enabled(enable_id.clone(), true, cx);
+                                },
+                            ))
                         }))
                         .child(
                             btn_secondary(
                                 "prov-resniff-btn",
-                                if zh { "重新嗅探…" } else { "Re-scan…" },
+                                crate::ui::tr(cx).providers().prov_detail_re_scan(),
                             )
                             .icon(icon_xs(UiIcon::Refresh))
                             .on_click(cx.listener(
@@ -185,11 +185,7 @@ pub fn render_provider_detail(
                         .child(
                             btn_primary(
                                 "prov-bench-btn",
-                                if zh {
-                                    "基准测试…"
-                                } else {
-                                    "Test Bench…"
-                                },
+                                crate::ui::tr(cx).providers().prov_detail_test_bench(),
                             )
                             .icon(icon_xs(UiIcon::Activity))
                             .on_click(cx.listener(
@@ -222,7 +218,7 @@ pub fn render_provider_detail(
             .flex_1()
             .min_h_0()
             .size_full()
-            .child(detail_models::render_models_tab(view, pv, zh, cx))
+            .child(detail_models::render_models_tab(view, pv, cx))
             .into_any_element(),
         ProviderTab::Overview => div()
             .flex_1()
@@ -230,7 +226,7 @@ pub fn render_provider_detail(
             .w_full()
             .p(px(20.0))
             .overflow_y_scrollbar()
-            .child(div().w_full().child(render_overview_tab(view, pv, zh, cx)))
+            .child(div().w_full().child(render_overview_tab(view, pv, cx)))
             .into_any_element(),
         ProviderTab::Config => {
             let body: gpui_kit::AnyElement = if let Some(cfg) = &view.config_form {
@@ -255,7 +251,6 @@ pub fn render_provider_detail(
 fn render_overview_tab(
     view: &ProvidersView,
     pv: &ProviderView,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -282,19 +277,23 @@ fn render_overview_tab(
                     h_row()
                         .justify_between()
                         .gap(px(8.0))
-                        .child(div().text_xs().text_color(to_hsla(p.ink)).child(if zh {
-                            "该服务商来自导入，尚未复核。复核前不会作为默认目标或备用目标。"
-                        } else {
-                            "Imported and unreviewed. Will not serve as fallback until marked reviewed."
-                        }))
+                        .child(
+                            div().text_xs().text_color(to_hsla(p.ink)).child(
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_detail_imported_and_unreviewed_will_not(),
+                            ),
+                        )
                         .child(
                             btn_primary(
                                 "prov-mark-reviewed",
-                                if zh { "标记为已复核" } else { "Mark reviewed" },
+                                crate::ui::tr(cx).providers().prov_detail_mark_reviewed(),
                             )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.mark_provider_reviewed(mark_id.clone(), zh, cx);
-                            })),
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.mark_provider_reviewed(mark_id.clone(), cx);
+                                },
+                            )),
                         ),
                 ),
         );
@@ -315,47 +314,37 @@ fn render_overview_tab(
                         .justify_between()
                         .gap(px(8.0))
                         .flex_wrap()
-                        .child(div().text_xs().text_color(to_hsla(p.ink)).child(
-                            SharedString::from(if zh {
-                                format!(
-                                    "模型目录飘移提醒：服务商新增 {} 个模型，移除 {} 个模型。",
-                                    drift.added.len(),
-                                    drift.removed.len()
-                                )
-                            } else {
-                                format!(
-                                    "Model list drift: {} added, {} removed upstream.",
-                                    drift.added.len(),
-                                    drift.removed.len()
-                                )
-                            }),
-                        ))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(p.ink))
+                                .child(SharedString::from(
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_detail_model_list_drift_added_removed(
+                                            drift.added.len(),
+                                            drift.removed.len(),
+                                        ),
+                                )),
+                        )
                         .child(
                             h_row()
                                 .gap(px(5.0))
                                 .children((!drift.added.is_empty()).then(|| {
                                     btn_primary(
                                         "ov-drift-apply",
-                                        if zh {
-                                            "添加新增模型"
-                                        } else {
-                                            "Add new models"
-                                        },
+                                        crate::ui::tr(cx).providers().models_drift_apply(),
                                     )
                                     .on_click(cx.listener(
                                         move |this, _, _, cx| {
-                                            this.apply_model_drift(apply_id.clone(), zh, cx);
+                                            this.apply_model_drift(apply_id.clone(), cx);
                                         },
                                     ))
                                 }))
                                 .child(
                                     btn_secondary(
                                         "ov-drift-view",
-                                        if zh {
-                                            "查看模型 →"
-                                        } else {
-                                            "View models →"
-                                        },
+                                        crate::ui::tr(cx).providers().prov_detail_view_models(),
                                     )
                                     .on_click(cx.listener(
                                         |this, _, _, cx| {
@@ -367,11 +356,11 @@ fn render_overview_tab(
                                 .child(
                                     btn_ghost(
                                         "ov-drift-ack",
-                                        if zh { "标记已读" } else { "Dismiss" },
+                                        crate::ui::tr(cx).providers().prov_detail_dismiss(),
                                     )
                                     .on_click(cx.listener(
                                         move |this, _, _, cx| {
-                                            this.ack_model_drift(ack_id.clone(), zh, cx);
+                                            this.ack_model_drift(ack_id.clone(), cx);
                                         },
                                     )),
                                 ),
@@ -385,15 +374,17 @@ fn render_overview_tab(
             card(cx).p(px(11.0)).bg(to_hsla(p.pane)).child(
                 h_row()
                     .justify_between()
-                    .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                        "还没有已启用的 API 密钥，添加密钥后即可刷新模型、探测与路由请求。"
-                    } else {
-                        "No enabled API key yet. Add a key to refresh models and route traffic."
-                    }))
+                    .child(
+                        div().text_xs().text_color(to_hsla(p.muted)).child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_no_enabled_api_key_yet(),
+                        ),
+                    )
                     .child(
                         btn_primary(
                             "ov-add-key-banner",
-                            if zh { "+ 添加密钥" } else { "+ Add key" },
+                            crate::ui::tr(cx).providers().prov_detail_add_key(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.adding_key_open = true;
@@ -408,22 +399,16 @@ fn render_overview_tab(
         .flex_1()
         .min_w_0()
         .gap(px(14.0))
-        .child(detail_keys::render_keys_card(
-            view, prov, &prov_keys, zh, cx,
-        ))
-        .child(detail_side::render_endpoints_card(view, prov, zh, cx));
+        .child(detail_keys::render_keys_card(view, prov, &prov_keys, cx))
+        .child(detail_side::render_endpoints_card(view, prov, cx));
 
     let side_col = v_col()
         .w(px(296.0))
         .flex_shrink_0()
         .gap(px(12.0))
-        .child(detail_side::render_balance_card(
-            view, prov, &prov_keys, zh, cx,
-        ))
-        .child(detail_side::render_health_card(view, prov, zh, cx))
-        .child(detail_side::render_recent_calls_card(
-            view, &prov.id, zh, cx,
-        ));
+        .child(detail_side::render_balance_card(view, prov, &prov_keys, cx))
+        .child(detail_side::render_health_card(view, prov, cx))
+        .child(detail_side::render_recent_calls_card(view, &prov.id, cx));
 
     v_col().gap(px(12.0)).child(top_banners).child(
         h_row()

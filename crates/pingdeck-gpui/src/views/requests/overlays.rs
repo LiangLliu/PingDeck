@@ -134,7 +134,13 @@ impl RequestsView {
                         cx,
                     );
                 } else {
-                    self.status_msg = Some((Tone::Warning, "请先创建一个集合".into()));
+                    self.status_msg = Some((
+                        Tone::Warning,
+                        crate::ui::tr(cx)
+                            .requests()
+                            .overlays_create_collection_first()
+                            .into(),
+                    ));
                     cx.notify();
                 }
             }
@@ -162,7 +168,6 @@ impl RequestsView {
 
 pub fn render_active_modal(
     view: &RequestsView,
-    zh: bool,
     window: &Window,
     cx: &mut Context<RequestsView>,
 ) -> Option<AnyElement> {
@@ -174,10 +179,8 @@ pub fn render_active_modal(
             kind,
             target_collection_id,
             target_folder_id,
-        } => render_new_item(view, kind, target_collection_id, target_folder_id, zh, cx),
-        ActiveModal::CodeSnippets { values_mode } => {
-            render_code_snippets(view, values_mode, zh, cx)
-        }
+        } => render_new_item(view, kind, target_collection_id, target_folder_id, cx),
+        ActiveModal::CodeSnippets { values_mode } => render_code_snippets(view, values_mode, cx),
         ActiveModal::ImportExport {
             tab,
             format,
@@ -195,25 +198,27 @@ pub fn render_active_modal(
             export_collection_id,
             export_include_secrets,
             export_ack_secrets,
-            zh,
             cx,
         ),
         ActiveModal::SaveAs {
             target_collection_id,
             target_folder_id,
-        } => render_save_as(view, target_collection_id, target_folder_id, zh, cx),
+        } => render_save_as(view, target_collection_id, target_folder_id, cx),
         ActiveModal::Rename { kind, id } => {
             let id_c = id.clone();
             (
-                if zh { "重命名" } else { "Rename" }.into(),
+                crate::ui::tr(cx).requests().tree_action_rename().into(),
                 420.0,
                 v_col()
                     .gap(px(8.0))
-                    .child(section_heading(if zh { "新名称" } else { "New name" }, cx))
+                    .child(section_heading(
+                        crate::ui::tr(cx).requests().overlays_new_name(),
+                        cx,
+                    ))
                     .child(text_input(&view.modal_name_input))
                     .into_any_element(),
-                h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
-                    btn_primary("modal-rename-ok", if zh { "保存" } else { "Save" }).on_click(
+                h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
+                    btn_primary("modal-rename-ok", crate::ui::tr(cx).common().save()).on_click(
                         cx.listener(move |this, _, _, cx| {
                             let nm = this.modal_name_input.read(cx).value().to_string();
                             this.rename_tree_item(kind, id_c.clone(), nm, cx);
@@ -226,58 +231,54 @@ pub fn render_active_modal(
             request_id,
             target_collection_id,
             target_folder_id,
-        } => render_move_request(
-            view,
-            request_id,
-            target_collection_id,
-            target_folder_id,
-            zh,
-            cx,
-        ),
+        } => render_move_request(view, request_id, target_collection_id, target_folder_id, cx),
         ActiveModal::ExtractVariable {
             value,
             is_secret,
             use_globals,
-        } => render_extract_var(view, value, is_secret, use_globals, zh, cx),
+        } => render_extract_var(view, value, is_secret, use_globals, cx),
         ActiveModal::ConfirmCloseDirty { tab_id, name } => {
             let tid_save = tab_id.clone();
             let tid_disc = tab_id.clone();
             (
-                if zh {
-                    "保存未保存的更改？"
-                } else {
-                    "Save changes?"
-                }
-                .into(),
+                crate::ui::tr(cx).requests().overlays_save_changes().into(),
                 440.0,
                 div()
                     .text_xs()
                     .text_color(to_hsla(p.ink_2))
-                    .child(SharedString::from(if zh {
-                        format!("「{name}」有未保存的更改。不保存就关闭将丢失当前编辑。")
-                    } else {
-                        format!(
-                            "\"{name}\" has unsaved changes. Closing without saving will discard them."
-                        )
-                    }))
+                    .child(SharedString::from(
+                        crate::ui::tr(cx)
+                            .requests()
+                            .overlays_has_unsaved_changes_closing_without(name),
+                    ))
                     .into_any_element(),
                 h_row()
                     .gap(px(8.0))
-                    .child(cancel_btn(zh, cx))
+                    .child(cancel_btn(cx))
                     .child(
-                        btn_danger("dirty-discard", if zh { "不保存" } else { "Discard" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
+                        btn_danger(
+                            "dirty-discard",
+                            crate::ui::tr(cx).requests().tabs_unsaved_discard(),
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
                                 this.active_modal = None;
                                 this.force_close_tab(&tid_disc, window, cx);
-                            })),
+                            },
+                        )),
                     )
                     .child(
-                        btn_primary("dirty-save", if zh { "保存并关闭" } else { "Save & close" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
+                        btn_primary(
+                            "dirty-save",
+                            crate::ui::tr(cx).requests().overlays_save_close(),
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
                                 this.active_modal = None;
                                 this.save_active_tab(false, window, cx);
                                 this.force_close_tab(&tid_save, window, cx);
-                            })),
+                            },
+                        )),
                     ),
             )
         }
@@ -288,22 +289,18 @@ pub fn render_active_modal(
             is_runner,
             save_to_file,
         } => (
-            if zh {
-                "发送前安全确认"
-            } else {
-                "Confirm before sending"
-            }
-            .into(),
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_confirm_before_sending()
+                .into(),
             480.0,
             v_col()
                 .gap(px(10.0))
                 .child(alert_banner(
                     Tone::Warning,
-                    if zh {
-                        "受保护环境或凭据安全策略要求发送前显式确认"
-                    } else {
-                        "Protected environment or credential guard requires explicit confirmation"
-                    },
+                    crate::ui::tr(cx)
+                        .requests()
+                        .overlays_protected_environment_or_credential_guard(),
                     None,
                     cx,
                 ))
@@ -314,10 +311,10 @@ pub fn render_active_modal(
                         .child(SharedString::from(message)),
                 )
                 .into_any_element(),
-            h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
+            h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
                 btn_danger(
                     "guard-confirm-send",
-                    if zh { "确认发送" } else { "Confirm & send" },
+                    crate::ui::tr(cx).requests().overlays_confirm_send(),
                 )
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.active_modal = None;
@@ -332,35 +329,29 @@ pub fn render_active_modal(
             ),
         ),
         ActiveModal::StaleWriteConfirm { tab_id: _, name } => (
-            if zh {
-                "检测到并发修改"
-            } else {
-                "Concurrent edit detected"
-            }
-            .into(),
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_concurrent_edit_detected()
+                .into(),
             460.0,
             alert_banner(
                 Tone::Warning,
-                if zh {
-                    format!(
-                        "「{name}」在你打开后已被其他来源（如智能体或同步）修改。是否覆盖保存？"
-                    )
-                } else {
-                    format!(
-                        "\"{name}\" was modified since you opened it. Overwrite with your draft?"
-                    )
-                },
+                crate::ui::tr(cx)
+                    .requests()
+                    .overlays_was_modified_since_you_opened(name),
                 None,
                 cx,
             )
             .into_any_element(),
-            h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
-                btn_danger("stale-overwrite", if zh { "覆盖保存" } else { "Overwrite" }).on_click(
-                    cx.listener(|this, _, window, cx| {
-                        this.active_modal = None;
-                        this.save_active_tab(true, window, cx);
-                    }),
-                ),
+            h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
+                btn_danger(
+                    "stale-overwrite",
+                    crate::ui::tr(cx).requests().overlays_overwrite(),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.active_modal = None;
+                    this.save_active_tab(true, window, cx);
+                })),
             ),
         ),
         ActiveModal::CompareModels {
@@ -369,7 +360,7 @@ pub fn render_active_modal(
             concurrency: _,
             estimate,
             error,
-        } => render_compare_modal(view, selected, estimate, error, zh, cx),
+        } => render_compare_modal(view, selected, estimate, error, cx),
     };
 
     let ent = cx.entity().clone();
@@ -390,8 +381,8 @@ pub fn render_active_modal(
     ))
 }
 
-pub(super) fn cancel_btn(zh: bool, cx: &mut Context<RequestsView>) -> impl IntoElement {
-    btn_secondary("req-modal-cancel", if zh { "取消" } else { "Cancel" }).on_click(cx.listener(
+pub(super) fn cancel_btn(cx: &mut Context<RequestsView>) -> impl IntoElement {
+    btn_secondary("req-modal-cancel", crate::ui::tr(cx).common().cancel()).on_click(cx.listener(
         |this, _, _, cx| {
             this.active_modal = None;
             cx.notify();

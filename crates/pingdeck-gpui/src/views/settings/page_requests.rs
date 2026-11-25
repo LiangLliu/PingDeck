@@ -13,11 +13,7 @@ use crate::ui::{
 
 use super::SettingsView;
 
-pub fn render_requests(
-    view: &SettingsView,
-    zh: bool,
-    cx: &mut Context<SettingsView>,
-) -> gpui_kit::Div {
+pub fn render_requests(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
     let net = &view.settings.network;
     let ed = &view.settings.editor;
 
@@ -32,77 +28,92 @@ pub fn render_requests(
     let transport_rows = v_col()
         .w_full()
         .child(setting_row(
-            if zh { "默认请求超时" } else { "Default timeout" },
+            crate::ui::tr(cx).settings().page_requests_default_timeout(),
             None,
-            Some(SharedString::from(if zh {
-                "新建请求继承此超时（1–3,600,000 ms，默认 30,000 ms）；也用于 OAuth 与 pm.sendRequest。"
-            } else {
-                "Inherited by new requests (1–3,600,000 ms, default 30,000 ms); also applies to OAuth & pm.sendRequest."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_inherited_by_new_requests_1(),
+            )),
             h_row()
                 .gap(px(6.0))
-                .child(number_field(&view.inputs.req_timeout_ms, Some("ms"), 100.0, cx))
+                .child(number_field(
+                    &view.inputs.req_timeout_ms,
+                    Some("ms"),
+                    100.0,
+                    cx,
+                ))
                 .child(
-                    btn_secondary("req-save-timeout", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.req_timeout_ms.read(cx).value().to_string();
-                            this.commit_u64(
-                                &v,
-                                1,
-                                3_600_000,
-                                CoreSection::Network,
-                                |n| serde_json::json!({ "timeout_ms": n }),
-                                cx,
-                            );
-                        }),
-                    ),
+                    btn_secondary(
+                        "req-save-timeout",
+                        crate::ui::tr(cx).common().kv_bulk_apply(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let v = this.inputs.req_timeout_ms.read(cx).value().to_string();
+                        this.commit_u64(
+                            &v,
+                            1,
+                            3_600_000,
+                            CoreSection::Network,
+                            |n| serde_json::json!({ "timeout_ms": n }),
+                            cx,
+                        );
+                    })),
                 ),
             cx,
         ))
         .child(setting_row(
-            if zh { "传输失败重试次数" } else { "Transport retries" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_requests_transport_retries(),
             None,
-            Some(SharedString::from(if zh {
-                "发生网络层失败时的自动重试次数（0–10，默认 0）。"
-            } else {
-                "Automatic retries after transport-level failures (0–10, default 0)."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_automatic_retries_after_transport_level(),
+            )),
             h_row()
                 .gap(px(6.0))
                 .child(number_field(
                     &view.inputs.req_retry_count,
-                    Some(if zh { "次" } else { "x" }),
+                    Some(crate::ui::tr(cx).settings().page_advanced_x()),
                     72.0,
                     cx,
                 ))
                 .child(
-                    btn_secondary("req-save-retries", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.req_retry_count.read(cx).value().to_string();
-                            this.commit_u64(
-                                &v,
-                                0,
-                                10,
-                                CoreSection::Network,
-                                |n| serde_json::json!({ "retry_count": n }),
-                                cx,
-                            );
-                        }),
-                    ),
+                    btn_secondary(
+                        "req-save-retries",
+                        crate::ui::tr(cx).common().kv_bulk_apply(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let v = this.inputs.req_retry_count.read(cx).value().to_string();
+                        this.commit_u64(
+                            &v,
+                            0,
+                            10,
+                            CoreSection::Network,
+                            |n| serde_json::json!({ "retry_count": n }),
+                            cx,
+                        );
+                    })),
                 ),
             cx,
         ))
         .child(setting_row(
-            if zh { "首选 HTTP 版本" } else { "Preferred HTTP version" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_requests_preferred_http_version(),
             None,
-            Some(SharedString::from(if zh {
-                "默认由 ALPN 自动协商，也可强制指定协议版本。"
-            } else {
-                "Auto negotiates via ALPN by default, or lock a specific HTTP version."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_auto_negotiates_via_alpn_by(),
+            )),
             tab_bar_segmented("req-http-ver-seg")
                 .selected_index(http_idx)
-                .child(tab_item(if zh { "自动" } else { "Auto" }))
+                .child(tab_item(
+                    crate::ui::tr(cx).settings().opt_network_http_version_auto(),
+                ))
                 .child(tab_item("HTTP/1.0"))
                 .child(tab_item("HTTP/1.1"))
                 .child(tab_item("HTTP/2"))
@@ -124,13 +135,15 @@ pub fn render_requests(
             cx,
         ))
         .child(setting_row(
-            if zh { "自动跟随重定向" } else { "Follow redirects" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_requests_follow_redirects(),
             None,
-            Some(SharedString::from(if zh {
-                "遇到 3xx 响应时自动跟踪 Location 目标地址。"
-            } else {
-                "Automatically follow HTTP 3xx Location headers."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_automatically_follow_http_3xx_location(),
+            )),
             toggle_switch("req-follow-redir", net.follow_redirects).on_change(cx.listener(
                 |this, checked: &bool, _, cx| {
                     this.patch_section(
@@ -143,18 +156,20 @@ pub fn render_requests(
             cx,
         ))
         .child(setting_row(
-            if zh { "最大重定向跳数" } else { "Max redirect hops" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_requests_max_redirect_hops(),
             None,
-            Some(SharedString::from(if zh {
-                "单次请求允许的最大重定向次数（0–50，默认 10）。"
-            } else {
-                "Maximum redirect hops allowed per request (0–50, default 10)."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_maximum_redirect_hops_allowed_per(),
+            )),
             h_row()
                 .gap(px(6.0))
                 .child(number_field(&view.inputs.req_max_redirects, None, 72.0, cx))
                 .child(
-                    btn_secondary("req-save-redir", if zh { "应用" } else { "Apply" })
+                    btn_secondary("req-save-redir", crate::ui::tr(cx).common().kv_bulk_apply())
                         .disabled(!net.follow_redirects)
                         .on_click(cx.listener(|this, _, _, cx| {
                             let v = this.inputs.req_max_redirects.read(cx).value().to_string();
@@ -171,13 +186,15 @@ pub fn render_requests(
             cx,
         ))
         .child(setting_row(
-            if zh { "校验 TLS 证书" } else { "Verify TLS certificates" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_requests_verify_tls_certificates(),
             None,
-            Some(SharedString::from(if zh {
-                "建议始终保持开启；如需信任内网自签名证书，请在「网络」页配置自定义 CA 证书包。"
-            } else {
-                "Keep enabled whenever possible; for internal self-signed roots, add a custom CA bundle in Network."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_keep_enabled_whenever_possible_for(),
+            )),
             toggle_switch("req-verify-tls", net.verify_tls).on_change(cx.listener(
                 |this, checked: &bool, _, cx| {
                     this.patch_section(
@@ -191,34 +208,35 @@ pub fn render_requests(
         ));
 
     let mut transport = v_col().w_full().gap(px(10.0)).child(settings_section(
-        if zh {
-            "HTTP 请求默认值"
-        } else {
-            "HTTP Request Defaults"
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .page_requests_http_request_defaults(),
         Some(
-            btn_ghost("req-reset-net", if zh { "恢复默认" } else { "Reset" })
-                .icon(icon_xs(UiIcon::RotateCcw))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.reset_keys(
-                        CoreSection::Network,
-                        Some(
-                            [
-                                "timeout_ms",
-                                "retry_count",
-                                "http_version",
-                                "follow_redirects",
-                                "max_redirects",
-                                "verify_tls",
-                            ]
-                            .into_iter()
-                            .map(str::to_owned)
-                            .collect(),
-                        ),
-                        cx,
-                    );
-                }))
-                .into_any_element(),
+            btn_ghost(
+                "req-reset-net",
+                crate::ui::tr(cx).settings().page_defaults_reset(),
+            )
+            .icon(icon_xs(UiIcon::RotateCcw))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.reset_keys(
+                    CoreSection::Network,
+                    Some(
+                        [
+                            "timeout_ms",
+                            "retry_count",
+                            "http_version",
+                            "follow_redirects",
+                            "max_redirects",
+                            "verify_tls",
+                        ]
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect(),
+                    ),
+                    cx,
+                );
+            }))
+            .into_any_element(),
         ),
         transport_rows,
         cx,
@@ -227,46 +245,45 @@ pub fn render_requests(
     if !net.verify_tls {
         transport = transport.child(alert_banner(
             Tone::Warning,
-            if zh {
-                "全局 TLS 证书校验当前已关闭，新请求将接受任意自签名或过期证书。"
-            } else {
-                "Global TLS verification is disabled; new requests will accept self-signed or expired certificates."
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .page_requests_global_tls_verification_is_disabled(),
             None,
             cx,
         ));
     }
 
     let editor_sec = settings_section(
-        if zh { "编辑器与高亮" } else { "Editor & Syntax Highlighting" },
+        crate::ui::tr(cx)
+            .settings()
+            .page_requests_editor_syntax_highlighting(),
         Some(
-            btn_ghost("req-reset-editor", if zh { "恢复默认" } else { "Reset" })
-                .icon(icon_xs(UiIcon::RotateCcw))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.reset_section(CoreSection::Editor, cx);
-                }))
-                .into_any_element(),
+            btn_ghost(
+                "req-reset-editor",
+                crate::ui::tr(cx).settings().page_defaults_reset(),
+            )
+            .icon(icon_xs(UiIcon::RotateCcw))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.reset_section(CoreSection::Editor, cx);
+            }))
+            .into_any_element(),
         ),
         v_col()
             .w_full()
             .child(setting_row(
-                if zh { "Tab 缩进宽度" } else { "Tab size" },
+                crate::ui::tr(cx).settings().page_requests_tab_size(),
                 None,
-                Some(SharedString::from(if zh {
-                    "请求正文、JSON 与脚本编辑器按下 Tab 插入的空格数。"
-                } else {
-                    "Number of spaces inserted by Tab in body and script editors."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_number_of_spaces_inserted_by(),
+                )),
                 h_row()
                     .gap(px(6.0))
                     .children([2u8, 4, 8].into_iter().map(|spaces| {
                         choice_chip(
                             SharedString::from(format!("ed-tab-{spaces}")),
-                            if zh {
-                                format!("{spaces} 空格")
-                            } else {
-                                format!("{spaces} spaces")
-                            },
+                            crate::ui::tr(cx).settings().page_requests_spaces(spaces),
                             ed.tab_size == spaces,
                             cx,
                         )
@@ -281,13 +298,13 @@ pub fn render_requests(
                 cx,
             ))
             .child(setting_row(
-                if zh { "自动换行" } else { "Word wrap" },
+                crate::ui::tr(cx).settings().f_editor_word_wrap(),
                 None,
-                Some(SharedString::from(if zh {
-                    "在编辑器和响应查看器中自动折行显示超长文本。"
-                } else {
-                    "Wrap long lines automatically inside request and response editors."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_wrap_long_lines_automatically_inside(),
+                )),
                 toggle_switch("ed-word-wrap", ed.word_wrap).on_change(cx.listener(
                     |this, checked: &bool, _, cx| {
                         this.patch_section(
@@ -300,20 +317,32 @@ pub fn render_requests(
                 cx,
             ))
             .child(setting_row(
-                if zh { "请求编辑器语法高亮上限" } else { "Editor highlight limit" },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_editor_highlight_limit(),
                 None,
-                Some(SharedString::from(if zh {
-                    "超过此大小的请求正文将回退为纯文本以保证流畅编辑（1–65,536 KiB，默认 1,024 KiB）。"
-                } else {
-                    "Request bodies above this size fall back to plain text for smooth typing (1–65,536 KiB, default 1,024 KiB)."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_request_bodies_above_this_size(),
+                )),
                 h_row()
                     .gap(px(6.0))
-                    .child(number_field(&view.inputs.editor_highlight_kib, Some("KiB"), 96.0, cx))
+                    .child(number_field(
+                        &view.inputs.editor_highlight_kib,
+                        Some("KiB"),
+                        96.0,
+                        cx,
+                    ))
                     .child(
-                        btn_secondary("ed-save-hl", if zh { "应用" } else { "Apply" }).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                let v = this.inputs.editor_highlight_kib.read(cx).value().to_string();
+                        btn_secondary("ed-save-hl", crate::ui::tr(cx).common().kv_bulk_apply())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let v = this
+                                    .inputs
+                                    .editor_highlight_kib
+                                    .read(cx)
+                                    .value()
+                                    .to_string();
                                 this.commit_kib(
                                     &v,
                                     1,
@@ -322,26 +351,37 @@ pub fn render_requests(
                                     "editor_highlight_limit_bytes",
                                     cx,
                                 );
-                            }),
-                        ),
+                            })),
                     ),
                 cx,
             ))
             .child(setting_row(
-                if zh { "响应查看器语法高亮上限" } else { "Viewer highlight limit" },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_viewer_highlight_limit(),
                 None,
-                Some(SharedString::from(if zh {
-                    "超过此大小的响应正文不执行语法着色（1–65,536 KiB，默认 512 KiB）。"
-                } else {
-                    "Response bodies larger than this skip syntax coloring (1–65,536 KiB, default 512 KiB)."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_response_bodies_larger_than_this(),
+                )),
                 h_row()
                     .gap(px(6.0))
-                    .child(number_field(&view.inputs.viewer_highlight_kib, Some("KiB"), 96.0, cx))
+                    .child(number_field(
+                        &view.inputs.viewer_highlight_kib,
+                        Some("KiB"),
+                        96.0,
+                        cx,
+                    ))
                     .child(
-                        btn_secondary("vw-save-hl", if zh { "应用" } else { "Apply" }).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                let v = this.inputs.viewer_highlight_kib.read(cx).value().to_string();
+                        btn_secondary("vw-save-hl", crate::ui::tr(cx).common().kv_bulk_apply())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let v = this
+                                    .inputs
+                                    .viewer_highlight_kib
+                                    .read(cx)
+                                    .value()
+                                    .to_string();
                                 this.commit_kib(
                                     &v,
                                     1,
@@ -350,8 +390,7 @@ pub fn render_requests(
                                     "viewer_highlight_limit_bytes",
                                     cx,
                                 );
-                            }),
-                        ),
+                            })),
                     ),
                 cx,
             )),
@@ -359,44 +398,56 @@ pub fn render_requests(
     );
 
     let response_sec = settings_section(
-        if zh { "响应体与大报文阈值" } else { "Response & Large Body Thresholds" },
+        crate::ui::tr(cx)
+            .settings()
+            .page_requests_response_large_body_thresholds(),
         Some(
-            btn_ghost("req-reset-resp", if zh { "恢复默认" } else { "Reset" })
-                .icon(icon_xs(UiIcon::RotateCcw))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.reset_keys(
-                        CoreSection::Data,
-                        Some(
-                            [
-                                "response_body_cap_bytes",
-                                "inline_threshold_bytes",
-                                "preview_bytes",
-                            ]
-                            .into_iter()
-                            .map(str::to_owned)
-                            .collect(),
-                        ),
-                        cx,
-                    );
-                }))
-                .into_any_element(),
+            btn_ghost(
+                "req-reset-resp",
+                crate::ui::tr(cx).settings().page_defaults_reset(),
+            )
+            .icon(icon_xs(UiIcon::RotateCcw))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.reset_keys(
+                    CoreSection::Data,
+                    Some(
+                        [
+                            "response_body_cap_bytes",
+                            "inline_threshold_bytes",
+                            "preview_bytes",
+                        ]
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect(),
+                    ),
+                    cx,
+                );
+            }))
+            .into_any_element(),
         ),
         v_col()
             .w_full()
             .child(setting_row(
-                if zh { "单次响应读取上限" } else { "Response body cap" },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_response_body_cap(),
                 None,
-                Some(SharedString::from(if zh {
-                    "单次响应最多读取入内存的字节数，超出部分截断（1–512 MiB，默认 10 MiB）。"
-                } else {
-                    "Maximum bytes buffered for a single response; excess is truncated (1–512 MiB, default 10 MiB)."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_maximum_bytes_buffered_for_a(),
+                )),
                 h_row()
                     .gap(px(6.0))
-                    .child(number_field(&view.inputs.resp_body_cap_mib, Some("MiB"), 84.0, cx))
+                    .child(number_field(
+                        &view.inputs.resp_body_cap_mib,
+                        Some("MiB"),
+                        84.0,
+                        cx,
+                    ))
                     .child(
-                        btn_secondary("resp-save-cap", if zh { "应用" } else { "Apply" }).on_click(
-                            cx.listener(|this, _, _, cx| {
+                        btn_secondary("resp-save-cap", crate::ui::tr(cx).common().kv_bulk_apply())
+                            .on_click(cx.listener(|this, _, _, cx| {
                                 let v = this.inputs.resp_body_cap_mib.read(cx).value().to_string();
                                 this.commit_mib(
                                     &v,
@@ -406,64 +457,74 @@ pub fn render_requests(
                                     "response_body_cap_bytes",
                                     cx,
                                 );
-                            }),
-                        ),
+                            })),
                     ),
                 cx,
             ))
             .child(setting_row(
-                if zh { "内联传输阈值" } else { "Inline body threshold" },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_inline_body_threshold(),
                 None,
-                Some(SharedString::from(if zh {
-                    "小于此大小的响应直接内联展示，更大响应按句柄分块加载（1–65,536 KiB，默认 1,024 KiB）。"
-                } else {
-                    "Responses up to this size render inline; larger ones load on demand via handle (1–65,536 KiB, default 1,024 KiB)."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_responses_up_to_this_size(),
+                )),
                 h_row()
                     .gap(px(6.0))
-                    .child(number_field(&view.inputs.resp_inline_kib, Some("KiB"), 96.0, cx))
+                    .child(number_field(
+                        &view.inputs.resp_inline_kib,
+                        Some("KiB"),
+                        96.0,
+                        cx,
+                    ))
                     .child(
-                        btn_secondary("resp-save-inline", if zh { "应用" } else { "Apply" }).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                let v = this.inputs.resp_inline_kib.read(cx).value().to_string();
-                                this.commit_kib(
-                                    &v,
-                                    1,
-                                    65_536,
-                                    CoreSection::Data,
-                                    "inline_threshold_bytes",
-                                    cx,
-                                );
-                            }),
-                        ),
+                        btn_secondary(
+                            "resp-save-inline",
+                            crate::ui::tr(cx).common().kv_bulk_apply(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let v = this.inputs.resp_inline_kib.read(cx).value().to_string();
+                            this.commit_kib(
+                                &v,
+                                1,
+                                65_536,
+                                CoreSection::Data,
+                                "inline_threshold_bytes",
+                                cx,
+                            );
+                        })),
                     ),
                 cx,
             ))
             .child(setting_row(
-                if zh { "大响应初始预览大小" } else { "Large-body preview size" },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_requests_large_body_preview_size(),
                 None,
-                Some(SharedString::from(if zh {
-                    "超过内联阈值时默认首屏加载的预览字节数，不能大于上方内联阈值（默认 64 KiB）。"
-                } else {
-                    "Initial preview chunk shown for oversized bodies; must not exceed inline threshold (default 64 KiB)."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_requests_initial_preview_chunk_shown_for(),
+                )),
                 h_row()
                     .gap(px(6.0))
-                    .child(number_field(&view.inputs.resp_preview_kib, Some("KiB"), 96.0, cx))
+                    .child(number_field(
+                        &view.inputs.resp_preview_kib,
+                        Some("KiB"),
+                        96.0,
+                        cx,
+                    ))
                     .child(
-                        btn_secondary("resp-save-preview", if zh { "应用" } else { "Apply" }).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                let v = this.inputs.resp_preview_kib.read(cx).value().to_string();
-                                this.commit_kib(
-                                    &v,
-                                    1,
-                                    65_536,
-                                    CoreSection::Data,
-                                    "preview_bytes",
-                                    cx,
-                                );
-                            }),
-                        ),
+                        btn_secondary(
+                            "resp-save-preview",
+                            crate::ui::tr(cx).common().kv_bulk_apply(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let v = this.inputs.resp_preview_kib.read(cx).value().to_string();
+                            this.commit_kib(&v, 1, 65_536, CoreSection::Data, "preview_bytes", cx);
+                        })),
                     ),
                 cx,
             )),

@@ -57,7 +57,7 @@ use pingdeck_desktop::core::llm::status::ProviderStatusDto;
 use pingdeck_desktop::core::llm::store::{
     GatewayClient, ModelRef, ProbeResult, ProviderKey, RequestLogEntry,
 };
-use pingdeck_desktop::core::model::settings::{AiGatewaySettings, Language};
+use pingdeck_desktop::core::model::settings::AiGatewaySettings;
 
 use crate::bridge::runtime;
 use crate::ui::{InputEvent, InputState, Tone, h_resizable, palette, resizable_panel, to_hsla};
@@ -229,7 +229,6 @@ pub struct ProvidersView {
 impl ProvidersView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = settings_get_impl(runtime(cx).state());
-        let zh = settings.general.language == Language::ZhCn;
         let gw_settings = settings.ai.gateway.clone();
 
         let mk =
@@ -247,11 +246,7 @@ impl ProvidersView {
             };
 
         let search_input = mk(
-            if zh {
-                "搜索服务商"
-            } else {
-                "Search providers"
-            },
+            crate::ui::tr(cx).providers().prov_pane_search(),
             "",
             false,
             window,
@@ -259,11 +254,7 @@ impl ProvidersView {
         );
         let quick_url_input = mk("https://api.deepseek.com", "", false, window, cx);
         let model_search_input = mk(
-            if zh {
-                "筛选模型…"
-            } else {
-                "Filter models…"
-            },
+            crate::ui::tr(cx).providers().prov_providers_filter_models(),
             "",
             false,
             window,
@@ -278,11 +269,9 @@ impl ProvidersView {
             cx,
         );
         let new_client_name_input = mk(
-            if zh {
-                "新客户端名称…"
-            } else {
-                "New client name…"
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_providers_new_client_name(),
             "",
             false,
             window,
@@ -291,33 +280,23 @@ impl ProvidersView {
         let client_rpm_input = mk("60", "", false, window, cx);
         let client_conc_input = mk("8", "", false, window, cx);
         let new_key_name_input = mk(
-            if zh {
-                "密钥名称（如 主密钥）"
-            } else {
-                "Key name"
-            },
+            crate::ui::tr(cx).providers().prov_providers_key_name(),
             "",
             false,
             window,
             cx,
         );
         let new_key_secret_input = mk(
-            if zh {
-                "API 密钥（sk-…）"
-            } else {
-                "API Secret (sk-…)"
-            },
+            crate::ui::tr(cx).providers().prov_providers_api_secret_sk(),
             "",
             true,
             window,
             cx,
         );
         let new_key_group_input = mk(
-            if zh {
-                "分组名（可选）"
-            } else {
-                "Group (optional)"
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_providers_group_optional(),
             "",
             false,
             window,
@@ -325,54 +304,44 @@ impl ProvidersView {
         );
         let new_key_user_id_input = mk("New-Api-User (opt)", "", false, window, cx);
         let edit_key_name_input = mk(
-            if zh { "密钥名称" } else { "Key name" },
+            crate::ui::tr(cx).providers().cfg_keys_name(),
             "",
             false,
             window,
             cx,
         );
         let edit_key_group_input = mk(
-            if zh { "分组名（可选）" } else { "Group" },
+            crate::ui::tr(cx).providers().prov_providers_group(),
             "",
             false,
             window,
             cx,
         );
         let edit_key_notes_input = mk(
-            if zh { "备注（可选）" } else { "Notes" },
+            crate::ui::tr(cx).providers().prov_providers_notes(),
             "",
             false,
             window,
             cx,
         );
         let edit_key_secret_input = mk(
-            if zh {
-                "替换密钥（留空保持不变）"
-            } else {
-                "New secret (empty = keep)"
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_providers_new_secret_empty_keep(),
             "",
             true,
             window,
             cx,
         );
         let new_model_id_input = mk(
-            if zh {
-                "输入模型 ID（如 gpt-5-mini）"
-            } else {
-                "Model ID"
-            },
+            crate::ui::tr(cx).providers().prov_providers_model_id(),
             "",
             false,
             window,
             cx,
         );
         let new_model_ctx_input = mk(
-            if zh {
-                "上下文（可选）"
-            } else {
-                "Context (opt)"
-            },
+            crate::ui::tr(cx).providers().prov_providers_context_opt(),
             "",
             false,
             window,
@@ -514,7 +483,6 @@ impl Render for ProvidersView {
                 .update(cx, |i, cx| i.set_value(hosts_s, window, cx));
         }
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
 
         if let LeftSelection::Provider(id) = self.selection.clone()
             && self.provider_tab == ProviderTab::Config
@@ -522,16 +490,14 @@ impl Render for ProvidersView {
             self.ensure_config_form(&id, window, cx);
         }
 
-        let left_pane = sidebar::render_sidebar(self, zh, cx);
+        let left_pane = sidebar::render_sidebar(self, cx);
         let right_content: gpui_kit::AnyElement = match &self.selection {
-            LeftSelection::Gateway => {
-                gateway::render_gateway_cockpit(self, zh, cx).into_any_element()
-            }
+            LeftSelection::Gateway => gateway::render_gateway_cockpit(self, cx).into_any_element(),
             LeftSelection::Bench => {
                 if let Some(bv) = &self.bench_view {
                     bv.clone().into_any_element()
                 } else {
-                    gateway::render_gateway_cockpit(self, zh, cx).into_any_element()
+                    gateway::render_gateway_cockpit(self, cx).into_any_element()
                 }
             }
             LeftSelection::Provider(id) => {
@@ -541,9 +507,9 @@ impl Render for ProvidersView {
                     .find(|x| &x.provider.id == id)
                     .cloned()
                 {
-                    detail::render_provider_detail(self, &pv, zh, cx).into_any_element()
+                    detail::render_provider_detail(self, &pv, cx).into_any_element()
                 } else {
-                    gateway::render_gateway_cockpit(self, zh, cx).into_any_element()
+                    gateway::render_gateway_cockpit(self, cx).into_any_element()
                 }
             }
         };

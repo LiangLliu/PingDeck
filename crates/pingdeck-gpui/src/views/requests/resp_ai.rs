@@ -21,7 +21,6 @@ use super::resp_ai_tabs::{
 
 pub fn render_ai_response(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -34,7 +33,7 @@ pub fn render_ai_response(
             || tab.ai_compare_result.is_some()
             || !tab.ai_compare_live_rows.is_empty())
     {
-        return render_compare_pane(view, zh, cx);
+        return render_compare_pane(view, cx);
     }
 
     // Live streaming view while AI run is active before `Done`.
@@ -54,11 +53,13 @@ pub fn render_ai_response(
                 h_row()
                     .gap(px(8.0))
                     .child(status_indicator(StatusShape::Run, cx))
-                    .child(div().text_xs().child(SharedString::from(if zh {
-                        format!("正在接收流式响应… 已收到 {count} 帧")
-                    } else {
-                        format!("Streaming response… {count} frames received")
-                    }))),
+                    .child(
+                        div().text_xs().child(SharedString::from(
+                            crate::ui::tr(cx)
+                                .exchange()
+                                .resp_ai_streaming_response_frames_received(count),
+                        )),
+                    ),
             );
         if !recent.is_empty() {
             let mut frames_col = v_col().gap(px(4.0));
@@ -105,25 +106,24 @@ pub fn render_ai_response(
         }
         return empty_state_with_actions(
             UiIcon::Sparkles,
-            if zh {
-                "准备调试 AI 协议响应"
-            } else {
-                "Ready to inspect AI response"
-            },
-            if zh {
-                "支持流式 SSE 帧逐帧查看、推理过程折叠、工具调用检视、费用估算与多模型横向对比。"
-            } else {
-                "Stream SSE frames, inspect reasoning and tool calls, estimate cost, and compare models."
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_ready_to_inspect_ai_response(),
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_stream_sse_frames_inspect_reasoning(),
             Some(
                 h_row()
                     .gap(px(8.0))
                     .child(
-                        btn_primary("ai-resp-empty-send", if zh { "立即发送" } else { "Send now" })
-                            .icon(icon_xs(UiIcon::Send))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.send_active_ai_request(None, window, cx);
-                            })),
+                        btn_primary(
+                            "ai-resp-empty-send",
+                            crate::ui::tr(cx).exchange().resp_ai_send_now(),
+                        )
+                        .icon(icon_xs(UiIcon::Send))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.send_active_ai_request(None, window, cx);
+                        })),
                     )
                     .child(kbd_chip("⌘↵", cx))
                     .into_any_element(),
@@ -155,8 +155,12 @@ pub fn render_ai_response(
             .as_ref()
             .map(format_cost_short)
             .unwrap_or_else(|| match ai.cost_note_code {
-                Some(CostNoteCode::LocalFree) => if zh { "本地免费" } else { "Local free" }.into(),
-                Some(CostNoteCode::NoPrice) => if zh { "未知单价" } else { "No price" }.into(),
+                Some(CostNoteCode::LocalFree) => {
+                    crate::ui::tr(cx).exchange().resp_ai_local_free().into()
+                }
+                Some(CostNoteCode::NoPrice) => {
+                    crate::ui::tr(cx).exchange().resp_ai_no_price().into()
+                }
                 _ => "—".into(),
             });
 
@@ -181,11 +185,9 @@ pub fn render_ai_response(
                 .child(badge(status_lbl, status_tone, cx))
                 .children((total_checks > 0).then(|| {
                     badge(
-                        if zh {
-                            format!("{passed_checks}/{total_checks} 断言")
-                        } else {
-                            format!("{passed_checks}/{total_checks} checks")
-                        },
+                        crate::ui::tr(cx)
+                            .exchange()
+                            .resp_ai_checks(passed_checks, total_checks),
                         if passed_checks == total_checks {
                             Tone::Success
                         } else {
@@ -194,22 +196,33 @@ pub fn render_ai_response(
                         cx,
                     )
                 }))
-                .children(
-                    ai.ttft_ms.map(|ms| {
-                        kv_chip(if zh { "首字" } else { "TTFT" }, format!("{ms} ms"), cx)
-                    }),
-                )
+                .children(ai.ttft_ms.map(|ms| {
+                    kv_chip(
+                        crate::ui::tr(cx).exchange().resp_ai_ttft(),
+                        format!("{ms} ms"),
+                        cx,
+                    )
+                }))
                 .child(kv_chip(
-                    if zh { "总耗时" } else { "Total" },
+                    crate::ui::tr(cx).exchange().resp_ai_total(),
                     format!("{} ms", ai.total_ms),
                     cx,
                 ))
                 .child(kv_chip("Token", tok_str, cx))
-                .child(kv_chip(if zh { "费用" } else { "Cost" }, cost_str, cx))
-                .children(
-                    ai.streamed
-                        .then(|| badge(format!("SSE · {} 帧", ai.event_count), Tone::Neutral, cx)),
-                ),
+                .child(kv_chip(
+                    crate::ui::tr(cx).exchange().resp_ai_cost(),
+                    cost_str,
+                    cx,
+                ))
+                .children(ai.streamed.then(|| {
+                    badge(
+                        crate::ui::tr(cx)
+                            .exchange()
+                            .resp_ai_sse_frames(ai.event_count),
+                        Tone::Neutral,
+                        cx,
+                    )
+                })),
         )
         .child(
             h_row()
@@ -218,32 +231,30 @@ pub fn render_ai_response(
                 .children(log_req_id.map(|id| {
                     btn_ghost(
                         "ai-open-log",
-                        if zh {
-                            "在日志中打开 ↗"
-                        } else {
-                            "Open log ↗"
-                        },
+                        crate::ui::tr(cx).exchange().resp_ai_open_log(),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.emit_handoff(RequestsHandoff::OpenUsageCall(id.clone()), cx);
                     }))
                 }))
                 .child(
-                    btn_secondary("ai-ask-agent", if zh { "询问智能体" } else { "Ask Agent" })
-                        .icon(icon_xs(UiIcon::Sparkles))
-                        .on_click(cx.listener(|this, _, _, cx| this.handoff_ask_agent_ai(cx))),
+                    btn_secondary(
+                        "ai-ask-agent",
+                        crate::ui::tr(cx).exchange().resp_ai_ask_agent(),
+                    )
+                    .icon(icon_xs(UiIcon::Sparkles))
+                    .on_click(cx.listener(|this, _, _, cx| this.handoff_ask_agent_ai(cx))),
                 )
                 .child(
                     btn_icon("ai-copy-reply", UiIcon::Copy)
-                        .tooltip(if zh {
-                            "复制合并回复"
-                        } else {
-                            "Copy reply"
-                        })
+                        .tooltip(crate::ui::tr(cx).exchange().resp_ai_copy_reply())
                         .on_click(cx.listener(|this, _, _, cx| {
                             if let Some(r) = this.active_req().and_then(|t| t.last_ai.as_ref()) {
                                 let _ = clipboard::set_text(&r.reply);
-                                this.status_msg = Some((Tone::Success, "已复制 AI 回复".into()));
+                                this.status_msg = Some((
+                                    Tone::Success,
+                                    crate::ui::tr(cx).exchange().resp_ai_copied_reply().into(),
+                                ));
                                 cx.notify();
                             }
                         })),
@@ -254,31 +265,31 @@ pub fn render_ai_response(
     let has_compare = tab.ai_compare_result.is_some() || !tab.ai_compare_live_rows.is_empty();
     let mut tabs = tab_bar_underline("req-ai-resp-tabs")
         .selected_index(tab.ai_resp_tab.index())
-        .child(tab_item(if zh { "合并回复" } else { "Merged" }))
-        .child(tab_item(if zh {
-            format!("事件 ({})", ai.frames.frames.len())
-        } else {
-            format!("Events ({})", ai.frames.frames.len())
-        }))
+        .child(tab_item(crate::ui::tr(cx).exchange().resp_ai_merged()))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_events(ai.frames.frames.len()),
+        ))
         .child(tab_item("Raw"))
-        .child(tab_item(if zh {
-            format!("响应头 ({})", ai.response_headers.len())
-        } else {
-            format!("Headers ({})", ai.response_headers.len())
-        }))
-        .child(tab_item(if zh { "耗时" } else { "Timing" }))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_headers(ai.response_headers.len()),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx).exchange().trace_section_timing(),
+        ))
         .child(tab_item(if total_checks > 0 {
-            if zh {
-                format!("测试 ({passed_checks}/{total_checks})")
-            } else {
-                format!("Tests ({passed_checks}/{total_checks})")
-            }
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_tests(passed_checks, total_checks)
         } else {
-            if zh { "测试" } else { "Tests" }.to_owned()
+            crate::ui::tr(cx).exchange().resp_ai_tests_2().to_owned()
         }))
-        .child(tab_item(if zh { "用量与费用" } else { "Usage" }));
+        .child(tab_item(crate::ui::tr(cx).exchange().resp_ai_usage()));
     if has_compare {
-        tabs = tabs.child(tab_item(if zh { "对比" } else { "Compare" }));
+        tabs = tabs.child(tab_item(crate::ui::tr(cx).exchange().resp_ai_compare()));
     }
     let tabs = tabs.on_click(move |idx, _, cx| {
         let next = AiRespTab::from_index(*idx);
@@ -291,14 +302,14 @@ pub fn render_ai_response(
     });
 
     let body: gpui_kit::AnyElement = match tab.ai_resp_tab {
-        AiRespTab::Merged => render_ai_merged(view, ai, zh, cx).into_any_element(),
+        AiRespTab::Merged => render_ai_merged(view, ai, cx).into_any_element(),
         AiRespTab::Events => render_ai_events(&ai.frames.frames, cx).into_any_element(),
-        AiRespTab::Raw => render_ai_raw(ai, zh, cx).into_any_element(),
+        AiRespTab::Raw => render_ai_raw(ai, cx).into_any_element(),
         AiRespTab::Headers => render_ai_headers(ai, cx).into_any_element(),
-        AiRespTab::Timing => render_ai_timing(ai, zh, cx).into_any_element(),
-        AiRespTab::Tests => render_ai_tests(ai, zh, cx).into_any_element(),
-        AiRespTab::Usage => render_ai_usage(ai, zh, cx).into_any_element(),
-        AiRespTab::Compare => render_compare_pane(view, zh, cx).into_any_element(),
+        AiRespTab::Timing => render_ai_timing(ai, cx).into_any_element(),
+        AiRespTab::Tests => render_ai_tests(ai, cx).into_any_element(),
+        AiRespTab::Usage => render_ai_usage(ai, cx).into_any_element(),
+        AiRespTab::Compare => render_compare_pane(view, cx).into_any_element(),
     };
 
     v_col()
@@ -313,7 +324,6 @@ pub fn render_ai_response(
 fn render_ai_merged(
     view: &RequestsView,
     ai: &AiResultDto,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -342,11 +352,7 @@ fn render_ai_merged(
                         .justify_between()
                         .child(h_row().gap(px(6.0)).child(icon_xs(UiIcon::Brain)).child(
                             section_heading(
-                                if zh {
-                                    "推理思考过程"
-                                } else {
-                                    "Reasoning / Thinking"
-                                },
+                                crate::ui::tr(cx).exchange().resp_ai_reasoning_thinking(),
                                 cx,
                             ),
                         ))
@@ -354,11 +360,9 @@ fn render_ai_merged(
                             btn_ghost(
                                 "ai-reason-tog",
                                 if open {
-                                    if zh { "收起" } else { "Collapse" }
-                                } else if zh {
-                                    "展开"
+                                    crate::ui::tr(cx).exchange().resp_ai_collapse()
                                 } else {
-                                    "Expand"
+                                    crate::ui::tr(cx).exchange().resp_ai_expand()
                                 },
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -413,11 +417,9 @@ fn render_ai_merged(
     // Tool Calls
     if !ai.tool_calls.is_empty() {
         let mut tc_col = v_col().gap(px(6.0)).child(section_heading(
-            if zh {
-                format!("工具调用 ({})", ai.tool_calls.len())
-            } else {
-                format!("Tool Calls ({})", ai.tool_calls.len())
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_ai_tool_calls(ai.tool_calls.len()),
             cx,
         ));
         for tc in &ai.tool_calls {
@@ -451,11 +453,7 @@ fn render_ai_merged(
     // Embedding Vectors
     if !ai.vectors.is_empty() {
         let mut vcol = v_col().gap(px(4.0)).child(section_heading(
-            if zh {
-                "向量输出"
-            } else {
-                "Embedding Vectors"
-            },
+            crate::ui::tr(cx).exchange().resp_ai_embedding_vectors(),
             cx,
         ));
         for (i, v) in ai.vectors.iter().enumerate() {
@@ -498,11 +496,9 @@ fn render_ai_merged(
                 v_col()
                     .gap(px(6.0))
                     .child(section_heading(
-                        if zh {
-                            "SSE 帧（点击查看单帧载荷）"
-                        } else {
-                            "SSE Frames (click chip to inspect)"
-                        },
+                        crate::ui::tr(cx)
+                            .exchange()
+                            .resp_ai_sse_frames_click_chip_to(),
                         cx,
                     ))
                     .child(chips)

@@ -36,9 +36,8 @@ use pingdeck_desktop::core::agent::model::{
     AgentToolCallRecord, FileChange,
 };
 use pingdeck_desktop::core::agent::tools::process::BackgroundProcess;
-use pingdeck_desktop::core::app::{EnvironmentDto, WorkspaceInfo, settings_get_impl};
+use pingdeck_desktop::core::app::{EnvironmentDto, WorkspaceInfo};
 use pingdeck_desktop::core::model::Workspace;
-use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::persistence::ChatDraftsStore;
 use pingdeck_desktop::state::ChatThreadState;
 
@@ -115,26 +114,23 @@ impl ChatView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let rt = runtime(cx);
         let drafts = rt.load_chat_drafts();
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("搜索对话 / Search chats…"));
+        let ch = crate::ui::tr(cx).chat();
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_search()));
         let model_search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选模型 / Filter models…"));
-        let question_other_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("或输入自定义回答 / Or type custom answer…")
-        });
-        let modal_input = cx.new(|cx| InputState::new(window, cx).placeholder("输入标题…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_filter_models()));
+        let question_other_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_custom_answer()));
+        let modal_input = cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_title()));
         let modal_textarea = cx.new(|cx| TextareaState::new(window, cx).rows(5));
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder(
-                    "输入消息或编码任务… (Enter 发送/排队 · ⌘Enter 插队 · Shift+Enter 换行)",
-                )
+                .placeholder(ch.ph_composer())
                 .rows(3)
                 .submit_on_enter(true)
         });
         let instructions_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("为本对话添加额外指令（系统提示词补充）…")
+                .placeholder(ch.ph_instructions())
                 .rows(4)
         });
 
@@ -353,22 +349,21 @@ impl Render for ChatView {
                 .update(cx, |c, cx| c.set_value(inst, window, cx));
         }
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
 
         let center = v_col()
             .size_full()
             .min_w_0()
             .bg(to_hsla(p.surface))
-            .child(thread_header::render_header(self, zh, cx))
-            .child(thread::render_messages(self, zh, cx))
-            .child(composer::render_dock(self, zh, cx));
+            .child(thread_header::render_header(self, cx))
+            .child(thread::render_messages(self, cx))
+            .child(composer::render_dock(self, cx));
 
         let mut split = h_resizable("chat-split-layout")
             .child(
                 resizable_panel()
                     .size(px(260.0))
                     .size_range(px(210.0)..px(360.0))
-                    .child(sidebar::render_sidebar(self, zh, cx)),
+                    .child(sidebar::render_sidebar(self, cx)),
             )
             .child(resizable_panel().child(center));
 
@@ -377,13 +372,13 @@ impl Render for ChatView {
                 resizable_panel()
                     .size(px(316.0))
                     .size_range(px(250.0)..px(440.0))
-                    .child(inspector::render_inspector(self, zh, cx)),
+                    .child(inspector::render_inspector(self, cx)),
             );
         }
 
         let mut root = div().relative().size_full().child(split);
         if let Some(modal) = self.active_modal.clone() {
-            root = root.child(modals::render_active_modal(self, modal, zh, window, cx));
+            root = root.child(modals::render_active_modal(self, modal, window, cx));
         }
         root
     }

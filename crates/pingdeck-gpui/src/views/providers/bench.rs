@@ -34,7 +34,6 @@ pub(super) enum BenchFilter {
 
 pub struct BenchView {
     parent: Entity<ProvidersView>,
-    pub(super) zh: bool,
     pub(super) providers: Vec<Provider>,
     pub(super) keys: Vec<ProviderKey>,
     pub(super) models: Vec<ProviderModel>,
@@ -70,16 +69,12 @@ impl BenchView {
         parent: Entity<ProvidersView>,
         initial_provider: Option<String>,
         initial_models: Vec<String>,
-        zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(if zh {
-                "搜索模型…"
-            } else {
-                "Search models…"
-            })
+            InputState::new(window, cx)
+                .placeholder(crate::ui::tr(cx).providers().prov_bench_search_models())
         });
         let sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
@@ -88,7 +83,6 @@ impl BenchView {
         });
         let mut view = Self {
             parent,
-            zh,
             providers: Vec::new(),
             keys: Vec::new(),
             models: Vec::new(),
@@ -313,11 +307,10 @@ impl BenchView {
         let Some(input) = self.build_run_input(retry_of, confirmed_cost) else {
             self.flash = Some((
                 Tone::Warning,
-                if self.zh {
-                    "请先确保该服务商有已启用的密钥和模型".into()
-                } else {
-                    "Ensure the provider has at least one enabled key and model".into()
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_bench_need_key_and_model()
+                    .into(),
             ));
             cx.notify();
             return;
@@ -357,7 +350,6 @@ impl BenchView {
         }));
 
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_async_into(
             cx,
             move |state| async move { llm_probe_run_impl(&state, input, Some(tok), &sink).await },
@@ -370,17 +362,13 @@ impl BenchView {
                         this.run_id = Some(summary.run_id.clone());
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "测试完成：{} 成功 · {} 失败 · {} 限流",
-                                    summary.passed, summary.failed, summary.rate_limited
-                                )
-                            } else {
-                                format!(
-                                    "Done: {} passed · {} failed · {} rate-limited",
-                                    summary.passed, summary.failed, summary.rate_limited
-                                )
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_done_passed_failed_rate_limited(
+                                    summary.passed,
+                                    summary.failed,
+                                    summary.rate_limited,
+                                ),
                         ));
                         this.last_summary = Some(summary);
                         parent.update(cx, |p, cx| p.reload_all(cx));
@@ -424,7 +412,6 @@ impl BenchView {
         let rid = preview.run_id;
         let sel = preview.default_selection;
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_probe_apply_impl(state, &rid, &sel),
@@ -434,21 +421,13 @@ impl BenchView {
                         this.last_apply_id = rep.apply_id;
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "已应用测试结果：启用 {} · 停用 {} · 新增 {}",
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_applied_enabled_disabled_created(
                                     rep.enabled.len(),
                                     rep.disabled.len(),
                                     rep.created.len(),
-                                )
-                            } else {
-                                format!(
-                                    "Applied: {} enabled · {} disabled · {} created",
-                                    rep.enabled.len(),
-                                    rep.disabled.len(),
-                                    rep.created.len(),
-                                )
-                            },
+                                ),
                         ));
                         parent.update(cx, |p, cx| p.reload_all(cx));
                     }
@@ -468,7 +447,6 @@ impl BenchView {
         let Some(rid) = self.run_id.clone() else {
             return;
         };
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -496,11 +474,9 @@ impl BenchView {
                     Ok(Some(path)) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已导出实测报告到 {path}")
-                            } else {
-                                format!("Exported report to {path}")
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_exported_report_to(path),
                         ));
                     }
                     Ok(None) => {}
@@ -517,7 +493,6 @@ impl BenchView {
             return;
         };
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_probe_apply_undo_impl(state, &aid),
@@ -527,11 +502,9 @@ impl BenchView {
                         this.last_apply_id = None;
                         this.flash = Some((
                             Tone::Neutral,
-                            if zh {
-                                format!("已撤销应用（恢复 {} 个模型）", u.restored.len())
-                            } else {
-                                format!("Undone ({} models restored)", u.restored.len())
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_undone_models_restored(u.restored.len()),
                         ));
                         parent.update(cx, |p, cx| p.reload_all(cx));
                     }

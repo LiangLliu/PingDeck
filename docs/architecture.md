@@ -119,7 +119,7 @@ SQLite 只在 `pingdeck-store`：只有它直接依赖 SQLite 驱动，DDL 与�
 
 ### 4.4 文案与 i18n
 
-文案按区域归属：仓库根 `locales/` 下 14 个区域各有一对 `en.json` 与 `zh-CN.json`，由 `pingdeck-desktop` 编译期嵌入二进制。`cargo xtask check-i18n` 检查两种语言键一致、占位符与复数对一致、中英文间距，以及禁用文案守卫。排版规则见[设计文档](design.md)。
+文案按区域归属：仓库根 `locales/` 下 14 个区域各有一对 `en.json` 与 `zh-CN.json`，由 `pingdeck-desktop` 的 `build.rs` 在编译期生成强类型零分配访问器 `Tr` 与有序动态查找表；GPUI 渲染层通过 `crate::ui::tr(cx)` 消费全局语言状态。`cargo xtask check-i18n` 检查双语键一致、占位符与复数对一致、中英文间距、禁用文案守卫，以及零死键与源码禁止硬编码双语/中文守卫。排版规则见[设计文档](design.md)。
 
 ### 4.5 零 IPC 直调与类型共享
 

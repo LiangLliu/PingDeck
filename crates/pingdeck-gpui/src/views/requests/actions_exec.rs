@@ -147,7 +147,7 @@ impl RequestsView {
                         });
                     }
                     Err(err) => {
-                        let fail = classify_error(&err);
+                        let fail = classify_error(&err, crate::ui::active_language(cx));
                         this.push_console(
                             "ERROR",
                             ConsoleLevel::Error,
@@ -172,7 +172,7 @@ impl RequestsView {
             .map(|t| response_suggested_file_name(&t.draft.name))
             .unwrap_or_else(|| "response.bin".into());
         let spec = SaveFileSpec {
-            title: Some("发送并保存响应正文 / Send and Save Response".into()),
+            title: Some(crate::ui::tr(cx).requests().act_send_save_title().into()),
             file_name: Some(suggested),
             filters: Vec::new(),
             starting_dir: None,
@@ -196,7 +196,10 @@ impl RequestsView {
                     } else {
                         execution_cancel_impl(st, tok);
                     }
-                    self.status_msg = Some((Tone::Warning, "正在停止请求…".into()));
+                    self.status_msg = Some((
+                        Tone::Warning,
+                        crate::ui::tr(cx).requests().act_stopping_request().into(),
+                    ));
                     cx.notify();
                 }
             }
@@ -294,7 +297,9 @@ impl RequestsView {
                 .lines()
                 .filter(|ln| ln.to_lowercase().contains(&q))
                 .collect();
-            let mode = format!("{} 行匹配", matched.len());
+            let mode = crate::ui::tr(cx)
+                .requests()
+                .act_lines_matched(matched.len());
             let out = matched.join("\n");
             tab.http_jsonpath_result = Some((true, out.clone(), mode));
             self.response_editor
@@ -312,7 +317,7 @@ impl RequestsView {
         };
         let suggested = response_suggested_file_name(&tab.draft.name);
         let spec = SaveFileSpec {
-            title: Some("保存响应正文 / Save Response Body".into()),
+            title: Some(crate::ui::tr(cx).requests().act_save_resp_title().into()),
             file_name: Some(suggested),
             filters: Vec::new(),
             starting_dir: None,
@@ -348,7 +353,9 @@ impl RequestsView {
                 this_status(
                     self,
                     Tone::Success,
-                    format!("已保存到 {}", saved.path.unwrap_or_default()),
+                    crate::ui::tr(cx)
+                        .requests()
+                        .act_saved_to(saved.path.unwrap_or_default()),
                 );
             }
             Ok(_) => {}
@@ -416,7 +423,10 @@ impl RequestsView {
                         this.active_modal = None;
                         this.status_msg = Some((
                             Tone::Success,
-                            format!("已写入变量 {{{{{}}}}} 到 {:?}", key_label, done.scope),
+                            crate::ui::tr(cx).requests().act_extracted_var(
+                                format!("{{{{{key_label}}}}}"),
+                                format!("{:?}", done.scope),
+                            ),
                         ));
                         this.reload_workspace_no_window(ws_id, cx);
                     }
@@ -455,13 +465,17 @@ pub(super) fn highlighter_for_format(format: ResponseBodyFormat) -> &'static str
     }
 }
 
-pub(super) fn classify_error(err: &AppError) -> RequestFailureInfo {
+pub(super) fn classify_error(
+    err: &AppError,
+    lang: pingdeck_desktop::core::model::settings::Language,
+) -> RequestFailureInfo {
+    let r = crate::ui::Tr(lang).requests();
     match err {
         AppError::Cancelled { bytes_received, .. } => RequestFailureInfo {
-            kind_label: "已取消 / Cancelled".into(),
+            kind_label: r.act_cancelled_kind().into(),
             message: match bytes_received {
-                Some(b) if *b > 0 => format!("请求已停止（已接收 {b} 字节）"),
-                _ => "请求已停止（未发出或尚未收到响应）".into(),
+                Some(b) if *b > 0 => r.act_stopped_with_bytes(b),
+                _ => r.act_stopped_no_bytes().into(),
             },
             attempt_count: None,
             connect_phase: None,
@@ -474,7 +488,7 @@ pub(super) fn classify_error(err: &AppError) -> RequestFailureInfo {
             detail,
             keys,
         } => RequestFailureInfo {
-            kind_label: "请求校验失败 / Validation".into(),
+            kind_label: r.act_validation_kind().into(),
             message: message.clone(),
             attempt_count: None,
             connect_phase: None,
@@ -489,7 +503,7 @@ pub(super) fn classify_error(err: &AppError) -> RequestFailureInfo {
             detail,
             ..
         } => RequestFailureInfo {
-            kind_label: "网络传输失败 / Network".into(),
+            kind_label: r.act_network_kind().into(),
             message: message.clone(),
             attempt_count: *attempt_count,
             connect_phase: *connect_phase,
@@ -498,7 +512,7 @@ pub(super) fn classify_error(err: &AppError) -> RequestFailureInfo {
             is_cancelled: false,
         },
         other => RequestFailureInfo {
-            kind_label: "执行失败 / Error".into(),
+            kind_label: r.act_exec_fail_kind().into(),
             message: other.message().to_owned(),
             attempt_count: None,
             connect_phase: None,

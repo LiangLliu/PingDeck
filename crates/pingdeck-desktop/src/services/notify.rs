@@ -20,6 +20,7 @@ use pingdeck_core::{
     model::settings::{Language, NotifyWhenAway},
 };
 
+use crate::i18n::tr;
 use crate::runtime::DesktopRuntime;
 use crate::services::ports::HostWindow;
 
@@ -146,59 +147,41 @@ pub fn coalesce(
 /// Formats `(title, body)` carrying only categories and chat name (never commands or paths).
 #[must_use]
 pub fn format_text(kind: &AlertKind, chat: &str, language: Language) -> (String, String) {
-    let zh = language == Language::ZhCn;
+    let sh = tr(language).shell();
     match kind {
         AlertKind::Approval { tool, risk } => {
-            let tool = match (tool, zh) {
-                (ToolKind::Command, true) => "运行命令",
-                (ToolKind::Files, true) => "修改文件",
-                (ToolKind::Network, true) => "访问网络",
-                (ToolKind::Mcp, true) => "MCP 工具",
-                (ToolKind::Other, true) => "调用工具",
-                (ToolKind::Command, false) => "Run a command",
-                (ToolKind::Files, false) => "Change files",
-                (ToolKind::Network, false) => "Reach the network",
-                (ToolKind::Mcp, false) => "MCP tool",
-                (ToolKind::Other, false) => "Use a tool",
+            let tool = match tool {
+                ToolKind::Command => sh.notify_tool_command(),
+                ToolKind::Files => sh.notify_tool_files(),
+                ToolKind::Network => sh.notify_tool_network(),
+                ToolKind::Mcp => sh.notify_tool_mcp(),
+                ToolKind::Other => sh.notify_tool_other(),
             };
-            let risk = match (risk, zh) {
-                (Risk::Low, true) => "低风险",
-                (Risk::Medium, true) => "中风险",
-                (Risk::High, true) => "高风险",
-                (Risk::Low, false) => "low risk",
-                (Risk::Medium, false) => "medium risk",
-                (Risk::High, false) => "high risk",
+            let risk = match risk {
+                Risk::Low => sh.notify_risk_low(),
+                Risk::Medium => sh.notify_risk_medium(),
+                Risk::High => sh.notify_risk_high(),
             };
-            if zh {
-                (format!("等待批准 · {chat}"), format!("{tool}，{risk}"))
-            } else {
-                (
-                    format!("Waiting for approval · {chat}"),
-                    format!("{tool}, {risk}"),
-                )
-            }
+            (
+                sh.notify_approval_title(chat),
+                sh.notify_approval_body(tool, risk),
+            )
         }
-        AlertKind::Plan if zh => (format!("等待批准计划 · {chat}"), "计划已就绪".to_owned()),
-        AlertKind::Plan => (
-            format!("Plan waiting for approval · {chat}"),
-            "The plan is ready".to_owned(),
-        ),
-        AlertKind::Question if zh => (format!("智能体想问你 · {chat}"), "等你回答".to_owned()),
+        AlertKind::Plan => (sh.notify_plan_title(chat), sh.notify_plan_body().to_owned()),
         AlertKind::Question => (
-            format!("The agent has a question · {chat}"),
-            "Waiting for your answer".to_owned(),
+            sh.notify_question_title(chat),
+            sh.notify_question_body().to_owned(),
         ),
-        AlertKind::Cost if zh => (format!("已到费用上限 · {chat}"), "运行已暂停".to_owned()),
-        AlertKind::Cost => (
-            format!("Cost limit reached · {chat}"),
-            "The run is paused".to_owned(),
+        AlertKind::Cost => (sh.notify_cost_title(chat), sh.notify_cost_body().to_owned()),
+        AlertKind::Finished { failed } => (
+            sh.notify_finished_title(chat),
+            if *failed {
+                sh.notify_finished_failed()
+            } else {
+                sh.notify_finished_completed()
+            }
+            .to_owned(),
         ),
-        AlertKind::Finished { failed } => match (failed, zh) {
-            (false, true) => (format!("运行结束 · {chat}"), "已完成".to_owned()),
-            (true, true) => (format!("运行结束 · {chat}"), "已失败".to_owned()),
-            (false, false) => (format!("Run finished · {chat}"), "Completed".to_owned()),
-            (true, false) => (format!("Run finished · {chat}"), "Failed".to_owned()),
-        },
     }
 }
 

@@ -133,7 +133,7 @@ impl RequestsView {
                 } else if let Some(resp) = &tab.last_http {
                     resp.body_text.clone()
                 } else {
-                    "// 发送请求后在此查看实时响应 / Send a request to inspect the response".into()
+                    crate::ui::tr(cx).requests().ph_resp_init().into()
                 };
                 self.response_editor
                     .update(cx, |e, cx| e.set_value(resp_txt, window, cx));

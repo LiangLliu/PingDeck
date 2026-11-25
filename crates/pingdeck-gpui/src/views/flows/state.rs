@@ -56,18 +56,14 @@ impl FlowStepTab {
     }
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
-        match (self, zh) {
-            (Self::Request, true) => "请求覆盖",
-            (Self::Request, false) => "Request",
-            (Self::Extractions, true) => "变量提取",
-            (Self::Extractions, false) => "Extractions",
-            (Self::Assertions, true) => "步骤断言",
-            (Self::Assertions, false) => "Assertions",
-            (Self::Control, true) => "条件与重试",
-            (Self::Control, false) => "Control",
-            (Self::Output, true) => "执行输出",
-            (Self::Output, false) => "Output",
+    pub const fn label(self, lang: Language) -> &'static str {
+        let f = crate::ui::Tr(lang).flows();
+        match self {
+            Self::Request => f.step_tab_request(),
+            Self::Extractions => f.step_tab_extractions(),
+            Self::Assertions => f.step_tab_assertions(),
+            Self::Control => f.step_tab_control(),
+            Self::Output => f.step_tab_output(),
         }
     }
 }
@@ -170,16 +166,6 @@ pub struct FlowsView {
 }
 
 impl FlowsView {
-    #[must_use]
-    pub fn is_zh(&self) -> bool {
-        self.lang == Language::ZhCn
-    }
-
-    #[must_use]
-    pub fn t(&self, zh: &'static str, en: &'static str) -> &'static str {
-        if self.is_zh() { zh } else { en }
-    }
-
     #[must_use]
     pub fn selected_step(&self) -> Option<&FlowStep> {
         let flow = self.draft.as_ref()?;

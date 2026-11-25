@@ -20,11 +20,7 @@ use crate::ui::{
 use super::ChatView;
 use super::types::ChatModal;
 
-pub fn render_approval_gate(
-    appr: &LiveApproval,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
+pub fn render_approval_gate(appr: &LiveApproval, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let tone = if appr.destructive {
         Tone::Danger
@@ -136,7 +132,7 @@ pub fn render_approval_gate(
                             .child(
                                 btn_danger(
                                     SharedString::from(format!("appr-deny-{call_deny}")),
-                                    if zh { "拒绝" } else { "Deny" },
+                                    crate::ui::tr(cx).chat().approval_deny(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -154,11 +150,7 @@ pub fn render_approval_gate(
                             .children(can_session.then(|| {
                                 btn_secondary(
                                     SharedString::from(format!("appr-sess-{call_sess}")),
-                                    if zh {
-                                        "本对话允许"
-                                    } else {
-                                        "Allow in chat"
-                                    },
+                                    crate::ui::tr(cx).chat().gates_allow_in_chat(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -177,7 +169,7 @@ pub fn render_approval_gate(
                                 let cid_m = appr_modal.call_id.clone();
                                 btn_ghost(
                                     SharedString::from(format!("appr-scope-{cid_m}")),
-                                    if zh { "允许范围…" } else { "Scope…" },
+                                    crate::ui::tr(cx).chat().gates_scope(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -191,11 +183,7 @@ pub fn render_approval_gate(
                             .children(appr.network.then(|| {
                                 btn_secondary(
                                     SharedString::from(format!("appr-net-{call_net}")),
-                                    if zh {
-                                        "允许一次并联网"
-                                    } else {
-                                        "Allow + Net"
-                                    },
+                                    crate::ui::tr(cx).chat().gates_allow_net(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -213,7 +201,7 @@ pub fn render_approval_gate(
                             .child(
                                 btn_primary(
                                     SharedString::from(format!("appr-once-{call_once}")),
-                                    if zh { "允许一次" } else { "Allow once" },
+                                    crate::ui::tr(cx).chat().approval_allow_once(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -237,7 +225,6 @@ pub fn render_human_gate(
     view: &ChatView,
     run_id: &str,
     gate: &HumanGateDto,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -308,11 +295,7 @@ pub fn render_human_gate(
                         h_row()
                             .gap(px(6.0))
                             .child(badge(
-                                if zh {
-                                    "智能体提问"
-                                } else {
-                                    "Agent Question"
-                                },
+                                crate::ui::tr(cx).chat().gates_agent_question(),
                                 Tone::Accent,
                                 cx,
                             ))
@@ -334,7 +317,7 @@ pub fn render_human_gate(
                             .child(
                                 btn_ghost(
                                     SharedString::from(format!("q-skip-{}", gate.call_id)),
-                                    if zh { "跳过" } else { "Skip" },
+                                    crate::ui::tr(cx).chat().gate_question_skip(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
@@ -351,7 +334,7 @@ pub fn render_human_gate(
                             .child(
                                 btn_primary(
                                     SharedString::from(format!("q-submit-{}", gate.call_id)),
-                                    if zh { "提交回答" } else { "Submit Answer" },
+                                    crate::ui::tr(cx).chat().gates_submit_answer(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
@@ -374,11 +357,10 @@ pub fn render_human_gate(
             steps,
         } => {
             let hdr_title = title.clone().unwrap_or_else(|| {
-                if zh {
-                    "执行计划待批准".to_owned()
-                } else {
-                    "Plan ready for approval".to_owned()
-                }
+                crate::ui::tr(cx)
+                    .chat()
+                    .gates_plan_ready_for_approval()
+                    .to_owned()
             });
             top_accent_card(Tone::Accent, cx).child(
                 v_col()
@@ -391,7 +373,7 @@ pub fn render_human_gate(
                                 h_row()
                                     .gap(px(6.0))
                                     .child(badge(
-                                        if zh { "计划模式" } else { "Plan" },
+                                        crate::ui::tr(cx).chat().composer_plan(),
                                         Tone::Accent,
                                         cx,
                                     ))
@@ -404,11 +386,7 @@ pub fn render_human_gate(
                                     ),
                             )
                             .child(badge(
-                                if zh {
-                                    format!("{steps} 步")
-                                } else {
-                                    format!("{steps} steps")
-                                },
+                                crate::ui::tr(cx).chat().gates_steps(steps),
                                 Tone::Neutral,
                                 cx,
                             )),
@@ -434,17 +412,16 @@ pub fn render_human_gate(
                             .child(
                                 btn_ghost(
                                     SharedString::from(format!("plan-keep-{}", gate.id)),
-                                    if zh {
-                                        "留在计划模式修改"
-                                    } else {
-                                        "Keep planning"
-                                    },
+                                    crate::ui::tr(cx).chat().gates_keep_planning(),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.status_msg = Some((
                                             Tone::Accent,
-                                            "请在下方输入框输入修改意见并发送".into(),
+                                            crate::ui::tr(cx)
+                                                .chat()
+                                                .gates_keep_planning_hint()
+                                                .into(),
                                         ));
                                         cx.notify();
                                     },
@@ -453,11 +430,7 @@ pub fn render_human_gate(
                             .child(
                                 btn_secondary(
                                     SharedString::from(format!("plan-ask-{}", gate.id)),
-                                    if zh {
-                                        "批准（每次询问）"
-                                    } else {
-                                        "Approve (Ask)"
-                                    },
+                                    crate::ui::tr(cx).chat().gates_approve_ask(),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {
@@ -468,11 +441,7 @@ pub fn render_human_gate(
                             .child(
                                 btn_primary(
                                     SharedString::from(format!("plan-go-{}", gate.id)),
-                                    if zh {
-                                        "批准并执行（只读自动）"
-                                    } else {
-                                        "Approve & Execute"
-                                    },
+                                    crate::ui::tr(cx).chat().gates_approve_execute(),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {

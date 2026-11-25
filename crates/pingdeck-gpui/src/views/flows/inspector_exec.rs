@@ -19,7 +19,10 @@ pub fn render_control_tab(
     cx: &mut Context<FlowsView>,
 ) -> AnyElement {
     let retry_targets = [
-        (FlowRetryOn::Network, view.t("网络错误", "Network")),
+        (
+            FlowRetryOn::Network,
+            crate::ui::Tr(view.lang).flows().inspector_exec_network(),
+        ),
         (FlowRetryOn::Status5xx, "5xx"),
         (FlowRetryOn::Status429, "429"),
     ];
@@ -50,38 +53,51 @@ pub fn render_control_tab(
     card(cx)
         .p(px(12.0))
         .child(section_header(
-            view.t("条件控制与重试策略", "Condition & Retry"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_condition_retry(),
             None,
             cx,
         ))
         .child(setting_row(
-            view.t("执行条件表达式", "Condition Expression"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_condition_expression(),
             None,
-            Some(SharedString::from(view.t(
-                "留空无条件执行；如 {{env}} == prod 或 {{has_more}} != false，为假时跳过此步。",
-                "Blank runs always; e.g. {{status}} == active. Skips step when false.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .inspector_exec_blank_runs_always_e_g(),
+            )),
             div().w(px(280.0)).child(text_input(&view.step_cond_input)),
             cx,
         ))
         .child(setting_row(
-            view.t("步前延迟", "Pre-step Delay"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_pre_step_delay(),
             None,
             None,
             number_field(&view.step_delay_input, Some("ms"), 90.0, cx),
             cx,
         ))
         .child(setting_row(
-            view.t("单次尝试超时", "Attempt Timeout"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_attempt_timeout(),
             None,
             Some(SharedString::from(
-                view.t("留空继承请求超时。", "Blank inherits request timeout."),
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .inspector_exec_blank_inherits_request_timeout(),
             )),
             number_field(&view.step_timeout_input, Some("ms"), 90.0, cx),
             cx,
         ))
         .child(setting_row(
-            view.t("失败后继续后续步骤", "Continue on Error"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_continue_on_error(),
             None,
             None,
             toggle_switch("flow-cont-err", step.continue_on_error).on_click(cx.listener(
@@ -96,7 +112,9 @@ pub fn render_control_tab(
             cx,
         ))
         .child(setting_row(
-            view.t("最大重试次数（0–5）与间隔", "Retries (0–5) & Wait"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_retries_0_5_wait(),
             None,
             None,
             h_row()
@@ -111,7 +129,7 @@ pub fn render_control_tab(
             cx,
         ))
         .child(setting_row(
-            view.t("触发重试的失败类型", "Retry On"),
+            crate::ui::Tr(view.lang).flows().inspector_exec_retry_on(),
             None,
             None,
             retry_row,
@@ -128,11 +146,14 @@ pub fn render_output_tab(
     let p = palette(cx);
     let Some(res) = view.step_result_of(&step.id) else {
         return empty_inline(
-            view.t("尚未运行此步骤", "No output for this step yet"),
-            Some(SharedString::from(view.t(
-                "点击顶部「运行流程」或步骤行的播放图标执行后查看输出。",
-                "Run the flow or this step to inspect response details.",
-            ))),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_no_output_for_this_step(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .inspector_exec_run_the_flow_or_this(),
+            )),
             None,
             cx,
         )
@@ -156,7 +177,10 @@ pub fn render_output_tab(
         .flex_wrap()
         .child(badge(
             if res.skipped {
-                view.t("已跳过", "Skipped").to_owned()
+                crate::ui::Tr(view.lang)
+                    .common()
+                    .status_skipped()
+                    .to_owned()
             } else if res.passed {
                 format!("HTTP {} · PASS", res.status_code.unwrap_or(0))
             } else {
@@ -180,7 +204,7 @@ pub fn render_output_tab(
 
     if let Some(exec) = &res.executed_request {
         box_el = box_el.child(kv_line(
-            view.t("实发请求", "Sent"),
+            crate::ui::Tr(view.lang).flows().inspector_exec_sent(),
             format!("{} {}", exec.method, exec.url),
             100.0,
             cx,
@@ -189,7 +213,9 @@ pub fn render_output_tab(
 
     if !res.extracted_variables.is_empty() {
         let mut ext_card = card(cx).p(px(10.0)).gap(px(4.0)).child(section_header(
-            view.t("本步提取变量", "Extracted Variables"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .inspector_exec_extracted_variables(),
             None,
             cx,
         ));
@@ -211,7 +237,7 @@ pub fn render_output_tab(
 
     if !res.assertion_results.is_empty() {
         let mut as_card = card(cx).p(px(10.0)).gap(px(4.0)).child(section_header(
-            view.t("断言结果", "Assertions"),
+            crate::ui::Tr(view.lang).flows().inspector_exec_assertions(),
             None,
             cx,
         ));

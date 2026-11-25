@@ -4,7 +4,6 @@ use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as
 use pingdeck_desktop::core::agent::model::SubagentRole;
 use pingdeck_desktop::core::app::RoleWarning;
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
     Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, h_row, icon_xs, palette,
@@ -17,7 +16,6 @@ use super::widgets::{model_picker_popover, num_box, render_fallback_chain, secti
 pub(super) fn render_subagents(
     view: &AgentSettingsView,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -31,11 +29,9 @@ pub(super) fn render_subagents(
     // ── Section 1: Concurrency & built-in subagent kinds ─────────────────────
     let reset_btn = btn_ghost(
         "agent-sub-reset",
-        if zh {
-            "恢复本区默认值"
-        } else {
-            "Restore defaults"
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .page_defaults_restore_defaults(),
     )
     .on_click(cx.listener(|this, _, window, cx| {
         this.reset_ai_keys(&["agent.max_subagents"], window, cx);
@@ -49,52 +45,49 @@ pub(super) fn render_subagents(
         .and_then(|r| r.model_label.clone());
 
     let sec_kinds = section_card(
-        if zh {
-            "并发与内置类型"
-        } else {
-            "Concurrency & built-in kinds"
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .page_subagents_concurrency_built_in_kinds(),
         Some(reset_btn),
         v_col()
             .w_full()
             .child(set_row(
-                if zh {
-                    "单次运行最大子智能体数"
-                } else {
-                    "Max sub-agents per run"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_subagents_max_sub_agents_per_run(),
                 None,
-                Some(SharedString::from(if zh {
-                    "限制主智能体一次可派生的并发子任务数量（1–8 个），所有角色共用。"
-                } else {
-                    "Concurrent sub-agents one run may spawn (1–8), shared by all roles."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_subagents_concurrent_sub_agents_one_run(),
+                )),
                 num_box(
                     &view.max_subagents_input,
-                    Some(if zh { "个" } else { "agents" }),
+                    Some(crate::ui::tr(cx).settings().agent_unit_agents()),
                     84.0,
                     cx,
                 ),
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "Explore（只读探索）"
-                } else {
-                    "Explore (read-only)"
-                },
-                Some(SharedString::from(if zh { "内置" } else { "Built-in" })),
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_subagents_explore_read_only(),
                 Some(SharedString::from(
-                    t(lang, "set.sub.kind.explore.d").to_owned(),
+                    crate::ui::tr(cx).settings().perm_order_builtin(),
+                )),
+                Some(SharedString::from(
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .sub_kind_explore_d()
+                        .to_owned(),
                 )),
                 badge(
                     fast_label.unwrap_or_else(|| {
-                        if zh {
-                            "跟随主模型"
-                        } else {
-                            "Follows chat model"
-                        }
-                        .to_owned()
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_subagents_follows_chat_model()
+                            .to_owned()
                     }),
                     Tone::Neutral,
                     cx,
@@ -102,21 +95,20 @@ pub(super) fn render_subagents(
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "General（通用执行）"
-                } else {
-                    "General"
-                },
-                Some(SharedString::from(if zh { "内置" } else { "Built-in" })),
+                crate::ui::tr(cx).settings().page_subagents_general(),
                 Some(SharedString::from(
-                    t(lang, "set.sub.kind.general.d").to_owned(),
+                    crate::ui::tr(cx).settings().perm_order_builtin(),
+                )),
+                Some(SharedString::from(
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .sub_kind_general_d()
+                        .to_owned(),
                 )),
                 badge(
-                    if zh {
-                        "跟随主模型或指定角色"
-                    } else {
-                        "Chat model or role"
-                    },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_subagents_chat_model_or_role(),
                     Tone::Neutral,
                     cx,
                 ),
@@ -128,21 +120,25 @@ pub(super) fn render_subagents(
     // ── Section 2: Model roles (Fast, Deep, Vision) + per-role fallbacks ─────
     let suggest_btn = btn_secondary(
         "agent-roles-suggest",
-        t(lang, "set.agent.roles.suggest").to_owned(),
+        crate::ui::Tr(lang)
+            .settings()
+            .agent_roles_suggest()
+            .to_owned(),
     )
     .icon(icon_xs(UiIcon::Sparkles))
     .on_click(cx.listener(|this, _, _, cx| this.apply_role_suggestions(cx)))
     .into_any_element();
 
+    let s_tr = crate::ui::Tr(lang).settings();
     let mut roles_rows = v_col().w_full();
     for role in SubagentRole::ALL {
         let status = view.roles.iter().find(|r| r.role == role);
-        let (title_key, desc_key, fb_site) = match role {
-            SubagentRole::Fast => ("set.agent.roles.fast", "set.agent.roles.fast.d", "fast"),
-            SubagentRole::Deep => ("set.agent.roles.deep", "set.agent.roles.deep.d", "deep"),
+        let (title_text, desc_text, fb_site) = match role {
+            SubagentRole::Fast => (s_tr.agent_roles_fast(), s_tr.agent_roles_fast_d(), "fast"),
+            SubagentRole::Deep => (s_tr.agent_roles_deep(), s_tr.agent_roles_deep_d(), "deep"),
             SubagentRole::Vision => (
-                "set.agent.roles.vision",
-                "set.agent.roles.vision.d",
+                s_tr.agent_roles_vision(),
+                s_tr.agent_roles_vision_d(),
                 "vision",
             ),
         };
@@ -150,12 +146,10 @@ pub(super) fn render_subagents(
         let trigger_label = status
             .and_then(|s| s.model_label.clone())
             .unwrap_or_else(|| {
-                if zh {
-                    "跟随主模型（未设置）"
-                } else {
-                    "Follows chat model"
-                }
-                .to_owned()
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_subagents_follows_chat_model_2()
+                    .to_owned()
             });
 
         let ent = cx.entity().clone();
@@ -164,11 +158,11 @@ pub(super) fn render_subagents(
             format!("role-btn-{}", role.as_str()),
             trigger_label,
             active_ref.clone(),
-            Some(SharedString::from(if zh {
-                "未设置（跟随主模型）"
-            } else {
-                "Not set (use chat model)"
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_subagents_not_set_use_chat_model(),
+            )),
             view.model_choices.clone(),
             lang,
             move |picked, cx| {
@@ -201,17 +195,15 @@ pub(super) fn render_subagents(
                                             .text_size(px(13.5))
                                             .font_weight(gpui_kit::FontWeight::MEDIUM)
                                             .text_color(to_hsla(p.ink))
-                                            .child(t(lang, title_key).to_owned()),
+                                            .child(title_text),
                                     )
                                     .children(status.and_then(|s| {
                                         if s.model.is_none() {
                                             s.suggestion_label.as_ref().map(|lbl| {
                                                 badge(
-                                                    if zh {
-                                                        format!("建议：{lbl}")
-                                                    } else {
-                                                        format!("Suggested: {lbl}")
-                                                    },
+                                                    crate::ui::tr(cx)
+                                                        .settings()
+                                                        .page_subagents_suggested(lbl),
                                                     Tone::Accent,
                                                     cx,
                                                 )
@@ -225,7 +217,7 @@ pub(super) fn render_subagents(
                                 div()
                                     .text_xs()
                                     .text_color(to_hsla(p.muted))
-                                    .child(t(lang, desc_key).to_owned()),
+                                    .child(desc_text),
                             ),
                     )
                     .child(div().flex_shrink_0().child(picker)),
@@ -238,13 +230,13 @@ pub(super) fn render_subagents(
             if !st.warnings.is_empty() {
                 let mut warn_row = h_row().gap(px(6.0)).flex_wrap();
                 for w in &st.warnings {
-                    let w_key = match w {
-                        RoleWarning::VisionUntested => "set.agent.roles.warn.vision_untested",
-                        RoleWarning::ToolsUntested => "set.agent.roles.warn.tools_untested",
-                        RoleWarning::NoPrice => "set.agent.roles.warn.no_price",
-                        RoleWarning::NoTools => "set.agent.roles.warn.no_tools",
+                    let w_lbl = match w {
+                        RoleWarning::VisionUntested => s_tr.agent_roles_warn_vision_untested(),
+                        RoleWarning::ToolsUntested => s_tr.agent_roles_warn_tools_untested(),
+                        RoleWarning::NoPrice => s_tr.agent_roles_warn_no_price(),
+                        RoleWarning::NoTools => s_tr.agent_roles_warn_no_tools(),
                     };
-                    warn_row = warn_row.child(badge(t(lang, w_key).to_owned(), Tone::Warning, cx));
+                    warn_row = warn_row.child(badge(w_lbl, Tone::Warning, cx));
                 }
                 role_row = role_row.child(warn_row);
             }
@@ -258,13 +250,14 @@ pub(super) fn render_subagents(
                         .w_full()
                         .justify_between()
                         .gap(px(10.0))
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                            "失败时备用"
-                        } else {
-                            "Fallbacks"
-                        }))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .child(crate::ui::tr(cx).settings().page_subagents_fallbacks()),
+                        )
                         .child(render_fallback_chain(
-                            view, fb_site, fb_chain, providers, lang, zh, cx,
+                            view, fb_site, fb_chain, providers, lang, cx,
                         )),
                 ),
             );
@@ -274,7 +267,10 @@ pub(super) fn render_subagents(
     }
 
     let sec_roles = section_card(
-        t(lang, "set.sec.subagents.roles").to_owned(),
+        crate::ui::Tr(lang)
+            .settings()
+            .sec_subagents_roles()
+            .to_owned(),
         Some(suggest_btn),
         roles_rows,
         cx,

@@ -16,24 +16,23 @@ use super::format::format_money;
 pub fn render_offers_table(
     offers: &[ModelCatalogRow],
     active_family: Option<&str>,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
     let box_el = v_col().gap(px(6.0)).child(section_heading(
-        if zh {
-            format!("目录报价（{} 家）", offers.len())
-        } else {
-            format!("Catalog offers ({})", offers.len())
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .drawer_forms_extra_catalog_offers(offers.len()),
         cx,
     ));
     if offers.is_empty() {
-        return box_el.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "目录中没有分发商提供这个模型。"
-        } else {
-            "No catalog distributors list this model."
-        }));
+        return box_el.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .drawer_forms_extra_no_catalog_distributors_list_this(),
+            ),
+        );
     }
 
     let mut rows = v_col();
@@ -68,10 +67,13 @@ pub fn render_offers_table(
                             .truncate()
                             .child(SharedString::from(o.family_name.clone())),
                     )
-                    .children(
-                        (i == 0)
-                            .then(|| badge(if zh { "官方" } else { "Official" }, Tone::Accent, cx)),
-                    ),
+                    .children((i == 0).then(|| {
+                        badge(
+                            crate::ui::tr(cx).settings().catalog_offers_official(),
+                            Tone::Accent,
+                            cx,
+                        )
+                    })),
             )
             .child(
                 div()
@@ -83,11 +85,9 @@ pub fn render_offers_table(
                 btn_ghost(
                     SharedString::from(format!("cat-offer-use-{i}")),
                     if is_selected {
-                        if zh { "已选" } else { "Active" }
-                    } else if zh {
-                        "选用"
+                        crate::ui::tr(cx).settings().drawer_forms_extra_active()
                     } else {
-                        "Use"
+                        crate::ui::tr(cx).settings().drawer_forms_extra_use()
                     },
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -109,7 +109,6 @@ pub fn render_offers_table(
 
 pub fn render_add_user_model_body(
     drawer: &CatalogDrawer,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -119,21 +118,23 @@ pub fn render_add_user_model_body(
 
     v_col()
         .gap(px(12.0))
-        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "用于目录里没有的模型（如中转站自有模型或本地模型）。models.dev 同步不会改动它。"
-        } else {
-            "For models not listed on models.dev (e.g. relay or local models). Sync never touches it."
-        }))
+        .child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .drawer_forms_extra_for_models_not_listed_on(),
+            ),
+        )
         .child(
             h_row()
                 .gap(px(10.0))
                 .child(labeled_input(
-                    if zh { "厂商 *" } else { "Family *" },
+                    crate::ui::tr(cx).settings().drawer_forms_extra_family(),
                     &drawer.user_family,
                     cx,
                 ))
                 .child(labeled_input(
-                    if zh { "模型 ID *" } else { "Model ID *" },
+                    crate::ui::tr(cx).settings().drawer_forms_extra_model_id(),
                     &drawer.user_model_id,
                     cx,
                 )),
@@ -143,15 +144,17 @@ pub fn render_add_user_model_body(
                 .gap(px(10.0))
                 .items_end()
                 .child(labeled_input(
-                    if zh { "显示名称" } else { "Display name" },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .drawer_forms_extra_display_name(),
                     &drawer.user_name,
                     cx,
                 ))
                 .child(
                     tab_bar_segmented("cat-user-kind-seg")
                         .selected_index(kind_idx)
-                        .child(tab_item(if zh { "对话" } else { "Chat" }))
-                        .child(tab_item(if zh { "嵌入" } else { "Embedding" }))
+                        .child(tab_item(crate::ui::tr(cx).settings().catalog_kind_chat()))
+                        .child(tab_item(crate::ui::tr(cx).common().cap_embedding()))
                         .on_click(move |idx, _, cx| {
                             let next = if *idx == 1 {
                                 CatalogKind::Embedding
@@ -169,12 +172,12 @@ pub fn render_add_user_model_body(
             h_row()
                 .gap(px(10.0))
                 .child(labeled_input(
-                    if zh { "上下文长度" } else { "Context window" },
+                    crate::ui::tr(cx).settings().catalog_user_context(),
                     &drawer.user_context,
                     cx,
                 ))
                 .child(labeled_input(
-                    if zh { "最大输出" } else { "Max output" },
+                    crate::ui::tr(cx).settings().catalog_col_max_output(),
                     &drawer.user_max_output,
                     cx,
                 )),
@@ -184,7 +187,7 @@ pub fn render_add_user_model_body(
                 .gap(px(14.0))
                 .child(
                     checkbox("cat-u-reason", drawer.user_reasoning)
-                        .label(if zh { "推理" } else { "Reasoning" })
+                        .label(crate::ui::tr(cx).common().cap_reasoning())
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.user_reasoning = *checked;
                             cx.notify();
@@ -192,7 +195,7 @@ pub fn render_add_user_model_body(
                 )
                 .child(
                     checkbox("cat-u-vision", drawer.user_vision)
-                        .label(if zh { "视觉" } else { "Vision" })
+                        .label(crate::ui::tr(cx).common().cap_vision())
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.user_vision = *checked;
                             cx.notify();
@@ -200,7 +203,7 @@ pub fn render_add_user_model_body(
                 )
                 .child(
                     checkbox("cat-u-tools", drawer.user_tools)
-                        .label(if zh { "工具调用" } else { "Tools" })
+                        .label(crate::ui::tr(cx).settings().drawer_forms_tools())
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.user_tools = *checked;
                             cx.notify();
@@ -212,11 +215,9 @@ pub fn render_add_user_model_body(
                 .justify_between()
                 .pt(px(4.0))
                 .child(section_heading(
-                    if zh {
-                        "目录价格（每百万 token，留空为无价格）"
-                    } else {
-                        "Catalog prices per 1M tokens (optional)"
-                    },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .drawer_forms_extra_catalog_prices_per_1m_tokens(),
                     cx,
                 ))
                 .child(render_currency_popover(
@@ -235,12 +236,12 @@ pub fn render_add_user_model_body(
             h_row()
                 .gap(px(10.0))
                 .child(labeled_input(
-                    if zh { "输入" } else { "Input" },
+                    crate::ui::tr(cx).settings().catalog_col_input(),
                     &drawer.in_price,
                     cx,
                 ))
                 .child(labeled_input(
-                    if zh { "输出" } else { "Output" },
+                    crate::ui::tr(cx).settings().catalog_col_output(),
                     &drawer.out_price,
                     cx,
                 )),
@@ -249,12 +250,12 @@ pub fn render_add_user_model_body(
             h_row()
                 .gap(px(10.0))
                 .child(labeled_input(
-                    if zh { "缓存读取" } else { "Cache read" },
+                    crate::ui::tr(cx).settings().catalog_offers_cache_read(),
                     &drawer.cache_read_price,
                     cx,
                 ))
                 .child(labeled_input(
-                    if zh { "缓存写入" } else { "Cache write" },
+                    crate::ui::tr(cx).settings().catalog_field_cache_write(),
                     &drawer.cache_write_price,
                     cx,
                 )),
@@ -264,7 +265,6 @@ pub fn render_add_user_model_body(
 pub fn render_unlisted_body(
     drawer: &CatalogDrawer,
     provider_name: &str,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -283,11 +283,11 @@ pub fn render_unlisted_body(
                 .py(px(12.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(if zh {
-                    "没有匹配的目录模型"
-                } else {
-                    "No matching catalog models"
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .drawer_forms_extra_no_matching_catalog_models(),
+                ),
         );
     } else {
         for (i, cand) in drawer.alias_candidates.iter().take(12).enumerate() {
@@ -338,20 +338,18 @@ pub fn render_unlisted_body(
             v_col()
                 .gap(px(6.0))
                 .child(section_heading(
-                    if zh {
-                        "这是哪个模型？（关联到目录）"
-                    } else {
-                        "Which catalog model is this?"
-                    },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .drawer_forms_extra_which_catalog_model_is_this(),
                     cx,
                 ))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    format!("之后这个 ID 按所选目录模型计价，只对 {provider_name} 生效。")
-                } else {
-                    format!(
-                        "This ID will follow the selected catalog model's pricing for {provider_name}."
-                    )
-                }))
+                .child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .drawer_forms_extra_this_id_will_follow_the(provider_name),
+                    ),
+                )
                 .child(search_input(&drawer.alias_search, cx))
                 .child(alias_list),
         )
@@ -359,14 +357,12 @@ pub fn render_unlisted_body(
             v_col()
                 .gap(px(8.0))
                 .child(section_heading(
-                    if zh {
-                        "或者直接为它设定价格"
-                    } else {
-                        "Or set a direct price"
-                    },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .drawer_forms_extra_or_set_a_direct_price(),
                     cx,
                 ))
-                .child(render_pricing_editor_fields(drawer, &[], zh, cx)),
+                .child(render_pricing_editor_fields(drawer, &[], cx)),
         );
 
     if drawer.pricing_mode == PricingMode::Dynamic && drawer.selected_alias_key.is_none() {
@@ -378,11 +374,13 @@ pub fn render_unlisted_body(
                 .rounded(px(8.0))
                 .bg(to_hsla(p.warn_soft))
                 .child(status_indicator(StatusShape::Warn, cx))
-                .child(div().text_xs().text_color(to_hsla(p.warn)).child(if zh {
-                    "尚未关联目录模型且未设价格，费用将显示为未知。"
-                } else {
-                    "No catalog match or custom price set; cost will show as unknown."
-                })),
+                .child(
+                    div().text_xs().text_color(to_hsla(p.warn)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .drawer_forms_extra_no_catalog_match_or_custom(),
+                    ),
+                ),
         );
     }
     col
@@ -392,7 +390,6 @@ pub fn render_drawer_footer(
     show_reset: bool,
     show_delete_user: bool,
     busy: bool,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -408,18 +405,14 @@ pub fn render_drawer_footer(
                 .children(show_reset.then(|| {
                     btn_ghost(
                         "cat-dr-reset",
-                        if zh {
-                            "恢复默认"
-                        } else {
-                            "Reset to default"
-                        },
+                        crate::ui::tr(cx).settings().catalog_reset_pricing(),
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.reset_pricing(window, cx)))
                 }))
                 .children(show_delete_user.then(|| {
                     btn_danger(
                         "cat-dr-del-user",
-                        if zh { "删除模型" } else { "Delete model" },
+                        crate::ui::tr(cx).settings().catalog_delete_button(),
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.delete_user_model(window, cx)))
                 })),
@@ -428,18 +421,18 @@ pub fn render_drawer_footer(
             h_row()
                 .gap(px(6.0))
                 .child(
-                    btn_secondary("cat-dr-cancel", if zh { "取消" } else { "Cancel" })
+                    btn_secondary("cat-dr-cancel", crate::ui::tr(cx).common().cancel())
                         .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                 )
                 .child(
                     btn_primary(
                         "cat-dr-save",
                         if busy {
-                            if zh { "保存中…" } else { "Saving…" }
-                        } else if zh {
-                            "保存更改"
+                            crate::ui::tr(cx).settings().drawer_forms_extra_saving()
                         } else {
-                            "Save changes"
+                            crate::ui::tr(cx)
+                                .settings()
+                                .drawer_forms_extra_save_changes()
                         },
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
@@ -449,34 +442,31 @@ pub fn render_drawer_footer(
 
 pub fn render_user_model_meta_editor(
     drawer: &CatalogDrawer,
-    zh: bool,
     cx: &mut Context<CatalogDrawer>,
 ) -> gpui_kit::Div {
     v_col()
         .gap(px(8.0))
         .child(section_heading(
-            if zh {
-                "自建模型参数"
-            } else {
-                "Custom model parameters"
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .drawer_forms_extra_custom_model_parameters(),
             cx,
         ))
         .child(
             h_row()
                 .gap(px(8.0))
                 .child(labeled_input(
-                    if zh { "显示名称" } else { "Name" },
+                    crate::ui::tr(cx).settings().drawer_forms_extra_name(),
                     &drawer.user_name,
                     cx,
                 ))
                 .child(labeled_input(
-                    if zh { "上下文" } else { "Context" },
+                    crate::ui::tr(cx).settings().sec_agent_context(),
                     &drawer.user_context,
                     cx,
                 ))
                 .child(labeled_input(
-                    if zh { "最大输出" } else { "Max out" },
+                    crate::ui::tr(cx).settings().drawer_forms_extra_max_out(),
                     &drawer.user_max_output,
                     cx,
                 )),
@@ -486,7 +476,7 @@ pub fn render_user_model_meta_editor(
                 .gap(px(14.0))
                 .child(
                     checkbox("cat-ed-reason", drawer.user_reasoning)
-                        .label(if zh { "推理" } else { "Reasoning" })
+                        .label(crate::ui::tr(cx).common().cap_reasoning())
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.user_reasoning = *checked;
                             cx.notify();
@@ -494,7 +484,7 @@ pub fn render_user_model_meta_editor(
                 )
                 .child(
                     checkbox("cat-ed-vision", drawer.user_vision)
-                        .label(if zh { "视觉" } else { "Vision" })
+                        .label(crate::ui::tr(cx).common().cap_vision())
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.user_vision = *checked;
                             cx.notify();
@@ -502,7 +492,7 @@ pub fn render_user_model_meta_editor(
                 )
                 .child(
                     checkbox("cat-ed-tools", drawer.user_tools)
-                        .label(if zh { "工具" } else { "Tools" })
+                        .label(crate::ui::tr(cx).common().cap_tools())
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.user_tools = *checked;
                             cx.notify();

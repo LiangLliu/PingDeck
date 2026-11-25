@@ -16,7 +16,6 @@ use super::{RequestsView, model};
 
 pub fn render_console_drawer(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> Option<gpui_kit::Div> {
     if !view.console_open {
@@ -40,11 +39,11 @@ pub fn render_console_drawer(
                 .py(px(12.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(if zh {
-                    "暂无控制台日志。发送请求或运行脚本后的输出会显示在这里。"
-                } else {
-                    "No console entries yet. Send a request or run scripts to capture logs here."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .requests()
+                        .console_no_console_entries_yet_send(),
+                ),
         );
     } else {
         for entry in view.console_entries.iter().rev().take(200) {
@@ -117,14 +116,10 @@ pub fn render_console_drawer(
                                     .text_xs()
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                     .text_color(to_hsla(p.ink))
-                                    .child(if zh { "控制台" } else { "Console" }),
+                                    .child(crate::ui::tr(cx).requests().foot_console()),
                             )
                             .child(badge(
-                                if zh {
-                                    format!("{total} 条记录")
-                                } else {
-                                    format!("{total} entries")
-                                },
+                                crate::ui::tr(cx).requests().console_entries(total),
                                 Tone::Neutral,
                                 cx,
                             )),
@@ -133,11 +128,16 @@ pub fn render_console_drawer(
                         h_row()
                             .gap(px(4.0))
                             .child(
-                                btn_ghost("req-console-clear", if zh { "清空" } else { "Clear" })
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                btn_ghost(
+                                    "req-console-clear",
+                                    crate::ui::tr(cx).requests().console_clear(),
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.console_entries.clear();
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             )
                             .child(btn_icon("req-console-close", UiIcon::Close).on_click(
                                 cx.listener(|this, _, _, cx| {
@@ -151,11 +151,7 @@ pub fn render_console_drawer(
     )
 }
 
-pub fn render_footer_bar(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::Div {
+pub fn render_footer_bar(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let console_count = view.console_entries.len();
 
@@ -180,13 +176,9 @@ pub fn render_footer_bar(
                 format!("{} {}", model::method_str(t.draft.method), t.draft.url)
             }
         }
-        Some(OpenTab::Runner(r)) => {
-            if zh {
-                format!("集合运行：{}", r.collection_name)
-            } else {
-                format!("Runner: {}", r.collection_name)
-            }
-        }
+        Some(OpenTab::Runner(r)) => crate::ui::tr(cx)
+            .requests()
+            .console_runner(&r.collection_name),
         Some(OpenTab::Container(c)) => c.name.clone(),
         None => String::new(),
     };
@@ -224,11 +216,9 @@ pub fn render_footer_bar(
                         .text_size(px(11.0))
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink_2))
-                        .child(SharedString::from(if zh {
-                            format!("控制台 {console_count}")
-                        } else {
-                            format!("Console {console_count}")
-                        })),
+                        .child(SharedString::from(
+                            crate::ui::tr(cx).requests().console_console(console_count),
+                        )),
                 )
                 .child(kbd_chip("⌘J", cx)),
         )
@@ -243,11 +233,9 @@ pub fn render_footer_bar(
         )
         .children((unresolved_count > 0).then(|| {
             badge(
-                if zh {
-                    format!("{unresolved_count} 个未解析变量")
-                } else {
-                    format!("{unresolved_count} unresolved")
-                },
+                crate::ui::tr(cx)
+                    .requests()
+                    .console_unresolved(unresolved_count),
                 Tone::Warning,
                 cx,
             )

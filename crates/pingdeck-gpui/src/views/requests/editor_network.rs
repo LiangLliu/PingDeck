@@ -16,7 +16,6 @@ use super::model::RequestsHandoff;
 
 pub fn render_network_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -31,11 +30,9 @@ pub fn render_network_tab(
         choice_chip(
             id,
             if inherited {
-                if zh { "跟随全局" } else { "Follow global" }
-            } else if zh {
-                "本请求覆盖"
+                crate::ui::tr(cx).requests().editor_network_follow_global()
             } else {
-                "Override"
+                crate::ui::tr(cx).requests().editor_network_override()
             },
             !inherited,
             cx,
@@ -74,19 +71,15 @@ pub fn render_network_tab(
         .gap(px(4.0))
         .overflow_y_scrollbar()
         .child(section_header(
-            if zh {
-                "单请求网络选项（7 项可逐项跟随全局设置或本请求覆盖）"
-            } else {
-                "Per-request network options"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_network_per_request_network_options(),
             Some(
                 btn_ghost(
                     "net-open-global",
-                    if zh {
-                        "打开网络设置 ↗"
-                    } else {
-                        "Network settings ↗"
-                    },
+                    crate::ui::tr(cx)
+                        .requests()
+                        .editor_network_network_settings(),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.emit_handoff(RequestsHandoff::OpenSettings(SettingsSection::Network), cx);
@@ -96,10 +89,10 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh { "空闲超时" } else { "Idle timeout" },
+            crate::ui::tr(cx).requests().editor_network_idle_timeout(),
             Some(SharedString::from(format!(
                 "{}: {} ms",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 global.timeout_ms
             ))),
             None,
@@ -110,21 +103,23 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh { "总时限" } else { "Total timeout" },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_network_total_timeout_2(),
             None,
-            Some(SharedString::from(if zh {
-                "留空表示不限制总耗时"
-            } else {
-                "Leave blank for no total timeout"
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .editor_network_leave_blank_for_no_total(),
+            )),
             number_field(&view.net_total_timeout_input, Some("ms"), 120.0, cx),
             cx,
         ))
         .child(setting_row(
-            if zh { "传输重试次数" } else { "Retries" },
+            crate::ui::tr(cx).requests().editor_network_retries(),
             Some(SharedString::from(format!(
                 "{}: {}",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 global.retry_count
             ))),
             None,
@@ -135,10 +130,10 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh { "HTTP 版本" } else { "HTTP version" },
+            crate::ui::tr(cx).requests().editor_network_http_version(),
             Some(SharedString::from(format!(
                 "{}: {:?}",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 global.http_version
             ))),
             None,
@@ -170,20 +165,16 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh {
-                "跟随重定向"
-            } else {
-                "Follow redirects"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_network_follow_redirects_2(),
             Some(SharedString::from(format!(
                 "{}: {}",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 if global.follow_redirects {
-                    if zh { "开" } else { "On" }
-                } else if zh {
-                    "关"
+                    crate::ui::tr(cx).requests().editor_network_on()
                 } else {
-                    "Off"
+                    crate::ui::tr(cx).requests().editor_network_off()
                 }
             ))),
             None,
@@ -204,14 +195,12 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh {
-                "最大重定向次数"
-            } else {
-                "Max redirects"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_network_max_redirects_2(),
             Some(SharedString::from(format!(
                 "{}: {}",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 global.max_redirects
             ))),
             None,
@@ -222,20 +211,14 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh {
-                "校验 TLS 证书"
-            } else {
-                "Verify TLS"
-            },
+            crate::ui::tr(cx).requests().editor_network_verify_tls_2(),
             Some(SharedString::from(format!(
                 "{}: {}",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 if global.verify_tls {
-                    if zh { "开" } else { "On" }
-                } else if zh {
-                    "关"
+                    crate::ui::tr(cx).requests().editor_network_on()
                 } else {
-                    "Off"
+                    crate::ui::tr(cx).requests().editor_network_off()
                 }
             ))),
             None,
@@ -256,21 +239,21 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh { "代理地址" } else { "Proxy URL" },
+            crate::ui::tr(cx).requests().editor_network_proxy_url(),
             Some(SharedString::from(format!(
                 "{}: {}",
-                if zh { "全局" } else { "Global" },
+                crate::ui::tr(cx).requests().editor_network_global(),
                 if global.proxy_url.trim().is_empty() {
-                    if zh { "系统代理" } else { "System" }
+                    crate::ui::tr(cx).requests().editor_network_system()
                 } else {
                     global.proxy_url.as_str()
                 }
             ))),
-            Some(SharedString::from(if zh {
-                "覆盖状态下留空表示直连"
-            } else {
-                "Leave blank when overriding for direct connection"
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .editor_network_leave_blank_when_overriding_for(),
+            )),
             h_row()
                 .gap(px(6.0))
                 .child(inherit_pill(NetworkField::ProxyUrl, "inh-prx", cx))
@@ -278,11 +261,7 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh {
-                "携带工作区 Cookie 罐"
-            } else {
-                "Send cookies"
-            },
+            crate::ui::tr(cx).requests().editor_network_send_cookies(),
             None,
             None,
             toggle_switch("net-cookies", net.send_cookies).on_change(cx.listener(
@@ -297,11 +276,9 @@ pub fn render_network_tab(
             cx,
         ))
         .child(setting_row(
-            if zh {
-                "自动 URL 编码"
-            } else {
-                "Auto-encode URL"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_network_auto_encode_url(),
             None,
             None,
             toggle_switch("net-encode", net.encode_url_automatically).on_change(cx.listener(
@@ -320,11 +297,11 @@ pub fn render_network_tab(
                 .pt(px(8.0))
                 .text_size(px(11.0))
                 .text_color(to_hsla(p.faint))
-                .child(if zh {
-                    "跨重定向转发 Authorization / 保留原方法 默认关闭，以防凭据泄露。"
-                } else {
-                    "Forwarding Authorization across redirects is disabled by default."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .requests()
+                        .editor_network_forwarding_authorization_across_redirects(),
+                ),
         )
         .into_any_element()
 }

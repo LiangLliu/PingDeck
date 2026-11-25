@@ -32,7 +32,7 @@ use pingdeck_desktop::core::app::{
     agent_sandbox_test_impl, agent_skill_entries_impl, agent_tool_entries_impl,
     agent_workspace_info_impl, ai_config_get_impl, settings_get_impl,
 };
-use pingdeck_desktop::core::model::settings::{Language, Settings};
+use pingdeck_desktop::core::model::settings::Settings;
 use pingdeck_desktop::state::SettingsSection;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
@@ -166,11 +166,7 @@ impl AgentSettingsView {
 
         let init_instr = ag.global_instructions.clone();
         let instructions_input = cx.new(|cx| {
-            let ph = if settings.general.language == Language::ZhCn {
-                "例如：用中文回答；先给结论；改代码前先说计划。"
-            } else {
-                "For example: answer concisely; give the conclusion first; state your plan before editing."
-            };
+            let ph = crate::ui::tr(cx).settings().agent_persona_placeholder();
             TextareaState::new(window, cx)
                 .placeholder(ph)
                 .default_value(init_instr.clone())
@@ -494,8 +490,7 @@ impl Render for AgentSettingsView {
             self.pending_sync_inputs = false;
             self.sync_inputs_from_settings(window, cx);
         }
-        let lang = self.settings.general.language;
-        let zh = lang == Language::ZhCn;
+        let lang = crate::ui::active_language(cx);
 
         let mut root = v_col().w_full().gap(px(18.0)).pb(px(28.0));
 
@@ -513,28 +508,24 @@ impl Render for AgentSettingsView {
 
         let page: gpui_kit::AnyElement = match self.active {
             SettingsSection::Agent => {
-                page_defaults::render_defaults(self, lang, zh, cx).into_any_element()
+                page_defaults::render_defaults(self, lang, cx).into_any_element()
             }
             SettingsSection::Personalization => {
-                page_personalization::render_personalization(self, lang, zh, cx).into_any_element()
+                page_personalization::render_personalization(self, lang, cx).into_any_element()
             }
             SettingsSection::Memory => {
-                page_memory::render_memory(self, lang, zh, cx).into_any_element()
+                page_memory::render_memory(self, lang, cx).into_any_element()
             }
             SettingsSection::Subagents => {
-                page_subagents::render_subagents(self, lang, zh, cx).into_any_element()
+                page_subagents::render_subagents(self, lang, cx).into_any_element()
             }
-            SettingsSection::Tools => {
-                page_tools::render_tools(self, lang, zh, cx).into_any_element()
-            }
+            SettingsSection::Tools => page_tools::render_tools(self, lang, cx).into_any_element(),
             SettingsSection::Permissions => {
-                page_permissions::render_permissions(self, lang, zh, cx).into_any_element()
+                page_permissions::render_permissions(self, lang, cx).into_any_element()
             }
-            SettingsSection::Mcp => {
-                page_mcp::render_mcp(self, lang, zh, window, cx).into_any_element()
-            }
+            SettingsSection::Mcp => page_mcp::render_mcp(self, lang, window, cx).into_any_element(),
             SettingsSection::Skills => {
-                page_skills::render_skills(self, lang, zh, cx).into_any_element()
+                page_skills::render_skills(self, lang, cx).into_any_element()
             }
             _ => div().into_any_element(),
         };

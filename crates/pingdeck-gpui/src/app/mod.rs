@@ -18,7 +18,8 @@ use pingdeck_desktop::services::{
 use crate::bridge::CoreBridge;
 use crate::platform::{GpuiHostWindow, HostCommand, apply_app_icon, create_host_dock};
 use crate::ui::{
-    PingDeckAssets, apply_palette, resolve_is_dark, sync_window_scale, title_bar_options, wrap_root,
+    PingDeckAssets, apply_language, apply_palette, resolve_is_dark, sync_window_scale,
+    title_bar_options, wrap_root,
 };
 use crate::views::shell::AppShell;
 
@@ -77,6 +78,7 @@ pub fn run() {
 
         let initial_settings = settings_get_impl(app_runtime.state());
         let initial_ui = app_runtime.load_ui_state();
+        apply_language(initial_settings.general.language, cx);
         let initial_dark = resolve_is_dark(initial_settings.appearance.theme, false);
         apply_palette(
             initial_ui.palette,

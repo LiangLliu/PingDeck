@@ -29,15 +29,23 @@ pub fn render_overview_section(
         card(cx)
             .p(px(12.0))
             .gap(px(5.0))
-            .child(section_header(sheet.t("调用摘要", "Summary"), None, cx))
+            .child(section_header(
+                crate::ui::Tr(sheet.lang)
+                    .usage()
+                    .usage_call_drawer_tabs_summary(),
+                None,
+                cx,
+            ))
             .child(kv_line(
-                sheet.t("时间", "Time"),
+                crate::ui::Tr(sheet.lang).usage().log_col_time(),
                 format_local_datetime(e.ts_ms),
                 120.0,
                 cx,
             ))
             .child(kv_line(
-                sheet.t("服务商 / 上游模型", "Provider / Upstream"),
+                crate::ui::Tr(sheet.lang)
+                    .usage()
+                    .usage_call_drawer_tabs_provider_upstream(),
                 format!(
                     "{} · {}",
                     e.provider_name.as_deref().unwrap_or("—"),
@@ -47,7 +55,7 @@ pub fn render_overview_section(
                 cx,
             ))
             .child(kv_line(
-                sheet.t("协议", "Protocol"),
+                crate::ui::Tr(sheet.lang).usage().log_more_protocol(),
                 format!(
                     "{} → {}{}",
                     e.protocol_in,
@@ -58,7 +66,7 @@ pub fn render_overview_section(
                 cx,
             ))
             .child(kv_line(
-                sheet.t("耗时", "Latency"),
+                crate::ui::Tr(sheet.lang).usage().log_col_latency(),
                 format!(
                     "TTFT {} · Total {}",
                     e.ttft_ms.map_or_else(|| "—".to_owned(), fmt_latency),
@@ -80,7 +88,7 @@ pub fn render_overview_section(
                 cx,
             ))
             .child(kv_line(
-                sheet.t("估算费用", "Cost"),
+                crate::ui::Tr(sheet.lang).usage().usage_breakdown_cost(),
                 format!(
                     "{cost} ({})",
                     e.price_basis.as_deref().unwrap_or(&e.cost_currency)
@@ -93,7 +101,9 @@ pub fn render_overview_section(
         && !arr.is_empty()
     {
         let mut att_card = card(cx).p(px(12.0)).gap(px(5.0)).child(section_header(
-            sheet.t("路由尝试链", "Attempts Chain"),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_attempts_chain(),
             Some(badge(arr.len().to_string(), Tone::Neutral, cx).into_any_element()),
             cx,
         ));
@@ -108,7 +118,9 @@ pub fn render_overview_section(
 pub fn render_reply_section(sheet: &CallDetailSheet, cx: &Context<CallDetailSheet>) -> AnyElement {
     let Some(reply) = &sheet.detail.merged_reply else {
         return empty_inline(
-            sheet.t("无已捕获的合并回复", "No captured reply for this call"),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_no_captured_reply_for_this(),
             None,
             None,
             cx,
@@ -117,7 +129,9 @@ pub fn render_reply_section(sheet: &CallDetailSheet, cx: &Context<CallDetailShee
     };
     render_merged_reply_card(
         sheet,
-        sheet.t("客户端收到的回复", "Client Reply"),
+        crate::ui::Tr(sheet.lang)
+            .usage()
+            .usage_call_drawer_tabs_client_reply(),
         reply,
         cx,
     )
@@ -139,10 +153,11 @@ fn render_merged_reply_card(
             v_col()
                 .gap(px(4.0))
                 .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(sheet.t("思考过程", "Reasoning")),
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::Tr(sheet.lang)
+                            .usage()
+                            .usage_call_drawer_tabs_reasoning(),
+                    ),
                 )
                 .child(
                     div()
@@ -184,10 +199,9 @@ pub fn render_payloads_section(
     let p = palette(cx);
     let Some(cap) = &sheet.detail.capture else {
         return empty_inline(
-            sheet.t(
-                "此调用未开启捕获或捕获已被清理",
-                "Capture was off or deleted for this call",
-            ),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_capture_was_off_or_deleted(),
             None,
             None,
             cx,
@@ -195,14 +209,18 @@ pub fn render_payloads_section(
         .into_any_element();
     };
     let mut col = v_col().w_full().gap(px(10.0)).child(kv_line(
-        sheet.t("上游 URL", "Upstream URL"),
+        crate::ui::Tr(sheet.lang)
+            .usage()
+            .usage_call_drawer_tabs_upstream_url(),
         cap.upstream_url.clone(),
         110.0,
         cx,
     ));
     if !cap.translation_notes.is_empty() {
         let mut n_card = card(cx).p(px(10.0)).gap(px(4.0)).child(section_header(
-            sheet.t("跨协议转码说明", "Translation Notes"),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_translation_notes(),
             None,
             cx,
         ));
@@ -218,14 +236,23 @@ pub fn render_payloads_section(
     }
     for (title, body_opt) in [
         (
-            sheet.t("客户端请求正文", "Client Request Body"),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_client_request_body(),
             &cap.client_req_body,
         ),
         (
-            sheet.t("上游请求正文", "Upstream Request Body"),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_upstream_request_body(),
             &cap.upstream_req_body,
         ),
-        (sheet.t("响应正文", "Response Body"), &cap.client_resp_body),
+        (
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_response_body(),
+            &cap.client_resp_body,
+        ),
     ] {
         if let Some(body) = body_opt
             && let Some(text) = &body.text
@@ -260,7 +287,9 @@ pub fn render_frames_section(sheet: &CallDetailSheet, cx: &Context<CallDetailShe
         .and_then(|c| c.client_frames.as_ref().or(c.upstream_frames.as_ref()));
     let Some(frames) = frames else {
         return empty_inline(
-            sheet.t("此调用无流式 SSE 帧记录", "No SSE frames captured"),
+            crate::ui::Tr(sheet.lang)
+                .usage()
+                .usage_call_drawer_tabs_no_sse_frames_captured(),
             None,
             None,
             cx,

@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use pingdeck_desktop::core::llm::store::{RequestLogEntry, UsageLatency};
 use pingdeck_desktop::core::llm::usage::UsageGroup;
+use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::time::{
     local_day_start_ms, local_month_bounds_ms, local_prev_month_bounds_ms,
 };
@@ -65,41 +66,18 @@ impl RangePreset {
     ];
 
     #[must_use]
-    pub const fn short_label(self, zh: bool) -> &'static str {
+    pub const fn short_label(self, lang: Language) -> &'static str {
+        let u = crate::ui::Tr(lang).usage();
         match self {
-            Self::Today => {
-                if zh {
-                    "今天"
-                } else {
-                    "Today"
-                }
-            }
-            Self::ThisMonth => {
-                if zh {
-                    "本月"
-                } else {
-                    "This month"
-                }
-            }
-            Self::LastMonth => {
-                if zh {
-                    "上月"
-                } else {
-                    "Last month"
-                }
-            }
+            Self::Today => u.usage_range_today(),
+            Self::ThisMonth => u.usage_range_month(),
+            Self::LastMonth => u.usage_range_last_month(),
             Self::Hour1 => "1h",
             Self::Hour24 => "24h",
             Self::Day7 => "7d",
             Self::Day30 => "30d",
             Self::Day90 => "90d",
-            Self::All => {
-                if zh {
-                    "全部"
-                } else {
-                    "All time"
-                }
-            }
+            Self::All => u.usage_types_all_time(),
         }
     }
 
@@ -146,37 +124,14 @@ impl ChartMetric {
     ];
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let u = crate::ui::Tr(lang).usage();
         match self {
-            Self::Calls => {
-                if zh {
-                    "调用"
-                } else {
-                    "Calls"
-                }
-            }
+            Self::Calls => u.usage_kpi_calls(),
             Self::Tokens => "Token",
-            Self::Cost => {
-                if zh {
-                    "费用"
-                } else {
-                    "Cost"
-                }
-            }
-            Self::FailRate => {
-                if zh {
-                    "失败率"
-                } else {
-                    "Fail %"
-                }
-            }
-            Self::Latency => {
-                if zh {
-                    "延迟"
-                } else {
-                    "Latency"
-                }
-            }
+            Self::Cost => u.usage_kpi_cost(),
+            Self::FailRate => u.usage_types_fail(),
+            Self::Latency => u.usage_kpi_latency(),
         }
     }
 }
@@ -227,50 +182,15 @@ impl BreakdownDim {
     }
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let u = crate::ui::Tr(lang).usage();
         match self {
-            Self::Model => {
-                if zh {
-                    "模型"
-                } else {
-                    "Model"
-                }
-            }
-            Self::Provider => {
-                if zh {
-                    "服务商"
-                } else {
-                    "Provider"
-                }
-            }
-            Self::Source => {
-                if zh {
-                    "来源"
-                } else {
-                    "Source"
-                }
-            }
-            Self::Client => {
-                if zh {
-                    "客户端"
-                } else {
-                    "Client"
-                }
-            }
-            Self::Key => {
-                if zh {
-                    "密钥"
-                } else {
-                    "Key"
-                }
-            }
-            Self::Failure => {
-                if zh {
-                    "失败原因"
-                } else {
-                    "Failures"
-                }
-            }
+            Self::Model => u.usage_dim_model(),
+            Self::Provider => u.usage_dim_provider(),
+            Self::Source => u.usage_dim_source(),
+            Self::Client => u.usage_dim_client(),
+            Self::Key => u.usage_dim_key(),
+            Self::Failure => u.usage_types_failures(),
         }
     }
 
@@ -305,36 +225,13 @@ impl CallsQuickFilter {
     ];
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
+    pub const fn label(self, lang: Language) -> &'static str {
+        let u = crate::ui::Tr(lang).usage();
         match self {
-            Self::All => {
-                if zh {
-                    "全部"
-                } else {
-                    "All"
-                }
-            }
-            Self::FailedOnly => {
-                if zh {
-                    "仅失败"
-                } else {
-                    "Failed"
-                }
-            }
-            Self::FailedOver => {
-                if zh {
-                    "故障转移"
-                } else {
-                    "Failover"
-                }
-            }
-            Self::WithTools => {
-                if zh {
-                    "含工具调用"
-                } else {
-                    "Tool calls"
-                }
-            }
+            Self::All => u.usage_filter_all(),
+            Self::FailedOnly => u.usage_types_failed(),
+            Self::FailedOver => u.usage_calls_failover(),
+            Self::WithTools => u.usage_types_tool_calls(),
         }
     }
 }
@@ -402,43 +299,14 @@ pub fn fmt_latency(ms: u64) -> String {
 }
 
 #[must_use]
-pub fn source_label(src: &str, zh: bool) -> &'static str {
+pub fn source_label(src: &str, lang: Language) -> &'static str {
+    let u = crate::ui::Tr(lang).usage();
     match src {
-        "gateway" => {
-            if zh {
-                "网关"
-            } else {
-                "Gateway"
-            }
-        }
-        "agent" => {
-            if zh {
-                "对话"
-            } else {
-                "Chat"
-            }
-        }
-        "api" => {
-            if zh {
-                "AI 请求"
-            } else {
-                "AI Request"
-            }
-        }
-        "probe" => {
-            if zh {
-                "探针"
-            } else {
-                "Probe"
-            }
-        }
-        _ => {
-            if zh {
-                "其他"
-            } else {
-                "Other"
-            }
-        }
+        "gateway" => u.usage_vocab_source_gateway(),
+        "agent" => u.usage_vocab_source_agent(),
+        "api" => u.usage_types_ai_request(),
+        "probe" => u.usage_types_probe(),
+        _ => u.usage_types_other(),
     }
 }
 

@@ -16,27 +16,40 @@ pub fn render_connect_details(
     cx: &mut Context<ConnectClientSheet>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
-    let zh = sheet.zh;
     let mut out = v_col().gap(px(12.0));
 
     match sheet.tool {
         ConnectToolKind::File(_) => {
             if let Some(plan) = &sheet.plan {
                 let mut diffs = v_col().gap(px(10.0)).child(section_heading(
-                    if zh {
-                        "2. 写入前差异预览（自动创建备份，随时可还原）"
-                    } else {
-                        "2. Config diff preview (auto-backed up)"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_connect_sheet_body_2_config_diff_preview_auto(),
                     cx,
                 ));
                 for f in &plan.files {
                     let tag = if f.is_new {
-                        badge(if zh { "新文件" } else { "New file" }, Tone::Accent, cx)
+                        badge(
+                            crate::ui::tr(cx).providers().connect_file_new(),
+                            Tone::Accent,
+                            cx,
+                        )
                     } else if f.changed {
-                        badge(if zh { "将修改" } else { "Modified" }, Tone::Warning, cx)
+                        badge(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_body_modified(),
+                            Tone::Warning,
+                            cx,
+                        )
                     } else {
-                        badge(if zh { "无更改" } else { "Unchanged" }, Tone::Neutral, cx)
+                        badge(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_body_unchanged(),
+                            Tone::Neutral,
+                            cx,
+                        )
                     };
                     let preview_txt = if f.diff.trim().is_empty() {
                         &f.after
@@ -62,11 +75,9 @@ pub fn render_connect_details(
                                 )
                                 .children(f.git_work_tree.as_ref().map(|g| {
                                     badge(
-                                        if zh {
-                                            format!("位于 Git 仓库 {g}，请勿提交令牌")
-                                        } else {
-                                            format!("Inside Git repo {g} — do not commit tokens")
-                                        },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_connect_sheet_body_inside_git_repo_do_not(g),
                                         Tone::Warning,
                                         cx,
                                     )
@@ -82,11 +93,13 @@ pub fn render_connect_details(
                 btn_primary(
                     "conn-apply-btn",
                     if sheet.busy {
-                        if zh { "正在写入…" } else { "Writing…" }
-                    } else if zh {
-                        "备份并写入配置"
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_connect_sheet_body_writing()
                     } else {
-                        "Backup & Write Config"
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_connect_sheet_body_backup_write_config()
                     },
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -100,11 +113,7 @@ pub fn render_connect_details(
                     .child(
                         btn_secondary(
                             "conn-verify-btn",
-                            if zh {
-                                "发送测试请求"
-                            } else {
-                                "Send test request"
-                            },
+                            crate::ui::tr(cx).providers().gwa_gateway_writer_test(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             if !this.busy {
@@ -115,11 +124,9 @@ pub fn render_connect_details(
                     .child(
                         btn_ghost(
                             "conn-restore-btn",
-                            if zh {
-                                "恢复之前配置"
-                            } else {
-                                "Restore previous"
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_body_restore_previous(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.restore_prev(cx))),
                     );
@@ -130,19 +137,12 @@ pub fn render_connect_details(
                 let (tone, txt) = match vr.outcome {
                     VerifyOutcome::Served => (
                         Tone::Success,
-                        if zh {
-                            format!(
-                                "测试请求通过 · 目标 {} · 耗时 {} ms",
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_connect_sheet_body_test_passed_ms(
                                 vr.target.as_deref().unwrap_or(&vr.alias),
-                                vr.ttft_ms.unwrap_or(vr.latency_ms)
-                            )
-                        } else {
-                            format!(
-                                "Test passed · {} · {} ms",
-                                vr.target.as_deref().unwrap_or(&vr.alias),
-                                vr.ttft_ms.unwrap_or(vr.latency_ms)
-                            )
-                        },
+                                vr.ttft_ms.unwrap_or(vr.latency_ms),
+                            ),
                     ),
                     other => (
                         Tone::Danger,
@@ -157,11 +157,9 @@ pub fn render_connect_details(
                 h_row().gap(px(8.0)).child(
                     btn_primary(
                         "conn-mint-snip",
-                        if zh {
-                            "创建客户端令牌并填入代码片段"
-                        } else {
-                            "Mint token & fill snippets"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_connect_sheet_body_mint_token_fill_snippets(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.mint_snippet_token(cx))),
                 ),
@@ -215,11 +213,10 @@ pub fn render_connect_details(
                                                 let _ = clipboard::set_text(&copy_txt);
                                                 this.flash = Some((
                                                     Tone::Success,
-                                                    if zh {
-                                                        "已复制到剪贴板".into()
-                                                    } else {
-                                                        "Copied".into()
-                                                    },
+                                                    crate::ui::tr(cx)
+                                                        .providers()
+                                                        .prov_connect_sheet_body_copied()
+                                                        .into(),
                                                 ));
                                                 cx.notify();
                                             }),

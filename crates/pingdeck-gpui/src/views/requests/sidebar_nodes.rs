@@ -24,7 +24,6 @@ pub(super) fn render_folder_branch(
     query: &str,
     active_req_id: Option<&str>,
     matches_req: &dyn Fn(&Request) -> bool,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) {
     let p = palette(cx);
@@ -101,13 +100,7 @@ pub(super) fn render_folder_branch(
                             .text_color(to_hsla(p.faint))
                             .child(SharedString::from(direct_reqs.len().to_string())),
                     )
-                    .child(render_folder_menu(
-                        fid_menu,
-                        col_id_menu,
-                        fname_menu,
-                        zh,
-                        cx,
-                    )),
+                    .child(render_folder_menu(fid_menu, col_id_menu, fname_menu, cx)),
             ),
     );
 
@@ -121,7 +114,6 @@ pub(super) fn render_folder_branch(
                 query,
                 active_req_id,
                 matches_req,
-                zh,
                 cx,
             );
         }
@@ -131,7 +123,6 @@ pub(super) fn render_folder_branch(
                 req,
                 depth + 1,
                 active_req_id,
-                zh,
                 cx,
             ));
         }
@@ -143,7 +134,6 @@ pub(super) fn render_request_row(
     req: &Request,
     depth: usize,
     active_req_id: Option<&str>,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -197,11 +187,13 @@ pub(super) fn render_request_row(
                     .truncate()
                     .child(SharedString::from(req.name.clone())),
             )
-            .children(
-                req.agent_touched_ms
-                    .is_some()
-                    .then(|| badge(if zh { "AI改" } else { "AI" }, Tone::Accent, cx)),
-            )
+            .children(req.agent_touched_ms.is_some().then(|| {
+                badge(
+                    crate::ui::tr(cx).requests().sidebar_nodes_ai(),
+                    Tone::Accent,
+                    cx,
+                )
+            }))
             .children(is_dirty.then(|| {
                 div()
                     .size(px(6.0))
@@ -210,13 +202,12 @@ pub(super) fn render_request_row(
                     .flex_shrink_0()
             })),
         )
-        .child(render_request_menu(req_menu, zh, cx))
+        .child(render_request_menu(req_menu, cx))
 }
 
 pub(super) fn render_collection_menu(
     col_id: String,
     col_name: String,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> Popover {
     let ent = cx.entity().clone();
@@ -229,29 +220,18 @@ pub(super) fn render_collection_menu(
         .content(move |_, _, pop_cx| {
             let pop_h = pop_cx.entity().clone();
             let mut m = v_col().w(px(174.0)).gap(px(2.0));
-            let items: Vec<(&str, &str, UiIcon, usize, bool)> = vec![
-                ("新建请求", "New request", UiIcon::Plus, 0, false),
-                ("新建文件夹", "New folder", UiIcon::Folder, 1, false),
-                ("运行集合…", "Run collection…", UiIcon::Play, 2, false),
-                (
-                    "集合设置…",
-                    "Collection settings…",
-                    UiIcon::Settings,
-                    3,
-                    false,
-                ),
-                (
-                    "导出 Postman JSON…",
-                    "Export Postman…",
-                    UiIcon::Download,
-                    4,
-                    false,
-                ),
-                ("复制集合", "Duplicate", UiIcon::Copy, 5, false),
-                ("重命名", "Rename", UiIcon::Pencil, 6, false),
-                ("删除集合", "Delete", UiIcon::Trash, 7, true),
+            let r = crate::ui::tr(pop_cx).requests();
+            let items: Vec<(&str, UiIcon, usize, bool)> = vec![
+                (r.menu_new_request(), UiIcon::Plus, 0, false),
+                (r.menu_new_folder(), UiIcon::Folder, 1, false),
+                (r.menu_run_collection(), UiIcon::Play, 2, false),
+                (r.menu_collection_settings(), UiIcon::Settings, 3, false),
+                (r.menu_export_postman(), UiIcon::Download, 4, false),
+                (r.menu_duplicate_collection(), UiIcon::Copy, 5, false),
+                (r.menu_rename(), UiIcon::Pencil, 6, false),
+                (r.menu_delete_collection(), UiIcon::Trash, 7, true),
             ];
-            for (zl, el, ic, act, danger) in items {
+            for (lbl, ic, act, danger) in items {
                 if danger {
                     m = m.child(menu_divider(pop_cx));
                 }
@@ -262,7 +242,7 @@ pub(super) fn render_collection_menu(
                 m = m.child(menu_item(
                     SharedString::from(format!("col-act-{col_id}-{act}")),
                     ic,
-                    if zh { zl } else { el },
+                    lbl,
                     danger,
                     pop_cx,
                     move |_, window, cx| {
@@ -319,7 +299,6 @@ fn render_folder_menu(
     folder_id: String,
     col_id: String,
     folder_name: String,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> Popover {
     let ent = cx.entity().clone();
@@ -332,22 +311,17 @@ fn render_folder_menu(
         .content(move |_, _, pop_cx| {
             let pop_h = pop_cx.entity().clone();
             let mut m = v_col().w(px(164.0)).gap(px(2.0));
-            let items: Vec<(&str, &str, UiIcon, usize, bool)> = vec![
-                ("新建请求", "New request", UiIcon::Plus, 0, false),
-                ("新建子文件夹", "New subfolder", UiIcon::Folder, 1, false),
-                ("运行文件夹…", "Run folder…", UiIcon::Play, 2, false),
-                (
-                    "文件夹设置…",
-                    "Folder settings…",
-                    UiIcon::Settings,
-                    3,
-                    false,
-                ),
-                ("复制文件夹", "Duplicate", UiIcon::Copy, 4, false),
-                ("重命名", "Rename", UiIcon::Pencil, 5, false),
-                ("删除文件夹", "Delete", UiIcon::Trash, 6, true),
+            let r = crate::ui::tr(pop_cx).requests();
+            let items: Vec<(&str, UiIcon, usize, bool)> = vec![
+                (r.menu_new_request(), UiIcon::Plus, 0, false),
+                (r.menu_new_subfolder(), UiIcon::Folder, 1, false),
+                (r.menu_run_folder(), UiIcon::Play, 2, false),
+                (r.menu_folder_settings(), UiIcon::Settings, 3, false),
+                (r.menu_duplicate_folder(), UiIcon::Copy, 4, false),
+                (r.menu_rename(), UiIcon::Pencil, 5, false),
+                (r.menu_delete_folder(), UiIcon::Trash, 6, true),
             ];
-            for (zl, el, ic, act, danger) in items {
+            for (lbl, ic, act, danger) in items {
                 if danger {
                     m = m.child(menu_divider(pop_cx));
                 }
@@ -359,7 +333,7 @@ fn render_folder_menu(
                 m = m.child(menu_item(
                     SharedString::from(format!("fld-act-{folder_id}-{act}")),
                     ic,
-                    if zh { zl } else { el },
+                    lbl,
                     danger,
                     pop_cx,
                     move |_, window, cx| {
@@ -409,7 +383,7 @@ fn render_folder_menu(
         })
 }
 
-fn render_request_menu(req: Request, zh: bool, cx: &mut Context<RequestsView>) -> Popover {
+fn render_request_menu(req: Request, cx: &mut Context<RequestsView>) -> Popover {
     let rid = req.id.as_str().to_owned();
     let ent = cx.entity().clone();
     popover(SharedString::from(format!("req-menu-pop-{rid}")))
@@ -421,14 +395,15 @@ fn render_request_menu(req: Request, zh: bool, cx: &mut Context<RequestsView>) -
         .content(move |_, _, pop_cx| {
             let pop_h = pop_cx.entity().clone();
             let mut m = v_col().w(px(156.0)).gap(px(2.0));
-            let items: Vec<(&str, &str, UiIcon, usize, bool)> = vec![
-                ("复制为 cURL", "Copy as cURL", UiIcon::FileCode, 0, false),
-                ("复制请求", "Duplicate", UiIcon::Copy, 1, false),
-                ("移动到…", "Move to…", UiIcon::Folder, 2, false),
-                ("重命名", "Rename", UiIcon::Pencil, 3, false),
-                ("删除请求", "Delete", UiIcon::Trash, 4, true),
+            let r = crate::ui::tr(pop_cx).requests();
+            let items: Vec<(&str, UiIcon, usize, bool)> = vec![
+                (r.menu_copy_curl(), UiIcon::FileCode, 0, false),
+                (r.menu_duplicate_request(), UiIcon::Copy, 1, false),
+                (r.menu_move_to(), UiIcon::Folder, 2, false),
+                (r.menu_rename(), UiIcon::Pencil, 3, false),
+                (r.menu_delete_request(), UiIcon::Trash, 4, true),
             ];
-            for (zl, el, ic, act, danger) in items {
+            for (lbl, ic, act, danger) in items {
                 if danger {
                     m = m.child(menu_divider(pop_cx));
                 }
@@ -438,7 +413,7 @@ fn render_request_menu(req: Request, zh: bool, cx: &mut Context<RequestsView>) -
                 m = m.child(menu_item(
                     SharedString::from(format!("req-act-{}-{act}", req_c.id.as_str())),
                     ic,
-                    if zh { zl } else { el },
+                    lbl,
                     danger,
                     pop_cx,
                     move |_, window, cx| {

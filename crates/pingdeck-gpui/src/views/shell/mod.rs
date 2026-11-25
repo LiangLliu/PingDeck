@@ -39,8 +39,8 @@ use crate::app::actions::{
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
 use crate::ui::{
-    InputState, WindowExt as _, apply_palette, h_row, palette as active_palette, resolve_is_dark,
-    sync_window_scale, to_hsla, v_col,
+    InputState, WindowExt as _, apply_language, apply_palette, h_row, palette as active_palette,
+    resolve_is_dark, sync_window_scale, to_hsla, tr, v_col,
 };
 use crate::views::utility::UtilityPanel;
 
@@ -84,6 +84,7 @@ impl AppShell {
         let settings = settings_get_impl(rt.state());
         let workspaces = workspace_list_impl(rt.state()).unwrap_or_default();
         let local_ui = rt.load_ui_state();
+        apply_language(settings.general.language, cx);
         let state = ShellState::new(&local_ui, settings, workspaces);
 
         let initial_custom_proxy = {
@@ -196,7 +197,12 @@ impl AppShell {
             let next = settings_get_impl(runtime(cx).state());
             let prev_sidebar = this.state.settings.appearance.sidebar;
             let prev_shortcuts = this.state.settings.shortcuts.overrides.clone();
+            let prev_lang = this.state.settings.general.language;
             this.state.settings = next;
+            if this.state.settings.general.language != prev_lang {
+                apply_language(this.state.settings.general.language, cx);
+                cx.refresh_windows();
+            }
             if this.state.settings.appearance.sidebar != prev_sidebar {
                 match this.state.settings.appearance.sidebar {
                     SidebarMode::Expanded => {
@@ -457,11 +463,7 @@ impl Render for AppShell {
                     runtime(cx).grants().grant("main", &list);
                     this.push_toast_auto(
                         ToastKind::Info,
-                        if this.language() == Language::ZhCn {
-                            format!("已授权 {} 个拖入文件（60秒内有效）", list.len())
-                        } else {
-                            format!("Granted {} dropped file(s) for 60s", list.len())
-                        },
+                        tr(cx).shell().drop_granted(list.len()),
                         None,
                         cx,
                     );

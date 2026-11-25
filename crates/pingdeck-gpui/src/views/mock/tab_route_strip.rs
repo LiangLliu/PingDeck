@@ -67,7 +67,10 @@ pub fn render_try_it_card(
                 .text_xs()
                 .text_color(to_hsla(p.ink_2))
                 .child(if body.is_empty() {
-                    view.t("（空响应体）", "(empty body)").to_owned()
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .tab_route_strip_empty_body()
+                        .to_owned()
                 } else {
                     body.to_owned()
                 }),
@@ -81,7 +84,6 @@ pub fn render_live_traffic_strip(
     cx: &mut Context<MockView>,
 ) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let base_url = view
         .status_of(&srv.id)
         .map(|s| s.bound_url.clone())
@@ -104,16 +106,18 @@ pub fn render_live_traffic_strip(
                         .text_size(px(11.0))
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.muted))
-                        .child(if zh {
-                            format!("最近实时流量 ({})", view.logs.len())
-                        } else {
-                            format!("Recent Traffic ({})", view.logs.len())
-                        }),
+                        .child(
+                            crate::ui::tr(cx)
+                                .mock()
+                                .tab_route_strip_recent_traffic(view.logs.len()),
+                        ),
                 )
                 .child(
                     btn_ghost(
                         "mock-strip-all-traffic",
-                        view.t("查看全部流量 →", "All Traffic →"),
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .tab_route_strip_all_traffic(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.active_tab = MockSubTab::Traffic;
@@ -150,7 +154,7 @@ pub fn render_live_traffic_strip(
                 .child(
                     btn_ghost(
                         SharedString::from(format!("mock-strip-draft-{}", log.id)),
-                        view.t("存为草稿", "Save Draft"),
+                        crate::ui::Tr(view.lang).mock().tab_route_strip_save_draft(),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.pending_handoff.set(Some(MockHandoff::OpenTestRequest {

@@ -26,7 +26,6 @@ use super::format::{format_auth, format_protocol};
 
 pub struct ProviderConfigForm {
     parent: Entity<ProvidersView>,
-    pub(super) zh: bool,
     pub view: ProviderView,
     name_input: Entity<InputState>,
     base_url_input: Entity<InputState>,
@@ -52,7 +51,6 @@ impl ProviderConfigForm {
     pub fn new(
         parent: Entity<ProvidersView>,
         pv: ProviderView,
-        zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -126,7 +124,6 @@ impl ProviderConfigForm {
 
         let mut form = Self {
             parent,
-            zh,
             view: pv,
             name_input,
             base_url_input,
@@ -181,11 +178,10 @@ impl ProviderConfigForm {
             if ep.enabled && enabled_cnt <= 1 {
                 self.flash = Some((
                     Tone::Warning,
-                    if self.zh {
-                        "服务商至少需要保留一个已启用的协议".into()
-                    } else {
-                        "A provider requires at least one enabled protocol".into()
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_cfg_need_one_protocol()
+                        .into(),
                 ));
             } else {
                 ep.enabled = !ep.enabled;
@@ -261,11 +257,10 @@ impl ProviderConfigForm {
         } else {
             self.flash = Some((
                 Tone::Danger,
-                if self.zh {
-                    "价格倍率需为 0 到 1000 之间的数字".into()
-                } else {
-                    "Price multiplier must be between 0 and 1000".into()
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_cfg_multiplier_range()
+                    .into(),
             ));
             cx.notify();
             return;
@@ -289,7 +284,6 @@ impl ProviderConfigForm {
         cx.notify();
 
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_provider_save_view_impl(state, next, opts),
@@ -300,11 +294,10 @@ impl ProviderConfigForm {
                         this.view = saved;
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                "配置已保存".into()
-                            } else {
-                                "Configuration saved".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_config_configuration_saved()
+                                .into(),
                         ));
                         parent.update(cx, |p, cx| p.reload_all(cx));
                     }
@@ -325,7 +318,6 @@ impl ProviderConfigForm {
     pub(super) fn delete_now(&mut self, cx: &mut Context<Self>) {
         let pid = self.view.provider.id.clone();
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_provider_delete_impl(state, &pid),
@@ -335,11 +327,10 @@ impl ProviderConfigForm {
                         p.selection = super::LeftSelection::Gateway;
                         p.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                "已删除服务商".into()
-                            } else {
-                                "Provider deleted".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_config_provider_deleted()
+                                .into(),
                         ));
                         p.reload_all(cx);
                     });
@@ -357,7 +348,6 @@ impl ProviderConfigForm {
 impl Render for ProviderConfigForm {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx);
-        let zh = self.zh;
         let prov = &self.view.provider;
         let ent = cx.entity().clone();
 
@@ -367,7 +357,7 @@ impl Render for ProviderConfigForm {
             .anchor(Anchor::TopRight)
             .trigger(select_pill(
                 "cfg-auth-trig",
-                format_auth(cur_auth, zh),
+                format_auth(cur_auth, crate::ui::active_language(cx)),
                 false,
                 cx,
             ))
@@ -398,7 +388,11 @@ impl Render for ProviderConfigForm {
                                 pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                             },
                         )
-                        .child(div().text_xs().child(format_auth(a, zh))),
+                        .child(
+                            div()
+                                .text_xs()
+                                .child(format_auth(a, crate::ui::active_language(cx))),
+                        ),
                     );
                 }
                 col
@@ -408,16 +402,16 @@ impl Render for ProviderConfigForm {
             v_col()
                 .gap(px(10.0))
                 .child(section_heading(
-                    if zh { "基本信息" } else { "Identity" },
+                    crate::ui::tr(cx).providers().cfg_sec_identity(),
                     cx,
                 ))
                 .child(field_row(
-                    if zh { "启用服务商" } else { "Enabled" },
-                    Some(SharedString::from(if zh {
-                        "关闭后，网关、聊天与备用链都会跳过此服务商。"
-                    } else {
-                        "When off, the gateway, chat, and fallback chains skip this provider."
-                    })),
+                    crate::ui::tr(cx).providers().prov_detail_config_enabled(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_config_when_off_the_gateway_chat(),
+                    )),
                     toggle_switch("cfg-enabled-sw", prov.enabled).on_click(cx.listener(
                         |this, _, _, cx| {
                             this.view.provider.enabled = !this.view.provider.enabled;
@@ -427,37 +421,35 @@ impl Render for ProviderConfigForm {
                     cx,
                 ))
                 .child(field_row(
-                    if zh { "名称" } else { "Name" },
-                    Some(SharedString::from(if zh {
-                        "显示在列表与模型选择器里，也是客户端调用前缀（名称/模型 ID）。"
-                    } else {
-                        "Shown across lists and used as the client routing prefix (name/model)."
-                    })),
+                    crate::ui::tr(cx).providers().cfg_name(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_config_shown_across_lists_and_used(),
+                    )),
                     div().w(px(280.0)).child(text_input(&self.name_input)),
                     cx,
                 ))
                 .child(field_row(
-                    if zh { "基础 URL" } else { "Base URL" },
-                    Some(SharedString::from(if zh {
-                        "更改主机名时会要求确认并停用现有密钥，防止密钥发往错误服务器。"
-                    } else {
-                        "Changing host requires confirmation and disables keys for safety."
-                    })),
+                    crate::ui::tr(cx).providers().prov_first_address(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_config_changing_host_requires_confirmation_and(),
+                    )),
                     div().w(px(340.0)).child(text_input(&self.base_url_input)),
                     cx,
                 ))
                 .child(field_row(
-                    if zh {
-                        "默认认证方式"
-                    } else {
-                        "Default auth"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_config_default_auth(),
                     None,
                     auth_picker,
                     cx,
                 ))
                 .child(field_row(
-                    if zh { "备注" } else { "Notes" },
+                    crate::ui::tr(cx).providers().prov_key_menu_notes(),
                     None,
                     div().w(px(340.0)).child(text_input(&self.notes_input)),
                     cx,
@@ -465,11 +457,9 @@ impl Render for ProviderConfigForm {
         );
 
         let mut ep_col = v_col().gap(px(8.0)).child(section_heading(
-            if zh {
-                "各协议端点与路径前缀"
-            } else {
-                "Protocol Endpoints"
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_detail_config_protocol_endpoints(),
             cx,
         ));
         for (idx, (proto, inp)) in self.endpoint_prefix_inputs.iter().enumerate() {
@@ -502,7 +492,7 @@ impl Render for ProviderConfigForm {
                                     .text_xs()
                                     .font_weight(gpui_kit::FontWeight::MEDIUM)
                                     .text_color(to_hsla(if enabled { p.ink } else { p.muted }))
-                                    .child(format_protocol(proto, zh)),
+                                    .child(format_protocol(proto, crate::ui::active_language(cx))),
                             )
                             .child(div().w(px(150.0)).child(text_input(inp)))
                             .child(
@@ -519,11 +509,9 @@ impl Render for ProviderConfigForm {
                                 btn_ghost(
                                     SharedString::from(format!("cfg-ep-astyped-{idx}")),
                                     if as_typed {
-                                        if zh { "原样 URL" } else { "As typed" }
-                                    } else if zh {
-                                        "自动补后缀"
+                                        crate::ui::tr(cx).providers().prov_detail_config_as_typed()
                                     } else {
-                                        "Standard"
+                                        crate::ui::tr(cx).providers().prov_detail_config_standard()
                                     },
                                 )
                                 .on_click(cx.listener(
@@ -548,12 +536,18 @@ impl Render for ProviderConfigForm {
                             }))
                             .children((enabled && proto.is_chat()).then(|| {
                                 if is_primary {
-                                    badge(if zh { "主协议" } else { "Primary" }, Tone::Success, cx)
-                                        .into_any_element()
+                                    badge(
+                                        crate::ui::tr(cx).providers().sniff_proto_primary(),
+                                        Tone::Success,
+                                        cx,
+                                    )
+                                    .into_any_element()
                                 } else {
                                     btn_ghost(
                                         SharedString::from(format!("cfg-ep-prim-{idx}")),
-                                        if zh { "设为主协议" } else { "Set primary" },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_detail_config_set_primary(),
                                     )
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.view.provider.primary_protocol = Some(proto);

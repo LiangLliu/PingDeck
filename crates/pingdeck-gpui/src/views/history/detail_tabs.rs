@@ -58,7 +58,7 @@ fn render_body_tab(
                 entry
                     .error_kind
                     .as_deref()
-                    .unwrap_or(view.t("执行错误", "Error"))
+                    .unwrap_or(crate::ui::Tr(view.lang).history().detail_tabs_error())
             ),
             None,
             cx,
@@ -68,19 +68,12 @@ fn render_body_tab(
     if entry.response_body_truncated {
         col = col.child(alert_banner(
             Tone::Warning,
-            if view.is_zh() {
-                format!(
-                    "仅保留响应正文前 {} 字节预览（原始响应共 {} 字节）。",
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_showing_first_bytes_preview_of(
                     entry.response_body_preview.len(),
-                    entry.body_size_bytes
-                )
-            } else {
-                format!(
-                    "Showing first {} bytes preview of {} total bytes.",
-                    entry.response_body_preview.len(),
-                    entry.body_size_bytes
-                )
-            },
+                    entry.body_size_bytes,
+                ),
             None,
             cx,
         ));
@@ -121,14 +114,16 @@ fn render_body_tab(
         .p(px(12.0))
         .gap(px(8.0))
         .child(section_header(
-            view.t("响应正文预览", "Response Body Preview"),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_response_body_preview(),
             Some(
                 h_row()
                     .gap(px(6.0))
                     .child(
                         choice_chip(
                             "hist-body-pretty",
-                            view.t("格式化", "Pretty"),
+                            crate::ui::Tr(view.lang).history().detail_tabs_pretty(),
                             view.body_pretty,
                             cx,
                         )
@@ -140,7 +135,7 @@ fn render_body_tab(
                     .child(
                         choice_chip(
                             "hist-body-raw",
-                            view.t("原文", "Raw"),
+                            crate::ui::Tr(view.lang).history().detail_tabs_raw(),
                             !view.body_pretty,
                             cx,
                         )
@@ -150,16 +145,22 @@ fn render_body_tab(
                         })),
                     )
                     .child(
-                        btn_secondary("hist-copy-body", view.t("复制正文", "Copy Body"))
-                            .icon(icon_xs(UiIcon::Copy))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                let _ = clipboard::set_text(&body_copy);
-                                this.status_msg = Some((
-                                    Tone::Success,
-                                    this.t("已复制响应正文", "Copied response body").to_owned(),
-                                ));
-                                cx.notify();
-                            })),
+                        btn_secondary(
+                            "hist-copy-body",
+                            crate::ui::Tr(view.lang).history().detail_tabs_copy_body(),
+                        )
+                        .icon(icon_xs(UiIcon::Copy))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let _ = clipboard::set_text(&body_copy);
+                            this.status_msg = Some((
+                                Tone::Success,
+                                crate::ui::Tr(this.lang)
+                                    .history()
+                                    .detail_tabs_copied_response_body()
+                                    .to_owned(),
+                            ));
+                            cx.notify();
+                        })),
                     )
                     .into_any_element(),
             ),
@@ -167,7 +168,9 @@ fn render_body_tab(
         ))
         .child(if entry.response_body_preview.is_empty() {
             empty_inline(
-                view.t("响应正文为空", "Empty response body"),
+                crate::ui::Tr(view.lang)
+                    .history()
+                    .detail_tabs_empty_response_body(),
                 None,
                 None,
                 cx,
@@ -192,13 +195,17 @@ fn render_headers_tab(
     cx: &mut Context<HistoryView>,
 ) -> AnyElement {
     let mut box_el = card(cx).p(px(12.0)).gap(px(5.0)).child(section_header(
-        view.t("响应头（敏感值已脱敏）", "Response Headers (Redacted)"),
+        crate::ui::Tr(view.lang)
+            .history()
+            .detail_tabs_response_headers_redacted(),
         Some(badge(entry.response_headers.len().to_string(), Tone::Neutral, cx).into_any_element()),
         cx,
     ));
     if entry.response_headers.is_empty() {
         box_el = box_el.child(empty_inline(
-            view.t("未记录响应头", "No response headers recorded"),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_no_response_headers_recorded(),
             None,
             None,
             cx,
@@ -219,10 +226,9 @@ fn render_sent_tab(
     let p = palette(cx);
     let Some(sent) = &entry.sent_request else {
         return empty_inline(
-            view.t(
-                "此记录未包含实发请求快照",
-                "No wire request snapshot stored",
-            ),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_no_wire_request_snapshot_stored(),
             None,
             None,
             cx,
@@ -234,15 +240,14 @@ fn render_sent_tab(
             .p(px(12.0))
             .gap(px(6.0))
             .child(section_header(
-                view.t(
-                    "实际发送的请求（凭据已脱敏）",
-                    "Sent Wire Request (Redacted)",
-                ),
+                crate::ui::Tr(view.lang)
+                    .history()
+                    .detail_tabs_sent_wire_request_redacted(),
                 None,
                 cx,
             ))
             .child(kv_line(
-                view.t("方法", "Method"),
+                crate::ui::Tr(view.lang).history().filter_methods(),
                 sent.method.clone(),
                 120.0,
                 cx,
@@ -252,7 +257,9 @@ fn render_sent_tab(
 
     if !sent.headers.is_empty() {
         let mut h_card = card(cx).p(px(12.0)).gap(px(5.0)).child(section_header(
-            view.t("请求头", "Request Headers"),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_request_headers(),
             None,
             cx,
         ));
@@ -268,7 +275,9 @@ fn render_sent_tab(
                 .p(px(12.0))
                 .gap(px(6.0))
                 .child(section_header(
-                    view.t("请求正文预览", "Request Body Preview"),
+                    crate::ui::Tr(view.lang)
+                        .history()
+                        .detail_tabs_request_body_preview(),
                     None,
                     cx,
                 ))
@@ -294,10 +303,9 @@ fn render_snapshot_tab(
 ) -> AnyElement {
     let Some(snap) = &entry.request_snapshot else {
         return empty_inline(
-            view.t(
-                "此记录无请求定义快照",
-                "No request definition snapshot stored",
-            ),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_no_request_definition_snapshot_stored(),
             None,
             None,
             cx,
@@ -309,11 +317,15 @@ fn render_snapshot_tab(
         .p(px(12.0))
         .gap(px(6.0))
         .child(section_header(
-            view.t("发送时的请求定义快照", "Request Definition Snapshot"),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_request_definition_snapshot(),
             Some(
                 btn_secondary(
                     "hist-snap-open",
-                    view.t("载入到请求工作台", "Open in Requests"),
+                    crate::ui::Tr(view.lang)
+                        .history()
+                        .detail_tabs_open_in_requests(),
                 )
                 .icon(icon_xs(UiIcon::Send))
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -324,25 +336,27 @@ fn render_snapshot_tab(
             cx,
         ))
         .child(kv_line(
-            view.t("名称", "Name"),
+            crate::ui::Tr(view.lang).shared().name(),
             snap.name.clone(),
             130.0,
             cx,
         ))
         .child(kv_line(
-            view.t("方法", "Method"),
+            crate::ui::Tr(view.lang).history().filter_methods(),
             format!("{:?}", snap.method).to_uppercase(),
             130.0,
             cx,
         ))
         .child(kv_line(
-            view.t("原始模板 URL", "Template URL"),
+            crate::ui::Tr(view.lang)
+                .history()
+                .detail_tabs_template_url(),
             snap.url.clone(),
             130.0,
             cx,
         ))
         .child(kv_line(
-            view.t("鉴权模式", "Auth"),
+            crate::ui::Tr(view.lang).history().detail_tabs_auth(),
             format!("{:?}", snap.auth),
             130.0,
             cx,

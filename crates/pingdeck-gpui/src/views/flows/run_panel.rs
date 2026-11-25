@@ -15,7 +15,6 @@ use super::state::{FlowRunTab, FlowsView};
 
 pub fn render_run_panel(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let tab_idx = match view.run_tab {
         FlowRunTab::LiveRun => 0,
         FlowRunTab::Variables => 1,
@@ -31,23 +30,17 @@ pub fn render_run_panel(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEle
             };
             cx.notify();
         }))
-        .child(tab_item(view.t("本次运行", "Live Run")))
-        .child(tab_item(if zh {
-            format!(
-                "流程变量 ({})",
-                view.last_result.as_ref().map_or(0, |r| r.variables.len())
-            )
-        } else {
-            format!(
-                "Variables ({})",
-                view.last_result.as_ref().map_or(0, |r| r.variables.len())
-            )
-        }))
-        .child(tab_item(if zh {
-            format!("历史记录 ({})", view.past_runs.len())
-        } else {
-            format!("Past Runs ({})", view.past_runs.len())
-        }));
+        .child(tab_item(
+            crate::ui::Tr(view.lang).flows().run_panel_live_run(),
+        ))
+        .child(tab_item(crate::ui::tr(cx).flows().run_panel_variables(
+            view.last_result.as_ref().map_or(0, |r| r.variables.len()),
+        )))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .flows()
+                .run_panel_past_runs(view.past_runs.len()),
+        ));
 
     let body: AnyElement = match view.run_tab {
         FlowRunTab::LiveRun => render_live_run(view, cx),
@@ -82,22 +75,14 @@ fn render_live_run(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement 
                 .gap(px(8.0))
                 .child(status_indicator(StatusShape::Run, cx))
                 .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.ink))
-                        .child(if view.is_zh() {
-                            format!(
-                                "正在执行流程… 已完成 {} / {} 步",
+                    div().text_xs().text_color(to_hsla(p.ink)).child(
+                        crate::ui::Tr(view.lang)
+                            .flows()
+                            .run_panel_running_flow_steps_finished(
                                 view.live_steps.len(),
-                                view.live_total
-                            )
-                        } else {
-                            format!(
-                                "Running flow… {}/{} steps finished",
-                                view.live_steps.len(),
-                                view.live_total
-                            )
-                        }),
+                                view.live_total,
+                            ),
+                    ),
                 ),
         );
         let mut ordered: Vec<_> = view.live_steps.values().collect();
@@ -119,11 +104,12 @@ fn render_live_run(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement 
 
     let Some(res) = &view.last_result else {
         return empty_inline(
-            view.t("尚无本次运行输出", "No flow run yet"),
-            Some(SharedString::from(view.t(
-                "点击顶部「运行流程」开始按序执行所有步骤。",
-                "Click Run Flow above to execute steps in order.",
-            ))),
+            crate::ui::Tr(view.lang).flows().run_panel_no_flow_run_yet(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .run_panel_click_run_flow_above_to(),
+            )),
             None,
             cx,
         )
@@ -135,11 +121,11 @@ fn render_live_run(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement 
             .gap(px(8.0))
             .child(badge(
                 if res.cancelled {
-                    view.t("已取消", "Cancelled")
+                    crate::ui::Tr(view.lang).flows().row_cancelled()
                 } else if res.passed {
-                    view.t("全部通过", "Passed")
+                    crate::ui::Tr(view.lang).flows().run_panel_passed()
                 } else {
-                    view.t("存在失败", "Failed")
+                    crate::ui::Tr(view.lang).flows().run_panel_failed()
                 },
                 if res.cancelled {
                     Tone::Warning
@@ -186,10 +172,9 @@ fn render_live_run(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement 
 fn render_variables(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
     let Some(res) = &view.last_result else {
         return empty_inline(
-            view.t(
-                "运行后将显示提取的流程变量",
-                "Run the flow to inspect captured variables",
-            ),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .run_panel_run_the_flow_to_inspect(),
             None,
             None,
             cx,
@@ -198,7 +183,9 @@ fn render_variables(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement
     };
     if res.variables.is_empty() {
         return empty_inline(
-            view.t("本次运行未产生变量", "No variables captured in this run"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .run_panel_no_variables_captured_in_this(),
             None,
             None,
             cx,
@@ -226,7 +213,9 @@ fn render_history(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
     let p = palette(cx);
     if view.past_runs.is_empty() {
         return empty_inline(
-            view.t("暂无历史运行记录", "No past runs recorded"),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .run_panel_no_past_runs_recorded(),
             None,
             None,
             cx,

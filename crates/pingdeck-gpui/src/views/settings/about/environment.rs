@@ -4,7 +4,6 @@ use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as
 use pingdeck_desktop::core::agent::sandbox::SandboxKind;
 use pingdeck_desktop::core::app::{AppInfoDto, SandboxSelftest};
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::{t, t_args};
 use pingdeck_desktop::theme::ResolvedPalette;
 
 use crate::ui::{
@@ -17,13 +16,15 @@ use super::{AboutSettingsView, AboutSnapshot};
 pub(super) fn render_environment_section(
     view: &AboutSettingsView,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AboutSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
     let recheck = btn_ghost(
         "about-env-recheck",
-        t(lang, "set.agent.sandbox.test").to_owned(),
+        crate::ui::Tr(lang)
+            .settings()
+            .agent_sandbox_test()
+            .to_owned(),
     )
     .icon(icon_xs(UiIcon::Refresh))
     .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
@@ -36,15 +37,15 @@ pub(super) fn render_environment_section(
             .text_xs()
             .text_color(to_hsla(p.muted))
             .child(status_indicator(StatusShape::Run, cx))
-            .child(if zh {
-                "正在检测运行环境…"
-            } else {
-                "Checking environment…"
-            })
+            .child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .environment_checking_environment(),
+            )
     } else if let Some(err) = &view.load_error
         && view.snapshot.is_none()
     {
-        let msg = t_args(lang, "set.about.failed", &[("error", err.as_str())]);
+        let msg = crate::ui::Tr(lang).settings().about_failed(err);
         h_row()
             .justify_between()
             .gap(px(12.0))
@@ -64,17 +65,20 @@ pub(super) fn render_environment_section(
                     ),
             )
             .child(
-                btn_secondary("about-env-retry", t(lang, "set.data.retry").to_owned())
-                    .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
+                btn_secondary(
+                    "about-env-retry",
+                    crate::ui::Tr(lang).settings().data_retry().to_owned(),
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
             )
     } else if let Some(snap) = &view.snapshot {
-        render_environment_rows(view, snap, lang, zh, cx)
+        render_environment_rows(view, snap, lang, cx)
     } else {
         v_col()
     };
 
     settings_section_flush(
-        t(lang, "set.sec.about.build").to_owned(),
+        crate::ui::Tr(lang).settings().sec_about_build().to_owned(),
         Some(recheck),
         body,
         cx,
@@ -85,7 +89,6 @@ fn render_environment_rows(
     view: &AboutSettingsView,
     snap: &AboutSnapshot,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AboutSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -93,7 +96,7 @@ fn render_environment_rows(
     let mut rows = v_col();
 
     if let Some(err) = &view.load_error {
-        let msg = t_args(lang, "set.about.failed", &[("error", err.as_str())]);
+        let msg = crate::ui::Tr(lang).settings().about_failed(err);
         rows = rows.child(
             div().p(px(10.0)).child(alert_banner(
                 Tone::Warning,
@@ -101,7 +104,7 @@ fn render_environment_rows(
                 Some(
                     btn_ghost(
                         "about-env-stale-retry",
-                        t(lang, "set.data.retry").to_owned(),
+                        crate::ui::Tr(lang).settings().data_retry().to_owned(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
                     .into_any_element(),
@@ -137,7 +140,7 @@ fn render_environment_rows(
                 ))),
         );
     rows = rows.child(info_row(
-        t(lang, "set.about.core"),
+        crate::ui::Tr(lang).settings().about_core(),
         None,
         core_val,
         true,
@@ -166,7 +169,7 @@ fn render_environment_rows(
                 .child(SharedString::from(info.webview_version.clone())),
         );
     rows = rows.child(info_row(
-        t(lang, "set.about.system"),
+        crate::ui::Tr(lang).settings().about_system(),
         None,
         sys_val,
         true,
@@ -176,9 +179,9 @@ fn render_environment_rows(
     // 3. Secret storage health (plaintext 0600 SQLite file — never claim encryption)
     let secret_sub = if info.secret_store.ok {
         Some(if cfg!(windows) {
-            t(lang, "set.data.secrets.d.windows")
+            crate::ui::Tr(lang).settings().data_secrets_d_windows()
         } else {
-            t(lang, "set.data.secrets.d")
+            crate::ui::Tr(lang).settings().data_secrets_d()
         })
     } else {
         info.secret_store.error.as_deref()
@@ -194,7 +197,7 @@ fn render_environment_rows(
                     .text_color(to_hsla(p.ink_2))
                     .child(SharedString::from(format!(
                         "{} · {}",
-                        t(lang, "set.data.secrets.ok"),
+                        crate::ui::Tr(lang).settings().data_secrets_ok(),
                         info.secret_store.backend
                     ))),
             )
@@ -207,11 +210,16 @@ fn render_environment_rows(
                     .text_xs()
                     .font_weight(gpui_kit::FontWeight::MEDIUM)
                     .text_color(to_hsla(p.bad))
-                    .child(t(lang, "set.data.secrets.down").to_owned()),
+                    .child(
+                        crate::ui::Tr(lang)
+                            .settings()
+                            .data_secrets_down()
+                            .to_owned(),
+                    ),
             )
     };
     rows = rows.child(info_row(
-        t(lang, "set.data.secrets"),
+        crate::ui::Tr(lang).settings().data_secrets(),
         secret_sub,
         secret_val,
         true,
@@ -231,7 +239,7 @@ fn render_environment_rows(
                 .child(SharedString::from(sb_text)),
         );
     rows = rows.child(info_row(
-        t(lang, "set.agent.sandbox"),
+        crate::ui::Tr(lang).settings().agent_sandbox(),
         None,
         sandbox_val,
         true,
@@ -239,9 +247,9 @@ fn render_environment_rows(
     ));
 
     // 5. Runtime status summary (gateway, providers, recent warnings)
-    let runtime_val = render_runtime_summary(snap, zh, cx);
+    let runtime_val = render_runtime_summary(snap, cx);
     rows.child(info_row(
-        if zh { "当前状态" } else { "Runtime status" },
+        crate::ui::tr(cx).settings().environment_runtime_status(),
         None,
         runtime_val,
         false,
@@ -249,7 +257,7 @@ fn render_environment_rows(
     ))
 }
 
-fn render_runtime_summary(snap: &AboutSnapshot, zh: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
+fn render_runtime_summary(snap: &AboutSnapshot, cx: &gpui_kit::App) -> gpui_kit::Div {
     let p = palette(cx);
     let gw_shape = if snap.gateway_running {
         StatusShape::Live
@@ -258,37 +266,28 @@ fn render_runtime_summary(snap: &AboutSnapshot, zh: bool, cx: &gpui_kit::App) ->
     };
     let gw_text = if snap.gateway_running {
         if snap.gateway_lan {
-            if zh {
-                format!("网关运行中 (:{}, 局域网)", snap.gateway_port)
-            } else {
-                format!("Gateway live (:{}, LAN)", snap.gateway_port)
-            }
-        } else if zh {
-            format!("网关运行中 (:{})", snap.gateway_port)
+            crate::ui::tr(cx)
+                .settings()
+                .environment_gateway_live_lan(snap.gateway_port)
         } else {
-            format!("Gateway live (:{})", snap.gateway_port)
+            crate::ui::tr(cx)
+                .settings()
+                .environment_gateway_live(snap.gateway_port)
         }
-    } else if zh {
-        "网关已停止".to_owned()
     } else {
-        "Gateway stopped".to_owned()
+        crate::ui::tr(cx)
+            .settings()
+            .environment_gateway_stopped()
+            .to_owned()
     };
     let prov_text = if snap.total_providers == snap.enabled_providers {
-        if zh {
-            format!("{} 个服务商已启用", snap.enabled_providers)
-        } else {
-            format!("{} provider(s) enabled", snap.enabled_providers)
-        }
-    } else if zh {
-        format!(
-            "{}/{} 个服务商已启用",
-            snap.enabled_providers, snap.total_providers
-        )
+        crate::ui::tr(cx)
+            .settings()
+            .environment_provider_s_enabled(snap.enabled_providers)
     } else {
-        format!(
-            "{}/{} providers enabled",
-            snap.enabled_providers, snap.total_providers
-        )
+        crate::ui::tr(cx)
+            .settings()
+            .environment_providers_enabled(snap.enabled_providers, snap.total_providers)
     };
 
     let mut row = h_row()
@@ -315,11 +314,9 @@ fn render_runtime_summary(snap: &AboutSnapshot, zh: bool, cx: &gpui_kit::App) ->
         );
 
     if snap.recent_problem_count > 0 {
-        let warn_txt = if zh {
-            format!("{} 条近期告警", snap.recent_problem_count)
-        } else {
-            format!("{} recent warning(s)", snap.recent_problem_count)
-        };
+        let warn_txt = crate::ui::tr(cx)
+            .settings()
+            .environment_recent_warning_s(snap.recent_problem_count);
         row = row
             .child(div().text_xs().text_color(to_hsla(p.faint)).child("·"))
             .child(
@@ -399,24 +396,34 @@ fn format_sandbox(
     p: &ResolvedPalette,
 ) -> (StatusShape, String, gpui_kit::Hsla) {
     let tier_label = match info.sandbox.tier {
-        SandboxKind::Seatbelt => Some(t(lang, "set.agent.sandbox.tier.seatbelt")),
-        SandboxKind::Bubblewrap => Some(t(lang, "set.agent.sandbox.tier.bubblewrap")),
+        SandboxKind::Seatbelt => Some(crate::ui::Tr(lang).settings().agent_sandbox_tier_seatbelt()),
+        SandboxKind::Bubblewrap => Some(
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_tier_bubblewrap(),
+        ),
         SandboxKind::None => None,
     };
     match (tier_label, info.sandbox.selftest) {
         (Some(tier), SandboxSelftest::Passed) => (
             StatusShape::Ok,
-            t_args(lang, "set.agent.sandbox.available", &[("tier", tier)]),
+            crate::ui::Tr(lang).settings().agent_sandbox_available(tier),
             to_hsla(p.ink_2),
         ),
         (Some(_), SandboxSelftest::Failed) => (
             StatusShape::Warn,
-            t(lang, "set.agent.sandbox.unavailable").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_unavailable()
+                .to_owned(),
             to_hsla(p.warn),
         ),
         _ => (
             StatusShape::Idle,
-            t(lang, "set.agent.sandbox.notInstalled").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .agent_sandbox_not_installed()
+                .to_owned(),
             to_hsla(p.muted),
         ),
     }

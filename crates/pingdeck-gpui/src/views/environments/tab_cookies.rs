@@ -48,11 +48,9 @@ pub fn render_cookies_tab(
                         .child(search_input(&view.cookie_search_input, cx)),
                 )
                 .child(meta_pill(
-                    if view.is_zh() {
-                        format!("共 {} 条", view.cookies.len())
-                    } else {
-                        format!("{} cookies", view.cookies.len())
-                    },
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .tab_cookies_cookies(view.cookies.len()),
                     cx,
                 )),
         )
@@ -60,40 +58,53 @@ pub fn render_cookies_tab(
             h_row()
                 .gap(px(6.0))
                 .child(
-                    btn_primary("ck-add-btn", view.t("+ 添加 Cookie", "+ Add Cookie")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = Some(EnvModal::AddCookie {
-                                secure: true,
-                                http_only: false,
-                            });
-                            cx.notify();
-                        }),
-                    ),
+                    btn_primary(
+                        "ck-add-btn",
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .tab_cookies_add_cookie(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = Some(EnvModal::AddCookie {
+                            secure: true,
+                            http_only: false,
+                        });
+                        cx.notify();
+                    })),
                 )
                 .children((expired_count > 0).then(|| {
                     btn_secondary(
                         "ck-rm-exp",
-                        if view.is_zh() {
-                            format!("清理过期 ({expired_count})")
-                        } else {
-                            format!("Clean Expired ({expired_count})")
-                        },
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .tab_cookies_clean_expired(expired_count),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.delete_expired_cookies(cx)))
                 }))
                 .children((!view.cookies.is_empty()).then(|| {
-                    btn_danger("ck-clear-all", view.t("清空全部", "Clear All"))
-                        .on_click(cx.listener(|this, _, _, cx| this.clear_all_cookies(cx)))
+                    btn_danger(
+                        "ck-clear-all",
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .tab_cookies_clear_all(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.clear_all_cookies(cx)))
                 }))
                 .child(
-                    btn_ghost("ck-import", view.t("导入", "Import"))
-                        .icon(icon_xs(UiIcon::Upload))
-                        .on_click(cx.listener(|this, _, _, cx| this.import_cookies_file(cx))),
+                    btn_ghost(
+                        "ck-import",
+                        crate::ui::Tr(view.lang).environments().tab_cookies_import(),
+                    )
+                    .icon(icon_xs(UiIcon::Upload))
+                    .on_click(cx.listener(|this, _, _, cx| this.import_cookies_file(cx))),
                 )
                 .child(
-                    btn_ghost("ck-export", view.t("导出", "Export"))
-                        .icon(icon_xs(UiIcon::Download))
-                        .on_click(cx.listener(|this, _, _, cx| this.export_cookies_file(cx))),
+                    btn_ghost(
+                        "ck-export",
+                        crate::ui::Tr(view.lang).environments().tab_cookies_export(),
+                    )
+                    .icon(icon_xs(UiIcon::Download))
+                    .on_click(cx.listener(|this, _, _, cx| this.export_cookies_file(cx))),
                 )
                 .child(
                     btn_icon("ck-refresh", UiIcon::Refresh).on_click(cx.listener(
@@ -109,11 +120,14 @@ pub fn render_cookies_tab(
     let mut list = v_col().w_full().p(px(8.0)).gap(px(4.0));
     if filtered.is_empty() {
         list = list.child(empty_inline(
-            view.t("Cookie 罐为空", "Cookie jar is empty"),
-            Some(SharedString::from(view.t(
-                "响应 Set-Cookie 会自动存入此处，也可手动添加或导入 Netscape cookies.txt / JSON。",
-                "Response Set-Cookie headers populate here automatically, or import cookies.txt / JSON.",
-            ))),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_cookies_cookie_jar_is_empty(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .tab_cookies_response_set_cookie_headers_populate(),
+            )),
             None,
             cx,
         ));
@@ -121,53 +135,58 @@ pub fn render_cookies_tab(
         for ck in &filtered {
             let cid = ck.id.as_str().to_owned();
             let active = view.selected_cookie_id.as_deref() == Some(ck.id.as_str());
-            list =
-                list.child(
-                    list_row(
-                        SharedString::from(format!("ck-row-{}", ck.id.as_str())),
-                        active,
-                        cx,
-                        cx.listener(move |this, _, _, cx| {
-                            this.selected_cookie_id = Some(cid.clone());
-                            this.pending_sync = true;
-                            cx.notify();
-                        }),
-                    )
-                    .items_start()
-                    .py(px(7.0))
-                    .child(
-                        v_col()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(2.0))
-                            .child(
-                                h_row()
-                                    .w_full()
-                                    .justify_between()
-                                    .gap(px(6.0))
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .text_xs()
-                                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                            .text_color(to_hsla(p.ink))
-                                            .truncate()
-                                            .child(ck.name.clone()),
+            list = list.child(
+                list_row(
+                    SharedString::from(format!("ck-row-{}", ck.id.as_str())),
+                    active,
+                    cx,
+                    cx.listener(move |this, _, _, cx| {
+                        this.selected_cookie_id = Some(cid.clone());
+                        this.pending_sync = true;
+                        cx.notify();
+                    }),
+                )
+                .items_start()
+                .py(px(7.0))
+                .child(
+                    v_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(2.0))
+                        .child(
+                            h_row()
+                                .w_full()
+                                .justify_between()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_xs()
+                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                        .text_color(to_hsla(p.ink))
+                                        .truncate()
+                                        .child(ck.name.clone()),
+                                )
+                                .children(ck.expired.then(|| {
+                                    badge(
+                                        crate::ui::Tr(view.lang)
+                                            .environments()
+                                            .tab_cookies_expired(),
+                                        Tone::Danger,
+                                        cx,
                                     )
-                                    .children(ck.expired.then(|| {
-                                        badge(view.t("已过期", "Expired"), Tone::Danger, cx)
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(to_hsla(p.muted))
-                                    .truncate()
-                                    .child(format!("{}{}", ck.domain, ck.path)),
-                            ),
-                    ),
-                );
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(to_hsla(p.muted))
+                                .truncate()
+                                .child(format!("{}{}", ck.domain, ck.path)),
+                        ),
+                ),
+            );
         }
     }
 
@@ -228,12 +247,15 @@ pub fn render_cookies_tab(
                             .child(section_header(
                                 format!("{} ({}{})", ck.name, ck.domain, ck.path),
                                 Some(
-                                    btn_danger("ck-del-btn", view.t("删除", "Delete"))
-                                        .icon(icon_xs(UiIcon::Trash))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.delete_cookie(cid_del.clone(), cx);
-                                        }))
-                                        .into_any_element(),
+                                    btn_danger(
+                                        "ck-del-btn",
+                                        crate::ui::Tr(view.lang).common().delete(),
+                                    )
+                                    .icon(icon_xs(UiIcon::Trash))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.delete_cookie(cid_del.clone(), cx);
+                                    }))
+                                    .into_any_element(),
                                 ),
                                 cx,
                             ))
@@ -248,14 +270,21 @@ pub fn render_cookies_tab(
                                             .child(text_input(&view.cookie_edit_val)),
                                     )
                                     .child(
-                                        btn_primary("ck-save-val", view.t("更新值", "Save Value"))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        btn_primary(
+                                            "ck-save-val",
+                                            crate::ui::Tr(view.lang)
+                                                .environments()
+                                                .tab_cookies_save_value(),
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 this.save_cookie_value(cid_save.clone(), cx);
-                                            })),
+                                            }),
+                                        ),
                                     ),
                             )
                             .child(kv_line(
-                                view.t("作用域", "Scope"),
+                                crate::ui::Tr(view.lang).environments().tab_cookies_scope(),
                                 if ck.host_only {
                                     format!("{} (Host-Only)", ck.domain)
                                 } else {
@@ -265,9 +294,14 @@ pub fn render_cookies_tab(
                                 cx,
                             ))
                             .child(kv_line(
-                                view.t("过期时间", "Expires"),
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_cookies_expires(),
                                 ck.expires.clone().unwrap_or_else(|| {
-                                    view.t("会话级 (Session)", "Session").to_owned()
+                                    crate::ui::Tr(view.lang)
+                                        .environments()
+                                        .tab_cookies_session()
+                                        .to_owned()
                                 }),
                                 120.0,
                                 cx,
@@ -277,7 +311,9 @@ pub fn render_cookies_tab(
                         card(cx)
                             .p(px(14.0))
                             .child(section_header(
-                                view.t("安全标志 Flags", "Security Flags"),
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_cookies_security_flags(),
                                 None,
                                 cx,
                             ))
@@ -285,7 +321,9 @@ pub fn render_cookies_tab(
                                 "Secure",
                                 None,
                                 Some(SharedString::from(
-                                    view.t("仅在 HTTPS 连接发送。", "Sent only over HTTPS."),
+                                    crate::ui::Tr(view.lang)
+                                        .environments()
+                                        .tab_cookies_sent_only_over_https(),
                                 )),
                                 toggle_switch("ck-flag-sec", cur_sec).on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -324,11 +362,12 @@ pub fn render_cookies_tab(
     } else {
         empty_state(
             UiIcon::Cookie,
-            view.t("选择一个 Cookie", "Select a Cookie"),
-            view.t(
-                "查看和修改 Cookie 值、Secure / HttpOnly / SameSite 属性。",
-                "Inspect and edit cookie values and security flags.",
-            ),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_cookies_select_a_cookie(),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_cookies_inspect_and_edit_cookie_values(),
             cx,
         )
         .into_any_element()
@@ -339,12 +378,11 @@ pub fn render_cookies_tab(
         page = page.child(
             div().px(px(12.0)).pt(px(8.0)).child(alert_banner(
                 Tone::Warning,
-                view.t(
-                    "已删除 Cookie，可立即撤销恢复。",
-                    "Deleted cookie — undo to restore.",
-                ),
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .tab_cookies_deleted_cookie_undo_to_restore(),
                 Some(
-                    btn_secondary("ck-undo-btn", view.t("撤销", "Undo"))
+                    btn_secondary("ck-undo-btn", crate::ui::Tr(view.lang).common().undo())
                         .icon(icon_xs(UiIcon::RotateCcw))
                         .on_click(cx.listener(|this, _, _, cx| this.undo_delete_cookies(cx)))
                         .into_any_element(),

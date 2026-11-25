@@ -18,7 +18,7 @@ use pingdeck_desktop::core::model::{AuthConfig, Request};
 use pingdeck_desktop::services::clipboard;
 
 use crate::bridge::{runtime, spawn_blocking_into};
-use crate::ui::Tone;
+use crate::ui::{Tone, tr};
 
 use super::RequestsView;
 use super::model::{ActiveModal, OpenTab, RequestTabState, TreeItemKind};
@@ -154,7 +154,8 @@ impl RequestsView {
                 match res {
                     Ok(col) => {
                         this.active_modal = None;
-                        this.status_msg = Some((Tone::Success, format!("已创建集合 {}", col.name)));
+                        let msg = tr(cx).requests().act_created_collection(&col.name);
+                        this.status_msg = Some((Tone::Success, msg));
                         if !this.collections.iter().any(|c| c.id == col.id) {
                             this.collections.push(col);
                         }
@@ -200,7 +201,8 @@ impl RequestsView {
                 match res {
                     Ok(f) => {
                         this.active_modal = None;
-                        this.status_msg = Some((Tone::Success, format!("已创建文件夹 {}", f.name)));
+                        let msg = tr(cx).requests().act_created_folder(&f.name);
+                        this.status_msg = Some((Tone::Success, msg));
                         if !this.folders.iter().any(|x| x.id == f.id) {
                             this.folders.push(f);
                         }
@@ -251,7 +253,8 @@ impl RequestsView {
             move |this, res, cx| {
                 match res {
                     Ok(r) => {
-                        this.status_msg = Some((Tone::Success, format!("已复制 {}", r.id)));
+                        let msg = tr(cx).requests().act_duplicated(&r.id);
+                        this.status_msg = Some((Tone::Success, msg));
                         this.reload_workspace_no_window(ws_reload, cx);
                     }
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
@@ -296,7 +299,8 @@ impl RequestsView {
                             }
                         }
                         this.last_undo = Some((token, label.clone()));
-                        this.status_msg = Some((Tone::Warning, format!("已删除 {label}")));
+                        let msg = tr(cx).requests().act_deleted(&label);
+                        this.status_msg = Some((Tone::Warning, msg));
                         this.reload_workspace_no_window(ws_reload, cx);
                     }
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
@@ -320,7 +324,8 @@ impl RequestsView {
             move |this, res, cx| {
                 match res {
                     Ok(_) => {
-                        this.status_msg = Some((Tone::Success, format!("已撤销删除 {label}")));
+                        let msg = tr(cx).requests().act_undid_delete(&label);
+                        this.status_msg = Some((Tone::Success, msg));
                         this.reload_workspace_no_window(ws_reload, cx);
                     }
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
@@ -380,8 +385,8 @@ impl RequestsView {
                     move |this, res, cx| {
                         if res.is_ok() {
                             this.active_modal = None;
-                            this.status_msg =
-                                Some((Tone::Success, format!("已重命名为 {trimmed}")));
+                            let msg = tr(cx).requests().act_renamed(&trimmed);
+                            this.status_msg = Some((Tone::Success, msg));
                             this.reload_workspace_no_window(ws_reload, cx);
                         }
                         cx.notify();
@@ -410,8 +415,8 @@ impl RequestsView {
                     move |this, res, cx| {
                         if res.is_ok() {
                             this.active_modal = None;
-                            this.status_msg =
-                                Some((Tone::Success, format!("已重命名为 {trimmed}")));
+                            let msg = tr(cx).requests().act_renamed(&trimmed);
+                            this.status_msg = Some((Tone::Success, msg));
                             this.reload_workspace_no_window(ws_reload, cx);
                         }
                         cx.notify();
@@ -433,8 +438,8 @@ impl RequestsView {
                     move |this, res, cx| {
                         if res.is_ok() {
                             this.active_modal = None;
-                            this.status_msg =
-                                Some((Tone::Success, format!("已重命名为 {trimmed}")));
+                            let msg = tr(cx).requests().act_renamed(&trimmed);
+                            this.status_msg = Some((Tone::Success, msg));
                             this.reload_workspace_no_window(ws_reload, cx);
                         }
                         cx.notify();
@@ -470,7 +475,8 @@ impl RequestsView {
                 match res {
                     Ok(_) => {
                         this.active_modal = None;
-                        this.status_msg = Some((Tone::Success, "已移动请求".into()));
+                        let msg = tr(cx).requests().act_moved_request().into();
+                        this.status_msg = Some((Tone::Success, msg));
                         this.reload_workspace_no_window(ws_reload, cx);
                     }
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
@@ -525,7 +531,8 @@ impl RequestsView {
             request_code_snippet_impl(runtime(cx).state(), req, SnippetLanguage::Curl, &opts)
                 .unwrap_or_else(|e| format!("# {}", e.message()));
         let _ = clipboard::set_text(&code);
-        self.status_msg = Some((Tone::Success, "已复制 cURL（秘密变量已脱敏）".into()));
+        let msg = tr(cx).requests().act_copied_curl().into();
+        self.status_msg = Some((Tone::Success, msg));
         cx.notify();
     }
 

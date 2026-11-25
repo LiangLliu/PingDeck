@@ -17,13 +17,7 @@ use crate::ui::Tone;
 use super::ProvidersView;
 
 impl ProvidersView {
-    pub fn toggle_provider_enabled(
-        &mut self,
-        pid: String,
-        enabled: bool,
-        zh: bool,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn toggle_provider_enabled(&mut self, pid: String, enabled: bool, cx: &mut Context<Self>) {
         let Some(mut prov) = self
             .providers
             .iter()
@@ -41,11 +35,10 @@ impl ProvidersView {
                     Ok(_) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                "服务商状态已更新".into()
-                            } else {
-                                "Provider updated".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_provider_provider_updated()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -62,7 +55,6 @@ impl ProvidersView {
         pid: String,
         strategy: Option<KeyStrategy>,
         cooldown: Option<bool>,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let Some(mut prov) = self
@@ -87,11 +79,9 @@ impl ProvidersView {
                 Err(err) => {
                     this.status_msg = Some((
                         Tone::Danger,
-                        if zh {
-                            format!("保存失败：{}", err.message())
-                        } else {
-                            err.message().to_owned()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_act_save_failed(err.message()),
                     ));
                     cx.notify();
                 }
@@ -100,7 +90,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn mark_provider_reviewed(&mut self, pid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn mark_provider_reviewed(&mut self, pid: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_provider_mark_reviewed_impl(state, &pid),
@@ -109,11 +99,10 @@ impl ProvidersView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                "已标记为已复核".into()
-                            } else {
-                                "Marked reviewed".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_provider_marked_reviewed()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -125,22 +114,15 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn add_provider_key(
-        &mut self,
-        pid: String,
-        zh: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn add_provider_key(&mut self, pid: String, window: &mut Window, cx: &mut Context<Self>) {
         let secret = self.new_key_secret_input.read(cx).value().trim().to_owned();
         if secret.is_empty() {
             self.status_msg = Some((
                 Tone::Warning,
-                if zh {
-                    "请输入 API 密钥".into()
-                } else {
-                    "Enter an API key".into()
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_actions_provider_enter_an_api_key()
+                    .into(),
             ));
             cx.notify();
             return;
@@ -148,11 +130,9 @@ impl ProvidersView {
         let raw_name = self.new_key_name_input.read(cx).value().trim().to_owned();
         let count = self.keys.iter().filter(|k| k.provider_id == pid).count();
         let name = if raw_name.is_empty() {
-            if zh {
-                format!("密钥 {}", count + 1)
-            } else {
-                format!("Key {}", count + 1)
-            }
+            crate::ui::tr(cx)
+                .providers()
+                .prov_actions_provider_key(count + 1)
         } else {
             raw_name
         };
@@ -194,11 +174,9 @@ impl ProvidersView {
                         this.adding_key_open = false;
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已添加密钥「{}」", k.name)
-                            } else {
-                                format!("Added key {}", k.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_provider_added_key(k.name),
                         ));
                         this.reload_all(cx);
                     }
@@ -210,7 +188,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn toggle_key_enabled(&mut self, key: ProviderKey, zh: bool, cx: &mut Context<Self>) {
+    pub fn toggle_key_enabled(&mut self, key: ProviderKey, cx: &mut Context<Self>) {
         let input = SaveProviderKeyInput {
             id: key.id,
             provider_id: key.provider_id,
@@ -233,11 +211,9 @@ impl ProvidersView {
                 Err(err) => {
                     this.status_msg = Some((
                         Tone::Danger,
-                        if zh {
-                            format!("切换失败：{}", err.message())
-                        } else {
-                            err.message().to_owned()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_act_toggle_failed(err.message()),
                     ));
                     cx.notify();
                 }
@@ -249,7 +225,6 @@ impl ProvidersView {
     pub fn save_edited_key(
         &mut self,
         key: ProviderKey,
-        zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -287,11 +262,9 @@ impl ProvidersView {
                         this.editing_key_id = None;
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已更新密钥「{}」", k.name)
-                            } else {
-                                format!("Updated key {}", k.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_provider_updated_key(k.name),
                         ));
                         this.reload_all(cx);
                     }
@@ -303,7 +276,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn toggle_reveal_key(&mut self, key_id: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn toggle_reveal_key(&mut self, key_id: String, cx: &mut Context<Self>) {
         if self
             .revealed_provider_key
             .as_ref()
@@ -323,11 +296,9 @@ impl ProvidersView {
                     Err(err) => {
                         this.status_msg = Some((
                             Tone::Danger,
-                            if zh {
-                                format!("无法读取密钥：{}", err.message())
-                            } else {
-                                err.message().to_owned()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_act_reveal_key_failed(err.message()),
                         ));
                     }
                 }
@@ -337,7 +308,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn clear_key_cooldown(&mut self, key_id: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn clear_key_cooldown(&mut self, key_id: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -346,11 +317,10 @@ impl ProvidersView {
             move |this, (), cx| {
                 this.status_msg = Some((
                     Tone::Success,
-                    if zh {
-                        "已清除冷却".into()
-                    } else {
-                        "Cooldown cleared".into()
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_actions_provider_cooldown_cleared()
+                        .into(),
                 ));
                 this.reload_all(cx);
             },
@@ -358,7 +328,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn delete_provider_key(&mut self, key_id: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn delete_provider_key(&mut self, key_id: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_key_delete_impl(state, &key_id),
@@ -367,11 +337,10 @@ impl ProvidersView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                "已删除密钥".into()
-                            } else {
-                                "Key deleted".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_provider_key_deleted()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -383,7 +352,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn refresh_provider_balance(&mut self, pid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn refresh_provider_balance(&mut self, pid: String, cx: &mut Context<Self>) {
         self.refreshing_balance = true;
         cx.notify();
         let task = spawn_async_into(
@@ -395,11 +364,7 @@ impl ProvidersView {
                     Ok(_) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                "余额已刷新".into()
-                            } else {
-                                "Balance refreshed".into()
-                            },
+                            crate::ui::tr(cx).providers().prov_bal_refreshed().into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -411,7 +376,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn reset_provider_circuits(&mut self, pid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn reset_provider_circuits(&mut self, pid: String, cx: &mut Context<Self>) {
         let key_ids: Vec<String> = self
             .keys
             .iter()
@@ -428,11 +393,10 @@ impl ProvidersView {
             move |this, (), cx| {
                 this.status_msg = Some((
                     Tone::Success,
-                    if zh {
-                        "已重置该服务商熔断器".into()
-                    } else {
-                        "Provider circuits reset".into()
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_actions_provider_provider_circuits_reset()
+                        .into(),
                 ));
                 this.reload_all(cx);
             },

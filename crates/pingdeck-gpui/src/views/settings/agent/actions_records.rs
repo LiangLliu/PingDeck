@@ -24,16 +24,15 @@ impl AgentSettingsView {
     // ── Trusted Folders (Memory) ─────────────────────────────────────────────
 
     pub(super) fn pick_and_trust_folder(&mut self, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let rx = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some(SharedString::from(if zh {
-                "选择要信任的项目文件夹"
-            } else {
-                "Choose a project folder to trust"
-            })),
+            prompt: Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_records_choose_a_project_folder_to(),
+            )),
         });
         let task = cx.spawn(async move |weak, cx| {
             if let Ok(Ok(Some(paths))) = rx.await
@@ -47,7 +46,6 @@ impl AgentSettingsView {
     }
 
     pub(super) fn trust_folder(&mut self, path: String, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let display = path.clone();
         let task = spawn_blocking_into(
             cx,
@@ -56,11 +54,9 @@ impl AgentSettingsView {
                 Ok(_) => {
                     this.flash = Some((
                         Tone::Success,
-                        if zh {
-                            format!("已信任 {display}")
-                        } else {
-                            format!("Trusted {display}")
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_records_trusted(display),
                     ));
                     this.reload_all(cx);
                 }
@@ -74,7 +70,6 @@ impl AgentSettingsView {
     }
 
     pub(super) fn revoke_folder_trust(&mut self, path: String, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let display = path.clone();
         let task = spawn_blocking_into(
             cx,
@@ -83,11 +78,9 @@ impl AgentSettingsView {
                 Ok(_) => {
                     this.flash = Some((
                         Tone::Warning,
-                        if zh {
-                            format!("已撤销对 {display} 的信任")
-                        } else {
-                            format!("Revoked trust for {display}")
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_records_revoked_trust_for(display),
                     ));
                     this.reload_all(cx);
                 }
@@ -292,7 +285,6 @@ impl AgentSettingsView {
     }
 
     pub(super) fn review_mcp_server(&mut self, server_id: String, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_mcp_tool_review_impl(state, &server_id, &[]),
@@ -300,11 +292,9 @@ impl AgentSettingsView {
                 Ok(v) => {
                     this.flash = Some((
                         Tone::Success,
-                        if zh {
-                            format!("已更新 {} 的信任状态", v.server.name)
-                        } else {
-                            format!("Updated trust for {}", v.server.name)
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_records_updated_trust_for(v.server.name),
                     ));
                     this.reload_all(cx);
                 }
@@ -335,7 +325,6 @@ impl AgentSettingsView {
     }
 
     pub(super) fn delete_mcp_server(&mut self, server_id: String, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_mcp_server_delete_impl(state, &server_id),
@@ -345,12 +334,10 @@ impl AgentSettingsView {
                     Ok(_) => {
                         this.flash = Some((
                             Tone::Warning,
-                            if zh {
-                                "已删除 MCP 服务器"
-                            } else {
-                                "MCP server deleted"
-                            }
-                            .to_owned(),
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_records_mcp_server_deleted()
+                                .to_owned(),
                         ));
                         this.reload_all(cx);
                     }
@@ -396,7 +383,6 @@ impl AgentSettingsView {
     // ── Skills ───────────────────────────────────────────────────────────────
 
     pub(super) fn rescan_skills(&mut self, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let task = spawn_blocking_into(
             cx,
             |state| {
@@ -409,11 +395,9 @@ impl AgentSettingsView {
                     this.skill_entries = entries;
                     this.flash = Some((
                         Tone::Success,
-                        if zh {
-                            format!("扫描完成：找到 {count} 个技能")
-                        } else {
-                            format!("Scan finished: {count} skill(s) found")
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_records_scan_finished_skill_s_found(count),
                     ));
                     this.reload_all(cx);
                 }
@@ -427,16 +411,13 @@ impl AgentSettingsView {
     }
 
     pub(super) fn pick_and_add_skill_dir(&mut self, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let rx = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some(SharedString::from(if zh {
-                "选择技能文件夹"
-            } else {
-                "Choose a skills folder"
-            })),
+            prompt: Some(SharedString::from(
+                crate::ui::tr(cx).settings().skills_add_title(),
+            )),
         });
         let task = cx.spawn(async move |weak, cx| {
             if let Ok(Ok(Some(paths))) = rx.await
@@ -493,16 +474,15 @@ impl AgentSettingsView {
     }
 
     pub(super) fn pick_and_import_skill(&mut self, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let rx = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some(SharedString::from(if zh {
-                "选择包含 SKILL.md 的文件夹"
-            } else {
-                "Choose a folder containing SKILL.md"
-            })),
+            prompt: Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_records_choose_a_folder_containing_skill(),
+            )),
         });
         let task = cx.spawn(async move |weak, cx| {
             if let Ok(Ok(Some(paths))) = rx.await
@@ -517,11 +497,9 @@ impl AgentSettingsView {
                             Ok(sk) => {
                                 this.flash = Some((
                                     Tone::Success,
-                                    if zh {
-                                        format!("已导入技能 {}", sk.name)
-                                    } else {
-                                        format!("Imported skill {}", sk.name)
-                                    },
+                                    crate::ui::tr(cx)
+                                        .settings()
+                                        .actions_records_imported_skill(sk.name),
                                 ));
                                 this.reload_all(cx);
                             }
@@ -554,7 +532,6 @@ impl AgentSettingsView {
     }
 
     pub(super) fn remove_imported_skill(&mut self, name: String, cx: &mut Context<Self>) {
-        let zh = self.zh();
         let label = name.clone();
         let task = spawn_blocking_into(
             cx,
@@ -563,11 +540,9 @@ impl AgentSettingsView {
                 Ok(()) => {
                     this.flash = Some((
                         Tone::Warning,
-                        if zh {
-                            format!("已移除导入技能 {label}")
-                        } else {
-                            format!("Removed imported skill {label}")
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_records_removed_imported_skill(label),
                     ));
                     this.reload_all(cx);
                 }

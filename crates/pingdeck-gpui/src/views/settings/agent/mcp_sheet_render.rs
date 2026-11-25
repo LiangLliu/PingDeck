@@ -16,7 +16,6 @@ use super::mcp_sheet::McpSheet;
 
 pub(super) fn render_form_mode(
     sheet: &McpSheet,
-    zh: bool,
     p: &pingdeck_desktop::theme::ResolvedPalette,
     cx: &mut Context<McpSheet>,
 ) -> gpui_kit::Div {
@@ -40,12 +39,12 @@ pub(super) fn render_form_mode(
         .pr(px(4.0))
         .overflow_y_scrollbar()
         .child(field_block(
-            if zh { "服务器名称" } else { "Server name" },
+            crate::ui::tr(cx).settings().mcp_sheet_render_server_name(),
             text_input(&sheet.name_input),
             p,
         ))
         .child(field_block(
-            if zh { "传输方式" } else { "Transport" },
+            crate::ui::tr(cx).settings().tools_form_transport(),
             transport_seg,
             p,
         ));
@@ -53,16 +52,14 @@ pub(super) fn render_form_mode(
     if sheet.is_http {
         fields = fields
             .child(field_block(
-                if zh { "端点 URL" } else { "Endpoint URL" },
+                crate::ui::tr(cx).settings().mcp_sheet_render_endpoint_url(),
                 text_input(&sheet.url_input),
                 p,
             ))
             .child(field_block(
-                if zh {
-                    "请求头（每行 Name: Value，存入本机保险库）"
-                } else {
-                    "Headers (Name: Value per line, stored locally)"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .mcp_sheet_render_headers_name_value_per_line(),
                 div()
                     .h(px(88.0))
                     .child(multiline_input(&sheet.headers_input)),
@@ -71,40 +68,37 @@ pub(super) fn render_form_mode(
     } else {
         fields = fields
             .child(field_block(
-                if zh { "启动命令" } else { "Command" },
+                crate::ui::tr(cx).settings().mcp_sheet_render_command(),
                 text_input(&sheet.command_input),
                 p,
             ))
             .child(field_block(
-                if zh {
-                    "命令参数（每行一个）"
-                } else {
-                    "Arguments (one per line)"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .mcp_sheet_render_arguments_one_per_line(),
                 div().h(px(80.0)).child(multiline_input(&sheet.args_input)),
                 p,
             ))
             .child(field_block(
-                if zh {
-                    "工作目录（可选，绝对路径）"
-                } else {
-                    "Working directory (optional)"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .mcp_sheet_render_working_directory_optional(),
                 h_row()
                     .gap(px(6.0))
                     .child(div().flex_1().child(text_input(&sheet.cwd_input)))
                     .child(
-                        btn_secondary("mcp-pick-cwd", if zh { "选择…" } else { "Browse…" })
-                            .on_click(cx.listener(|this, _, window, cx| this.pick_cwd(window, cx))),
+                        btn_secondary(
+                            "mcp-pick-cwd",
+                            crate::ui::tr(cx).settings().mcp_sheet_render_browse(),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| this.pick_cwd(window, cx))),
                     ),
                 p,
             ))
             .child(field_block(
-                if zh {
-                    "环境变量（每行 KEY=VALUE，存入本机保险库）"
-                } else {
-                    "Environment (KEY=VALUE per line, stored locally)"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .mcp_sheet_render_environment_key_value_per_line(),
                 div().h(px(80.0)).child(multiline_input(&sheet.env_input)),
                 p,
             ));
@@ -112,11 +106,9 @@ pub(super) fn render_form_mode(
 
     fields = fields
         .child(field_block(
-            if zh {
-                "调用超时（秒，留空默认 120）"
-            } else {
-                "Call timeout (seconds, default 120)"
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .mcp_sheet_render_call_timeout_seconds_default_120(),
             div().w(px(120.0)).child(text_input(&sheet.timeout_input)),
             p,
         ))
@@ -133,17 +125,19 @@ pub(super) fn render_form_mode(
                                 .text_xs()
                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
                                 .text_color(to_hsla(p.ink))
-                                .child(if zh {
-                                    "信任此服务器"
-                                } else {
-                                    "Trust this server"
-                                }),
+                                .child(
+                                    crate::ui::tr(cx)
+                                        .settings()
+                                        .mcp_sheet_render_trust_this_server(),
+                                ),
                         )
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                            "允许不经询问运行其标记为只读的工具；未信任服务器的工具每次都会询问。"
-                        } else {
-                            "May run tools it marks read-only without asking."
-                        })),
+                        .child(
+                            div().text_xs().text_color(to_hsla(p.muted)).child(
+                                crate::ui::tr(cx)
+                                    .settings()
+                                    .mcp_sheet_render_may_run_tools_it_marks(),
+                            ),
+                        ),
                 )
                 .child(
                     toggle_switch("mcp-sheet-trust", sheet.trusted).on_change(cx.listener(
@@ -163,11 +157,7 @@ pub(super) fn render_form_mode(
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh {
-                            "保存后立即启用"
-                        } else {
-                            "Enabled"
-                        }),
+                        .child(crate::ui::tr(cx).settings().mcp_sheet_render_enabled()),
                 )
                 .child(
                     toggle_switch("mcp-sheet-en", sheet.enabled).on_change(cx.listener(
@@ -183,19 +173,13 @@ pub(super) fn render_form_mode(
     if let Some(tr) = &sheet.test_result {
         let (shape, bg, fg, msg) = if tr.ok {
             let srv_name = tr.server.as_deref().unwrap_or("MCP");
-            let text = if zh {
-                format!(
-                    "已连接 {srv_name}，用时 {} ms · {} 个工具",
+            let text = crate::ui::tr(cx)
+                .settings()
+                .mcp_sheet_render_connected_in_ms_tool_s(
+                    srv_name,
                     tr.elapsed_ms,
-                    tr.tool_names.len()
-                )
-            } else {
-                format!(
-                    "Connected {srv_name} in {} ms · {} tool(s)",
-                    tr.elapsed_ms,
-                    tr.tool_names.len()
-                )
-            };
+                    tr.tool_names.len(),
+                );
             (StatusShape::Ok, to_hsla(p.ok_soft), to_hsla(p.ok), text)
         } else {
             let err = tr.error.as_deref().unwrap_or("Failed");
@@ -231,11 +215,11 @@ pub(super) fn render_form_mode(
                 .text_xs()
                 .text_color(to_hsla(p.warn))
                 .child(status_indicator(StatusShape::Warn, cx))
-                .child(if zh {
-                    "此 stdio 命令将在沙箱外运行。确认命令安全后再次点击“确认启动并保存”。"
-                } else {
-                    "This stdio command runs outside the sandbox. Click Confirm & Save to start it."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .mcp_sheet_render_this_stdio_command_runs_outside(),
+                ),
         );
     }
 
@@ -255,15 +239,9 @@ pub(super) fn render_form_mode(
     }
 
     let save_label = if sheet.needs_stdio_confirm {
-        if zh {
-            "确认启动并保存"
-        } else {
-            "Confirm & Save"
-        }
-    } else if zh {
-        "保存"
+        crate::ui::tr(cx).settings().mcp_sheet_render_confirm_save()
     } else {
-        "Save"
+        crate::ui::tr(cx).common().save()
     };
     let confirm_flag = sheet.needs_stdio_confirm;
 
@@ -277,11 +255,9 @@ pub(super) fn render_form_mode(
                 btn_secondary(
                     "mcp-sheet-test",
                     if sheet.testing {
-                        if zh { "测试中…" } else { "Testing…" }
-                    } else if zh {
-                        "测试连接"
+                        crate::ui::tr(cx).settings().mcp_sheet_render_testing()
                     } else {
-                        "Test connection"
+                        crate::ui::tr(cx).settings().network_test()
                     },
                 )
                 .icon(icon_xs(UiIcon::Zap))
@@ -291,7 +267,7 @@ pub(super) fn render_form_mode(
                 h_row()
                     .gap(px(8.0))
                     .child(
-                        btn_ghost("mcp-sheet-cancel", if zh { "取消" } else { "Cancel" })
+                        btn_ghost("mcp-sheet-cancel", crate::ui::tr(cx).common().cancel())
                             .on_click(|_, window, cx| window.close_sheet(cx)),
                     )
                     .child(btn_primary("mcp-sheet-save", save_label).on_click(
@@ -303,7 +279,6 @@ pub(super) fn render_form_mode(
 
 pub(super) fn render_json_mode(
     sheet: &McpSheet,
-    zh: bool,
     p: &pingdeck_desktop::theme::ResolvedPalette,
     cx: &mut Context<McpSheet>,
 ) -> gpui_kit::Div {
@@ -311,14 +286,11 @@ pub(super) fn render_json_mode(
         .size_full()
         .gap(px(12.0))
         .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(if zh {
-                    "粘贴 Claude Desktop 或 Cursor 的 mcpServers JSON 格式。导入的服务器默认停用且未受信任，秘密值以占位符或本机保险库存管。"
-                } else {
-                    "Paste Claude Desktop / Cursor mcpServers JSON. Imported servers start disabled and untrusted."
-                }),
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .mcp_sheet_render_paste_claude_desktop_cursor_mcpservers(),
+            ),
         )
         .child(
             div()
@@ -350,17 +322,15 @@ pub(super) fn render_json_mode(
             .border_t_1()
             .border_color(to_hsla(p.line.composite_over(p.surface)))
             .child(
-                btn_ghost("mcp-json-cancel", if zh { "取消" } else { "Cancel" })
+                btn_ghost("mcp-json-cancel", crate::ui::tr(cx).common().cancel())
                     .on_click(|_, window, cx| window.close_sheet(cx)),
             )
             .child(
                 btn_primary(
                     "mcp-json-import",
-                    if zh {
-                        "校验并导入"
-                    } else {
-                        "Validate & Import"
-                    },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .mcp_sheet_render_validate_import(),
                 )
                 .on_click(cx.listener(|this, _, _, cx| this.import_json(cx))),
             ),
@@ -443,16 +413,18 @@ pub(super) fn serialize_mcp_json(servers: &[AgentMcpServer]) -> String {
 pub(super) fn parse_mcp_servers_json(
     raw: &str,
     existing: &[AgentMcpServer],
+    lang: pingdeck_desktop::core::model::settings::Language,
 ) -> Result<Vec<AgentMcpServer>, String> {
+    let s = crate::ui::Tr(lang).settings();
     let root: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("JSON 解析失败：{e}"))?;
+        serde_json::from_str(raw).map_err(|e| s.agent_mcp_err_json_parse(e))?;
     let Some(servers_obj) = root.get("mcpServers").and_then(|v| v.as_object()) else {
-        return Err("需要名为 mcpServers 的顶层对象 / Expected top-level mcpServers object".into());
+        return Err(s.agent_mcp_err_top_object().to_owned());
     };
     let mut out = Vec::new();
     for (name, val) in servers_obj {
         let Some(obj) = val.as_object() else {
-            return Err(format!("{name} 必须是 JSON 对象"));
+            return Err(s.agent_mcp_err_entry_object(name));
         };
         let existing_id = existing
             .iter()
@@ -501,7 +473,7 @@ pub(super) fn parse_mcp_servers_json(
                 cwd,
             }
         } else {
-            return Err(format!("{name} 需要 command 或 url 字段"));
+            return Err(s.agent_mcp_err_entry_target(name));
         };
         out.push(AgentMcpServer {
             id: existing_id,

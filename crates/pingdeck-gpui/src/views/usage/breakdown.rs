@@ -19,7 +19,6 @@ use super::state::{
 
 pub fn render_breakdown_card(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let fail_total: u64 = view.failures.iter().map(|f| f.count).sum();
 
     let mut tab_bar = tab_bar_underline("usage-dim-tabs")
@@ -30,20 +29,23 @@ pub fn render_breakdown_card(view: &UsageView, cx: &mut Context<UsageView>) -> A
         }));
     for dim in BreakdownDim::ALL {
         let lbl = if dim == BreakdownDim::Failure && fail_total > 0 {
-            SharedString::from(format!("{} ({fail_total})", dim.label(zh)))
+            SharedString::from(format!("{} ({fail_total})", dim.label(view.lang)))
         } else {
-            SharedString::from(dim.label(zh))
+            SharedString::from(dim.label(view.lang))
         };
         tab_bar = tab_bar.child(tab_item(lbl));
     }
 
-    let pricing_link = btn_ghost("usage-go-pricing", view.t("设置价格 ↗", "Pricing ↗"))
-        .icon(icon_xs(UiIcon::ExternalLink))
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.pending_handoff
-                .set(Some(UsageHandoff::OpenSettings(SettingsSection::Catalog)));
-            cx.notify();
-        }));
+    let pricing_link = btn_ghost(
+        "usage-go-pricing",
+        crate::ui::Tr(view.lang).usage().usage_breakdown_pricing(),
+    )
+    .icon(icon_xs(UiIcon::ExternalLink))
+    .on_click(cx.listener(|this, _, _, cx| {
+        this.pending_handoff
+            .set(Some(UsageHandoff::OpenSettings(SettingsSection::Catalog)));
+        cx.notify();
+    }));
 
     let mut box_el = card(cx).w_full().p(px(12.0)).gap(px(8.0)).child(
         h_row()
@@ -74,7 +76,9 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         .map_or(&[][..], |s| s.by_model.as_slice());
     if rows.is_empty() {
         return empty_inline(
-            view.t("暂无模型维度统计", "No model usage in range"),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_breakdown_no_model_usage_in_range(),
             None,
             None,
             cx,
@@ -84,15 +88,35 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
     let mut list = v_col().w_full().gap(px(4.0)).child(table_header(
         &[
             (
-                view.t("模型（点击下钻日志）", "Model (click to inspect)"),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_breakdown_model_click_to_inspect(),
                 None,
             ),
-            (view.t("服务商", "Provider"), Some(120.0)),
-            (view.t("调用", "Calls"), Some(70.0)),
-            (view.t("失败", "Fail"), Some(60.0)),
-            (view.t("平均耗时", "Avg Lat"), Some(80.0)),
-            (view.t("总 Token", "Tokens"), Some(100.0)),
-            (view.t("估算费用", "Cost"), Some(96.0)),
+            (
+                crate::ui::Tr(view.lang).usage().usage_dim_provider(),
+                Some(120.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_kpi_calls(),
+                Some(70.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_fail(),
+                Some(60.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_avg_lat(),
+                Some(80.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_tokens(),
+                Some(100.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_cost(),
+                Some(96.0),
+            ),
         ],
         cx,
     ));
@@ -105,7 +129,7 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
             .filter(|(_, c)| *c > 0)
             .map_or_else(|| "—".to_owned(), |(s, c)| fmt_latency(s / c));
         let cost = if row.free {
-            view.t("免费", "Free").to_owned()
+            crate::ui::Tr(view.lang).common().free().to_owned()
         } else {
             fmt_cost_map(&row.usage.cost_micro)
         };
@@ -183,14 +207,15 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
 
 fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let groups = view
         .summary
         .as_ref()
         .map_or(&[][..], |s| s.groups.as_slice());
     if groups.is_empty() {
         return empty_inline(
-            view.t("该维度暂无数据", "No rows for this breakdown"),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_breakdown_no_rows_for_this_breakdown(),
             None,
             None,
             cx,
@@ -200,12 +225,27 @@ fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
     let dim = view.breakdown_dim;
     let mut list = v_col().w_full().gap(px(4.0)).child(table_header(
         &[
-            (dim.label(zh), None),
-            (view.t("调用", "Calls"), Some(80.0)),
-            (view.t("失败", "Failed"), Some(70.0)),
-            (view.t("输入 Token", "Input"), Some(100.0)),
-            (view.t("输出 Token", "Output"), Some(100.0)),
-            (view.t("估算费用", "Cost"), Some(100.0)),
+            (dim.label(view.lang), None),
+            (
+                crate::ui::Tr(view.lang).usage().usage_kpi_calls(),
+                Some(80.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_kpi_failed(),
+                Some(70.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_input(),
+                Some(100.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_output(),
+                Some(100.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_cost(),
+                Some(100.0),
+            ),
         ],
         cx,
     ));
@@ -214,7 +254,7 @@ fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         let raw_key = b.key.first().cloned().unwrap_or_default();
         let display = match dim {
             BreakdownDim::Provider => view.provider_name(&raw_key),
-            BreakdownDim::Source => source_label(&raw_key, zh).to_owned(),
+            BreakdownDim::Source => source_label(&raw_key, view.lang).to_owned(),
             BreakdownDim::Client => view.client_name(&raw_key),
             BreakdownDim::Key => view.key_name(&raw_key),
             _ => raw_key.clone(),
@@ -287,7 +327,9 @@ fn render_failure_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEle
     let p = palette(cx);
     if view.failures.is_empty() {
         return empty_inline(
-            view.t("该时间范围内无失败记录", "No failures in range"),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_breakdown_no_failures_in_range(),
             None,
             None,
             cx,
@@ -300,8 +342,16 @@ fn render_failure_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEle
     }
     let mut list = v_col().w_full().gap(px(4.0)).child(table_header(
         &[
-            (view.t("失败类型（点击下钻）", "Failure Kind"), None),
-            (view.t("次数", "Count"), Some(90.0)),
+            (
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_breakdown_failure_kind(),
+                None,
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_breakdown_count(),
+                Some(90.0),
+            ),
         ],
         cx,
     ));

@@ -20,23 +20,23 @@ use super::state::{HistoryModal, HistoryView};
 
 pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
+    let h = crate::ui::Tr(view.lang).history();
     let total_shown = view.total.unwrap_or(view.entries.len() as u64);
 
     let sources = [
-        (HistorySource::Request, "请求", "Req"),
-        (HistorySource::Flow, "流程", "Flow"),
-        (HistorySource::Runner, "Runner", "Runner"),
-        (HistorySource::Mock, "Mock", "Mock"),
-        (HistorySource::Agent, "Agent", "Agent"),
+        (HistorySource::Request, "req", h.src_req_short()),
+        (HistorySource::Flow, "flow", h.src_flow()),
+        (HistorySource::Runner, "runner", "Runner"),
+        (HistorySource::Mock, "mock", "Mock"),
+        (HistorySource::Agent, "agent", "Agent"),
     ];
     let mut src_row = h_row().gap(px(4.0)).flex_wrap();
-    for (src, zh_l, en_l) in sources {
+    for (src, id_tag, lbl) in sources {
         let on = view.filter.sources.contains(&src);
         src_row = src_row.child(
             choice_chip(
-                SharedString::from(format!("hist-src-{en_l}")),
-                if zh { zh_l } else { en_l },
+                SharedString::from(format!("hist-src-{id_tag}")),
+                lbl,
                 on,
                 cx,
             )
@@ -60,7 +60,7 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
     st_row = st_row.child(
         choice_chip(
             "hist-st-fail",
-            view.t("仅失败", "Failed"),
+            crate::ui::Tr(view.lang).history().sidebar_failed(),
             view.filter.include_failed,
             cx,
         )
@@ -68,8 +68,11 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
     );
     if !view.filter.is_empty() {
         st_row = st_row.child(
-            btn_ghost("hist-filter-reset", view.t("重置", "Reset"))
-                .on_click(cx.listener(|this, _, window, cx| this.reset_filters(window, cx))),
+            btn_ghost(
+                "hist-filter-reset",
+                crate::ui::Tr(view.lang).history().sidebar_reset(),
+            )
+            .on_click(cx.listener(|this, _, window, cx| this.reset_filters(window, cx))),
         );
     }
 
@@ -104,15 +107,20 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
         .gap(px(2.0))
         .child(
             btn_icon("hist-export-har", UiIcon::Download)
-                .tooltip(view.t(
-                    "导出筛选结果为 HAR 1.2",
-                    "Export filtered entries as HAR 1.2",
-                ))
+                .tooltip(
+                    crate::ui::Tr(view.lang)
+                        .history()
+                        .sidebar_export_filtered_entries_as_har(),
+                )
                 .on_click(cx.listener(|this, _, _, cx| this.export_har(None, cx))),
         )
         .child(
             btn_icon("hist-clear-filtered", UiIcon::Trash)
-                .tooltip(view.t("清空当前筛选的历史", "Clear filtered history"))
+                .tooltip(
+                    crate::ui::Tr(view.lang)
+                        .history()
+                        .sidebar_clear_filtered_history(),
+                )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if total_shown == 0 {
                         return;
@@ -123,13 +131,13 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
         )
         .child(
             btn_icon("hist-refresh-top", UiIcon::Refresh)
-                .tooltip(view.t("刷新历史", "Refresh history"))
+                .tooltip(crate::ui::Tr(view.lang).history().sidebar_refresh_history())
                 .on_click(cx.listener(|this, _, _, cx| this.reload_page(true, cx))),
         )
         .into_any_element();
 
     let header = pane_header(
-        view.t("执行历史", "History"),
+        crate::ui::Tr(view.lang).history().sidebar_history(),
         Some(total_shown as usize),
         Some(right_actions),
         Some(filter_box.into_any_element()),
@@ -140,14 +148,19 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
     if view.entries.is_empty() {
         list = list.child(empty_inline(
             if view.workspace_total == Some(0) {
-                view.t("工作区暂无执行记录", "No requests recorded yet")
+                crate::ui::Tr(view.lang)
+                    .history()
+                    .sidebar_no_requests_recorded_yet()
             } else {
-                view.t("当前筛选条件下没有记录", "No entries match this filter")
+                crate::ui::Tr(view.lang)
+                    .history()
+                    .sidebar_no_entries_match_this_filter()
             },
-            Some(SharedString::from(view.t(
-                "在请求、流程、Collection Runner 或 Mock 服务执行后会自动留档。",
-                "Requests, Flows, Runner, Mock, and Agent calls appear here automatically.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .history()
+                    .sidebar_requests_flows_runner_mock_and(),
+            )),
             None,
             cx,
         ));
@@ -159,13 +172,10 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
             let bucket = parsed_ms.map_or(2, |ms| date_bucket(ms, now_ms));
             if last_bucket != Some(bucket) {
                 last_bucket = Some(bucket);
-                let grp_lbl = match (bucket, zh) {
-                    (0, true) => "今天",
-                    (0, false) => "Today",
-                    (1, true) => "昨天",
-                    (1, false) => "Yesterday",
-                    (_, true) => "更早",
-                    (_, false) => "Earlier",
+                let grp_lbl = match bucket {
+                    0 => h.bucket_today(),
+                    1 => h.bucket_yesterday(),
+                    _ => h.bucket_earlier(),
                 };
                 list = list.child(
                     div()
@@ -224,7 +234,11 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
                                         .child(method_badge(&method_s, cx))
                                         .child(badge(st_text, st_tone, cx))
                                         .children(checks_failed.then(|| {
-                                            badge(view.t("断言失败", "Checks ✗"), Tone::Danger, cx)
+                                            badge(
+                                                crate::ui::Tr(view.lang).history().sidebar_checks(),
+                                                Tone::Danger,
+                                                cx,
+                                            )
                                         }))
                                         .child(
                                             div()
@@ -263,7 +277,10 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
                                                 .text_color(to_hsla(p.faint))
                                                 .child(t)
                                         }))
-                                        .child(meta_pill(source_label(entry.source, zh), cx)),
+                                        .child(meta_pill(
+                                            source_label(entry.source, view.lang),
+                                            cx,
+                                        )),
                                 ),
                         ),
                 ),
@@ -276,9 +293,9 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
                     btn_secondary(
                         "hist-load-more",
                         if view.loading {
-                            view.t("加载中…", "Loading…")
+                            crate::ui::Tr(view.lang).common().loading()
                         } else {
-                            view.t("加载更多", "Load More")
+                            crate::ui::Tr(view.lang).history().sidebar_load_more()
                         },
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.reload_page(false, cx))),
@@ -294,20 +311,16 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
         div()
             .text_size(px(11.0))
             .text_color(to_hsla(p.muted))
-            .child(if zh {
-                format!("已载入 {} / 共 {} 条", view.entries.len(), total_shown)
-            } else {
-                format!("Loaded {} / {} total", view.entries.len(), total_shown)
-            }),
+            .child(
+                crate::ui::tr(cx)
+                    .history()
+                    .sidebar_loaded_total(view.entries.len(), total_shown),
+            ),
         Some(
             div()
                 .text_size(px(10.5))
                 .text_color(to_hsla(p.faint))
-                .child(if zh {
-                    format!("上限 {cap}")
-                } else {
-                    format!("Cap {cap}")
-                })
+                .child(crate::ui::tr(cx).history().sidebar_cap(cap))
                 .into_any_element(),
         ),
         cx,
@@ -327,14 +340,16 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
     .into_any_element()
 }
 
-pub fn source_label(src: HistorySource, zh: bool) -> &'static str {
-    match (src, zh) {
-        (HistorySource::Request, true) => "请求",
-        (HistorySource::Request, false) => "Request",
-        (HistorySource::Runner, _) => "Runner",
-        (HistorySource::Flow, true) => "流程",
-        (HistorySource::Flow, false) => "Flow",
-        (HistorySource::Mock, _) => "Mock",
-        (HistorySource::Agent, _) => "Agent",
+pub fn source_label(
+    src: HistorySource,
+    lang: pingdeck_desktop::core::model::settings::Language,
+) -> &'static str {
+    let h = crate::ui::Tr(lang).history();
+    match src {
+        HistorySource::Request => h.src_req(),
+        HistorySource::Runner => "Runner",
+        HistorySource::Flow => h.src_flow(),
+        HistorySource::Mock => "Mock",
+        HistorySource::Agent => "Agent",
     }
 }

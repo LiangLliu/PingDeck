@@ -13,7 +13,6 @@ use super::resp_http::warning_strip;
 
 pub(super) fn render_resp_body(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -46,22 +45,28 @@ pub(super) fn render_resp_body(
                         .child(text_input(&view.resp_filter_input)),
                 )
                 .child(
-                    btn_secondary("resp-filter-go", if zh { "筛选" } else { "Filter" }).on_click(
+                    btn_secondary(
+                        "resp-filter-go",
+                        crate::ui::tr(cx).exchange().resp_http_tabs_filter(),
+                    )
+                    .on_click(
                         cx.listener(|this, _, window, cx| this.apply_jsonpath_filter(window, cx)),
                     ),
                 )
                 .children(has_filter.then(|| {
-                    btn_ghost("resp-filter-reset", if zh { "全部" } else { "Reset" }).on_click(
-                        cx.listener(move |this, _, window, cx| {
-                            this.resp_filter_input
-                                .update(cx, |i, cx| i.set_value("", window, cx));
-                            if let Some(t) = this.active_req_mut() {
-                                t.http_jsonpath_query.clear();
-                                t.http_jsonpath_result = None;
-                            }
-                            this.set_http_response_format(cur_fmt, cur_pretty, window, cx);
-                        }),
+                    btn_ghost(
+                        "resp-filter-reset",
+                        crate::ui::tr(cx).exchange().resp_http_tabs_reset(),
                     )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.resp_filter_input
+                            .update(cx, |i, cx| i.set_value("", window, cx));
+                        if let Some(t) = this.active_req_mut() {
+                            t.http_jsonpath_query.clear();
+                            t.http_jsonpath_result = None;
+                        }
+                        this.set_http_response_format(cur_fmt, cur_pretty, window, cx);
+                    }))
                 }))
                 .children(filter_status.map(|(ok, mode)| {
                     badge(mode, if ok { Tone::Accent } else { Tone::Danger }, cx)
@@ -71,20 +76,16 @@ pub(super) fn render_resp_body(
                     div()
                         .text_size(px(11.0))
                         .text_color(to_hsla(p.faint))
-                        .child(SharedString::from(if zh {
-                            format!("{line_count} 行 · UTF-8")
-                        } else {
-                            format!("{line_count} lines · UTF-8")
-                        })),
+                        .child(SharedString::from(
+                            crate::ui::tr(cx)
+                                .exchange()
+                                .resp_http_tabs_lines_utf_8(line_count),
+                        )),
                 )
                 .child(
                     btn_ghost(
                         "resp-extract-env",
-                        if zh {
-                            "提取为环境变量"
-                        } else {
-                            "Extract to env"
-                        },
+                        crate::ui::tr(cx).exchange().resp_http_tabs_extract_to_env(),
                     )
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_extract_variable_modal(window, cx);
@@ -103,7 +104,6 @@ pub(super) fn render_resp_body(
 
 pub(super) fn render_resp_headers(
     resp: &ExecutionResult,
-    zh: bool,
     cx: &Context<RequestsView>,
 ) -> impl IntoElement {
     let mut list = v_col()
@@ -114,11 +114,9 @@ pub(super) fn render_resp_headers(
         .overflow_y_scrollbar();
     if resp.headers.is_empty() {
         return list.child(empty_inline(
-            if zh {
-                "无响应头"
-            } else {
-                "No response headers"
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_tabs_no_response_headers(),
             None,
             None,
             cx,
@@ -132,33 +130,26 @@ pub(super) fn render_resp_headers(
 
 pub(super) fn render_resp_cookies(
     resp: &ExecutionResult,
-    zh: bool,
     cx: &Context<RequestsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
     let (jar_lbl, jar_tone) = match resp.cookie_report.jar {
         CookieJarOutcome::Stored => (
-            if zh {
-                "已存入工作区 Cookie 罐"
-            } else {
-                "Stored in Cookie Jar"
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_tabs_stored_in_cookie_jar(),
             Tone::Success,
         ),
         CookieJarOutcome::NotStored => (
-            if zh {
-                "未存入 Cookie 罐"
-            } else {
-                "Not stored in jar"
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_tabs_not_stored_in_jar(),
             Tone::Neutral,
         ),
         CookieJarOutcome::Failed => (
-            if zh {
-                "写入 Cookie 罐失败"
-            } else {
-                "Failed to write Cookie Jar"
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_tabs_failed_to_write_cookie_jar(),
             Tone::Danger,
         ),
     };
@@ -223,19 +214,18 @@ pub(super) fn render_resp_cookies(
 
     if !resp.cookie_report.rejected.is_empty() {
         list = list.child(section_heading(
-            if zh {
-                "未保留的 Set-Cookie"
-            } else {
-                "Rejected Set-Cookie"
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_tabs_rejected_set_cookie(),
             cx,
         ));
+        let ex = crate::ui::tr(cx).exchange();
         for rej in &resp.cookie_report.rejected {
             let reason = match rej.reason {
-                CookieRejectReason::Malformed => "格式无效",
-                CookieRejectReason::ForeignDomain => "跨域名拒绝",
-                CookieRejectReason::PublicSuffix => "公共后缀拒绝",
-                CookieRejectReason::TooLarge => "超过 4096B 上限",
+                CookieRejectReason::Malformed => ex.cookie_malformed(),
+                CookieRejectReason::ForeignDomain => ex.cookie_foreign_domain(),
+                CookieRejectReason::PublicSuffix => ex.cookie_public_suffix(),
+                CookieRejectReason::TooLarge => ex.cookie_too_large(),
             };
             list = list.child(alert_banner(
                 Tone::Warning,
@@ -250,7 +240,6 @@ pub(super) fn render_resp_cookies(
 
 pub(super) fn render_resp_trace(
     resp: &ExecutionResult,
-    zh: bool,
     cx: &Context<RequestsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -278,22 +267,20 @@ pub(super) fn render_resp_trace(
         ),
         ("TLS", t.tls_ms.ms(), p.ph_tls),
         (
-            if zh { "等待 (TTFB)" } else { "Wait (TTFB)" },
+            crate::ui::tr(cx).exchange().resp_http_tabs_wait_ttfb(),
             Some(t.wait_ms.unwrap_or(t.request_ms as u64)),
             p.ph_wait,
         ),
         (
-            if zh { "接收正文" } else { "Receive" },
+            crate::ui::tr(cx).exchange().resp_http_tabs_receive(),
             Some(t.response_ms as u64),
             p.ph_recv,
         ),
     ];
     let mut wf = v_col().gap(px(5.0)).child(section_heading(
-        if zh {
-            format!("阶段耗时瀑布（总计 {} ms）", t.total_ms)
-        } else {
-            format!("Timing Waterfall (total {} ms)", t.total_ms)
-        },
+        crate::ui::tr(cx)
+            .exchange()
+            .resp_http_tabs_timing_waterfall_total_ms(t.total_ms),
         cx,
     ));
     for (lbl, ms_opt, color) in phases {
@@ -334,11 +321,9 @@ pub(super) fn render_resp_trace(
             v_col()
                 .gap(px(4.0))
                 .child(section_heading(
-                    if zh {
-                        "传输与连接追踪"
-                    } else {
-                        "Transport & Connection"
-                    },
+                    crate::ui::tr(cx)
+                        .exchange()
+                        .resp_http_tabs_transport_connection(),
                     cx,
                 ))
                 .child(div().text_xs().child(SharedString::from(format!(
@@ -362,11 +347,7 @@ pub(super) fn render_resp_trace(
 
     if !cc.transport.redirect_hops.is_empty() {
         let mut hops = v_col().gap(px(3.0)).child(section_heading(
-            if zh {
-                "重定向跳转"
-            } else {
-                "Redirect Hops"
-            },
+            crate::ui::tr(cx).exchange().resp_http_tabs_redirect_hops(),
             cx,
         ));
         for h in &cc.transport.redirect_hops {
@@ -380,11 +361,9 @@ pub(super) fn render_resp_trace(
 
     if !cc.variables.is_empty() {
         let mut vars = v_col().gap(px(3.0)).child(section_heading(
-            if zh {
-                "本次解析的变量"
-            } else {
-                "Resolved Variables"
-            },
+            crate::ui::tr(cx)
+                .exchange()
+                .resp_http_tabs_resolved_variables(),
             cx,
         ));
         for v in &cc.variables {
@@ -405,11 +384,9 @@ pub(super) fn render_resp_trace(
         let mut hdr_box = v_col()
             .gap(px(3.0))
             .child(section_heading(
-                if zh {
-                    "实际发送的请求（凭据已脱敏）"
-                } else {
-                    "Actual Wire Request"
-                },
+                crate::ui::tr(cx)
+                    .exchange()
+                    .resp_http_tabs_actual_wire_request(),
                 cx,
             ))
             .child(
@@ -433,7 +410,6 @@ pub(super) fn render_resp_trace(
 
 pub(super) fn render_resp_tests(
     resp: &ExecutionResult,
-    zh: bool,
     cx: &Context<RequestsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -446,7 +422,9 @@ pub(super) fn render_resp_tests(
 
     if let Some(err) = &resp.script_error {
         col = col.child(warning_strip(
-            &format!("脚本错误 ({}): {}", err.source, err.message),
+            &crate::ui::tr(cx)
+                .exchange()
+                .script_error_banner(&err.source, &err.message),
             cx,
         ));
     }
@@ -466,11 +444,9 @@ pub(super) fn render_resp_tests(
                         .min_w_0()
                         .child(badge(
                             if a.passed {
-                                if zh { "通过" } else { "Pass" }
-                            } else if zh {
-                                "未通过"
+                                crate::ui::tr(cx).exchange().resp_http_tabs_pass()
                             } else {
-                                "Fail"
+                                crate::ui::tr(cx).exchange().resp_http_tabs_fail()
                             },
                             if a.passed {
                                 Tone::Success
@@ -529,16 +505,12 @@ pub(super) fn render_resp_tests(
         && resp.script_error.is_none()
     {
         col = col.child(empty_inline(
-            if zh {
-                "暂无测试结果"
-            } else {
-                "No test results"
-            },
-            Some(SharedString::from(if zh {
-                "本次请求未配置声明式断言或 pm.test 测试。"
-            } else {
-                "No assertions or script tests ran for this request."
-            })),
+            crate::ui::tr(cx).exchange().resp_ai_tabs_no_test_results(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .exchange()
+                    .resp_http_tabs_no_assertions_or_script_tests(),
+            )),
             None,
             cx,
         ));

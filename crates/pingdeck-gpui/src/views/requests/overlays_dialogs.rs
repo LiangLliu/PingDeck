@@ -23,19 +23,20 @@ pub(super) fn render_import_export(
     export_col: Option<String>,
     include_secrets: bool,
     ack_secrets: bool,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> (String, f32, gpui_kit::AnyElement, gpui_kit::Div) {
     let p = palette(cx);
     let ent = cx.entity().clone();
     let top_seg = tab_bar_segmented("io-tab-seg")
         .selected_index(usize::from(tab == ImportExportTab::Export))
-        .child(tab_item(if zh { "导入 (预览)" } else { "Import" }))
-        .child(tab_item(if zh {
-            "导出 Postman JSON"
-        } else {
-            "Export Postman"
-        }))
+        .child(tab_item(
+            crate::ui::tr(cx).requests().overlays_dialogs_import(),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_dialogs_export_postman(),
+        ))
         .on_click(move |idx, _, cx| {
             ent.update(cx, |this, cx| {
                 if let Some(ActiveModal::ImportExport { tab, .. }) = &mut this.active_modal {
@@ -89,11 +90,7 @@ pub(super) fn render_import_export(
                     .child(
                         btn_secondary(
                             "imp-pick-file",
-                            if zh {
-                                "选择文件…"
-                            } else {
-                                "Pick file…"
-                            },
+                            crate::ui::tr(cx).requests().overlays_dialogs_pick_file(),
                         )
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.import_pick_file(window, cx);
@@ -110,8 +107,11 @@ pub(super) fn render_import_export(
                     .justify_between()
                     .gap(px(8.0))
                     .child(
-                        btn_secondary("imp-preview-btn", if zh { "解析预览" } else { "Preview" })
-                            .on_click(cx.listener(|this, _, _, cx| this.import_run_preview(cx))),
+                        btn_secondary(
+                            "imp-preview-btn",
+                            crate::ui::tr(cx).requests().overlays_dialogs_preview(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.import_run_preview(cx))),
                     )
                     .child({
                         let c_idx = match conflict {
@@ -123,10 +123,18 @@ pub(super) fn render_import_export(
                         let ent_c = cx.entity().clone();
                         tab_bar_segmented("imp-conflict-seg")
                             .selected_index(c_idx)
-                            .child(tab_item(if zh { "更新" } else { "Update" }))
-                            .child(tab_item(if zh { "保留两者" } else { "Keep both" }))
-                            .child(tab_item(if zh { "替换" } else { "Replace" }))
-                            .child(tab_item(if zh { "跳过" } else { "Skip" }))
+                            .child(tab_item(
+                                crate::ui::tr(cx).requests().overlays_dialogs_update(),
+                            ))
+                            .child(tab_item(
+                                crate::ui::tr(cx).requests().overlays_dialogs_keep_both(),
+                            ))
+                            .child(tab_item(
+                                crate::ui::tr(cx).requests().overlays_dialogs_replace(),
+                            ))
+                            .child(tab_item(
+                                crate::ui::tr(cx).requests().overlays_dialogs_skip(),
+                            ))
                             .on_click(move |idx, _, cx| {
                                 ent_c.update(cx, |this, cx| {
                                     if let Some(ActiveModal::ImportExport { conflict, .. }) =
@@ -178,17 +186,18 @@ pub(super) fn render_import_export(
             );
         }
 
-        let footer = h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
-            btn_primary("imp-apply-btn", if zh { "确认导入" } else { "Import" })
-                .on_click(cx.listener(|this, _, window, cx| this.import_apply(window, cx))),
+        let footer = h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
+            btn_primary(
+                "imp-apply-btn",
+                crate::ui::tr(cx).requests().overlays_dialogs_import_2(),
+            )
+            .on_click(cx.listener(|this, _, window, cx| this.import_apply(window, cx))),
         );
         return (
-            if zh {
-                "导入与导出"
-            } else {
-                "Import & Export"
-            }
-            .into(),
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_dialogs_import_export()
+                .into(),
             680.0,
             body.into_any_element(),
             footer,
@@ -198,11 +207,13 @@ pub(super) fn render_import_export(
     // Export tab
     let mut col_picks = h_row().gap(px(6.0)).flex_wrap();
     if view.collections.is_empty() {
-        col_picks = col_picks.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "当前工作区还没有可导出的集合。"
-        } else {
-            "No collections to export in this workspace."
-        }));
+        col_picks = col_picks.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .requests()
+                    .overlays_dialogs_no_collections_to_export_in(),
+            ),
+        );
     } else {
         for c in &view.collections {
             let sel = export_col.as_deref() == Some(c.id.as_str());
@@ -233,22 +244,20 @@ pub(super) fn render_import_export(
             v_col()
                 .gap(px(6.0))
                 .child(section_heading(
-                    if zh {
-                        "选择要导出的集合"
-                    } else {
-                        "Collection to export"
-                    },
+                    crate::ui::tr(cx)
+                        .requests()
+                        .overlays_dialogs_collection_to_export(),
                     cx,
                 ))
                 .child(col_picks),
         )
         .child(
             checkbox("exp-inc-sec", include_secrets)
-                .label(if zh {
-                    "包含字面量凭据（明文导出，默认留空以保安全）"
-                } else {
-                    "Include literal credentials (plaintext)"
-                })
+                .label(
+                    crate::ui::tr(cx)
+                        .requests()
+                        .overlays_dialogs_include_literal_credentials_plaintext(),
+                )
                 .on_click(cx.listener(|this, ch: &bool, _, cx| {
                     if let Some(ActiveModal::ImportExport {
                         export_include_secrets,
@@ -266,11 +275,11 @@ pub(super) fn render_import_export(
         )
         .children(include_secrets.then(|| {
             checkbox("exp-ack-sec", ack_secrets)
-                .label(if zh {
-                    "我确认导出文件包含明文凭据，不会提交到公开仓库。"
-                } else {
-                    "I understand the export contains plaintext credentials."
-                })
+                .label(
+                    crate::ui::tr(cx)
+                        .requests()
+                        .overlays_dialogs_i_understand_the_export_contains(),
+                )
                 .on_click(cx.listener(|this, ch: &bool, _, cx| {
                     if let Some(ActiveModal::ImportExport {
                         export_ack_secrets, ..
@@ -284,14 +293,10 @@ pub(super) fn render_import_export(
 
     let can_export = export_col.is_some() && (!include_secrets || ack_secrets);
     let cid_go = export_col.clone();
-    let footer = h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
+    let footer = h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
         btn_primary(
             "exp-go-btn",
-            if zh {
-                "导出 JSON…"
-            } else {
-                "Export JSON…"
-            },
+            crate::ui::tr(cx).requests().overlays_dialogs_export_json(),
         )
         .disabled(!can_export)
         .on_click(cx.listener(move |this, _, _, cx| {
@@ -301,12 +306,10 @@ pub(super) fn render_import_export(
         })),
     );
     (
-        if zh {
-            "导入与导出"
-        } else {
-            "Import & Export"
-        }
-        .into(),
+        crate::ui::tr(cx)
+            .requests()
+            .overlays_dialogs_import_export()
+            .into(),
         660.0,
         body.into_any_element(),
         footer,
@@ -318,7 +321,6 @@ pub(super) fn render_extract_var(
     value: String,
     is_secret: bool,
     use_globals: bool,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> (String, f32, gpui_kit::AnyElement, gpui_kit::Div) {
     let p = palette(cx);
@@ -328,7 +330,9 @@ pub(super) fn render_extract_var(
             v_col()
                 .gap(px(6.0))
                 .child(section_heading(
-                    if zh { "变量名称" } else { "Variable name" },
+                    crate::ui::tr(cx)
+                        .requests()
+                        .overlays_dialogs_variable_name(),
                     cx,
                 ))
                 .child(text_input(&view.modal_name_input)),
@@ -343,18 +347,20 @@ pub(super) fn render_extract_var(
                 .text_xs()
                 .text_color(to_hsla(p.ink_2))
                 .truncate()
-                .child(SharedString::from(format!("值预览: {value}"))),
+                .child(SharedString::from(
+                    crate::ui::tr(cx).requests().overlays_value_preview(&value),
+                )),
         )
         .child(
             h_row()
                 .gap(px(16.0))
                 .child(
                     checkbox("ext-secret", is_secret)
-                        .label(if zh {
-                            "存为机密 (0600 保险库)"
-                        } else {
-                            "Store as secret"
-                        })
+                        .label(
+                            crate::ui::tr(cx)
+                                .requests()
+                                .overlays_dialogs_store_as_secret(),
+                        )
                         .on_click(cx.listener(|this, ch: &bool, _, cx| {
                             if let Some(ActiveModal::ExtractVariable { is_secret, .. }) =
                                 &mut this.active_modal
@@ -366,11 +372,11 @@ pub(super) fn render_extract_var(
                 )
                 .child(
                     checkbox("ext-global", use_globals)
-                        .label(if zh {
-                            "写入工作区全局变量"
-                        } else {
-                            "Save to Globals"
-                        })
+                        .label(
+                            crate::ui::tr(cx)
+                                .requests()
+                                .overlays_dialogs_save_to_globals(),
+                        )
                         .on_click(cx.listener(|this, ch: &bool, _, cx| {
                             if let Some(ActiveModal::ExtractVariable { use_globals, .. }) =
                                 &mut this.active_modal
@@ -382,21 +388,23 @@ pub(super) fn render_extract_var(
                 ),
         );
 
-    let footer = h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
-        btn_primary("ext-ok", if zh { "写入变量" } else { "Save variable" }).on_click(cx.listener(
-            move |this, _, _, cx| {
-                let key = this.modal_name_input.read(cx).value().to_string();
-                this.commit_extract_variable(key, value.clone(), is_secret, use_globals, cx);
-            },
-        )),
+    let footer = h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
+        btn_primary(
+            "ext-ok",
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_dialogs_save_variable(),
+        )
+        .on_click(cx.listener(move |this, _, _, cx| {
+            let key = this.modal_name_input.read(cx).value().to_string();
+            this.commit_extract_variable(key, value.clone(), is_secret, use_globals, cx);
+        })),
     );
     (
-        if zh {
-            "提取响应值为环境变量"
-        } else {
-            "Extract Value to Variable"
-        }
-        .into(),
+        crate::ui::tr(cx)
+            .requests()
+            .overlays_dialogs_extract_value_to_variable()
+            .into(),
         480.0,
         body.into_any_element(),
         footer,
@@ -408,7 +416,6 @@ pub(super) fn render_compare_modal(
     selected: Vec<(String, String)>,
     estimate: Option<AiCompareEstimateDto>,
     error: Option<String>,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> (String, f32, gpui_kit::AnyElement, gpui_kit::Div) {
     let mut list = v_col().h(px(220.0)).gap(px(4.0)).overflow_y_scrollbar();
@@ -449,16 +456,14 @@ pub(super) fn render_compare_modal(
     }
     if model_count == 0 {
         list = list.child(empty_inline(
-            if zh {
-                "没有已启用的服务商模型"
-            } else {
-                "No enabled models"
-            },
-            Some(SharedString::from(if zh {
-                "请先在「服务商」页面添加服务商并启用模型后再进行多模型对比。"
-            } else {
-                "Add a provider and enable models in the Providers view first."
-            })),
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_dialogs_no_enabled_models(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .overlays_dialogs_add_a_provider_and_enable(),
+            )),
             None,
             cx,
         ));
@@ -470,14 +475,14 @@ pub(super) fn render_compare_modal(
             .iter()
             .map(|(cur, micro)| format!("{cur} {:.5}", (*micro as f64) / 1_000_000.0))
             .collect();
-        format!(
-            "预估输入 ~{} tok · 上限: {}",
+        let r = crate::ui::tr(cx).requests();
+        r.overlays_compare_est(
             e.input_tokens,
             if caps.is_empty() {
-                "未知价格".into()
+                r.overlays_unknown_price().into()
             } else {
                 caps.join(" + ")
-            }
+            },
         )
     });
 
@@ -485,36 +490,28 @@ pub(super) fn render_compare_modal(
     let body = v_col()
         .gap(px(10.0))
         .child(section_heading(
-            if zh {
-                format!("选择要对比的模型（已选 {}/12）", selected.len())
-            } else {
-                format!("Select models to compare ({}/12)", selected.len())
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .overlays_dialogs_select_models_to_compare_12(selected.len()),
             cx,
         ))
         .child(list)
         .children(est_str.map(|s| alert_banner(Tone::Warning, s, None, cx)))
         .children(error.map(|e| alert_banner(Tone::Danger, e, None, cx)));
 
-    let footer = h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
+    let footer = h_row().gap(px(8.0)).child(cancel_btn(cx)).child(
         btn_primary(
             "cmp-start",
-            if zh {
-                "开始对比运行"
-            } else {
-                "Run compare"
-            },
+            crate::ui::tr(cx).requests().overlays_dialogs_run_compare(),
         )
         .disabled(!can_run)
         .on_click(cx.listener(|this, _, _, cx| this.start_ai_compare(cx))),
     );
     (
-        if zh {
-            "多模型对比运行"
-        } else {
-            "Compare on Multiple Models"
-        }
-        .into(),
+        crate::ui::tr(cx)
+            .requests()
+            .overlays_dialogs_compare_on_multiple_models()
+            .into(),
         560.0,
         body.into_any_element(),
         footer,

@@ -35,15 +35,12 @@ const BODY_KINDS: [(Option<FlowBodyKind>, &str); 5] = [
 ];
 
 pub fn render_step_inspector(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
-    let zh = view.is_zh();
+    let fl = crate::ui::Tr(view.lang).flows();
     let Some(step) = view.selected_step().cloned() else {
         return empty_state(
             UiIcon::Workflow,
-            view.t("选择或添加一个步骤", "Select or add a step"),
-            view.t(
-                "在右侧配置请求覆盖、变量提取（JSONPath/Header/Regex/Cookie）、断言及失败重试。",
-                "Configure request overrides, variable extractions, assertions, conditions, and retries.",
-            ),
+            fl.inspector_select_or_add_a_step(),
+            fl.inspector_configure_request_overrides_variable_extra(),
             cx,
         )
         .into_any_element();
@@ -57,7 +54,7 @@ pub fn render_step_inspector(view: &FlowsView, cx: &mut Context<FlowsView>) -> A
             cx.notify();
         }));
     for tab in FlowStepTab::ALL {
-        tabs = tabs.child(tab_item(tab.label(zh)));
+        tabs = tabs.child(tab_item(tab.label(view.lang)));
     }
 
     let body = match view.step_tab {
@@ -88,6 +85,7 @@ fn render_request_tab(
     step: &FlowStep,
     cx: &mut Context<FlowsView>,
 ) -> AnyElement {
+    let fl = crate::ui::Tr(view.lang).flows();
     let p = palette(cx);
     let linked = view.request_of(&step.request_id);
     let methods = [
@@ -122,7 +120,7 @@ fn render_request_tab(
         div()
             .text_xs()
             .text_color(to_hsla(p.muted))
-            .child(view.t("Body 类型:", "Body Kind:")),
+            .child(fl.inspector_body_kind()),
     );
     for (bk, lbl) in BODY_KINDS {
         bk_row = bk_row.child(
@@ -142,65 +140,63 @@ fn render_request_tab(
         );
     }
 
-    let source_bar =
-        h_row()
-            .w_full()
-            .justify_between()
-            .gap(px(8.0))
-            .child(
-                h_row()
-                    .gap(px(6.0))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .child(view.t("关联请求:", "Linked:")),
-                    )
-                    .child(meta_pill(
-                        linked.map(|r| r.name.clone()).unwrap_or_else(|| {
-                            view.t("内联步骤（无关联请求）", "Inline step").to_owned()
-                        }),
-                        cx,
-                    )),
-            )
-            .child(
-                h_row()
-                    .gap(px(4.0))
-                    .children(linked.map(|r| {
-                        let rid_open = r.id.as_str().to_owned();
-                        crate::ui::btn_ghost(
-                            "flow-open-linked",
-                            view.t("打开原请求 ↗", "Open Request ↗"),
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
+    let source_bar = h_row()
+        .w_full()
+        .justify_between()
+        .gap(px(8.0))
+        .child(
+            h_row()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.muted))
+                        .child(fl.inspector_linked()),
+                )
+                .child(meta_pill(
+                    linked
+                        .map(|r| r.name.clone())
+                        .unwrap_or_else(|| fl.inspector_inline_step().to_owned()),
+                    cx,
+                )),
+        )
+        .child(
+            h_row()
+                .gap(px(4.0))
+                .children(linked.map(|r| {
+                    let rid_open = r.id.as_str().to_owned();
+                    crate::ui::btn_ghost("flow-open-linked", fl.inspector_open_request()).on_click(
+                        cx.listener(move |this, _, _, cx| {
                             this.pending_handoff.set(Some(
                                 super::state::FlowsHandoff::OpenRequest(rid_open.clone()),
                             ));
                             cx.notify();
-                        }))
-                    }))
-                    .child(
-                        btn_secondary("flow-pick-req", view.t("选择请求…", "Pick Request…"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.active_modal = Some(FlowModal::PickStepRequest);
-                                cx.notify();
-                            })),
+                        }),
                     )
-                    .children(linked.is_some().then(|| {
-                        btn_icon("flow-unlink-req", UiIcon::Close)
-                            .tooltip(view.t("转为内联步骤", "Detach into inline step"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                if let Some(st) = this.selected_step_mut() {
-                                    st.request_id.clear();
-                                    this.dirty = true;
-                                    cx.notify();
-                                }
-                            }))
-                    })),
-            );
+                }))
+                .child(
+                    btn_secondary("flow-pick-req", fl.inspector_pick_request()).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.active_modal = Some(FlowModal::PickStepRequest);
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .children(linked.is_some().then(|| {
+                    btn_icon("flow-unlink-req", UiIcon::Close)
+                        .tooltip(fl.inspector_detach_into_inline_step())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(st) = this.selected_step_mut() {
+                                st.request_id.clear();
+                                this.dirty = true;
+                                cx.notify();
+                            }
+                        }))
+                })),
+        );
 
     let mut hdr_card = card(cx).p(px(12.0)).gap(px(6.0)).child(section_header(
-        view.t("请求头覆盖", "Header Overrides"),
+        fl.inspector_header_overrides(),
         Some(badge(step.headers_override.len().to_string(), Tone::Neutral, cx).into_any_element()),
         cx,
     ));
@@ -266,7 +262,7 @@ fn render_request_tab(
                     .child(text_input(&view.kv_val_input)),
             )
             .child(
-                btn_secondary("flow-h-add", view.t("+ 请求头", "+ Header")).on_click(cx.listener(
+                btn_secondary("flow-h-add", fl.inspector_header()).on_click(cx.listener(
                     |this, _, window, cx| {
                         let k = this.kv_key_input.read(cx).value().trim().to_owned();
                         let v = this.kv_val_input.read(cx).value().to_string();
@@ -330,19 +326,17 @@ fn render_extractions_tab(
     step: &FlowStep,
     cx: &mut Context<FlowsView>,
 ) -> AnyElement {
+    let fl = crate::ui::Tr(view.lang).flows();
     let p = palette(cx);
     let mut box_el = card(cx).p(px(12.0)).gap(px(8.0)).child(section_header(
-        view.t(
-            "响应变量提取（供后续步骤 {{var}} 使用）",
-            "Variable Extractions",
-        ),
+        fl.inspector_variable_extractions(),
         Some(badge(step.extractions.len().to_string(), Tone::Neutral, cx).into_any_element()),
         cx,
     ));
 
     if step.extractions.is_empty() {
         box_el = box_el.child(empty_inline(
-            view.t("尚未配置提取规则", "No extractions configured"),
+            fl.inspector_no_extractions_configured(),
             None,
             None,
             cx,
@@ -372,7 +366,7 @@ fn render_extractions_tab(
                     )
                     .children(
                         ext.is_secret()
-                            .then(|| badge(view.t("机密", "Secret"), Tone::Warning, cx)),
+                            .then(|| badge(fl.insp_ext_secret(), Tone::Warning, cx)),
                     )
                     .child(
                         btn_icon(
@@ -409,16 +403,12 @@ fn render_extractions_tab(
         );
     }
     src_row = src_row.child(
-        choice_chip(
-            "flow-esec",
-            view.t("标记机密", "Secret"),
-            view.new_ext_secret,
-            cx,
-        )
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.new_ext_secret = !this.new_ext_secret;
-            cx.notify();
-        })),
+        choice_chip("flow-esec", fl.inspector_secret(), view.new_ext_secret, cx).on_click(
+            cx.listener(|this, _, _, cx| {
+                this.new_ext_secret = !this.new_ext_secret;
+                cx.notify();
+            }),
+        ),
     );
 
     box_el
@@ -435,7 +425,7 @@ fn render_extractions_tab(
                         .child(text_input(&view.ext_expr_input)),
                 )
                 .child(
-                    btn_secondary("flow-ext-add", view.t("+ 提取", "+ Add")).on_click(
+                    btn_secondary("flow-ext-add", fl.inspector_add()).on_click(
                         cx.listener(|this, _, window, cx| this.add_extraction(window, cx)),
                     ),
                 ),
@@ -448,36 +438,27 @@ fn render_assertions_tab(
     step: &FlowStep,
     cx: &mut Context<FlowsView>,
 ) -> AnyElement {
+    let fl = crate::ui::Tr(view.lang).flows();
     let p = palette(cx);
     let kinds = [
-        (0, view.t("状态码 ==", "Status ==")),
-        (1, view.t("状态码 ∈", "Status In")),
-        (2, view.t("响应头存在", "Header Exists")),
-        (3, view.t("响应头 ==", "Header ==")),
-        (4, view.t("JSONPath 存在", "JSONPath Exists")),
-        (5, view.t("JSONPath ==", "JSONPath ==")),
-        (6, view.t("正文包含", "Body Contains")),
-        (7, view.t("耗时 < ms", "Time < ms")),
+        (0, fl.inspector_status()),
+        (1, fl.inspector_status_in()),
+        (2, fl.inspector_header_exists()),
+        (3, fl.inspector_header_2()),
+        (4, fl.inspector_jsonpath_exists()),
+        (5, fl.inspector_jsonpath()),
+        (6, fl.inspector_body_contains()),
+        (7, fl.inspector_time_ms()),
     ];
 
     let mut box_el = card(cx)
         .p(px(12.0))
         .gap(px(8.0))
-        .child(section_header(
-            view.t("步骤断言", "Step Assertions"),
-            None,
-            cx,
-        ))
+        .child(section_header(fl.inspector_step_assertions(), None, cx))
         .child(setting_row(
-            view.t(
-                "忽略关联请求自带的断言",
-                "Ignore linked request's own assertions",
-            ),
+            fl.inspector_ignore_linked_request_s_own(),
             None,
-            Some(SharedString::from(view.t(
-                "仅按当前步骤配置的断言判定通过（如删除后期望 404）。",
-                "Judge this step only by its own assertions (e.g. expecting 404 after delete).",
-            ))),
+            Some(SharedString::from(fl.inspector_judge_this_step_only_by())),
             toggle_switch("flow-ign-assert", step.ignore_request_assertions).on_click(cx.listener(
                 |this, _, _, cx| {
                     if let Some(st) = this.selected_step_mut() {
@@ -553,11 +534,9 @@ fn render_assertions_tab(
                         .min_w_0()
                         .child(text_input(&view.assert_val_input)),
                 )
-                .child(
-                    btn_secondary("flow-as-add", view.t("+ 断言", "+ Add")).on_click(
-                        cx.listener(|this, _, window, cx| this.add_quick_assertion(window, cx)),
-                    ),
-                ),
+                .child(btn_secondary("flow-as-add", fl.inspector_add_2()).on_click(
+                    cx.listener(|this, _, window, cx| this.add_quick_assertion(window, cx)),
+                )),
         )
         .into_any_element()
 }

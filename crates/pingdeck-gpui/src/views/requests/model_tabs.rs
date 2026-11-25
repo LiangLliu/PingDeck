@@ -322,34 +322,21 @@ impl OpenTab {
     }
 
     #[must_use]
-    pub fn title(&self, zh: bool) -> String {
+    pub fn title(&self, lang: pingdeck_desktop::core::model::settings::Language) -> String {
+        let r = crate::ui::Tr(lang).requests();
         match self {
             Self::Request(t) => {
                 if t.draft.name.trim().is_empty() {
-                    if zh {
-                        "未命名请求".into()
-                    } else {
-                        "Untitled".into()
-                    }
+                    r.model_tabs_untitled().into()
                 } else {
                     t.draft.name.clone()
                 }
             }
             Self::Runner(t) => {
                 let target = t.folder_name.as_deref().unwrap_or(&t.collection_name);
-                if zh {
-                    format!("运行 · {target}")
-                } else {
-                    format!("Run · {target}")
-                }
+                r.model_tabs_run(target)
             }
-            Self::Container(t) => {
-                if zh {
-                    format!("设置 · {}", t.name)
-                } else {
-                    format!("Settings · {}", t.name)
-                }
-            }
+            Self::Container(t) => r.model_tabs_settings(&t.name),
         }
     }
 

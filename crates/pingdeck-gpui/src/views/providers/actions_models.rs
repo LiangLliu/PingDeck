@@ -19,7 +19,6 @@ impl ProvidersView {
         &mut self,
         pid: String,
         key_id: Option<String>,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         self.refreshing_models = true;
@@ -35,19 +34,12 @@ impl ProvidersView {
                     Ok(drift) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "模型列表已刷新：新增 {}，移除 {}",
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_models_models_refreshed_added_removed(
                                     drift.added.len(),
-                                    drift.removed.len()
-                                )
-                            } else {
-                                format!(
-                                    "Models refreshed: {} added, {} removed",
-                                    drift.added.len(),
-                                    drift.removed.len()
-                                )
-                            },
+                                    drift.removed.len(),
+                                ),
                         ));
                         this.reload_all(cx);
                     }
@@ -59,7 +51,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn apply_model_drift(&mut self, pid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn apply_model_drift(&mut self, pid: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_models_drift_apply_impl(state, &pid, None),
@@ -68,11 +60,9 @@ impl ProvidersView {
                     Ok(rep) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已添加 {} 个新增模型", rep.added.len())
-                            } else {
-                                format!("Added {} new model(s)", rep.added.len())
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_models_added_new_model_s(rep.added.len()),
                         ));
                         this.reload_all(cx);
                     }
@@ -84,7 +74,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn ack_model_drift(&mut self, pid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn ack_model_drift(&mut self, pid: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_models_drift_ack_impl(state, &pid),
@@ -93,11 +83,10 @@ impl ProvidersView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                "漂移提醒已标记已读".into()
-                            } else {
-                                "Drift dismissed".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_models_drift_dismissed()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -114,7 +103,6 @@ impl ProvidersView {
         pid: String,
         mid: String,
         enabled: bool,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let changes = vec![(mid.clone(), enabled)];
@@ -126,10 +114,10 @@ impl ProvidersView {
                     Ok(rep) => {
                         this.last_bulk_undo = Some((
                             rep.id,
-                            if zh {
-                                format!("{} {mid}", if enabled { "已启用" } else { "已停用" })
+                            if enabled {
+                                crate::ui::tr(cx).providers().prov_act_enabled_model(&mid)
                             } else {
-                                format!("{} {mid}", if enabled { "Enabled" } else { "Disabled" })
+                                crate::ui::tr(cx).providers().prov_act_disabled_model(&mid)
                             },
                         ));
                         this.reload_all(cx);
@@ -146,7 +134,6 @@ impl ProvidersView {
         &mut self,
         pid: String,
         enabled: bool,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let changes: Vec<(String, bool)> = self
@@ -165,13 +152,10 @@ impl ProvidersView {
                     Ok(rep) => {
                         this.last_bulk_undo = Some((
                             rep.id,
-                            if zh {
-                                format!("{} {n} 个模型", if enabled { "已启用" } else { "已停用" })
+                            if enabled {
+                                crate::ui::tr(cx).providers().prov_act_enabled_n_models(n)
                             } else {
-                                format!(
-                                    "{} {n} model(s)",
-                                    if enabled { "Enabled" } else { "Disabled" }
-                                )
+                                crate::ui::tr(cx).providers().prov_act_disabled_n_models(n)
                             },
                         ));
                         this.reload_all(cx);
@@ -184,7 +168,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn undo_bulk_models(&mut self, op_id: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn undo_bulk_models(&mut self, op_id: String, cx: &mut Context<Self>) {
         self.last_bulk_undo = None;
         let task = spawn_blocking_into(
             cx,
@@ -194,11 +178,9 @@ impl ProvidersView {
                     Ok(u) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已撤销（恢复 {} 个模型）", u.restored.len())
-                            } else {
-                                format!("Undone ({} restored)", u.restored.len())
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_models_undone_restored(u.restored.len()),
                         ));
                         this.reload_all(cx);
                     }
@@ -210,13 +192,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn add_manual_model(
-        &mut self,
-        pid: String,
-        zh: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn add_manual_model(&mut self, pid: String, window: &mut Window, cx: &mut Context<Self>) {
         let mid = self.new_model_id_input.read(cx).value().trim().to_owned();
         if mid.is_empty() {
             return;
@@ -245,11 +221,9 @@ impl ProvidersView {
                         this.adding_model_open = false;
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已添加模型 {mid}")
-                            } else {
-                                format!("Added model {mid}")
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_models_added_model(mid),
                         ));
                         this.reload_all(cx);
                     }
@@ -261,13 +235,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn delete_single_model(
-        &mut self,
-        pid: String,
-        mid: String,
-        zh: bool,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn delete_single_model(&mut self, pid: String, mid: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_model_delete_impl(state, &pid, &mid),
@@ -276,11 +244,10 @@ impl ProvidersView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                "模型已删除".into()
-                            } else {
-                                "Model deleted".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_models_model_deleted()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }

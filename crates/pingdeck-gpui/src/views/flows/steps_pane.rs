@@ -15,7 +15,6 @@ use super::state::{FlowModal, FlowsView};
 
 pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let Some(flow) = &view.draft else {
         return div().into_any_element();
     };
@@ -23,11 +22,14 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
     let mut list = v_col().w_full().p(px(8.0)).gap(px(5.0));
     if flow.steps.is_empty() {
         list = list.child(empty_inline(
-            view.t("流程尚无步骤", "No steps in this flow"),
-            Some(SharedString::from(view.t(
-                "可添加内联 HTTP 步骤，或从工作区已保存的请求中选取。",
-                "Add an inline HTTP step or pick from saved workspace requests.",
-            ))),
+            crate::ui::Tr(view.lang)
+                .flows()
+                .steps_pane_no_steps_in_this_flow(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .steps_pane_add_an_inline_http_step(),
+            )),
             None,
             cx,
         ));
@@ -51,7 +53,12 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 .filter(|u| !u.trim().is_empty())
                 .map(str::to_owned)
                 .or_else(|| linked_req.map(|r| r.url.clone()))
-                .unwrap_or_else(|| view.t("未设置 URL", "No URL set").to_owned());
+                .unwrap_or_else(|| {
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .steps_pane_no_url_set()
+                        .to_owned()
+                });
 
             // Live or last run status for this step
             let live = view.live_steps.get(&step.id);
@@ -65,7 +72,11 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                     StatusShape::Bad
                 };
                 let pill = if s.skipped {
-                    badge(view.t("跳过", "Skip"), Tone::Warning, cx)
+                    badge(
+                        crate::ui::Tr(view.lang).flows().steps_pane_skip(),
+                        Tone::Warning,
+                        cx,
+                    )
                 } else if let Some(code) = s.status_code {
                     badge(
                         format!("{code} · {}ms", s.elapsed_ms),
@@ -77,7 +88,11 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         cx,
                     )
                 } else {
-                    badge(view.t("错误", "Err"), Tone::Danger, cx)
+                    badge(
+                        crate::ui::Tr(view.lang).flows().steps_pane_err(),
+                        Tone::Danger,
+                        cx,
+                    )
                 };
                 (sh, Some(pill))
             } else if let Some(r) = res {
@@ -89,7 +104,11 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                     StatusShape::Bad
                 };
                 let pill = if r.skipped {
-                    badge(view.t("跳过", "Skip"), Tone::Warning, cx)
+                    badge(
+                        crate::ui::Tr(view.lang).flows().steps_pane_skip(),
+                        Tone::Warning,
+                        cx,
+                    )
                 } else if let Some(code) = r.status_code {
                     badge(
                         format!("{code} · {}ms", r.elapsed_ms),
@@ -101,7 +120,11 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         cx,
                     )
                 } else {
-                    badge(view.t("错误", "Err"), Tone::Danger, cx)
+                    badge(
+                        crate::ui::Tr(view.lang).flows().steps_pane_err(),
+                        Tone::Danger,
+                        cx,
+                    )
                 };
                 (sh, Some(pill))
             } else if view.running {
@@ -131,11 +154,9 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 }))
                 .children((!step.assertions.is_empty()).then(|| {
                     meta_pill(
-                        if zh {
-                            format!("✓ 断言 {}", step.assertions.len())
-                        } else {
-                            format!("✓ {} assert", step.assertions.len())
-                        },
+                        crate::ui::tr(cx)
+                            .flows()
+                            .steps_pane_assert(step.assertions.len()),
                         cx,
                     )
                 }))
@@ -151,7 +172,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         SharedString::from(format!("flow-up-{idx}")),
                         UiIcon::ChevronUp,
                     )
-                    .tooltip(view.t("上移步骤", "Move up"))
+                    .tooltip(crate::ui::Tr(view.lang).flows().steps_pane_move_up())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.move_step(idx, idx - 1, cx);
@@ -164,7 +185,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         SharedString::from(format!("flow-dn-{idx}")),
                         UiIcon::ChevronDown,
                     )
-                    .tooltip(view.t("下移步骤", "Move down"))
+                    .tooltip(crate::ui::Tr(view.lang).flows().steps_pane_move_down())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.move_step(idx, idx + 1, cx);
@@ -174,7 +195,11 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
             actions = actions
                 .child(
                     btn_icon(SharedString::from(format!("flow-run1-{idx}")), UiIcon::Play)
-                        .tooltip(view.t("仅运行此步", "Run only this step"))
+                        .tooltip(
+                            crate::ui::Tr(view.lang)
+                                .flows()
+                                .steps_pane_run_only_this_step(),
+                        )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.run_flow(None, Some(idx), None, cx);
@@ -182,7 +207,11 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 )
                 .child(
                     btn_icon(SharedString::from(format!("flow-upto-{idx}")), UiIcon::Zap)
-                        .tooltip(view.t("运行到此步", "Run up to this step"))
+                        .tooltip(
+                            crate::ui::Tr(view.lang)
+                                .flows()
+                                .steps_pane_run_up_to_this_step(),
+                        )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.run_flow(Some(idx + 1), None, None, cx);
@@ -190,7 +219,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 )
                 .child(
                     btn_icon(SharedString::from(format!("flow-sdup-{idx}")), UiIcon::Copy)
-                        .tooltip(view.t("复制步骤", "Duplicate step"))
+                        .tooltip(crate::ui::Tr(view.lang).flows().insp_duplicate())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.duplicate_step(sid_dup.clone(), cx);
@@ -201,7 +230,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         SharedString::from(format!("flow-sdel-{idx}")),
                         UiIcon::Trash,
                     )
-                    .tooltip(view.t("删除步骤", "Delete step"))
+                    .tooltip(crate::ui::Tr(view.lang).flows().insp_delete())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.remove_step(sid_del.clone(), cx);
@@ -285,26 +314,27 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh {
-                            format!("执行步骤 ({})", flow.steps.len())
-                        } else {
-                            format!("Steps ({})", flow.steps.len())
-                        }),
+                        .child(crate::ui::tr(cx).flows().steps_pane_steps(flow.steps.len())),
                 )
                 .child(
                     h_row()
                         .gap(px(4.0))
                         .child(
-                            btn_secondary("flow-add-inline", view.t("+ 内联", "+ Inline"))
-                                .on_click(cx.listener(|this, _, _, cx| this.add_inline_step(cx))),
+                            btn_secondary(
+                                "flow-add-inline",
+                                crate::ui::Tr(view.lang).flows().steps_pane_inline(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.add_inline_step(cx))),
                         )
                         .child(
-                            btn_ghost("flow-add-saved", view.t("+ 引用请求", "+ Saved")).on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.active_modal = Some(FlowModal::AddSavedStep);
-                                    cx.notify();
-                                }),
-                            ),
+                            btn_ghost(
+                                "flow-add-saved",
+                                crate::ui::Tr(view.lang).flows().steps_pane_saved(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.active_modal = Some(FlowModal::AddSavedStep);
+                                cx.notify();
+                            })),
                         ),
                 ),
         )

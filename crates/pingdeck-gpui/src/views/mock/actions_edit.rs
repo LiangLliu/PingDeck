@@ -54,13 +54,9 @@ impl MockView {
                         this.pending_sync = true;
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已从录制生成 {added} 条路由（跳过已覆盖 {skipped} 条）")
-                            } else {
-                                format!(
-                                    "Generated {added} route(s) from recording ({skipped} already covered)"
-                                )
-                            },
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_edit_generated_route_s_from_recording(added, skipped),
                         ));
                         if added > 0 {
                             this.active_tab = MockSubTab::Routes;
@@ -90,11 +86,10 @@ impl MockView {
         self.active_tab = MockSubTab::Routes;
         self.status_msg = Some((
             Tone::Success,
-            self.t(
-                "已由日志创建路由，请点击保存生效",
-                "Created route from log — save to apply",
-            )
-            .to_owned(),
+            crate::ui::Tr(self.lang)
+                .mock()
+                .actions_edit_created_route_from_log_save()
+                .to_owned(),
         ));
         cx.notify();
     }
@@ -150,7 +145,9 @@ impl MockView {
                         this.live_data = Some(data);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已重置运行时数据桶", "Reset live data bucket(s)")
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_edit_reset_live_data_bucket_s()
                                 .to_owned(),
                         ));
                     }
@@ -200,7 +197,9 @@ impl MockView {
                             Tone::Success,
                             format!(
                                 "{}{note}",
-                                this.t("已导出 Mock 服务配置", "Exported mock server")
+                                crate::ui::Tr(this.lang)
+                                    .mock()
+                                    .actions_edit_exported_mock_server()
                             ),
                         ));
                     }
@@ -221,11 +220,10 @@ impl MockView {
         if payload.trim().is_empty() {
             self.status_msg = Some((
                 Tone::Warning,
-                self.t(
-                    "请先粘贴或选择要导入的文件内容",
-                    "Paste or load a file first",
-                )
-                .to_owned(),
+                crate::ui::Tr(self.lang)
+                    .mock()
+                    .actions_edit_paste_or_load_a_file()
+                    .to_owned(),
             ));
             cx.notify();
             return;
@@ -266,11 +264,9 @@ impl MockView {
                         };
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已导入 {count} 个 Mock 服务{warn_suffix}")
-                            } else {
-                                format!("Imported {count} mock server(s){warn_suffix}")
-                            },
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_edit_imported_mock_server_s(count, warn_suffix),
                         ));
                         this.reload(ws_reload, cx);
                     }

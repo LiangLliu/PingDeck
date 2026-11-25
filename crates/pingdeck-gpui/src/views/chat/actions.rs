@@ -14,9 +14,9 @@ use pingdeck_desktop::core::app::{
     AgentPageRequest, AppState, agent_approval_answer_impl, agent_run_continue_impl,
     agent_run_start_impl, agent_run_stop_impl, agent_run_unsubscribe_impl,
     agent_session_create_impl, agent_session_get_impl, agent_session_update_impl,
-    llm_model_list_impl, llm_provider_list_impl, settings_get_impl,
+    llm_model_list_impl, llm_provider_list_impl,
 };
-use pingdeck_desktop::core::model::settings::{Language, ToolApproval};
+use pingdeck_desktop::core::model::settings::ToolApproval;
 use pingdeck_desktop::state::ChatThreadState;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
@@ -163,7 +163,7 @@ impl ChatView {
             .update(cx, |c, cx| c.set_value(context_markdown, window, cx));
         self.status_msg = Some((
             Tone::Accent,
-            format!("已带入上下文：{title}（请确认后发送）"),
+            crate::ui::tr(cx).chat().act_context_attached(&title),
         ));
         cx.notify();
     }
@@ -528,7 +528,6 @@ impl ChatView {
     }
 
     pub fn save_instructions(&mut self, cx: &mut Context<Self>) {
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let text = self.instructions_input.read(cx).value().trim().to_owned();
         self.patch_session(
             AgentSessionPatch {
@@ -539,12 +538,7 @@ impl ChatView {
         );
         self.status_msg = Some((
             Tone::Success,
-            if zh {
-                "已保存附加指令"
-            } else {
-                "Saved instructions"
-            }
-            .into(),
+            crate::ui::tr(cx).chat().actions_saved_instructions().into(),
         ));
         cx.notify();
     }

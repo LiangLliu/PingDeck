@@ -19,7 +19,6 @@ use super::state::{
 
 pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let search_raw = view.calls_search_input.read(cx).value().to_string();
     let rows = view.filtered_logs(&search_raw);
 
@@ -28,7 +27,7 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
         pills = pills.child(
             choice_chip(
                 SharedString::from(format!("u-cq-{q:?}")),
-                q.label(zh),
+                q.label(view.lang),
                 view.calls_quick == q,
                 cx,
             )
@@ -53,11 +52,9 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
         .children(view.capture_stats.filter(|s| s.count > 0).map(|st| {
             btn_ghost(
                 "usage-clr-cap",
-                if zh {
-                    format!("清理捕获 ({} KB)", st.bytes / 1024)
-                } else {
-                    format!("Clear Captures ({} KB)", st.bytes / 1024)
-                },
+                crate::ui::tr(cx)
+                    .usage()
+                    .usage_calls_clear_captures_kb(st.bytes / 1024),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.active_modal = Some(UsageModal::ClearCaptures { stats: st });
@@ -65,20 +62,41 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
             }))
         }))
         .child(
-            btn_ghost("usage-clr-logs", view.t("清空日志…", "Clear Logs…"))
-                .icon(icon_xs(UiIcon::Trash))
-                .on_click(cx.listener(|this, _, _, cx| this.open_clear_logs_modal(cx))),
+            btn_ghost(
+                "usage-clr-logs",
+                crate::ui::Tr(view.lang).usage().usage_calls_clear_logs(),
+            )
+            .icon(icon_xs(UiIcon::Trash))
+            .on_click(cx.listener(|this, _, _, cx| this.open_clear_logs_modal(cx))),
         );
 
     let mut table = v_col().w_full().gap(px(4.0)).child(table_header(
         &[
-            (view.t("时间", "Time"), Some(74.0)),
-            (view.t("来源 / 客户端", "Source / Client"), Some(150.0)),
-            (view.t("模型与路由", "Model & Route"), None),
-            (view.t("状态", "Status"), Some(110.0)),
-            (view.t("首字 / 总耗时", "TTFT / Total"), Some(110.0)),
-            (view.t("输入 / 输出", "In / Out"), Some(108.0)),
-            (view.t("费用", "Cost"), Some(78.0)),
+            (crate::ui::Tr(view.lang).usage().log_col_time(), Some(74.0)),
+            (
+                crate::ui::Tr(view.lang).usage().usage_calls_source_client(),
+                Some(150.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_calls_model_route(),
+                None,
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().log_status_group(),
+                Some(110.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_calls_ttft_total(),
+                Some(110.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_calls_in_out(),
+                Some(108.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).usage().usage_kpi_cost(),
+                Some(78.0),
+            ),
         ],
         cx,
     ));
@@ -86,19 +104,22 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
     if rows.is_empty() {
         table = table.child(empty_state(
             UiIcon::Usage,
-            view.t("没有匹配的调用日志", "No matching call logs"),
-            view.t(
-                "调整上方搜索或筛选条件，或通过网关、对话与 AI 请求发起新的调用。",
-                "Adjust filters above or send AI calls through Gateway, Chat, or Requests.",
-            ),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_calls_no_matching_call_logs(),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_calls_adjust_filters_above_or_send(),
             cx,
         ));
     } else {
         for row in &rows {
             let rid = row.id;
             let src_text = match &row.client_name {
-                Some(c) if !c.is_empty() => format!("{} · {c}", source_label(&row.source, zh)),
-                _ => source_label(&row.source, zh).to_owned(),
+                Some(c) if !c.is_empty() => {
+                    format!("{} · {c}", source_label(&row.source, view.lang))
+                }
+                _ => source_label(&row.source, view.lang).to_owned(),
             };
             let route_text = match &row.upstream_model {
                 Some(up) if up != &row.requested_model => {
@@ -108,15 +129,29 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
             };
             let failover = is_failed_over(row);
             let (st_label, st_tone) = if row.outcome == "canceled" {
-                (view.t("已取消", "Canceled").to_owned(), Tone::Neutral)
+                (
+                    crate::ui::Tr(view.lang)
+                        .usage()
+                        .log_flag_canceled()
+                        .to_owned(),
+                    Tone::Neutral,
+                )
             } else if failover && row.status >= 200 && row.status < 300 {
                 (
-                    format!("{} · {}", row.status, view.t("故障转移", "Failover")),
+                    format!(
+                        "{} · {}",
+                        row.status,
+                        crate::ui::Tr(view.lang).usage().usage_calls_failover()
+                    ),
                     Tone::Warning,
                 )
             } else if row.status >= 200 && row.status < 300 {
                 let extra = if row.finish_reason.as_deref() == Some("tool_calls") {
-                    format!("{} · {}", row.status, view.t("工具", "Tools"))
+                    format!(
+                        "{} · {}",
+                        row.status,
+                        crate::ui::Tr(view.lang).common().cap_tools()
+                    )
                 } else {
                     row.status.to_string()
                 };
@@ -124,7 +159,13 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
             } else if row.status >= 400 {
                 (row.status.to_string(), Tone::Danger)
             } else {
-                (view.t("错误", "Error").to_owned(), Tone::Danger)
+                (
+                    crate::ui::Tr(view.lang)
+                        .common()
+                        .banner_tone_bad()
+                        .to_owned(),
+                    Tone::Danger,
+                )
             };
             let lat_text = match row.ttft_ms {
                 Some(ttft) => format!("{} / {}", fmt_latency(ttft), fmt_latency(row.latency_ms)),
@@ -206,8 +247,11 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
 
     let load_more = view.logs_has_more.then(|| {
         h_row().w_full().justify_center().pt(px(6.0)).child(
-            btn_secondary("usage-load-more", view.t("加载更多历史调用", "Load More"))
-                .on_click(cx.listener(|this, _, _, cx| this.load_more_logs(cx))),
+            btn_secondary(
+                "usage-load-more",
+                crate::ui::Tr(view.lang).usage().usage_calls_load_more(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| this.load_more_logs(cx))),
         )
     });
 
@@ -219,19 +263,18 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
             div()
                 .text_size(px(11.0))
                 .text_color(to_hsla(p.muted))
-                .child(view.t(
-                    "调用日志保留全部请求（含网关路由前拒绝）；用量统计仅计已路由至服务商的调用 · 点击任意行查看详情抽屉",
-                    "Call logs keep every request (incl. pre-route rejections); click any row to inspect details.",
-                )),
+                .child(
+                    crate::ui::Tr(view.lang)
+                        .usage()
+                        .usage_calls_call_logs_keep_every_request(),
+                ),
         )
         .child(
             btn_ghost(
                 "usage-go-retention",
-                if zh {
-                    format!("日志保留策略：{} 天 ↗", view.retention_days)
-                } else {
-                    format!("Retention: {}d ↗", view.retention_days)
-                },
+                crate::ui::tr(cx)
+                    .usage()
+                    .usage_calls_retention_d(view.retention_days),
             )
             .on_click(cx.listener(|this, _, _, cx| {
                 this.pending_handoff

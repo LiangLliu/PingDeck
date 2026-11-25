@@ -32,32 +32,40 @@ pub fn render_modal(
             let body = v_col()
                 .w_full()
                 .gap(px(8.0))
-                .child(section_header(view.t("流程名称", "Flow Name"), None, cx))
+                .child(section_header(
+                    crate::ui::Tr(view.lang).flows().modals_flow_name(),
+                    None,
+                    cx,
+                ))
                 .child(text_input(&view.new_flow_name_input))
                 .into_any_element();
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("flow-new-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "flow-new-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_primary("flow-new-go", view.t("创建流程", "Create")).on_click(cx.listener(
-                        |this, _, _, cx| {
-                            let name = this.new_flow_name_input.read(cx).value().trim().to_owned();
-                            this.active_modal = None;
-                            this.create_flow_named((!name.is_empty()).then_some(name), cx);
-                        },
-                    )),
+                    btn_primary(
+                        "flow-new-go",
+                        crate::ui::Tr(view.lang).flows().modals_create(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let name = this.new_flow_name_input.read(cx).value().trim().to_owned();
+                        this.active_modal = None;
+                        this.create_flow_named((!name.is_empty()).then_some(name), cx);
+                    })),
                 )
                 .into_any_element();
             modal_dialog(
                 "flow-create-modal",
-                view.t("新建流程", "New Flow"),
+                crate::ui::Tr(view.lang).flows().flows_new_flow(),
                 440.0,
                 body,
                 footer,
@@ -71,33 +79,37 @@ pub fn render_modal(
             let body = div()
                 .text_sm()
                 .text_color(to_hsla(p.ink))
-                .child(if view.is_zh() {
-                    format!("确定要永久删除流程「{name}」吗？历史运行记录将一并移除。")
-                } else {
-                    format!("Permanently delete flow \"{name}\" and its stored run summaries?")
-                })
+                .child(
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .modals_permanently_delete_flow_and_its(name),
+                )
                 .into_any_element();
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("flow-del-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "flow-del-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_danger("flow-del-confirm", view.t("删除流程", "Delete Flow")).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.delete_flow(id.clone(), cx);
-                        }),
-                    ),
+                    btn_danger(
+                        "flow-del-confirm",
+                        crate::ui::Tr(view.lang).flows().modals_delete_flow(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.delete_flow(id.clone(), cx);
+                    })),
                 )
                 .into_any_element();
             modal_dialog(
                 "flow-delete-modal",
-                view.t("删除流程", "Delete Flow"),
+                crate::ui::Tr(view.lang).flows().modals_delete_flow(),
                 430.0,
                 body,
                 footer,
@@ -118,24 +130,30 @@ pub fn render_modal(
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("flow-guard-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "flow-guard-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_danger("flow-guard-go", view.t("确认继续执行", "Confirm & Run")).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.run_flow(max_steps, only_step, Some(true), cx);
-                        }),
-                    ),
+                    btn_danger(
+                        "flow-guard-go",
+                        crate::ui::Tr(view.lang).flows().modals_confirm_run(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.run_flow(max_steps, only_step, Some(true), cx);
+                    })),
                 )
                 .into_any_element();
             modal_dialog(
                 "flow-guard-modal",
-                view.t("生产环境执行确认", "Production Environment Guard"),
+                crate::ui::Tr(view.lang)
+                    .flows()
+                    .modals_production_environment_guard(),
                 460.0,
                 body,
                 footer,
@@ -201,12 +219,15 @@ pub fn render_modal(
                 .w_full()
                 .gap(px(12.0))
                 .child(setting_row(
-                    view.t("流程内独立 Cookie 会话", "Isolated Run Cookie Session"),
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .modals_isolated_run_cookie_session(),
                     None,
-                    Some(SharedString::from(view.t(
-                        "前序步骤 Set-Cookie 将在后续步骤间传递，但绝不写入工作区 Cookie 罐。",
-                        "Carries cookies across steps within one run without writing to the workspace jar.",
-                    ))),
+                    Some(SharedString::from(
+                        crate::ui::Tr(view.lang)
+                            .flows()
+                            .modals_carries_cookies_across_steps_within(),
+                    )),
                     toggle_switch("flow-opt-cookie", cookie_session).on_click(cx.listener(
                         |this, _, _, cx| {
                             if let Some(f) = this.draft.as_mut() {
@@ -218,17 +239,32 @@ pub fn render_modal(
                     )),
                     cx,
                 ))
-                .child(section_header(view.t("初始种子变量", "Initial Seed Variables"), None, cx))
+                .child(section_header(
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .modals_initial_seed_variables(),
+                    None,
+                    cx,
+                ))
                 .child(seeds_col)
                 .child(
                     h_row()
                         .w_full()
                         .gap(px(6.0))
                         .child(div().w(px(150.0)).child(text_input(&view.seed_key_input)))
-                        .child(div().flex_1().min_w_0().child(text_input(&view.seed_val_input)))
                         .child(
-                            btn_secondary("flow-seed-add", view.t("+ 添加", "+ Add")).on_click(
-                                cx.listener(|this, _, window, cx| {
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(text_input(&view.seed_val_input)),
+                        )
+                        .child(
+                            btn_secondary(
+                                "flow-seed-add",
+                                crate::ui::Tr(view.lang).flows().modals_add(),
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     let k = this.seed_key_input.read(cx).value().trim().to_owned();
                                     let v = this.seed_val_input.read(cx).value().to_string();
                                     if k.is_empty() {
@@ -243,20 +279,23 @@ pub fn render_modal(
                                     this.seed_val_input
                                         .update(cx, |s, cx| s.set_value("", window, cx));
                                     cx.notify();
-                                }),
-                            ),
+                                },
+                            )),
                         ),
                 )
                 .into_any_element();
-            let footer = btn_primary("flow-opt-done", view.t("完成", "Done"))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.active_modal = None;
-                    cx.notify();
-                }))
-                .into_any_element();
+            let footer = btn_primary(
+                "flow-opt-done",
+                crate::ui::Tr(view.lang).flows().modals_done(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.active_modal = None;
+                cx.notify();
+            }))
+            .into_any_element();
             modal_dialog(
                 "flow-options-modal",
-                view.t("流程运行选项", "Flow Run Options"),
+                crate::ui::Tr(view.lang).flows().modals_flow_run_options(),
                 520.0,
                 body,
                 footer,
@@ -286,7 +325,9 @@ pub fn render_modal(
                 .collect();
             if matched.is_empty() {
                 list = list.child(empty_inline(
-                    view.t("工作区暂无已保存的请求", "No saved requests in workspace"),
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .modals_no_saved_requests_in_workspace(),
                     None,
                     None,
                     cx,
@@ -343,18 +384,25 @@ pub fn render_modal(
                         .child(list),
                 )
                 .into_any_element();
-            let footer = btn_secondary("flow-pick-close", view.t("取消", "Cancel"))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.active_modal = None;
-                    cx.notify();
-                }))
-                .into_any_element();
+            let footer = btn_secondary(
+                "flow-pick-close",
+                crate::ui::Tr(view.lang).common().cancel(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.active_modal = None;
+                cx.notify();
+            }))
+            .into_any_element();
             modal_dialog(
                 "flow-pick-req-modal",
                 if is_relink {
-                    view.t("为当前步骤关联已保存请求", "Link Step to Saved Request")
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .modals_link_step_to_saved_request()
                 } else {
-                    view.t("从已保存请求添加步骤", "Add Step from Saved Request")
+                    crate::ui::Tr(view.lang)
+                        .flows()
+                        .modals_add_step_from_saved_request()
                 },
                 560.0,
                 body,

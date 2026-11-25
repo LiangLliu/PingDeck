@@ -22,21 +22,14 @@ const HTTP_METHODS: [&str; 8] = [
     "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ANY",
 ];
 
-const RESPONSE_MODES: [(MockResponseMode, &str, &str); 5] = [
-    (MockResponseMode::FirstMatch, "首条匹配", "First Match"),
-    (MockResponseMode::Sequential, "顺序轮询", "Sequential"),
-    (MockResponseMode::Random, "随机分支", "Random"),
-    (MockResponseMode::Fallback, "回退模式", "Fallback"),
-    (MockResponseMode::DisableRules, "忽略规则", "Disable Rules"),
-];
-
 pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let Some(srv) = &view.draft else {
         return empty_state(
             UiIcon::Server,
-            view.t("未选择服务", "No server selected"),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_routes_no_server_selected(),
             "",
             cx,
         )
@@ -65,14 +58,17 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
     if filtered_routes.is_empty() {
         route_list = route_list.child(empty_inline(
             if srv.routes.is_empty() {
-                view.t("暂无路由规则", "No routes yet")
+                crate::ui::Tr(view.lang).mock().tab_routes_no_routes_yet()
             } else {
-                view.t("没有匹配的路由", "No matching routes")
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_routes_no_matching_routes()
             },
-            Some(SharedString::from(view.t(
-                "添加 HTTP 路由或 CRUD 数据路由开始模拟接口。",
-                "Add an HTTP or CRUD route to start mocking endpoints.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_routes_add_an_http_or_crud(),
+            )),
             None,
             cx,
         ));
@@ -143,7 +139,11 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
                                 SharedString::from(format!("mock-rt-test-{}", route.id)),
                                 UiIcon::Send,
                             )
-                            .tooltip(view.t("在请求中测试", "Test in Requests"))
+                            .tooltip(
+                                crate::ui::Tr(view.lang)
+                                    .mock()
+                                    .tab_routes_test_in_requests(),
+                            )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     cx.stop_propagation();
@@ -156,7 +156,7 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
                                 SharedString::from(format!("mock-rt-dup-{}", route.id)),
                                 UiIcon::Copy,
                             )
-                            .tooltip(view.t("复制路由", "Duplicate route"))
+                            .tooltip(crate::ui::Tr(view.lang).mock().tab_routes_duplicate_route())
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     cx.stop_propagation();
@@ -169,7 +169,7 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
                                 SharedString::from(format!("mock-rt-del-{}", route.id)),
                                 UiIcon::Trash,
                             )
-                            .tooltip(view.t("删除路由", "Delete route"))
+                            .tooltip(crate::ui::Tr(view.lang).mock().route_delete())
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     cx.stop_propagation();
@@ -203,11 +203,7 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh {
-                            format!("路由列表 ({})", srv.routes.len())
-                        } else {
-                            format!("Routes ({})", srv.routes.len())
-                        }),
+                        .child(crate::ui::tr(cx).mock().tab_routes_routes(srv.routes.len())),
                 )
                 .child(
                     h_row()
@@ -251,11 +247,11 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
                     div()
                         .text_size(px(11.0))
                         .text_color(to_hsla(p.muted))
-                        .child(if zh {
-                            format!("{enabled_cnt}/{} 启用 · 127.0.0.1", srv.routes.len())
-                        } else {
-                            format!("{enabled_cnt}/{} enabled · 127.0.0.1", srv.routes.len())
-                        }),
+                        .child(
+                            crate::ui::tr(cx)
+                                .mock()
+                                .tab_routes_enabled_127_0_0_1(enabled_cnt, srv.routes.len()),
+                        ),
                 ),
         );
 
@@ -265,11 +261,12 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
     } else {
         empty_state(
             UiIcon::Branch,
-            view.t("选择或新建一条路由", "Select or create a route"),
-            view.t(
-                "支持 HTTP 响应分支、规则匹配、SSE 流式推送与 CRUD 数据桶。",
-                "Configure HTTP response branches, matching rules, SSE streams, or CRUD buckets.",
-            ),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_routes_select_or_create_a_route(),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_routes_configure_http_response_branches_matching(),
             cx,
         )
         .into_any_element()
@@ -299,7 +296,6 @@ fn render_route_editor(
     cx: &mut Context<MockView>,
 ) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let is_crud = route.route_type == MockRouteType::Crud;
     let route_id_test = route.id.clone();
     let route_id_try = route.id.clone();
@@ -309,9 +305,11 @@ fn render_route_editor(
     // Route definition card
     let mut def_card = card(cx).p(px(14.0)).gap(px(10.0)).child(section_header(
         if is_crud {
-            view.t("CRUD 数据路由", "CRUD Data Route")
+            crate::ui::Tr(view.lang).mock().tab_routes_crud_data_route()
         } else {
-            view.t("HTTP 路由定义", "HTTP Route Definition")
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_routes_http_route_definition()
         },
         Some(
             h_row()
@@ -320,9 +318,9 @@ fn render_route_editor(
                     btn_primary(
                         "mock-try-route-btn",
                         if view.try_it_busy {
-                            view.t("请求中…", "Trying…")
+                            crate::ui::Tr(view.lang).mock().tab_routes_trying()
                         } else {
-                            view.t("试一下", "Try It")
+                            crate::ui::Tr(view.lang).mock().tab_routes_try_it()
                         },
                     )
                     .icon(icon_xs(UiIcon::Play))
@@ -333,7 +331,9 @@ fn render_route_editor(
                 .child(
                     btn_secondary(
                         "mock-test-route-btn",
-                        view.t("在请求中测试", "Open in Requests"),
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .tab_routes_open_in_requests(),
                     )
                     .icon(icon_xs(UiIcon::Send))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -368,45 +368,47 @@ fn render_route_editor(
         def_card = def_card.child(method_row);
     }
 
-    def_card =
-        def_card.child(
-            h_row()
-                .w_full()
-                .gap(px(10.0))
-                .child(
-                    v_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(4.0))
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(
-                            view.t("路径 Path（支持 :id 参数）", "Path (supports :id params)"),
-                        ))
-                        .child(text_input(&view.route_path_input)),
-                )
-                .child(
-                    v_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(4.0))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.muted))
-                                .child(view.t("说明", "Description")),
-                        )
-                        .child(text_input(&view.route_desc_input)),
-                ),
-        );
+    def_card = def_card.child(
+        h_row()
+            .w_full()
+            .gap(px(10.0))
+            .child(
+                v_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(4.0))
+                    .child(
+                        div().text_xs().text_color(to_hsla(p.muted)).child(
+                            crate::ui::Tr(view.lang)
+                                .mock()
+                                .tab_routes_path_supports_id_params(),
+                        ),
+                    )
+                    .child(text_input(&view.route_path_input)),
+            )
+            .child(
+                v_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(to_hsla(p.muted))
+                            .child(crate::ui::Tr(view.lang).shared().description()),
+                    )
+                    .child(text_input(&view.route_desc_input)),
+            ),
+    );
 
     if is_crud {
         // Bucket picker + ID key + Generated CRUD endpoints preview
         let mut bucket_row = h_row().gap(px(6.0)).flex_wrap();
         if srv.data_buckets.is_empty() {
             bucket_row = bucket_row.child(meta_pill(
-                view.t(
-                    "请先在「数据桶」页签添加数据桶",
-                    "Add a bucket in Data tab first",
-                ),
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_routes_add_a_bucket_in_data(),
                 cx,
             ));
         } else {
@@ -444,7 +446,7 @@ fn render_route_editor(
                             div()
                                 .text_xs()
                                 .text_color(to_hsla(p.muted))
-                                .child(view.t("绑定数据桶", "Data Bucket")),
+                                .child(crate::ui::Tr(view.lang).mock().tab_routes_data_bucket()),
                         )
                         .child(bucket_row),
                 )
@@ -456,7 +458,7 @@ fn render_route_editor(
                             div()
                                 .text_xs()
                                 .text_color(to_hsla(p.muted))
-                                .child(view.t("主键字段", "ID Field")),
+                                .child(crate::ui::Tr(view.lang).mock().tab_routes_id_field()),
                         )
                         .child(text_input(&view.route_crud_id_input)),
                 ),
@@ -468,15 +470,20 @@ fn render_route_editor(
                 .p(px(14.0))
                 .gap(px(6.0))
                 .child(section_header(
-                    view.t("自动生成的 CRUD 端点", "Generated CRUD Endpoints"),
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .tab_routes_generated_crud_endpoints(),
                     None,
                     cx,
                 ))
                 .child(table_header(
                     &[
-                        (view.t("方法", "Method"), Some(64.0)),
-                        (view.t("路径", "Path"), Some(180.0)),
-                        (view.t("行为", "Behavior"), None),
+                        (crate::ui::Tr(view.lang).mock().target_method(), Some(64.0)),
+                        (
+                            crate::ui::Tr(view.lang).mock().tab_routes_path(),
+                            Some(180.0),
+                        ),
+                        (crate::ui::Tr(view.lang).mock().tab_routes_behavior(), None),
                     ],
                     cx,
                 ));
@@ -512,14 +519,34 @@ fn render_route_editor(
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .mr(px(4.0))
-                .child(view.t("分支策略:", "Mode:")),
+                .child(crate::ui::Tr(view.lang).mock().tab_routes_mode()),
         );
-        for (mode, zh_l, en_l) in RESPONSE_MODES {
+        let m_tr = crate::ui::Tr(view.lang).mock();
+        let response_modes = [
+            (
+                MockResponseMode::FirstMatch,
+                "first",
+                m_tr.rmode_first_match(),
+            ),
+            (MockResponseMode::Sequential, "seq", m_tr.rmode_sequential()),
+            (MockResponseMode::Random, "rand", m_tr.rmode_random()),
+            (
+                MockResponseMode::Fallback,
+                "fallback",
+                m_tr.rmode_fallback(),
+            ),
+            (
+                MockResponseMode::DisableRules,
+                "disable",
+                m_tr.rmode_disable_rules(),
+            ),
+        ];
+        for (mode, tag, lbl) in response_modes {
             let selected = route.response_mode == mode;
             mode_row = mode_row.child(
                 choice_chip(
-                    SharedString::from(format!("mock-rmode-{en_l}")),
-                    if zh { zh_l } else { en_l },
+                    SharedString::from(format!("mock-rmode-{tag}")),
+                    lbl,
                     selected,
                     cx,
                 )

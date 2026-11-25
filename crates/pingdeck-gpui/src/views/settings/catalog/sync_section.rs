@@ -36,68 +36,48 @@ pub fn render_flash_banner(
 
 pub fn render_sync_section(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
+    let lang = crate::ui::active_language(cx);
+    let s_tr = crate::ui::tr(cx).settings();
     let now_ms = current_time_ms();
 
     let (headline, subline, interval_days, next_line, err_line) = if let Some(st) = &view.status {
         let head = match (st.origin, st.last_success_ms) {
             (CatalogOrigin::ModelsDev, Some(ts)) => {
-                let ago = format_ago(ts, now_ms, zh);
-                if zh {
-                    format!("models.dev · 上次同步 {ago}")
-                } else {
-                    format!("models.dev · synced {ago}")
-                }
+                let ago = format_ago(ts, now_ms, lang);
+                s_tr.sync_section_models_dev_synced(ago)
             }
             _ => {
                 let date = format_ymd(st.snapshot_at_ms);
-                if zh {
-                    format!("models.dev · 内置快照（{date}）")
-                } else {
-                    format!("models.dev · built-in snapshot ({date})")
-                }
+                s_tr.sync_section_models_dev_built_in_snapshot(date)
             }
         };
         let sub = if let Some(pg) = &view.page {
-            if zh {
-                format!(
-                    "{} 个模型、{} 条目录报价，自建 {} 个（离线时继续使用本地缓存）。",
-                    pg.total, st.models_dev_count, st.user_count
-                )
-            } else {
-                format!(
-                    "{} models, {} catalog offers, {} custom (local cache works offline).",
-                    pg.total, st.models_dev_count, st.user_count
-                )
-            }
-        } else if zh {
-            format!(
-                "{} 条目录报价，自建 {} 个（离线时继续使用本地缓存）。",
-                st.models_dev_count, st.user_count
+            s_tr.sync_section_models_catalog_offers_custom_local(
+                pg.total,
+                st.models_dev_count,
+                st.user_count,
             )
         } else {
-            format!(
-                "{} catalog offers, {} custom (local cache works offline).",
-                st.models_dev_count, st.user_count
-            )
+            s_tr.sync_section_catalog_offers_custom_local_cache(st.models_dev_count, st.user_count)
         };
-        let next = st.next_due_ms.map(|ts| format_next_due(ts, now_ms, zh));
+        let next = st.next_due_ms.map(|ts| format_next_due(ts, now_ms, lang));
         let err = view.sync_error.clone().or_else(|| {
             st.last_error.as_deref().map(|raw| {
-                format_sync_error(st.last_error_kind, st.last_error_http_status, Some(raw), zh)
+                format_sync_error(
+                    st.last_error_kind,
+                    st.last_error_http_status,
+                    Some(raw),
+                    lang,
+                )
             })
         });
         (head, sub, st.auto_interval_days, next, err)
     } else {
         (
-            if zh {
-                "正在读取模型目录…".into()
-            } else {
-                "Reading model catalog…".into()
-            },
+            s_tr.sync_section_reading_model_catalog().into(),
             String::new(),
             7,
             None,
@@ -113,13 +93,10 @@ pub fn render_sync_section(
         StatusShape::Ok
     };
 
-    let interval_label = match (interval_days, zh) {
-        (1, true) => "每天",
-        (1, false) => "Daily",
-        (30, true) => "每 30 天",
-        (30, false) => "Every 30 days",
-        (_, true) => "每 7 天",
-        (_, false) => "Every 7 days",
+    let interval_label = match interval_days {
+        1 => s_tr.catalog_interval_daily(),
+        30 => s_tr.catalog_interval_30d(),
+        _ => s_tr.catalog_interval_7d(),
     };
 
     let view_entity = cx.entity().clone();
@@ -133,15 +110,13 @@ pub fn render_sync_section(
         ))
         .content(move |_, _, pop_cx| {
             let pop_p = palette(pop_cx);
+            let s_pop = crate::ui::tr(pop_cx).settings();
             let mut col = v_col().w(px(160.0)).gap(px(2.0));
             for days in SYNC_INTERVAL_DAYS {
-                let lbl = match (days, zh) {
-                    (1, true) => "每天",
-                    (1, false) => "Daily",
-                    (7, true) => "每 7 天",
-                    (7, false) => "Every 7 days",
-                    (_, true) => "每 30 天",
-                    (_, false) => "Every 30 days",
+                let lbl = match days {
+                    1 => s_pop.catalog_interval_daily(),
+                    7 => s_pop.catalog_interval_7d(),
+                    _ => s_pop.catalog_interval_30d(),
                 };
                 let sel = days == interval_days;
                 let ent = view_entity.clone();
@@ -209,11 +184,12 @@ pub fn render_sync_section(
                     .child(
                         h_row()
                             .gap(px(6.0))
-                            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                                "自动同步"
-                            } else {
-                                "Auto-sync"
-                            }))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(to_hsla(p.muted))
+                                    .child(crate::ui::tr(cx).settings().catalog_auto()),
+                            )
                             .child(toggle_switch("cat-auto-sync", view.auto_sync).on_change(
                                 cx.listener(|this, checked: &bool, _, cx| {
                                     this.toggle_auto_sync(*checked, cx);
@@ -222,28 +198,27 @@ pub fn render_sync_section(
                     )
                     .children(view.auto_sync.then_some(interval_popover))
                     .child(if view.syncing {
-                        btn_secondary("cat-sync-cancel", if zh { "取消" } else { "Cancel" })
+                        btn_secondary("cat-sync-cancel", crate::ui::tr(cx).common().cancel())
                             .on_click(cx.listener(|this, _, _, cx| this.cancel_sync(cx)))
                     } else {
-                        btn_secondary("cat-sync-now", if zh { "立即同步" } else { "Sync now" })
-                            .icon(icon_xs(UiIcon::Refresh))
-                            .on_click(cx.listener(|this, _, _, cx| this.start_sync(cx)))
+                        btn_secondary(
+                            "cat-sync-now",
+                            crate::ui::tr(cx).settings().catalog_sync_now(),
+                        )
+                        .icon(icon_xs(UiIcon::Refresh))
+                        .on_click(cx.listener(|this, _, _, cx| this.start_sync(cx)))
                     }),
             ),
     );
 
     if let Some(report) = &view.last_sync_report {
-        let msg = if zh {
-            format!(
-                "同步完成：新增 {} · 更新 {} · 无变化 {}",
-                report.added, report.updated, report.unchanged
-            )
-        } else {
-            format!(
-                "Synced: {} added · {} updated · {} unchanged",
-                report.added, report.updated, report.unchanged
-            )
-        };
+        let msg = crate::ui::tr(cx)
+            .settings()
+            .sync_section_synced_added_updated_unchanged(
+                report.added,
+                report.updated,
+                report.unchanged,
+            );
         box_el = box_el.child(dismissible_banner(
             "cat-sync-rep-dismiss",
             Tone::Success,
@@ -259,7 +234,7 @@ pub fn render_sync_section(
             Tone::Warning,
             err,
             Some(
-                btn_ghost("cat-sync-retry", if zh { "重试" } else { "Retry" })
+                btn_ghost("cat-sync-retry", crate::ui::tr(cx).common().retry())
                     .on_click(cx.listener(|this, _, _, cx| this.start_sync(cx)))
                     .into_any_element(),
             ),
@@ -267,12 +242,16 @@ pub fn render_sync_section(
         ));
     }
 
-    settings_section_padded(if zh { "同步" } else { "Sync" }, None, box_el, cx)
+    settings_section_padded(
+        crate::ui::tr(cx).settings().sec_catalog_sync(),
+        None,
+        box_el,
+        cx,
+    )
 }
 
 pub fn render_provider_pricing_section(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -289,11 +268,10 @@ pub fn render_provider_pricing_section(
             .clone()
             .or_else(|| pv.catalog_family.clone())
             .unwrap_or_else(|| {
-                if zh {
-                    "跟随官方价（默认）".into()
-                } else {
-                    "Follow official prices".into()
-                }
+                crate::ui::tr(cx)
+                    .settings()
+                    .filters_follow_official_prices()
+                    .into()
             });
 
         let coverage = if let Some(fam) = pv
@@ -301,21 +279,13 @@ pub fn render_provider_pricing_section(
             .as_deref()
             .or(pv.catalog_family.as_deref())
         {
-            if zh {
-                format!(
-                    "{fam} 目录价覆盖 {} 个模型（共 {} 个），其余按官方价",
-                    pv.matched, pv.models
-                )
-            } else {
-                format!(
-                    "{} of {} models priced by {fam}; rest use official prices",
-                    pv.matched, pv.models
-                )
-            }
-        } else if zh {
-            format!("{} 个启用模型 · 跟随官方价", pv.models)
+            crate::ui::tr(cx)
+                .settings()
+                .sync_section_of_models_priced_by_rest(pv.matched, pv.models, fam)
         } else {
-            format!("{} enabled model(s) · official prices", pv.models)
+            crate::ui::tr(cx)
+                .settings()
+                .sync_section_enabled_model_s_official_prices(pv.models)
         };
 
         let picker = render_provider_family_picker(
@@ -327,7 +297,6 @@ pub fn render_provider_pricing_section(
             pv.suggested_family_name.clone(),
             current_label,
             families.clone(),
-            zh,
             cx,
         );
 
@@ -353,11 +322,9 @@ pub fn render_provider_pricing_section(
                             )
                             .children((pv.overrides > 0).then(|| {
                                 badge(
-                                    if zh {
-                                        format!("{} 个单独定价", pv.overrides)
-                                    } else {
-                                        format!("{} override(s)", pv.overrides)
-                                    },
+                                    crate::ui::tr(cx)
+                                        .settings()
+                                        .sync_section_override_s(pv.overrides),
                                     Tone::Accent,
                                     cx,
                                 )
@@ -384,11 +351,7 @@ pub fn render_provider_pricing_section(
         .w_full()
         .gap(px(8.0))
         .child(settings_section_flush(
-            if zh {
-                "服务商计价"
-            } else {
-                "Provider pricing"
-            },
+            crate::ui::tr(cx).settings().sec_catalog_providers(),
             None,
             rows,
             cx,
@@ -398,10 +361,10 @@ pub fn render_provider_pricing_section(
                 .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(if zh {
-                    "让你的服务商整体按一家分发商的目录价计费。生效顺序：单个模型的服务商设置 > 服务商计价 > 模型默认价格 > 官方价 > 参考价。"
-                } else {
-                    "Make a provider follow one distributor's catalog prices. Precedence: per-provider model > provider pricing > model default > official > reference."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .sync_section_make_a_provider_follow_one(),
+                ),
         )
 }

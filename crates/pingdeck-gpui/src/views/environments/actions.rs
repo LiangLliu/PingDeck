@@ -140,11 +140,9 @@ impl EnvironmentsView {
 
     pub fn open_create_env_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let n = self.environments.len() + 1;
-        let default_name = if self.is_zh() {
-            format!("环境 {n}")
-        } else {
-            format!("Environment {n}")
-        };
+        let default_name = crate::ui::Tr(self.lang)
+            .environments()
+            .actions_environment(n);
         self.new_env_name_input
             .update(cx, |s, cx| s.set_value(default_name, window, cx));
         self.active_modal = Some(EnvModal::CreateEnv);
@@ -156,7 +154,9 @@ impl EnvironmentsView {
         if name.is_empty() {
             self.status_msg = Some((
                 Tone::Warning,
-                self.t("环境名称不能为空", "Environment name cannot be blank")
+                crate::ui::Tr(self.lang)
+                    .environments()
+                    .actions_environment_name_cannot_be_blank()
                     .to_owned(),
             ));
             cx.notify();
@@ -172,12 +172,13 @@ impl EnvironmentsView {
         self.status_msg = Some((
             Tone::Success,
             if env_id.is_some() {
-                self.t(
-                    "已设为当前工作区生效环境",
-                    "Set as active workspace environment",
-                )
+                crate::ui::Tr(self.lang)
+                    .environments()
+                    .actions_set_as_active_workspace_environment()
             } else {
-                self.t("已取消当前生效环境", "Cleared active workspace environment")
+                crate::ui::Tr(self.lang)
+                    .environments()
+                    .actions_cleared_active_workspace_environment()
             }
             .to_owned(),
         ));
@@ -220,7 +221,10 @@ impl EnvironmentsView {
                         this.load_env_into_draft(&saved);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已创建新环境", "Created environment").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_created_environment()
+                                .to_owned(),
                         ));
                         this.reload_environments(ws_reload, cx);
                     }
@@ -241,7 +245,9 @@ impl EnvironmentsView {
         if name.is_empty() {
             self.status_msg = Some((
                 Tone::Warning,
-                self.t("环境名称不能为空", "Environment name cannot be blank")
+                crate::ui::Tr(self.lang)
+                    .environments()
+                    .actions_environment_name_cannot_be_blank()
                     .to_owned(),
             ));
             cx.notify();
@@ -269,7 +275,10 @@ impl EnvironmentsView {
                         this.load_env_into_draft(&saved);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已保存环境配置", "Saved environment").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_saved_environment()
+                                .to_owned(),
                         ));
                         this.reload_environments(ws_id, cx);
                     }
@@ -296,7 +305,9 @@ impl EnvironmentsView {
                         this.load_env_into_draft(&copy);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已复制环境（含机密变量）", "Duplicated environment")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_duplicated_environment()
                                 .to_owned(),
                         ));
                         this.reload_environments(ws_reload, cx);
@@ -349,7 +360,9 @@ impl EnvironmentsView {
                         this.load_env_into_draft(&restored);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已恢复已删除的环境", "Restored deleted environment")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_restored_deleted_environment()
                                 .to_owned(),
                         ));
                         this.reload_environments(ws_reload, cx);
@@ -383,11 +396,10 @@ impl EnvironmentsView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t(
-                                "已直接将机密值复制到剪贴板",
-                                "Copied secret directly to clipboard",
-                            )
-                            .to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_copied_secret_directly_to_clipboard()
+                                .to_owned(),
                         ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
@@ -434,7 +446,9 @@ impl EnvironmentsView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已导出环境文件", "Exported environment file")
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_exported_environment_file()
                                 .to_owned(),
                         ));
                     }
@@ -467,7 +481,10 @@ impl EnvironmentsView {
                         this.load_env_into_draft(&env);
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已导入环境", "Imported environment").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .environments()
+                                .actions_imported_environment()
+                                .to_owned(),
                         ));
                         this.reload_environments(ws_reload, cx);
                     }

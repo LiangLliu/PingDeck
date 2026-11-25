@@ -1,19 +1,7 @@
 {
-  "field.err.range": "请输入 {min} 到 {max} 之间的值",
-  "field.err.rangeOrOff": "请输入 {off}，或 {min} 到 {max} 之间的值",
-  "field.err.above": "请输入大于 {min} 的值",
-  "field.err.atLeast": "请输入不小于 {min} 的值",
-  "field.err.whole": "请输入整数",
-  "field.err.number": "请输入数字",
-  "field.err.values": "请选择其中之一：{values}",
-  "field.err.option": "请选择列表中的选项",
-  "field.err.maxLen": "最多 {max}字节",
-  "field.err.blank": "请输入内容",
-  "field.err.maxItems": "最多添加 {max}项",
-  "field.needs": "需要先开启{name}",
-  "field.noValue": "尚未加载",
-  "field.value.seconds": "{value}秒",
-  "field.unit.s": "秒",
-  "field.list.duplicate": "列表中已有 {item}",
-  "field.readOnly": "设置加载完成前为只读"
+  "field.description": "说明",
+  "field.key": "键",
+  "field.name": "名称",
+  "field.readOnly": "只读",
+  "field.value": "值"
 }

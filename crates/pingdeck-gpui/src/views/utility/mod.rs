@@ -19,18 +19,18 @@ use pingdeck_desktop::core::app::{
     CollectionDto, EnvironmentDto, ImportConflict, ImportPreviewDto, RunCollectionInput,
     TlsCertificateDto, certificate_delete_impl, certificate_list_impl, collection_list_impl,
     cookie_jar_delete_expired_impl, cookie_jar_list_impl, environment_list_impl,
-    run_collection_impl, settings_get_impl, sync_export_impl, sync_import_impl, sync_status_impl,
+    run_collection_impl, sync_export_impl, sync_import_impl, sync_status_impl,
 };
 use pingdeck_desktop::core::model::CookieJarEntry;
 use pingdeck_desktop::core::model::events::RunnerEvent;
-use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::core::sync::{SyncImportOptions, SyncStatus};
 use pingdeck_desktop::state::UtilityDialog;
 use pingdeck_desktop::streams::channel_sink;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::{
-    TextareaState, Tone, UiIcon, badge, btn_icon, card, h_row, list_row, palette, to_hsla, v_col,
+    TextareaState, Tone, UiIcon, badge, btn_icon, card, h_row, list_row, palette, to_hsla, tr,
+    v_col,
 };
 
 use bench::NativeBenchState;
@@ -66,13 +66,8 @@ pub struct UtilityPanel {
 impl UtilityPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let bench = NativeBenchState::new(window, cx);
-        let curl_input = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .placeholder(
-                    "Paste cURL, Postman JSON, OpenAPI YAML/JSON, HAR, or Environment JSON…",
-                )
-                .rows(7)
-        });
+        let io_ph = tr(cx).utility().io_input_placeholder();
+        let curl_input = cx.new(|cx| TextareaState::new(window, cx).placeholder(io_ph).rows(7));
 
         Self {
             active: UtilityDialog::Console,
@@ -239,8 +234,10 @@ impl UtilityPanel {
             |this, res, cx| {
                 match res {
                     Ok(r) => {
-                        this.status_note =
-                            Some((Tone::Success, format!("Exported {} files", r.files_written)));
+                        this.status_note = Some((
+                            Tone::Success,
+                            tr(cx).utility().sync_exported_files(r.files_written),
+                        ));
                         this.reload_active(cx);
                     }
                     Err(err) => this.status_note = Some((Tone::Danger, err.message().to_owned())),
@@ -260,7 +257,7 @@ impl UtilityPanel {
                     Ok(r) => {
                         this.status_note = Some((
                             Tone::Success,
-                            format!("Imported {} entities", r.added + r.updated),
+                            tr(cx).utility().sync_imported_entities(r.added + r.updated),
                         ));
                         this.reload_active(cx);
                     }
@@ -283,7 +280,7 @@ impl UtilityPanel {
                 if let Ok(deleted) = res {
                     this.status_note = Some((
                         Tone::Success,
-                        format!("Removed {} expired cookies", deleted.len()),
+                        tr(cx).utility().cookies_removed_expired(deleted.len()),
                     ));
                     this.reload_active(cx);
                 }
@@ -345,7 +342,7 @@ impl UtilityPanel {
                     Ok(r) => {
                         this.status_note = Some((
                             Tone::Success,
-                            format!("Runner finished: {}/{} passed", r.passed, r.total),
+                            tr(cx).utility().runner_finished(r.passed, r.total),
                         ));
                     }
                     Err(err) => this.status_note = Some((Tone::Danger, err.message().to_owned())),
@@ -360,7 +357,7 @@ impl UtilityPanel {
 impl Render for UtilityPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
+        let lang = tr(cx).lang();
 
         let mut nav = v_col()
             .w(px(190.0))
@@ -371,10 +368,9 @@ impl Render for UtilityPanel {
             .border_r_1()
             .border_color(to_hsla(p.line.composite_over(p.pane)));
         for util in UtilityDialog::ALL {
-            let (zl, el) = util.label_pair();
             nav = nav.child(
                 list_row(
-                    SharedString::from(format!("util-tab-{el}")),
+                    SharedString::from(format!("util-tab-{util:?}")),
                     self.active == util,
                     cx,
                     cx.listener(move |this, _, _, cx| {
@@ -383,20 +379,19 @@ impl Render for UtilityPanel {
                         cx.notify();
                     }),
                 )
-                .child(div().text_xs().child(if zh { zl } else { el })),
+                .child(div().text_xs().child(util.label(lang))),
             );
         }
 
         let content: gpui_kit::AnyElement = match self.active {
-            UtilityDialog::Console => console::render_console(self, zh, cx),
-            UtilityDialog::ImportExport => import_export::render_import_export(self, zh, cx),
-            UtilityDialog::Sync => tools::render_sync(self, zh, cx),
-            UtilityDialog::Cookies => tools::render_cookies(self, zh, cx),
-            UtilityDialog::Certificates => tools::render_certs(self, zh, cx),
-            UtilityDialog::Runner => tools::render_runner(self, zh, cx),
+            UtilityDialog::Console => console::render_console(self, cx),
+            UtilityDialog::ImportExport => import_export::render_import_export(self, cx),
+            UtilityDialog::Sync => tools::render_sync(self, cx),
+            UtilityDialog::Cookies => tools::render_cookies(self, cx),
+            UtilityDialog::Certificates => tools::render_certs(self, cx),
+            UtilityDialog::Runner => tools::render_runner(self, cx),
         };
 
-        let (zl, el) = self.active.label_pair();
         card(cx)
             .size_full()
             .flex()
@@ -416,7 +411,7 @@ impl Render for UtilityPanel {
                                 div()
                                     .text_sm()
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                    .child(if zh { zl } else { el }),
+                                    .child(self.active.label(lang)),
                             )
                             .when_some(self.status_note.clone(), |el, (tone, msg)| {
                                 el.child(badge(SharedString::from(msg), tone, cx))

@@ -35,12 +35,9 @@ impl SettingsView {
     }
 
     pub fn pick_sync_directory(&mut self, cx: &mut Context<Self>) {
-        let zh = self.is_zh();
-        let title = if zh {
-            "选择本地同步文件夹"
-        } else {
-            "Choose local sync folder"
-        };
+        let title = crate::ui::tr(cx)
+            .settings()
+            .actions_sync_choose_local_sync_folder();
         let Some(path) = RfdDialog.pick_folder(Some(title)) else {
             return;
         };
@@ -128,7 +125,6 @@ impl SettingsView {
         if self.sync_busy {
             return;
         }
-        let zh = self.is_zh();
         self.sync_busy = true;
         cx.notify();
         let task =
@@ -138,11 +134,9 @@ impl SettingsView {
                     Ok(n) => {
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!("已将目录中 {n} 个文件的秘密替换为占位符")
-                            } else {
-                                format!("Replaced secrets with placeholders in {n} file(s)")
-                            },
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_sync_replaced_secrets_with_placeholders_in(n),
                             cx,
                         );
                         this.refresh_data_and_sync(cx);
@@ -157,7 +151,6 @@ impl SettingsView {
         if self.sync_busy {
             return;
         }
-        let zh = self.is_zh();
         self.sync_busy = true;
         cx.notify();
         let task = spawn_blocking_into(
@@ -169,24 +162,20 @@ impl SettingsView {
                     Ok(r) => {
                         let skip_note = if r.skipped_newer.is_empty() {
                             String::new()
-                        } else if zh {
-                            format!("，跳过 {} 个较新文件", r.skipped_newer.len())
                         } else {
-                            format!(", skipped {} newer file(s)", r.skipped_newer.len())
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_sync_skipped_newer_file_s(r.skipped_newer.len())
                         };
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "导出完成：写入 {} 个文件，清理 {} 个旧文件{skip_note}",
-                                    r.files_written, r.files_removed
-                                )
-                            } else {
-                                format!(
-                                    "Exported: {} written, {} removed{skip_note}",
-                                    r.files_written, r.files_removed
-                                )
-                            },
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_sync_exported_written_removed(
+                                    r.files_written,
+                                    r.files_removed,
+                                    skip_note,
+                                ),
                             cx,
                         );
                         this.refresh_data_and_sync(cx);
@@ -232,7 +221,6 @@ impl SettingsView {
         else {
             return;
         };
-        let zh = self.is_zh();
         let opts = SyncImportOptions {
             apply_removals,
             keep_local_keys: true,
@@ -251,17 +239,14 @@ impl SettingsView {
                     Ok(r) => {
                         this.set_flash(
                             Tone::Success,
-                            if zh {
-                                format!(
-                                    "导入完成：新增 {}、更新 {}、删除 {}、保留本地 {}",
-                                    r.added, r.updated, r.removed, r.kept_local
-                                )
-                            } else {
-                                format!(
-                                    "Imported: {} added, {} updated, {} removed, {} kept local",
-                                    r.added, r.updated, r.removed, r.kept_local
-                                )
-                            },
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_sync_imported_added_updated_removed_kept(
+                                    r.added,
+                                    r.updated,
+                                    r.removed,
+                                    r.kept_local,
+                                ),
                             cx,
                         );
                         this.refresh_data_and_sync(cx);

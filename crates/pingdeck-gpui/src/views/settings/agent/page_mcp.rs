@@ -8,7 +8,6 @@ use pingdeck_desktop::core::agent::mcp::{
     AgentMcpServerView, McpServerStatus, McpTransportConfig, McpTrustState,
 };
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
     Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger,
@@ -22,7 +21,6 @@ use super::widgets::{format_mcp_status, section_card_flush, section_card_padded}
 pub(super) fn render_mcp(
     view: &AgentSettingsView,
     lang: Language,
-    zh: bool,
     _window: &mut Window,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
@@ -39,35 +37,32 @@ pub(super) fn render_mcp(
         .child(
             btn_primary(
                 "mcp-add-btn",
-                if zh {
-                    "+ 添加 MCP 服务器"
-                } else {
-                    "+ Add MCP server"
-                },
+                crate::ui::tr(cx).settings().page_mcp_add_mcp_server(),
             )
             .on_click(cx.listener(|this, _, window, cx| this.open_mcp_add_sheet(window, cx))),
         )
         .child(
-            btn_secondary("mcp-json-btn", if zh { "编辑 JSON…" } else { "Edit JSON…" })
-                .icon(icon_xs(UiIcon::FileCode))
-                .on_click(cx.listener(|this, _, window, cx| this.open_mcp_json_sheet(window, cx))),
+            btn_secondary(
+                "mcp-json-btn",
+                crate::ui::tr(cx).settings().page_mcp_edit_json(),
+            )
+            .icon(icon_xs(UiIcon::FileCode))
+            .on_click(cx.listener(|this, _, window, cx| this.open_mcp_json_sheet(window, cx))),
         )
         .child(
-            btn_ghost("mcp-refresh-all", if zh { "刷新" } else { "Refresh" })
+            btn_ghost("mcp-refresh-all", crate::ui::tr(cx).common().refresh())
                 .icon(icon_xs(UiIcon::Refresh))
                 .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx))),
         );
 
-    let title = if zh {
-        "外部工具服务器"
-    } else {
-        "External tool servers"
-    };
+    let title = crate::ui::tr(cx)
+        .settings()
+        .page_mcp_external_tool_servers();
     let desc = div()
         .px(px(4.0))
         .text_xs()
         .text_color(to_hsla(p.muted))
-        .child(t(lang, "set.sec.mcp.mcp.d").to_owned());
+        .child(crate::ui::Tr(lang).settings().sec_mcp_mcp_d().to_owned());
 
     if servers.is_empty() {
         return v_col()
@@ -78,8 +73,11 @@ pub(super) fn render_mcp(
                 Some(toolbar.into_any_element()),
                 settings_sub_well(cx).h(px(186.0)).child(empty_state(
                     UiIcon::Server,
-                    t(lang, "set.tools.mcp.empty").to_owned(),
-                    t(lang, "set.tools.mcp.empty.d").to_owned(),
+                    crate::ui::Tr(lang).settings().tools_mcp_empty().to_owned(),
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .tools_mcp_empty_d()
+                        .to_owned(),
                     cx,
                 )),
                 cx,
@@ -101,30 +99,26 @@ pub(super) fn render_mcp(
             div()
                 .flex_1()
                 .min_w_0()
-                .child(if zh { "服务器" } else { "Server" }),
+                .child(crate::ui::tr(cx).settings().page_mcp_server()),
         )
         .child(
             div()
                 .w(px(76.0))
                 .flex_shrink_0()
-                .child(if zh { "传输" } else { "Transport" }),
+                .child(crate::ui::tr(cx).settings().page_mcp_transport()),
         )
         .child(
             div()
                 .w(px(180.0))
                 .flex_shrink_0()
-                .child(if zh { "状态" } else { "Status" }),
+                .child(crate::ui::tr(cx).settings().page_mcp_status()),
         )
         .child(
             div()
                 .w(px(172.0))
                 .flex_shrink_0()
                 .text_right()
-                .child(if zh {
-                    "启用 / 操作"
-                } else {
-                    "Enable / Actions"
-                }),
+                .child(crate::ui::tr(cx).settings().page_mcp_enable_actions()),
         );
 
     let mut rows = v_col().child(table_head);
@@ -136,7 +130,6 @@ pub(super) fn render_mcp(
             idx,
             idx + 1 < total,
             lang,
-            zh,
             cx,
         ));
     }
@@ -159,7 +152,6 @@ fn render_mcp_row(
     idx: usize,
     bottom_border: bool,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -178,7 +170,7 @@ fn render_mcp_row(
         McpTransportConfig::Http { url, .. } => ("HTTP", url.clone(), false),
     };
 
-    let (st_shape, st_text, st_fg) = format_mcp_status(sv, lang, zh, &p);
+    let (st_shape, st_text, st_fg) = format_mcp_status(sv, lang, &p);
     let restarting = view.mcp_restarting_id.as_deref() == Some(sid.as_str());
     let confirming_start = view.mcp_confirm_start_id.as_deref() == Some(sid.as_str());
     let confirming_delete = view.mcp_confirm_delete_id.as_deref() == Some(sid.as_str());
@@ -186,17 +178,26 @@ fn render_mcp_row(
 
     let trust_badge = match sv.trust_state {
         Some(McpTrustState::Trusted) => badge(
-            t(lang, "set.tools.mcp.trusted").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .tools_mcp_trusted()
+                .to_owned(),
             Tone::Success,
             cx,
         ),
         Some(McpTrustState::NeedsReview) => badge(
-            t(lang, "set.tools.mcp.drifted").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .tools_mcp_drifted()
+                .to_owned(),
             Tone::Warning,
             cx,
         ),
         _ => badge(
-            t(lang, "set.tools.mcp.untrusted").to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .tools_mcp_untrusted()
+                .to_owned(),
             Tone::Neutral,
             cx,
         ),
@@ -220,7 +221,10 @@ fn render_mcp_row(
                 .child(trust_badge)
                 .children(is_stdio.then(|| {
                     badge(
-                        t(lang, "set.tools.mcp.notSandboxed").to_owned(),
+                        crate::ui::Tr(lang)
+                            .settings()
+                            .tools_mcp_not_sandboxed()
+                            .to_owned(),
                         Tone::Neutral,
                         cx,
                     )
@@ -285,9 +289,9 @@ fn render_mcp_row(
         None | Some(McpTrustState::Untrusted | McpTrustState::NeedsReview)
     );
     let trust_btn_label = if sv.trust_state == Some(McpTrustState::NeedsReview) {
-        t(lang, "set.tools.mcp.review").to_owned()
+        crate::ui::Tr(lang).settings().tools_mcp_review().to_owned()
     } else {
-        t(lang, "set.tools.mcp.trust").to_owned()
+        crate::ui::Tr(lang).settings().tools_mcp_trust().to_owned()
     };
 
     let actions_col = h_row()
@@ -305,11 +309,7 @@ fn render_mcp_row(
         }))
         .children(srv.enabled.then(|| {
             btn_icon(SharedString::from(format!("mcp-re-{idx}")), UiIcon::Refresh)
-                .tooltip(if zh {
-                    "重启服务器"
-                } else {
-                    "Restart server"
-                })
+                .tooltip(crate::ui::tr(cx).settings().page_mcp_restart_server())
                 .disabled(restarting)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.restart_mcp_server(sid_restart.clone(), cx);
@@ -320,11 +320,7 @@ fn render_mcp_row(
                 SharedString::from(format!("mcp-log-{idx}")),
                 UiIcon::Terminal,
             )
-            .tooltip(if zh {
-                "查看标准错误日志"
-            } else {
-                "View stderr log"
-            })
+            .tooltip(crate::ui::tr(cx).settings().page_mcp_view_stderr_log())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.toggle_mcp_log(sid_log.clone(), cx);
             }))
@@ -334,18 +330,14 @@ fn render_mcp_row(
                 SharedString::from(format!("mcp-edit-{idx}")),
                 UiIcon::Pencil,
             )
-            .tooltip(if zh { "编辑配置" } else { "Edit server" })
+            .tooltip(crate::ui::tr(cx).settings().page_mcp_edit_server())
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.open_mcp_edit_sheet(srv_edit.clone(), window, cx);
             })),
         )
         .child(
             btn_icon(SharedString::from(format!("mcp-del-{idx}")), UiIcon::Trash)
-                .tooltip(if zh {
-                    "删除服务器"
-                } else {
-                    "Delete server"
-                })
+                .tooltip(crate::ui::tr(cx).settings().page_mcp_delete_server())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.mcp_confirm_delete_id = Some(sid_del.clone());
                     cx.notify();
@@ -396,16 +388,16 @@ fn render_mcp_row(
                                 .text_xs()
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                 .text_color(to_hsla(p.warn))
-                                .child(SharedString::from(t_args(
-                                    lang,
-                                    "set.tools.mcp.start.title",
-                                    &[("name", srv.name.as_str())],
-                                ))),
+                                .child(SharedString::from(
+                                    crate::ui::Tr(lang)
+                                        .settings()
+                                        .tools_mcp_start_title(&srv.name),
+                                )),
                         )
                         .child(div().text_xs().text_color(to_hsla(p.ink_2)).child(
                             SharedString::from(format!(
                                 "{} ({transport_target})",
-                                t(lang, "set.tools.mcp.start.body")
+                                crate::ui::Tr(lang).settings().tools_mcp_start_body()
                             )),
                         )),
                 )
@@ -415,7 +407,7 @@ fn render_mcp_row(
                         .child(
                             btn_ghost(
                                 SharedString::from(format!("mcp-start-cancel-{idx}")),
-                                if zh { "取消" } else { "Cancel" },
+                                crate::ui::tr(cx).common().cancel(),
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.mcp_confirm_start_id = None;
@@ -425,7 +417,10 @@ fn render_mcp_row(
                         .child(
                             btn_primary(
                                 SharedString::from(format!("mcp-start-go-{idx}")),
-                                t(lang, "set.tools.mcp.start.confirm").to_owned(),
+                                crate::ui::Tr(lang)
+                                    .settings()
+                                    .tools_mcp_start_confirm()
+                                    .to_owned(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
@@ -456,12 +451,10 @@ fn render_mcp_row(
                         .text_color(to_hsla(p.bad))
                         .child(SharedString::from(format!(
                             "{} — {}",
-                            t_args(
-                                lang,
-                                "set.tools.mcp.delete.title",
-                                &[("name", srv.name.as_str())]
-                            ),
-                            t(lang, "set.tools.mcp.delete.body")
+                            crate::ui::Tr(lang)
+                                .settings()
+                                .tools_mcp_delete_title(&srv.name),
+                            crate::ui::Tr(lang).settings().tools_mcp_delete_body()
                         ))),
                 )
                 .child(
@@ -470,7 +463,7 @@ fn render_mcp_row(
                         .child(
                             btn_ghost(
                                 SharedString::from(format!("mcp-del-cancel-{idx}")),
-                                if zh { "取消" } else { "Cancel" },
+                                crate::ui::tr(cx).common().cancel(),
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.mcp_confirm_delete_id = None;
@@ -480,7 +473,7 @@ fn render_mcp_row(
                         .child(
                             btn_danger(
                                 SharedString::from(format!("mcp-del-go-{idx}")),
-                                t(lang, "set.tools.mcp.delete").to_owned(),
+                                crate::ui::Tr(lang).settings().tools_mcp_delete().to_owned(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
@@ -500,7 +493,12 @@ fn render_mcp_row(
                 .p(px(10.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(t(lang, "set.tools.mcp.log.empty").to_owned())
+                .child(
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .tools_mcp_log_empty()
+                        .to_owned(),
+                )
                 .into_any_element()
         } else {
             let joined = format!("````text\n{}\n````", lines.join("\n"));
@@ -533,12 +531,15 @@ fn render_mcp_row(
                             div()
                                 .text_xs()
                                 .text_color(to_hsla(p.muted))
-                                .child(t(lang, "set.tools.mcp.log.d").to_owned()),
+                                .child(crate::ui::Tr(lang).settings().tools_mcp_log_d().to_owned()),
                         )
                         .child(
                             btn_ghost(
                                 SharedString::from(format!("mcp-log-ref-{idx}")),
-                                t(lang, "set.tools.mcp.log.refresh").to_owned(),
+                                crate::ui::Tr(lang)
+                                    .settings()
+                                    .tools_mcp_log_refresh()
+                                    .to_owned(),
                             )
                             .icon(icon_xs(UiIcon::Refresh))
                             .on_click(cx.listener(

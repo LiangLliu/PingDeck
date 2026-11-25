@@ -5,6 +5,8 @@ use pingdeck_core::{
     model::settings::Language,
 };
 
+use crate::i18n::tr;
+
 /// Snapshot rendered by the platform tray bar item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraySnapshot {
@@ -17,60 +19,34 @@ pub struct TraySnapshot {
 /// Formats the tray status line: gateway first, then active mock/MCP/agent/run counts.
 #[must_use]
 pub fn status_line(work: &RunningWork, gateway_port: Option<u16>, language: Language) -> String {
-    let zh = language == Language::ZhCn;
+    let sh = tr(language).shell();
     let mut parts = Vec::new();
-    match (gateway_port, zh) {
-        (Some(port), true) => parts.push(format!("网关运行中（端口 {port}）")),
-        (Some(port), false) => parts.push(format!("Gateway on port {port}")),
-        (None, true) => parts.push("网关未运行".to_owned()),
-        (None, false) => parts.push("Gateway stopped".to_owned()),
+    match gateway_port {
+        Some(port) => parts.push(sh.tray_gateway_running(port)),
+        None => parts.push(sh.tray_gateway_stopped().to_owned()),
     }
-    let counts = [
-        (
-            work.mock_servers,
-            "个 Mock 服务",
-            "Mock server",
-            "Mock servers",
-        ),
-        (
-            work.mcp_servers,
-            "个 MCP 服务器",
-            "MCP server",
-            "MCP servers",
-        ),
-        (
-            work.agent_runs + work.subagents,
-            "个智能体运行",
-            "agent run",
-            "agent runs",
-        ),
-        (
-            work.flow_runs + work.collection_runs + work.bench_runs,
-            "个运行中的任务",
-            "run",
-            "runs",
-        ),
-    ];
-    for (count, zh_word, one, many) in counts {
-        if count == 0 {
-            continue;
-        }
-        parts.push(match (zh, count) {
-            (true, n) => format!("{n}{zh_word}"),
-            (false, 1) => format!("1 {one}"),
-            (false, n) => format!("{n} {many}"),
-        });
+    if work.mock_servers > 0 {
+        parts.push(sh.tray_mock_servers(work.mock_servers as usize));
     }
-    parts.join(if zh { "，" } else { " · " })
+    if work.mcp_servers > 0 {
+        parts.push(sh.tray_mcp_servers(work.mcp_servers as usize));
+    }
+    let agent_total = work.agent_runs + work.subagents;
+    if agent_total > 0 {
+        parts.push(sh.tray_agent_runs(agent_total as usize));
+    }
+    let runs_total = work.flow_runs + work.collection_runs + work.bench_runs;
+    if runs_total > 0 {
+        parts.push(sh.tray_runs(runs_total as usize));
+    }
+    parts.join(sh.tray_sep())
 }
 
 /// Localized `(show, quit)` tray labels.
 #[must_use]
 pub fn labels(language: Language) -> (&'static str, &'static str) {
-    match language {
-        Language::ZhCn => ("显示 PingDeck", "退出 PingDeck"),
-        Language::En => ("Show PingDeck", "Quit PingDeck"),
-    }
+    let sh = tr(language).shell();
+    (sh.tray_show(), sh.tray_quit())
 }
 
 /// Reads the current tray status snapshot from `AppState`.

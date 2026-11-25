@@ -13,11 +13,7 @@ use crate::ui::{
 use super::ProvidersView;
 use super::format::format_rule_status;
 
-pub fn render_rules_tab(
-    view: &ProvidersView,
-    zh: bool,
-    cx: &mut Context<ProvidersView>,
-) -> gpui_kit::Div {
+pub fn render_rules_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
     let p = palette(cx);
     let mut root = v_col().gap(px(14.0));
 
@@ -41,7 +37,7 @@ pub fn render_rules_tab(
         .anchor(Anchor::TopRight)
         .trigger(btn_primary(
             "gw-rule-add-trig",
-            if zh { "+ 添加规则" } else { "+ Add rule" },
+            crate::ui::tr(cx).providers().prov_gateway_rules_add_rule(),
         ))
         .content(move |_, _, cx| {
             let p = palette(cx);
@@ -53,11 +49,11 @@ pub fn render_rules_tab(
                         .p(px(8.0))
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(if zh {
-                            "没有可配置规则的模型（请先添加服务商并同步模型）"
-                        } else {
-                            "No models available without a rule yet"
-                        }),
+                        .child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_gateway_rules_no_models_available_without_a(),
+                        ),
                 );
             } else {
                 for (idx, (pid, mid, display)) in add_candidates.iter().take(60).enumerate() {
@@ -110,22 +106,17 @@ pub fn render_rules_tab(
                 v_col()
                     .gap(px(2.0))
                     .child(section_heading(
-                        if zh {
-                            "网关备用规则（首个内容事件后绝不切换）"
-                        } else {
-                            "Gateway Fallback Rules (locked after first content)"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_rules_gateway_fallback_rules_locked_after(),
                         cx,
                     ))
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .child(if zh {
-                                "外部客户端请求左侧主模型失败时，网关按顺序改用右侧备用模型（最多 5 个）。"
-                            } else {
-                                "When a primary model fails before streaming starts, the gateway tries up to 5 ordered fallbacks."
-                            }),
+                        div().text_xs().text_color(to_hsla(p.muted)).child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_gateway_rules_when_a_primary_model_fails(),
+                        ),
                     ),
             )
             .child(add_btn),
@@ -140,12 +131,13 @@ pub fn render_rules_tab(
         );
         let mut chain_rows = v_col().gap(px(5.0));
         if editor.chain.is_empty() {
-            chain_rows =
-                chain_rows.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "还没有备用模型，从下方候选列表中点击添加（最多 5 个）。"
-                } else {
-                    "No fallbacks yet. Pick up to 5 compatible models below."
-                }));
+            chain_rows = chain_rows.child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_rules_no_fallbacks_yet_pick_up(),
+                ),
+            );
         } else {
             for (i, item) in editor.chain.iter().enumerate() {
                 let disp = format!("{}/{}", view.provider_name(&item.provider_id), item.model);
@@ -225,11 +217,9 @@ pub fn render_rules_tab(
             .anchor(Anchor::TopLeft)
             .trigger(select_pill(
                 "gw-fb-cand-trig",
-                if zh {
-                    "+ 添加备用模型"
-                } else {
-                    "+ Add fallback"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_rules_add_fallback(),
                 false,
                 cx,
             ))
@@ -293,11 +283,13 @@ pub fn render_rules_tab(
                                         .text_xs()
                                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                         .text_color(to_hsla(p.ink))
-                                        .child(SharedString::from(if zh {
-                                            format!("编辑备用链：{primary_disp} 失败时")
-                                        } else {
-                                            format!("Edit fallbacks when {primary_disp} fails")
-                                        })),
+                                        .child(SharedString::from(
+                                            crate::ui::tr(cx)
+                                                .providers()
+                                                .prov_gateway_rules_edit_fallbacks_when_fails(
+                                                    primary_disp,
+                                                ),
+                                        )),
                                 )
                                 .child(btn_icon("rule-ed-close", UiIcon::Close).on_click(
                                     cx.listener(|this, _, _, cx| {
@@ -317,7 +309,7 @@ pub fn render_rules_tab(
                                         .child(
                                             btn_ghost(
                                                 "rule-ed-cancel",
-                                                if zh { "取消" } else { "Cancel" },
+                                                crate::ui::tr(cx).common().cancel(),
                                             )
                                             .on_click(
                                                 cx.listener(|this, _, _, cx| {
@@ -329,11 +321,13 @@ pub fn render_rules_tab(
                                         .child(
                                             btn_primary(
                                                 "rule-ed-save",
-                                                if zh { "保存规则" } else { "Save rule" },
+                                                crate::ui::tr(cx)
+                                                    .providers()
+                                                    .prov_gateway_rules_save_rule(),
                                             )
                                             .on_click(
                                                 cx.listener(move |this, _, _, cx| {
-                                                    this.save_rule_editor(zh, cx);
+                                                    this.save_rule_editor(cx);
                                                 }),
                                             ),
                                         ),
@@ -345,16 +339,18 @@ pub fn render_rules_tab(
 
     // Existing rules list.
     if view.gateway_rules.is_empty() {
-        root = root.child(card(cx).p(px(20.0)).child(
-            div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "没有备用规则：请求失败时直接把错误返回给客户端。点击「+ 添加规则」开始配置。"
-            } else {
-                "No fallback rules configured. Click + Add rule to create an ordered failover chain."
-            }),
-        ));
+        root = root.child(
+            card(cx).p(px(20.0)).child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_rules_no_fallback_rules_configured_click(),
+                ),
+            ),
+        );
     } else {
         for (idx, rule) in view.gateway_rules.iter().enumerate() {
-            let (st_lbl, st_tone) = format_rule_status(rule.status, zh);
+            let (st_lbl, st_tone) = format_rule_status(rule.status, crate::ui::active_language(cx));
             let primary_disp = format!(
                 "{}/{}",
                 view.provider_name(&rule.primary.provider_id),
@@ -366,10 +362,9 @@ pub fn render_rules_tab(
                     chain_row =
                         chain_row.child(div().text_xs().text_color(to_hsla(p.faint)).child("→"));
                 }
-                let fb_tone = rule
-                    .fallback_status
-                    .get(fi)
-                    .map_or(Tone::Neutral, |s| format_rule_status(*s, zh).1);
+                let fb_tone = rule.fallback_status.get(fi).map_or(Tone::Neutral, |s| {
+                    format_rule_status(*s, crate::ui::active_language(cx)).1
+                });
                 chain_row = chain_row.child(badge(
                     format!("{}/{}", view.provider_name(&fb.provider_id), fb.model),
                     fb_tone,
@@ -406,7 +401,9 @@ pub fn render_rules_tab(
                                         .child(badge(st_lbl, st_tone, cx))
                                         .children(rule.orphan.then(|| {
                                             badge(
-                                                if zh { "主模型已删除" } else { "Orphan" },
+                                                crate::ui::tr(cx)
+                                                    .providers()
+                                                    .prov_gateway_rules_orphan(),
                                                 Tone::Danger,
                                                 cx,
                                             )
@@ -420,7 +417,7 @@ pub fn render_rules_tab(
                                 .child(
                                     btn_ghost(
                                         SharedString::from(format!("rule-prev-{idx}")),
-                                        if zh { "预览顺序" } else { "Preview" },
+                                        crate::ui::tr(cx).providers().prov_gateway_rules_preview(),
                                     )
                                     .on_click(cx.listener(
                                         move |this, _, _, cx| {
@@ -435,7 +432,7 @@ pub fn render_rules_tab(
                                 .children((!rule.orphan).then(|| {
                                     btn_secondary(
                                         SharedString::from(format!("rule-edit-{idx}")),
-                                        if zh { "编辑" } else { "Edit" },
+                                        crate::ui::tr(cx).providers().gwa_routing_rules_edit(),
                                     )
                                     .on_click(cx.listener(
                                         move |this, _, _, cx| {
@@ -450,15 +447,11 @@ pub fn render_rules_tab(
                                 .child(
                                     btn_danger(
                                         SharedString::from(format!("rule-del-{idx}")),
-                                        if zh { "删除" } else { "Delete" },
+                                        crate::ui::tr(cx).common().delete(),
                                     )
                                     .on_click(cx.listener(
                                         move |this, _, _, cx| {
-                                            this.delete_gateway_rule(
-                                                primary_for_del.clone(),
-                                                zh,
-                                                cx,
-                                            );
+                                            this.delete_gateway_rule(primary_for_del.clone(), cx);
                                         },
                                     )),
                                 ),
@@ -476,22 +469,27 @@ pub fn render_rules_tab(
         }
         for item in &preview.items {
             let (v_lbl, v_tone) = match item.verdict.as_str() {
-                "first" => (if zh { "会先试" } else { "First" }, Tone::Success),
-                "fallback" => (if zh { "备用" } else { "Fallback" }, Tone::Accent),
-                _ => (if zh { "跳过" } else { "Skip" }, Tone::Neutral),
+                "first" => (
+                    crate::ui::tr(cx).providers().prov_gateway_rules_first(),
+                    Tone::Success,
+                ),
+                "fallback" => (
+                    crate::ui::tr(cx).providers().gwa_preview_fallback(),
+                    Tone::Accent,
+                ),
+                _ => (
+                    crate::ui::tr(cx).providers().prov_gateway_rules_skip(),
+                    Tone::Neutral,
+                ),
             };
             let key_info = if !item.keys_order.is_empty() {
-                if zh {
-                    format!("密钥：{}", item.keys_order.join(" → "))
-                } else {
-                    format!("Keys: {}", item.keys_order.join(" → "))
-                }
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_rules_keys(item.keys_order.join(" → "))
             } else if let Some(skip) = &item.skip_reason {
-                if zh {
-                    format!("跳过原因：{skip}")
-                } else {
-                    format!("Skipped: {skip}")
-                }
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_rules_skipped(skip)
             } else {
                 String::new()
             };
@@ -530,22 +528,19 @@ pub fn render_rules_tab(
                     .child(
                         h_row()
                             .justify_between()
-                            .child(h_row().gap(px(6.0)).child(icon_xs(UiIcon::Branch)).child(
-                                section_heading(
-                                    if zh {
-                                        format!(
-                                            "路由预览：{}（最多 {} 次尝试，只读）",
-                                            preview.requested, preview.max_attempts
-                                        )
-                                    } else {
-                                        format!(
-                                            "Route Preview: {} (max {} attempts, read-only)",
-                                            preview.requested, preview.max_attempts
-                                        )
-                                    },
-                                    cx,
+                            .child(
+                                h_row().gap(px(6.0)).child(icon_xs(UiIcon::Branch)).child(
+                                    section_heading(
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_gateway_rules_route_preview_max_attempts_read(
+                                                &preview.requested,
+                                                preview.max_attempts,
+                                            ),
+                                        cx,
+                                    ),
                                 ),
-                            ))
+                            )
                             .child(btn_icon("rule-prev-close", UiIcon::Close).on_click(
                                 cx.listener(|this, _, _, cx| {
                                     this.route_preview = None;

@@ -15,24 +15,20 @@ use super::state::{UsageView, fmt_compact};
 
 pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
 
-    let header = pane_header(view.t("用量与日志", "Usage & Logs"), None, None, None, cx);
+    let header = pane_header(
+        crate::ui::Tr(view.lang).usage().usage_sidebar_usage_logs(),
+        None,
+        None,
+        None,
+        cx,
+    );
 
     let all_row = view.total_scope_row();
-    let all_sub = if zh {
-        format!(
-            "{} 次调用 · {} token",
-            fmt_compact(all_row.requests),
-            fmt_compact(all_row.total_tokens())
-        )
-    } else {
-        format!(
-            "{} calls · {} tok",
-            fmt_compact(all_row.requests),
-            fmt_compact(all_row.total_tokens())
-        )
-    };
+    let all_sub = crate::ui::tr(cx).usage().usage_sidebar_calls_tok(
+        fmt_compact(all_row.requests),
+        fmt_compact(all_row.total_tokens()),
+    );
 
     let mut body = v_col().w_full().p(px(8.0)).gap(px(4.0)).child(
         list_row(
@@ -56,7 +52,7 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
                         .truncate()
-                        .child(view.t("全部服务商", "All Providers")),
+                        .child(crate::ui::Tr(view.lang).usage().usage_usage_all_providers()),
                 )
                 .child(
                     div()
@@ -70,7 +66,9 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
 
     if view.providers.is_empty() {
         body = body.child(empty_inline(
-            view.t("尚未配置服务商", "No providers configured"),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_sidebar_no_providers_configured(),
             None,
             None,
             cx,
@@ -84,7 +82,10 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                 .px(px(8.0))
                 .border_t_1()
                 .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(section_heading(view.t("按服务商筛选", "By Provider"), cx)),
+                .child(section_heading(
+                    crate::ui::Tr(view.lang).usage().usage_sidebar_by_provider(),
+                    cx,
+                )),
         );
 
         for prov in &view.providers {
@@ -101,11 +102,9 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
             let totals = view.provider_totals.get(&prov.id);
             let reqs = totals.map_or(0, |r| r.requests);
             let toks = totals.map_or(0, |r| r.total_tokens());
-            let sub = if zh {
-                format!("{} 次调用 · {} token", fmt_compact(reqs), fmt_compact(toks))
-            } else {
-                format!("{} calls · {} tok", fmt_compact(reqs), fmt_compact(toks))
-            };
+            let sub = crate::ui::tr(cx)
+                .usage()
+                .usage_sidebar_calls_tok_2(fmt_compact(reqs), fmt_compact(toks));
             body = body.child(
                 list_row(
                     SharedString::from(format!("usage-scope-{}", prov.id)),
@@ -157,11 +156,11 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                 div()
                     .text_size(px(11.0))
                     .text_color(to_hsla(p.muted))
-                    .child(if zh {
-                        format!("{} 个服务商 · 实时同步", view.providers.len())
-                    } else {
-                        format!("{} provider(s) · Live", view.providers.len())
-                    }),
+                    .child(
+                        crate::ui::tr(cx)
+                            .usage()
+                            .usage_sidebar_provider_s_live(view.providers.len()),
+                    ),
             ),
         None,
         cx,

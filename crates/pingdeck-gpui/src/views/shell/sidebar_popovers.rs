@@ -8,7 +8,7 @@ use pingdeck_desktop::state::{NavModule, UtilityDialog};
 use crate::ui::{
     Anchor, Popover, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary, h_row, icon_xs,
     list_row, meta_pill, palette, popover, popover_trigger_btn, section_heading, status_indicator,
-    text_input, to_hsla, v_col,
+    text_input, to_hsla, tr, v_col,
 };
 
 use super::AppShell;
@@ -43,7 +43,6 @@ pub fn render_workspace_popover(
     shell: &AppShell,
     collapsed: bool,
     active_ws_name: String,
-    zh: bool,
     cx: &mut Context<AppShell>,
 ) -> Popover {
     let workspaces_snapshot = shell.state.workspaces.clone();
@@ -53,6 +52,7 @@ pub fn render_workspace_popover(
     let shell_entity = cx.entity().clone();
 
     let p = palette(cx);
+    let sh = tr(cx).shell();
     let trigger_el = if collapsed {
         popover_trigger_btn(
             "sidebar-workspace-rail",
@@ -60,11 +60,7 @@ pub fn render_workspace_popover(
         )
         .size(px(34.0))
         .p(px(0.0))
-        .tooltip(SharedString::from(if zh {
-            format!("工作区：{active_ws_name}")
-        } else {
-            format!("Workspace: {active_ws_name}")
-        }))
+        .tooltip(SharedString::from(sh.workspace_tooltip(&active_ws_name)))
     } else {
         popover_trigger_btn(
             "sidebar-workspace-trigger",
@@ -103,23 +99,22 @@ pub fn render_workspace_popover(
     .trigger(trigger_el)
     .content(move |_pop_state, _window, pop_cx| {
         let pop_p = palette(pop_cx);
+        let sh = tr(pop_cx).shell();
         let mut menu = v_col().w(px(252.0)).gap(px(4.0));
-        menu = menu.child(div().px(px(6.0)).pb(px(2.0)).child(section_heading(
-            if zh { "工作区" } else { "Workspaces" },
-            pop_cx,
-        )));
+        menu = menu.child(
+            div()
+                .px(px(6.0))
+                .pb(px(2.0))
+                .child(section_heading(sh.workspace_list(), pop_cx)),
+        );
 
         for ws in &workspaces_snapshot {
             let ws_id = ws.id.as_str().to_owned();
             let selected = active_ws_id.as_deref() == Some(ws.id.as_str());
             let name = ws.name.clone();
-            let count_sub = ws_counts.get(&ws_id).map(|(reqs, mocks)| {
-                if zh {
-                    format!("{reqs} 请求 · {mocks} Mock")
-                } else {
-                    format!("{reqs} req · {mocks} mock")
-                }
-            });
+            let count_sub = ws_counts
+                .get(&ws_id)
+                .map(|(reqs, mocks)| sh.workspace_counts(reqs, mocks));
             let shell_ref = shell_entity.clone();
             let pop_handle = pop_cx.entity().clone();
             menu = menu.child(
@@ -185,7 +180,7 @@ pub fn render_workspace_popover(
                     .gap(px(4.0))
                     .child(div().flex_1().child(text_input(input)))
                     .child(
-                        btn_primary("ws-create-ok", if zh { "建" } else { "OK" }).on_click(
+                        btn_primary("ws-create-ok", sh.workspace_create_short()).on_click(
                             move |_, window, cx| {
                                 shell_ok.update(cx, |s, cx| {
                                     s.submit_create_workspace(cx);
@@ -198,44 +193,30 @@ pub fn render_workspace_popover(
         } else {
             let shell_new = shell_entity.clone();
             menu = menu.child(
-                btn_ghost(
-                    "ws-new-trigger",
-                    if zh {
-                        "+ 新建工作区"
-                    } else {
-                        "+ New workspace"
-                    },
-                )
-                .w_full()
-                .justify_start()
-                .on_click(move |_, window, cx| {
-                    shell_new.update(cx, |s, cx| {
-                        s.start_create_workspace(window, cx);
-                    });
-                }),
+                btn_ghost("ws-new-trigger", sh.workspace_new_btn())
+                    .w_full()
+                    .justify_start()
+                    .on_click(move |_, window, cx| {
+                        shell_new.update(cx, |s, cx| {
+                            s.start_create_workspace(window, cx);
+                        });
+                    }),
             );
         }
 
         let shell_imp = shell_entity.clone();
         let pop_handle = pop_cx.entity().clone();
         menu = menu.child(
-            btn_ghost(
-                "ws-import-export",
-                if zh {
-                    "导入 / 导出…"
-                } else {
-                    "Import / Export…"
-                },
-            )
-            .icon(icon_xs(UiIcon::Upload))
-            .w_full()
-            .justify_start()
-            .on_click(move |_, window, cx| {
-                shell_imp.update(cx, |s, cx| {
-                    s.open_utility(UtilityDialog::ImportExport, window, cx);
-                });
-                pop_handle.update(cx, |st, cx| st.dismiss(window, cx));
-            }),
+            btn_ghost("ws-import-export", sh.workspace_import_export())
+                .icon(icon_xs(UiIcon::Upload))
+                .w_full()
+                .justify_start()
+                .on_click(move |_, window, cx| {
+                    shell_imp.update(cx, |s, cx| {
+                        s.open_utility(UtilityDialog::ImportExport, window, cx);
+                    });
+                    pop_handle.update(cx, |st, cx| st.dismiss(window, cx));
+                }),
         );
         menu
     })
@@ -246,7 +227,6 @@ pub fn render_running_work_popover(
     collapsed: bool,
     active_jobs: u32,
     work_text: String,
-    zh: bool,
     cx: &mut Context<AppShell>,
 ) -> Popover {
     let p = palette(cx);
@@ -307,18 +287,14 @@ pub fn render_running_work_popover(
     .trigger(trigger)
     .content(move |_, _, pop_cx| {
         let pop_p = palette(pop_cx);
-        let mut body = v_col().w(px(286.0)).gap(px(6.0)).child(section_heading(
-            if zh {
-                "后台任务与待处理"
-            } else {
-                "Running Work & Attention"
-            },
-            pop_cx,
-        ));
+        let sh = tr(pop_cx).shell();
+        let mut body = v_col()
+            .w(px(286.0))
+            .gap(px(6.0))
+            .child(section_heading(sh.running_heading(), pop_cx));
 
         let mut any_row = false;
 
-        // 1. Pending Chat approvals
         for appr in &approvals {
             any_row = true;
             let sid = appr.session_id.clone();
@@ -346,15 +322,10 @@ pub fn render_running_work_popover(
                         .truncate()
                         .child(appr.summary.clone()),
                 )
-                .child(badge(
-                    if zh { "待批" } else { "Gate" },
-                    Tone::Warning,
-                    pop_cx,
-                )),
+                .child(badge(sh.running_gate_badge(), Tone::Warning, pop_cx)),
             );
         }
 
-        // 2. Running Mock servers
         for (mid, mname, port) in &mocks {
             any_row = true;
             let mid_go = mid.clone();
@@ -387,7 +358,6 @@ pub fn render_running_work_popover(
             );
         }
 
-        // 3. Running Flows / Collection runs / Agent runs
         if work.flow_runs > 0 {
             any_row = true;
             let s_ent = shell_ent.clone();
@@ -398,11 +368,7 @@ pub fn render_running_work_popover(
                     ph.update(cx, |st, cx| st.dismiss(window, cx));
                 })
                 .justify_between()
-                .child(div().text_xs().child(if zh {
-                    format!("运行中的流程 ({})", work.flow_runs)
-                } else {
-                    format!("Running flows ({})", work.flow_runs)
-                }))
+                .child(div().text_xs().child(sh.running_flows(work.flow_runs)))
                 .child(status_indicator(StatusShape::Run, pop_cx)),
             );
         }
@@ -416,11 +382,7 @@ pub fn render_running_work_popover(
                     ph.update(cx, |st, cx| st.dismiss(window, cx));
                 })
                 .justify_between()
-                .child(div().text_xs().child(if zh {
-                    format!("运行中的智能体对话 ({})", work.agent_runs)
-                } else {
-                    format!("Active agent runs ({})", work.agent_runs)
-                }))
+                .child(div().text_xs().child(sh.running_agents(work.agent_runs)))
                 .child(status_indicator(StatusShape::Run, pop_cx)),
             );
         }
@@ -434,16 +396,12 @@ pub fn render_running_work_popover(
                     ph.update(cx, |st, cx| st.dismiss(window, cx));
                 })
                 .justify_between()
-                .child(div().text_xs().child(if zh {
-                    format!("{prov_attn} 个 AI 服务商需关注")
-                } else {
-                    format!("{prov_attn} provider(s) need attention")
-                }))
-                .child(badge(
-                    if zh { "异常" } else { "Check" },
-                    Tone::Danger,
-                    pop_cx,
-                )),
+                .child(
+                    div()
+                        .text_xs()
+                        .child(sh.running_providers_attention(prov_attn)),
+                )
+                .child(badge(sh.running_check_badge(), Tone::Danger, pop_cx)),
             );
         }
 
@@ -454,11 +412,7 @@ pub fn render_running_work_popover(
                     .py(px(8.0))
                     .text_xs()
                     .text_color(to_hsla(pop_p.muted))
-                    .child(if zh {
-                        "当前没有运行中的后台任务或待审批项。"
-                    } else {
-                        "No running tasks or pending approvals."
-                    }),
+                    .child(sh.running_empty()),
             );
         }
 
@@ -471,23 +425,16 @@ pub fn render_running_work_popover(
                 .bg(to_hsla(pop_p.line.composite_over(pop_p.overlay))),
         )
         .child(
-            btn_ghost(
-                "rw-open-console",
-                if zh {
-                    "打开诊断控制台 →"
-                } else {
-                    "Open Diagnostics Console →"
-                },
-            )
-            .icon(icon_xs(UiIcon::Terminal))
-            .w_full()
-            .justify_start()
-            .on_click(move |_, window, cx| {
-                s_con.update(cx, |s, cx| {
-                    s.open_utility(UtilityDialog::Console, window, cx);
-                });
-                ph_con.update(cx, |st, cx| st.dismiss(window, cx));
-            }),
+            btn_ghost("rw-open-console", sh.running_open_console())
+                .icon(icon_xs(UiIcon::Terminal))
+                .w_full()
+                .justify_start()
+                .on_click(move |_, window, cx| {
+                    s_con.update(cx, |s, cx| {
+                        s.open_utility(UtilityDialog::Console, window, cx);
+                    });
+                    ph_con.update(cx, |st, cx| st.dismiss(window, cx));
+                }),
         )
     })
 }

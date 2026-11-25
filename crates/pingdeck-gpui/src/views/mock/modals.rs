@@ -33,7 +33,7 @@ pub fn render_modal(
                 .w_full()
                 .gap(px(10.0))
                 .child(setting_row(
-                    view.t("服务名称", "Server Name"),
+                    crate::ui::Tr(view.lang).mock().modals_server_name(),
                     None,
                     None,
                     div()
@@ -42,15 +42,13 @@ pub fn render_modal(
                     cx,
                 ))
                 .child(setting_row(
-                    view.t(
-                        "监听端口（仅绑定 127.0.0.1）",
-                        "Listen Port (127.0.0.1 only)",
-                    ),
+                    crate::ui::Tr(view.lang).mock().modals_listen_port_127_0_0(),
                     None,
-                    Some(SharedString::from(view.t(
-                        "创建后默认包含一条 GET 路由，可立即启动或热编辑。",
-                        "Starts with a default GET route ready to launch or hot-edit.",
-                    ))),
+                    Some(SharedString::from(
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .modals_starts_with_a_default_get(),
+                    )),
                     number_field(&view.new_srv_port_input, None, 110.0, cx),
                     cx,
                 ))
@@ -58,21 +56,26 @@ pub fn render_modal(
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("mock-new-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "mock-new-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_primary("mock-new-confirm", view.t("创建服务", "Create Server"))
-                        .on_click(cx.listener(|this, _, _, cx| this.create_server_from_modal(cx))),
+                    btn_primary(
+                        "mock-new-confirm",
+                        crate::ui::Tr(view.lang).mock().modals_create_server(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.create_server_from_modal(cx))),
                 )
                 .into_any_element();
             modal_dialog(
                 "mock-create-modal",
-                view.t("新建 Mock 服务", "New Mock Server"),
+                crate::ui::Tr(view.lang).mock().mock_new_mock_server(),
                 460.0,
                 body,
                 footer,
@@ -86,37 +89,38 @@ pub fn render_modal(
             let body = v_col()
                 .gap(px(10.0))
                 .child(
-                    div()
-                        .text_sm()
-                        .text_color(to_hsla(p.ink))
-                        .child(if view.is_zh() {
-                            format!("确定要永久删除 Mock 服务「{name}」及其所有路由、数据桶与回调吗？")
-                        } else {
-                            format!("Permanently delete mock server \"{name}\" and all its routes, buckets, and callbacks?")
-                        }),
+                    div().text_sm().text_color(to_hsla(p.ink)).child(
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .modals_permanently_delete_mock_server_and(name),
+                    ),
                 )
                 .into_any_element();
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("mock-del-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "mock-del-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_danger("mock-del-confirm", view.t("删除服务", "Delete Server")).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.delete_server(id.clone(), cx);
-                        }),
-                    ),
+                    btn_danger(
+                        "mock-del-confirm",
+                        crate::ui::Tr(view.lang).mock().modals_delete_server(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.delete_server(id.clone(), cx);
+                    })),
                 )
                 .into_any_element();
             modal_dialog(
                 "mock-delete-modal",
-                view.t("删除 Mock 服务", "Delete Mock Server"),
+                crate::ui::Tr(view.lang).mock().modals_delete_mock_server(),
                 440.0,
                 body,
                 footer,
@@ -172,11 +176,14 @@ pub fn render_modal(
                 )
                 .child(div().flex_1())
                 .child(
-                    btn_secondary("mock-imp-file", view.t("从文件读取…", "Load File…"))
-                        .icon(icon_xs(UiIcon::Upload))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.load_import_from_file(window, cx);
-                        })),
+                    btn_secondary(
+                        "mock-imp-file",
+                        crate::ui::Tr(view.lang).mock().modals_load_file(),
+                    )
+                    .icon(icon_xs(UiIcon::Upload))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.load_import_from_file(window, cx);
+                    })),
                 );
             let body = v_col()
                 .w_full()
@@ -184,10 +191,9 @@ pub fn render_modal(
                 .child(fmt_row)
                 .child(alert_banner(
                     Tone::Neutral,
-                    view.t(
-                        "导入的 Mock 服务默认处于停止状态且自动关闭代理回源，防止意外发起外联。",
-                        "Imported servers start stopped with proxying disabled for safety.",
-                    ),
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .modals_imported_servers_start_stopped_with(),
                     None,
                     cx,
                 ))
@@ -201,24 +207,28 @@ pub fn render_modal(
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("mock-imp-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "mock-imp-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_primary("mock-imp-submit", view.t("导入服务", "Import")).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.run_import(format, cx);
-                        }),
-                    ),
+                    btn_primary(
+                        "mock-imp-submit",
+                        crate::ui::Tr(view.lang).mock().modals_import(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.run_import(format, cx);
+                    })),
                 )
                 .into_any_element();
             modal_dialog(
                 "mock-import-modal",
-                view.t("导入 Mock 服务", "Import Mock Server"),
+                crate::ui::Tr(view.lang).mock().modals_import_mock_server(),
                 620.0,
                 body,
                 footer,
@@ -234,12 +244,15 @@ pub fn render_modal(
                 .w_full()
                 .gap(px(10.0))
                 .child(setting_row(
-                    view.t("包含代理和回调中的明文凭据头", "Include literal credential headers"),
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .modals_include_literal_credential_headers(),
                     None,
-                    Some(SharedString::from(view.t(
-                        "关闭时会自动清空 Authorization、X-Api-Key 等敏感请求头的值。",
-                        "When off, sensitive proxy and callback header values are cleared automatically.",
-                    ))),
+                    Some(SharedString::from(
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .modals_when_off_sensitive_proxy_and(),
+                    )),
                     toggle_switch("mock-exp-creds", include_credentials).on_click(cx.listener(
                         move |this, _, _, cx| {
                             this.active_modal = Some(MockModal::ExportOptions {
@@ -254,24 +267,28 @@ pub fn render_modal(
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("mock-exp-cancel", view.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "mock-exp-cancel",
+                        crate::ui::Tr(view.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_primary("mock-exp-confirm", view.t("选择保存路径…", "Save As…")).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.export_selected(include_credentials, cx);
-                        }),
-                    ),
+                    btn_primary(
+                        "mock-exp-confirm",
+                        crate::ui::Tr(view.lang).mock().modals_save_as(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.export_selected(include_credentials, cx);
+                    })),
                 )
                 .into_any_element();
             modal_dialog(
                 "mock-export-modal",
-                view.t("导出 Mock 服务", "Export Mock Server"),
+                crate::ui::Tr(view.lang).mock().modals_export_mock_server(),
                 460.0,
                 body,
                 footer,

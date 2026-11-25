@@ -72,22 +72,21 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn reset_all_circuits(&mut self, zh: bool, cx: &mut Context<Self>) {
+    pub fn reset_all_circuits(&mut self, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(cx, llm_gateway_reset_circuits_impl, move |this, (), cx| {
             this.status_msg = Some((
                 Tone::Success,
-                if zh {
-                    "已重置全部熔断器".into()
-                } else {
-                    "All circuits reset".into()
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_actions_all_circuits_reset()
+                    .into(),
             ));
             this.reload_all(cx);
         });
         self._tasks.push(task);
     }
 
-    pub fn rewrite_all_client_addresses(&mut self, zh: bool, cx: &mut Context<Self>) {
+    pub fn rewrite_all_client_addresses(&mut self, cx: &mut Context<Self>) {
         let apps: Vec<ClientApp> = self.managed_tools.iter().map(|t| t.app).collect();
         let task = spawn_blocking_into(
             cx,
@@ -99,11 +98,9 @@ impl ProvidersView {
             move |this, cnt, cx| {
                 this.status_msg = Some((
                     Tone::Success,
-                    if zh {
-                        format!("已同步 {cnt} 个客户端的网关地址")
-                    } else {
-                        format!("Rewrote address for {cnt} client(s)")
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_actions_rewrote_address_for_client_s(cnt),
                 ));
                 this.reload_all(cx);
             },
@@ -111,7 +108,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn create_gateway_client(&mut self, zh: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn create_gateway_client(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let name = self
             .new_client_name_input
             .read(cx)
@@ -121,11 +118,10 @@ impl ProvidersView {
         if name.is_empty() {
             self.status_msg = Some((
                 Tone::Warning,
-                if zh {
-                    "请先输入客户端名称".into()
-                } else {
-                    "Enter a client name first".into()
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_actions_enter_a_client_name_first()
+                    .into(),
             ));
             cx.notify();
             return;
@@ -155,7 +151,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn rotate_gateway_client(&mut self, cid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn rotate_gateway_client(&mut self, cid: String, cx: &mut Context<Self>) {
         let has_managed = self
             .managed_tools
             .iter()
@@ -180,11 +176,9 @@ impl ProvidersView {
                     Ok((name, None, n)) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已为「{name}」轮换令牌并同步写入 {n} 个配置文件")
-                            } else {
-                                format!("Rotated \"{name}\" and updated {n} file(s)")
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_rotated_and_updated_file_s(name, n),
                         ));
                         this.reload_all(cx);
                     }
@@ -196,7 +190,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn revoke_gateway_client(&mut self, cid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn revoke_gateway_client(&mut self, cid: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_gateway_client_revoke_impl(state, &cid),
@@ -205,11 +199,7 @@ impl ProvidersView {
                     Ok(c) => {
                         this.status_msg = Some((
                             Tone::Warning,
-                            if zh {
-                                format!("已吊销「{}」", c.name)
-                            } else {
-                                format!("Revoked {}", c.name)
-                            },
+                            crate::ui::tr(cx).providers().prov_actions_revoked(c.name),
                         ));
                         this.reload_all(cx);
                     }
@@ -221,7 +211,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn delete_gateway_client(&mut self, cid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn delete_gateway_client(&mut self, cid: String, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_gateway_client_delete_impl(state, &cid),
@@ -230,11 +220,10 @@ impl ProvidersView {
                     Ok(()) => {
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                "已删除客户端".into()
-                            } else {
-                                "Client deleted".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_client_deleted()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -271,7 +260,7 @@ impl ProvidersView {
         cx.notify();
     }
 
-    pub fn toggle_client_allow_all(&mut self, cid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn toggle_client_allow_all(&mut self, cid: String, cx: &mut Context<Self>) {
         let Some(cl) = self.gateway_clients.iter().find(|c| c.id == cid).cloned() else {
             return;
         };
@@ -289,11 +278,9 @@ impl ProvidersView {
                 Err(err) => {
                     this.status_msg = Some((
                         Tone::Danger,
-                        if zh {
-                            format!("更新失败：{}", err.message())
-                        } else {
-                            err.message().to_owned()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_act_update_failed(err.message()),
                     ));
                     cx.notify();
                 }
@@ -306,7 +293,6 @@ impl ProvidersView {
         &mut self,
         cid: String,
         model_ref: String,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let Some(cl) = self.gateway_clients.iter().find(|c| c.id == cid).cloned() else {
@@ -332,11 +318,9 @@ impl ProvidersView {
                 Err(err) => {
                     this.status_msg = Some((
                         Tone::Danger,
-                        if zh {
-                            format!("更新允许模型失败：{}", err.message())
-                        } else {
-                            err.message().to_owned()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_act_update_models_failed(err.message()),
                     ));
                     cx.notify();
                 }
@@ -349,7 +333,6 @@ impl ProvidersView {
         &mut self,
         cid: String,
         next: bool,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let Some(cl) = self.gateway_clients.iter().find(|c| c.id == cid).cloned() else {
@@ -367,11 +350,9 @@ impl ProvidersView {
                 Err(err) => {
                     this.status_msg = Some((
                         Tone::Danger,
-                        if zh {
-                            format!("保存失败：{}", err.message())
-                        } else {
-                            err.message().to_owned()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_act_save_failed(err.message()),
                     ));
                     cx.notify();
                 }
@@ -380,7 +361,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn save_client_limits(&mut self, cid: String, zh: bool, cx: &mut Context<Self>) {
+    pub fn save_client_limits(&mut self, cid: String, cx: &mut Context<Self>) {
         let Some(cl) = self.gateway_clients.iter().find(|c| c.id == cid).cloned() else {
             return;
         };
@@ -395,11 +376,10 @@ impl ProvidersView {
                 _ => {
                     self.status_msg = Some((
                         Tone::Warning,
-                        if zh {
-                            "RPM 必须为正整数".into()
-                        } else {
-                            "RPM must be a positive integer".into()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_actions_rpm_must_be_a_positive()
+                            .into(),
                     ));
                     cx.notify();
                     return;
@@ -414,11 +394,10 @@ impl ProvidersView {
                 _ => {
                     self.status_msg = Some((
                         Tone::Warning,
-                        if zh {
-                            "最大并发必须为正整数".into()
-                        } else {
-                            "Max concurrency must be a positive integer".into()
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_actions_max_concurrency_must_be_a()
+                            .into(),
                     ));
                     cx.notify();
                     return;
@@ -437,11 +416,10 @@ impl ProvidersView {
                     Ok(_) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                "客户端限额已保存".into()
-                            } else {
-                                "Client limits saved".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_client_limits_saved()
+                                .into(),
                         ));
                         this.reload_all(cx);
                     }
@@ -457,7 +435,6 @@ impl ProvidersView {
         &mut self,
         client_id: String,
         app: ClientApp,
-        zh: bool,
         cx: &mut Context<Self>,
     ) {
         let task = spawn_async_into(
@@ -471,11 +448,9 @@ impl ProvidersView {
                     Err(err) => {
                         this.status_msg = Some((
                             Tone::Danger,
-                            if zh {
-                                format!("测试失败：{}", err.message())
-                            } else {
-                                err.message().to_owned()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_act_test_failed(err.message()),
                         ));
                     }
                 }
@@ -485,13 +460,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn restore_client_tool(
-        &mut self,
-        app: ClientApp,
-        original: bool,
-        zh: bool,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn restore_client_tool(&mut self, app: ClientApp, original: bool, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -506,15 +475,12 @@ impl ProvidersView {
                     Ok(r) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已恢复 {} 的 {} 个文件", app.display_name(), r.files.len())
-                            } else {
-                                format!(
-                                    "Restored {} file(s) for {}",
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_restored_file_s_for(
                                     r.files.len(),
-                                    app.display_name()
-                                )
-                            },
+                                    app.display_name(),
+                                ),
                         ));
                         this.reload_all(cx);
                     }
@@ -526,7 +492,7 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
-    pub fn purge_client_backups(&mut self, app: ClientApp, zh: bool, cx: &mut Context<Self>) {
+    pub fn purge_client_backups(&mut self, app: ClientApp, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |state| llm_client_kept_purge_impl(state, app),
@@ -535,11 +501,9 @@ impl ProvidersView {
                     Ok(n) => {
                         this.status_msg = Some((
                             Tone::Neutral,
-                            if zh {
-                                format!("已清理 {n} 份旧备份")
-                            } else {
-                                format!("Purged {n} backup(s)")
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_actions_purged_backup_s(n),
                         ));
                         this.reload_all(cx);
                     }

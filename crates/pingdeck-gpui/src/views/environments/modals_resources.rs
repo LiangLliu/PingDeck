@@ -26,28 +26,36 @@ pub fn render_add_cookie_modal(
         .w_full()
         .gap(px(8.0))
         .child(setting_row(
-            view.t("域名 Domain", "Domain"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_domain(),
             None,
             None,
             div().w(px(280.0)).child(text_input(&view.ck_domain_input)),
             cx,
         ))
         .child(setting_row(
-            view.t("名称 Name", "Name"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_name(),
             None,
             None,
             div().w(px(280.0)).child(text_input(&view.ck_name_input)),
             cx,
         ))
         .child(setting_row(
-            view.t("值 Value", "Value"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_value(),
             None,
             None,
             div().w(px(280.0)).child(text_input(&view.ck_value_input)),
             cx,
         ))
         .child(setting_row(
-            view.t("路径 Path", "Path"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_path(),
             None,
             None,
             div().w(px(280.0)).child(text_input(&view.ck_path_input)),
@@ -83,24 +91,30 @@ pub fn render_add_cookie_modal(
     let footer = h_row()
         .gap(px(8.0))
         .child(
-            btn_secondary("ck-m-cancel", view.t("取消", "Cancel")).on_click(cx.listener(
-                |this, _, _, cx| {
+            btn_secondary("ck-m-cancel", crate::ui::Tr(view.lang).common().cancel()).on_click(
+                cx.listener(|this, _, _, cx| {
                     this.active_modal = None;
                     cx.notify();
-                },
-            )),
+                }),
+            ),
         )
         .child(
-            btn_primary("ck-m-save", view.t("添加", "Add")).on_click(cx.listener(
-                move |this, _, window, cx| {
-                    this.add_cookie_from_modal(secure, http_only, window, cx);
-                },
-            )),
+            btn_primary(
+                "ck-m-save",
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .modals_resources_add(),
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.add_cookie_from_modal(secure, http_only, window, cx);
+            })),
         )
         .into_any_element();
     modal_dialog(
         "env-add-cookie-modal",
-        view.t("添加 Cookie", "Add Cookie"),
+        crate::ui::Tr(view.lang)
+            .environments()
+            .modals_resources_add_cookie(),
         480.0,
         body,
         footer,
@@ -127,7 +141,9 @@ pub fn render_add_cert_modal(
                 .child(
                     choice_chip(
                         "cert-k-client",
-                        view.t("mTLS 客户端证书", "Client mTLS"),
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .modals_resources_client_mtls(),
                         is_client,
                         cx,
                     )
@@ -141,7 +157,9 @@ pub fn render_add_cert_modal(
                 .child(
                     choice_chip(
                         "cert-k-ca",
-                        view.t("自定义 CA 根证书", "Custom CA"),
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .modals_resources_custom_ca(),
                         !is_client,
                         cx,
                     )
@@ -154,87 +172,105 @@ pub fn render_add_cert_modal(
                 ),
         )
         .child(setting_row(
-            view.t("匹配主机模式", "Host Pattern"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_host_pattern(),
             None,
-            Some(SharedString::from(view.t(
-                "如 api.example.com 或 *.internal:8443，CA 可留空或填 *",
-                "e.g. api.example.com or * for CA",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .modals_resources_e_g_api_example_com(),
+            )),
             div().w(px(260.0)).child(text_input(&view.cert_host_input)),
             cx,
         ))
         .child(setting_row(
-            view.t("证书文件 (.pem/.crt/.p12)", "Certificate File"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_certificate_file(),
             None,
             None,
             h_row()
                 .gap(px(6.0))
                 .child(div().w(px(220.0)).child(text_input(&view.cert_path_input)))
                 .child(
-                    btn_secondary("cert-pick-c", view.t("浏览", "Browse")).on_click(cx.listener(
-                        |this, _, window, cx| {
-                            if let Some(path) = RfdDialog.pick_file(&FilePickerSpec {
-                                title: None,
-                                filters: vec![FileFilter {
-                                    name: "Certificates".to_owned(),
-                                    extensions: vec![
-                                        "pem".into(),
-                                        "crt".into(),
-                                        "cer".into(),
-                                        "p12".into(),
-                                        "pfx".into(),
-                                    ],
-                                }],
-                                starting_dir: None,
-                            }) {
-                                this.cert_path_input.update(cx, |s, cx| {
-                                    s.set_value(path.display().to_string(), window, cx);
-                                });
-                                cx.notify();
-                            }
-                        },
-                    )),
+                    btn_secondary(
+                        "cert-pick-c",
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .modals_resources_browse(),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        if let Some(path) = RfdDialog.pick_file(&FilePickerSpec {
+                            title: None,
+                            filters: vec![FileFilter {
+                                name: "Certificates".to_owned(),
+                                extensions: vec![
+                                    "pem".into(),
+                                    "crt".into(),
+                                    "cer".into(),
+                                    "p12".into(),
+                                    "pfx".into(),
+                                ],
+                            }],
+                            starting_dir: None,
+                        }) {
+                            this.cert_path_input.update(cx, |s, cx| {
+                                s.set_value(path.display().to_string(), window, cx);
+                            });
+                            cx.notify();
+                        }
+                    })),
                 ),
             cx,
         ))
         .children(is_client.then(|| {
             setting_row(
-                view.t("私钥文件 (.key/.pem，PKCS#12 可留空)", "Private Key File"),
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .modals_resources_private_key_file(),
                 None,
                 None,
                 h_row()
                     .gap(px(6.0))
                     .child(div().w(px(220.0)).child(text_input(&view.cert_key_input)))
                     .child(
-                        btn_secondary("cert-pick-k", view.t("浏览", "Browse")).on_click(
-                            cx.listener(|this, _, window, cx| {
-                                if let Some(path) = RfdDialog.pick_file(&FilePickerSpec {
-                                    title: None,
-                                    filters: vec![FileFilter {
-                                        name: "Private Keys".to_owned(),
-                                        extensions: vec!["key".into(), "pem".into()],
-                                    }],
-                                    starting_dir: None,
-                                }) {
-                                    this.cert_key_input.update(cx, |s, cx| {
-                                        s.set_value(path.display().to_string(), window, cx);
-                                    });
-                                    cx.notify();
-                                }
-                            }),
-                        ),
+                        btn_secondary(
+                            "cert-pick-k",
+                            crate::ui::Tr(view.lang)
+                                .environments()
+                                .modals_resources_browse(),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if let Some(path) = RfdDialog.pick_file(&FilePickerSpec {
+                                title: None,
+                                filters: vec![FileFilter {
+                                    name: "Private Keys".to_owned(),
+                                    extensions: vec!["key".into(), "pem".into()],
+                                }],
+                                starting_dir: None,
+                            }) {
+                                this.cert_key_input.update(cx, |s, cx| {
+                                    s.set_value(path.display().to_string(), window, cx);
+                                });
+                                cx.notify();
+                            }
+                        })),
                     ),
                 cx,
             )
         }))
         .children(is_client.then(|| {
             setting_row(
-                view.t("私钥口令（可选）", "Key Passphrase (optional)"),
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .modals_resources_key_passphrase_optional(),
                 None,
-                Some(SharedString::from(view.t(
-                    "仅写入本地 0600 明文 .secrets 保险库。",
-                    "Stored in owner-only 0600 plaintext .secrets vault.",
-                ))),
+                Some(SharedString::from(
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .modals_resources_stored_in_owner_only_0600(),
+                )),
                 div().w(px(260.0)).child(text_input(&view.cert_pass_input)),
                 cx,
             )
@@ -243,24 +279,30 @@ pub fn render_add_cert_modal(
     let footer = h_row()
         .gap(px(8.0))
         .child(
-            btn_secondary("cert-m-cancel", view.t("取消", "Cancel")).on_click(cx.listener(
-                |this, _, _, cx| {
+            btn_secondary("cert-m-cancel", crate::ui::Tr(view.lang).common().cancel()).on_click(
+                cx.listener(|this, _, _, cx| {
                     this.active_modal = None;
                     cx.notify();
-                },
-            )),
-        )
-        .child(
-            btn_primary("cert-m-save", view.t("保存证书", "Save Certificate")).on_click(
-                cx.listener(move |this, _, window, cx| {
-                    this.add_certificate(kind, window, cx);
                 }),
             ),
+        )
+        .child(
+            btn_primary(
+                "cert-m-save",
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .modals_resources_save_certificate(),
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.add_certificate(kind, window, cx);
+            })),
         )
         .into_any_element();
     modal_dialog(
         "env-add-cert-modal",
-        view.t("添加 TLS 证书", "Add TLS Certificate"),
+        crate::ui::Tr(view.lang)
+            .environments()
+            .modals_resources_add_tls_certificate(),
         560.0,
         body,
         footer,
@@ -282,11 +324,9 @@ pub fn render_delete_cert_modal(
         .gap(px(8.0))
         .child(alert_banner(
             Tone::Warning,
-            if view.is_zh() {
-                format!("确定删除 TLS 证书「{label}」及其关联私钥口令？")
-            } else {
-                format!("Delete TLS certificate \"{label}\" and its stored passphrase?")
-            },
+            crate::ui::Tr(view.lang)
+                .environments()
+                .modals_resources_delete_tls_certificate_and_its(label),
             None,
             cx,
         ))
@@ -294,24 +334,30 @@ pub fn render_delete_cert_modal(
     let footer = h_row()
         .gap(px(8.0))
         .child(
-            btn_secondary("cert-del-cancel", view.t("取消", "Cancel")).on_click(cx.listener(
-                |this, _, _, cx| {
-                    this.active_modal = None;
-                    cx.notify();
-                },
-            )),
+            btn_secondary(
+                "cert-del-cancel",
+                crate::ui::Tr(view.lang).common().cancel(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.active_modal = None;
+                cx.notify();
+            })),
         )
         .child(
-            btn_danger("cert-del-confirm", view.t("删除", "Delete")).on_click(cx.listener(
-                move |this, _, _, cx| {
-                    this.delete_certificate(id.clone(), cx);
-                },
-            )),
+            btn_danger(
+                "cert-del-confirm",
+                crate::ui::Tr(view.lang).common().delete(),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.delete_certificate(id.clone(), cx);
+            })),
         )
         .into_any_element();
     modal_dialog(
         "env-del-cert-modal",
-        view.t("删除 TLS 证书", "Delete TLS Certificate"),
+        crate::ui::Tr(view.lang)
+            .environments()
+            .modals_resources_delete_tls_certificate(),
         440.0,
         body,
         footer,

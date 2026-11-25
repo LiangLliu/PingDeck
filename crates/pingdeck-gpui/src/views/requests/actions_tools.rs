@@ -20,7 +20,7 @@ use super::model::{RequestsHandoff, method_str};
 impl RequestsView {
     pub fn pick_binary_body_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let spec = FilePickerSpec {
-            title: Some("选择二进制请求体文件 / Pick Binary File".into()),
+            title: Some(crate::ui::tr(cx).requests().act_pick_binary_title().into()),
             ..Default::default()
         };
         let Some(path) = RfdDialog.pick_file(&spec) else {
@@ -74,7 +74,12 @@ impl RequestsView {
 
     pub fn pick_multipart_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let spec = FilePickerSpec {
-            title: Some("选择上传文件 / Pick Multipart File".into()),
+            title: Some(
+                crate::ui::tr(cx)
+                    .requests()
+                    .act_pick_multipart_title()
+                    .into(),
+            ),
             ..Default::default()
         };
         if let Some(path) = RfdDialog.pick_file(&spec) {
@@ -174,7 +179,10 @@ impl RequestsView {
                     match res {
                         Ok(info) => {
                             t.oauth_token_info = Some(info);
-                            this.status_msg = Some((Tone::Success, "已获取 OAuth 2.0 令牌".into()));
+                            this.status_msg = Some((
+                                Tone::Success,
+                                crate::ui::tr(cx).requests().act_oauth_fetched().into(),
+                            ));
                         }
                         Err(err) => {
                             this.status_msg = Some((Tone::Danger, err.message().to_owned()));
@@ -200,7 +208,10 @@ impl RequestsView {
                     && let Some(t) = this.tab_req_mut(&tid)
                 {
                     t.oauth_token_info = None;
-                    this.status_msg = Some((Tone::Success, "已清除存储的 OAuth 令牌".into()));
+                    this.status_msg = Some((
+                        Tone::Success,
+                        crate::ui::tr(cx).requests().act_oauth_cleared().into(),
+                    ));
                 }
                 cx.notify();
             },
@@ -223,7 +234,10 @@ impl RequestsView {
             move |this, res, cx| {
                 match res {
                     Ok(()) => {
-                        this.status_msg = Some((Tone::Success, "已将令牌存为环境机密变量".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).requests().act_oauth_saved_var().into(),
+                        ));
                         this.reload_resolved_vars(cx);
                     }
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
@@ -264,7 +278,10 @@ impl RequestsView {
         }
         tab.draft.examples.push(example);
         tab.recompute_dirty();
-        self.status_msg = Some((Tone::Success, "已添加为响应示例（保存请求后写入）".into()));
+        self.status_msg = Some((
+            Tone::Success,
+            crate::ui::tr(cx).requests().act_added_example().into(),
+        ));
         cx.notify();
     }
 
@@ -272,24 +289,20 @@ impl RequestsView {
         let Some(tab) = self.active_req() else {
             return;
         };
-        let mut ctx = format!(
-            "请帮我排查以下 HTTP 请求与响应（凭据已脱敏）：\n\n- 请求：`{} {}`\n",
-            method_str(tab.draft.method),
-            tab.draft.url
-        );
+        let r = crate::ui::tr(cx).requests();
+        let mut ctx = r.act_ask_agent_http_intro(method_str(tab.draft.method), &tab.draft.url);
         if let Some(resp) = &tab.last_http {
             let preview: String = resp.body_text.chars().take(1800).collect();
-            ctx.push_str(&format!(
-                "- 状态：`{} {}` ({} ms, {} B)\n- 最终 URL：`{}`\n\n```json\n{}\n```\n",
+            ctx.push_str(&r.act_ask_agent_http_resp(
                 resp.status_code,
-                resp.status_text,
+                &resp.status_text,
                 resp.elapsed_ms,
                 resp.body_size_bytes,
-                resp.url,
-                preview
+                &resp.url,
+                &preview,
             ));
         } else if let Some(fail) = &tab.failure {
-            ctx.push_str(&format!("- 失败 ({}): {}\n", fail.kind_label, fail.message));
+            ctx.push_str(&r.act_ask_agent_fail(&fail.kind_label, &fail.message));
         }
         self.emit_handoff(
             RequestsHandoff::AskAgent {
@@ -304,16 +317,16 @@ impl RequestsView {
         let Some(tab) = self.active_req() else {
             return;
         };
-        let mut ctx = format!("请帮我分析以下 AI 请求结果（{}）：\n\n", tab.draft.name);
+        let r = crate::ui::tr(cx).requests();
+        let mut ctx = r.act_ask_agent_ai_intro(&tab.draft.name);
         if let Some(ai) = &tab.last_ai {
             let reply: String = ai.reply.chars().take(1600).collect();
-            ctx.push_str(&format!(
-                "- 模型：`{}` · 状态：`{}` · HTTP：{:?} · 总耗时：{} ms\n- 回复预览：\n```\n{}\n```\n",
-                ai.model,
+            ctx.push_str(&r.act_ask_agent_ai_detail(
+                &ai.model,
                 ai.status.label(),
-                ai.http_status,
+                format!("{:?}", ai.http_status),
                 ai.total_ms,
-                reply
+                &reply,
             ));
         }
         self.emit_handoff(

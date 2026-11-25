@@ -42,7 +42,7 @@ impl RequestsView {
 
     pub fn import_pick_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let spec = FilePickerSpec {
-            title: Some("选择导入文件 / Choose Import File".into()),
+            title: Some(crate::ui::tr(cx).requests().act_import_title().into()),
             filters: vec![FileFilter {
                 name: "API Collections & Specs".into(),
                 extensions: vec![
@@ -69,7 +69,10 @@ impl RequestsView {
                 self.import_run_preview(cx);
             }
             Err(err) => {
-                self.status_msg = Some((Tone::Danger, format!("读取文件失败: {err}")));
+                self.status_msg = Some((
+                    Tone::Danger,
+                    crate::ui::tr(cx).requests().act_read_file_failed(err),
+                ));
                 cx.notify();
             }
         }
@@ -129,7 +132,10 @@ impl RequestsView {
                         ))));
                     self.active_tab_id = Some(tid);
                     self.hydrate_active_tab(window, cx);
-                    self.status_msg = Some((Tone::Success, "已从 cURL 打开请求草稿".into()));
+                    self.status_msg = Some((
+                        Tone::Success,
+                        crate::ui::tr(cx).requests().act_opened_curl_draft().into(),
+                    ));
                 }
                 Err(err) => {
                     self.status_msg = Some((Tone::Danger, err.message().to_owned()));
@@ -140,31 +146,35 @@ impl RequestsView {
         }
 
         let ws_reload = ws_id.clone();
+        let lang = crate::ui::active_language(cx);
         let task = spawn_blocking_into(
             cx,
-            move |state| match fmt.as_str() {
-                "postman" => postman_import_text_impl(state, ws_id, payload, conflict).map(|r| {
-                    (
-                        format!(
-                            "已导入集合「{}」（{} 个请求）",
-                            r.collection_name, r.request_count
-                        ),
-                        r.undo_token,
-                    )
-                }),
-                "environment" => environment_import_text_impl(state, ws_id, payload, conflict)
-                    .map(|e| (format!("已导入环境「{}」", e.name), None)),
-                other => {
-                    collection_import_text_impl(state, ws_id, other.to_owned(), payload, conflict)
-                        .map(|r| {
+            move |state| {
+                let r_tr = crate::ui::Tr(lang).requests();
+                match fmt.as_str() {
+                    "postman" => {
+                        postman_import_text_impl(state, ws_id, payload, conflict).map(|r| {
                             (
-                                format!(
-                                    "已导入集合「{}」（{} 个请求）",
-                                    r.collection_name, r.request_count
-                                ),
+                                r_tr.act_imported_collection(&r.collection_name, r.request_count),
                                 r.undo_token,
                             )
                         })
+                    }
+                    "environment" => environment_import_text_impl(state, ws_id, payload, conflict)
+                        .map(|e| (r_tr.act_imported_env(&e.name), None)),
+                    other => collection_import_text_impl(
+                        state,
+                        ws_id,
+                        other.to_owned(),
+                        payload,
+                        conflict,
+                    )
+                    .map(|r| {
+                        (
+                            r_tr.act_imported_collection(&r.collection_name, r.request_count),
+                            r.undo_token,
+                        )
+                    }),
                 }
             },
             move |this, res, cx| {
@@ -172,7 +182,10 @@ impl RequestsView {
                     Ok((msg, undo)) => {
                         this.active_modal = None;
                         if let Some(tok) = undo {
-                            this.last_undo = Some((tok, "导入合并".into()));
+                            this.last_undo = Some((
+                                tok,
+                                crate::ui::tr(cx).requests().act_import_merge_label().into(),
+                            ));
                         }
                         this.status_msg = Some((Tone::Success, msg));
                         this.reload_workspace_no_window(ws_reload, cx);
@@ -204,7 +217,7 @@ impl RequestsView {
         let suggested = postman_export_suggested_filename(rt.state(), &ws_id, &collection_id)
             .unwrap_or_else(|_| format!("{col_name}.postman_collection.json"));
         let spec = SaveFileSpec {
-            title: Some("导出集合 (Postman v2.1 JSON)".into()),
+            title: Some(crate::ui::tr(cx).requests().act_export_title().into()),
             file_name: Some(suggested),
             filters: vec![FileFilter {
                 name: "JSON".into(),
@@ -235,11 +248,15 @@ impl RequestsView {
                         let warn_note = if done.warnings.is_empty() {
                             String::new()
                         } else {
-                            format!("（{} 条提示）", done.warnings.len())
+                            crate::ui::tr(cx)
+                                .requests()
+                                .act_warnings_note(done.warnings.len())
                         };
                         this.status_msg = Some((
                             Tone::Success,
-                            format!("已导出到 {}{warn_note}", done.path.unwrap_or_default()),
+                            crate::ui::tr(cx)
+                                .requests()
+                                .act_exported_to(done.path.unwrap_or_default(), warn_note),
                         ));
                     }
                     Ok(_) => {}

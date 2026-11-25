@@ -3,6 +3,7 @@
 
 use gpui_kit::{IntoElement as _, ParentElement as _, SharedString, Styled as _, px};
 use pingdeck_desktop::core::agent::model::{AgentMessage, AgentStopReason, ReasoningEffort};
+use pingdeck_desktop::core::model::settings::Language;
 
 use crate::ui::{Tone, UiIcon, badge, h_row, kv_chip, metric_datum};
 
@@ -124,43 +125,13 @@ pub fn format_cost_micro(micro: i64, currency: Option<&str>) -> Option<String> {
 }
 
 #[must_use]
-pub const fn format_effort_short(effort: ReasoningEffort, zh: bool) -> &'static str {
+pub const fn format_effort_short(effort: ReasoningEffort, lang: Language) -> &'static str {
     match effort {
-        ReasoningEffort::Minimal => {
-            if zh {
-                "推理: 极简"
-            } else {
-                "Effort: Min"
-            }
-        }
-        ReasoningEffort::Low => {
-            if zh {
-                "推理: 低"
-            } else {
-                "Effort: Low"
-            }
-        }
-        ReasoningEffort::Medium => {
-            if zh {
-                "推理: 中"
-            } else {
-                "Effort: Med"
-            }
-        }
-        ReasoningEffort::High => {
-            if zh {
-                "推理: 高"
-            } else {
-                "Effort: High"
-            }
-        }
-        ReasoningEffort::Max => {
-            if zh {
-                "推理: 最高"
-            } else {
-                "Effort: Max"
-            }
-        }
+        ReasoningEffort::Minimal => crate::ui::Tr(lang).chat().metrics_effort_min(),
+        ReasoningEffort::Low => crate::ui::Tr(lang).chat().composer_popovers_effort_low(),
+        ReasoningEffort::Medium => crate::ui::Tr(lang).chat().metrics_effort_med(),
+        ReasoningEffort::High => crate::ui::Tr(lang).chat().composer_popovers_effort_high(),
+        ReasoningEffort::Max => crate::ui::Tr(lang).chat().composer_popovers_effort_max(),
     }
 }
 
@@ -172,7 +143,6 @@ pub fn render_message_footer(
     msg: &AgentMessage,
     context_limit_tokens: Option<u64>,
     fallback_currency: Option<&str>,
-    zh: bool,
     cx: &gpui_kit::App,
 ) -> Option<gpui_kit::Div> {
     let mut chips: Vec<gpui_kit::AnyElement> = Vec::new();
@@ -197,11 +167,9 @@ pub fn render_message_footer(
                     SharedString::from(format!("stat-in-{mid}")),
                     UiIcon::CornerDownRight,
                     format_tokens_compact(in_tok),
-                    if zh {
-                        format!("输入 Token: {}", format_tokens_int(in_tok))
-                    } else {
-                        format!("Input tokens: {}", format_tokens_int(in_tok))
-                    },
+                    crate::ui::tr(cx)
+                        .chat()
+                        .metrics_input_tokens(format_tokens_int(in_tok)),
                     Tone::Neutral,
                     cx,
                 )
@@ -212,11 +180,9 @@ pub fn render_message_footer(
                     SharedString::from(format!("stat-out-{mid}")),
                     UiIcon::CornerUpRight,
                     format_tokens_compact(out_tok),
-                    if zh {
-                        format!("输出 Token: {}", format_tokens_int(out_tok))
-                    } else {
-                        format!("Output tokens: {}", format_tokens_int(out_tok))
-                    },
+                    crate::ui::tr(cx)
+                        .chat()
+                        .metrics_output_tokens(format_tokens_int(out_tok)),
                     Tone::Neutral,
                     cx,
                 )
@@ -243,30 +209,18 @@ pub fn render_message_footer(
                         format_tokens_compact(lim),
                         pct,
                     );
-                    let tip = if zh {
-                        format!(
-                            "上下文窗口: {} / {} ({:.1}%)",
-                            format_tokens_int(in_tok),
-                            format_tokens_int(lim),
-                            pct,
-                        )
-                    } else {
-                        format!(
-                            "Context window: {} / {} ({:.1}%)",
-                            format_tokens_int(in_tok),
-                            format_tokens_int(lim),
-                            pct,
-                        )
-                    };
+                    let tip = crate::ui::tr(cx).chat().metrics_context_window(
+                        format_tokens_int(in_tok),
+                        format_tokens_int(lim),
+                        format!("{:.1}", pct),
+                    );
                     (val, tip, tone)
                 }
                 None => (
                     format_tokens_compact(in_tok),
-                    if zh {
-                        format!("上下文窗口: {} token", format_tokens_int(in_tok))
-                    } else {
-                        format!("Context window: {} tokens", format_tokens_int(in_tok))
-                    },
+                    crate::ui::tr(cx)
+                        .chat()
+                        .metrics_context_window_tokens(format_tokens_int(in_tok)),
                     Tone::Neutral,
                 ),
             };
@@ -294,27 +248,13 @@ pub fn render_message_footer(
         let dur_val = format_duration_ms(ms);
         let dur_tip = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
             (Some(ttft), Some(stream)) if ttft > 0 && stream > 0 => {
-                if zh {
-                    format!(
-                        "总耗时: {dur_val}（首字 {} · 生成 {}）",
-                        format_duration_ms(ttft),
-                        format_duration_ms(stream),
-                    )
-                } else {
-                    format!(
-                        "Duration: {dur_val} (TTFT {} · stream {})",
-                        format_duration_ms(ttft),
-                        format_duration_ms(stream),
-                    )
-                }
+                crate::ui::tr(cx).chat().metrics_duration_ttft_stream(
+                    &dur_val,
+                    format_duration_ms(ttft),
+                    format_duration_ms(stream),
+                )
             }
-            _ => {
-                if zh {
-                    format!("总耗时: {dur_val}")
-                } else {
-                    format!("Duration: {dur_val}")
-                }
-            }
+            _ => crate::ui::tr(cx).chat().metrics_duration(&dur_val),
         };
         datums.push(
             metric_datum(
@@ -338,11 +278,9 @@ pub fn render_message_footer(
                 SharedString::from(format!("stat-tps-{mid}")),
                 UiIcon::Zap,
                 format!("{tps:.1}/s"),
-                if zh {
-                    format!("生成速度: {tps:.1} tok/s")
-                } else {
-                    format!("Output speed: {tps:.1} tok/s")
-                },
+                crate::ui::tr(cx)
+                    .chat()
+                    .metrics_output_speed_tok_s(format!("{:.1}", tps)),
                 Tone::Neutral,
                 cx,
             )
@@ -357,11 +295,7 @@ pub fn render_message_footer(
                 SharedString::from(format!("stat-cost-{mid}")),
                 UiIcon::Coins,
                 cost_str.clone(),
-                if zh {
-                    format!("估算费用: {cost_str}")
-                } else {
-                    format!("Estimated cost: {cost_str}")
-                },
+                crate::ui::tr(cx).chat().metrics_estimated_cost(cost_str),
                 Tone::Neutral,
                 cx,
             )
@@ -373,41 +307,11 @@ pub fn render_message_footer(
         && !matches!(stop, AgentStopReason::Completed)
     {
         let label = match stop {
-            AgentStopReason::MaxIterations => {
-                if zh {
-                    "达步数上限"
-                } else {
-                    "Max steps"
-                }
-            }
-            AgentStopReason::CostLimit => {
-                if zh {
-                    "达费用上限"
-                } else {
-                    "Cost cap"
-                }
-            }
-            AgentStopReason::OutputLimit => {
-                if zh {
-                    "达输出上限"
-                } else {
-                    "Output limit"
-                }
-            }
-            AgentStopReason::ContextFull => {
-                if zh {
-                    "上下文已满"
-                } else {
-                    "Context full"
-                }
-            }
-            AgentStopReason::NoProgress => {
-                if zh {
-                    "无进展停止"
-                } else {
-                    "No progress"
-                }
-            }
+            AgentStopReason::MaxIterations => crate::ui::tr(cx).chat().metrics_max_steps(),
+            AgentStopReason::CostLimit => crate::ui::tr(cx).chat().metrics_cost_cap(),
+            AgentStopReason::OutputLimit => crate::ui::tr(cx).chat().metrics_output_limit(),
+            AgentStopReason::ContextFull => crate::ui::tr(cx).chat().metrics_context_full(),
+            AgentStopReason::NoProgress => crate::ui::tr(cx).chat().metrics_no_progress(),
             AgentStopReason::Completed => "",
         };
         if !label.is_empty() {

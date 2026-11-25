@@ -21,24 +21,16 @@ pub fn render_sealed_reasoning_card(
     msg: &AgentMessage,
     info: &MessageReasoningInfo,
     open: bool,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
     let r_key = format!("reason-{}", msg.id);
+    let ch = crate::ui::tr(cx).chat();
     let headline = match info.reasoning_tokens {
-        Some(tok) if zh => format!(
-            "已深度思考 · 消耗 {} reasoning tok（上游隐藏思考原文）",
-            format_tokens_int(tok)
-        ),
-        Some(tok) => format!(
-            "Reasoned · {} reasoning tok (summary omitted by upstream)",
-            format_tokens_int(tok)
-        ),
-        None if info.has_signature && zh => "已深度思考 · 含思考签名（上游未返回明文摘要）".into(),
-        None if info.has_encrypted && zh => "已深度思考 · 加密思考块（上游隐藏原文）".into(),
-        None if zh => "已深度思考（上游未返回明文摘要）".into(),
-        None => "Reasoned (summary omitted by upstream)".into(),
+        Some(tok) => ch.diag_sealed_tok(format_tokens_int(tok)),
+        None if info.has_signature => ch.diag_sealed_sig().into(),
+        None if info.has_encrypted => ch.diag_sealed_redacted().into(),
+        None => ch.diag_sealed_generic().into(),
     };
 
     let header = div()
@@ -80,38 +72,23 @@ pub fn render_sealed_reasoning_card(
     if open {
         let mut signals: Vec<&str> = Vec::new();
         if info.has_signature {
-            signals.push(if zh {
-                "思考签名 (signature)"
-            } else {
-                "signature"
-            });
+            signals.push(crate::ui::tr(cx).chat().reasoning_diag_signature());
         }
+        let lang = crate::ui::active_language(cx);
         if info.has_encrypted {
-            signals.push(if zh {
-                "加密块 (redacted_thinking)"
-            } else {
-                "encrypted payload"
-            });
+            signals.push(ch.diag_redacted_payload());
         }
         if info.has_item_id {
-            signals.push(if zh {
-                "推理项 ID (reasoning item)"
-            } else {
-                "reasoning item id"
-            });
+            signals.push(ch.reasoning_diag_reasoning_item_id());
         }
         if info.reasoning_tokens.is_some() {
-            signals.push(if zh {
-                "reasoning_tokens 统计"
-            } else {
-                "reasoning_tokens usage"
-            });
+            signals.push(ch.reasoning_diag_reasoning_tokens_usage());
         }
 
         let proto_str = info
             .origin
-            .map(|pr| format_protocol_label(pr, zh))
-            .unwrap_or_else(|| if zh { "未知" } else { "Unknown" }.into());
+            .map(|pr| format_protocol_label(pr, lang))
+            .unwrap_or_else(|| ch.panel_mcp_unknown().into());
 
         let mut detail = v_col()
             .gap(px(6.0))
@@ -122,20 +99,16 @@ pub fn render_sealed_reasoning_card(
             .text_xs()
             .text_color(to_hsla(p.muted))
             .child(detail_kv(
-                if zh { "检测信号" } else { "Signals" },
+                ch.reasoning_diag_signals(),
                 signals.join(" · "),
                 cx,
             ))
-            .child(detail_kv(
-                if zh { "响应协议" } else { "Protocol" },
-                proto_str,
-                cx,
-            ));
+            .child(detail_kv(ch.reasoning_diag_protocol(), proto_str, cx));
 
         if let Some(eff) = msg.meta.reasoning_effort {
             detail = detail.child(detail_kv(
-                if zh { "请求强度" } else { "Effort" },
-                format_effort_short(eff, zh).to_owned(),
+                ch.reasoning_diag_effort(),
+                format_effort_short(eff, lang).to_owned(),
                 cx,
             ));
         }
@@ -145,11 +118,7 @@ pub fn render_sealed_reasoning_card(
                 .pt(px(2.0))
                 .text_size(px(11.0))
                 .text_color(to_hsla(p.faint))
-                .child(if zh {
-                    "模型已执行内部推理，但上游接口仅返回了签名/加密块或 token 统计，未下发明文思考摘要（例如 Claude 4.7+/5.x 未返回 summarized display、或上游中转隐藏了思考文本）。"
-                } else {
-                    "The model performed internal reasoning, but the upstream API returned only a signature/encrypted block or token count without a plaintext summary."
-                }),
+                .child(ch.diag_sealed_explain()),
         );
         box_el = box_el.child(detail);
     }
@@ -165,91 +134,64 @@ pub fn render_no_reasoning_panel(
     msg: &AgentMessage,
     model_display: &str,
     provider_meta: Option<&ProviderChatMeta>,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> Div {
     let p = palette(cx);
     let session_effort = view.session.as_ref().and_then(|s| s.reasoning_effort);
     let msg_effort = msg.meta.reasoning_effort;
 
+    let lang = crate::ui::active_language(cx);
     let proto_label = provider_meta
         .and_then(|m| m.primary_protocol)
-        .map(|pr| format_protocol_label(pr, zh))
+        .map(|pr| format_protocol_label(pr, lang))
         .unwrap_or_else(|| {
-            if zh {
-                "OpenAI 兼容接口（默认）".into()
-            } else {
-                "OpenAI-compatible (default)".into()
-            }
+            crate::ui::tr(cx)
+                .chat()
+                .reasoning_diag_openai_compatible_default()
+                .into()
         });
 
     let missing_quirk = provider_meta.is_some_and(ProviderChatMeta::missing_reasoning_quirk);
     let dialect_label = match provider_meta {
-        Some(m) if m.primary_protocol == Some(Protocol::AnthropicMessages) => {
-            if zh {
-                "Anthropic 原生 thinking / effort".into()
-            } else {
-                "Anthropic native thinking / effort".into()
-            }
-        }
-        Some(m) if m.primary_protocol == Some(Protocol::OpenaiResponses) => {
-            if zh {
-                "OpenAI Responses 原生 reasoning".into()
-            } else {
-                "OpenAI Responses native reasoning".into()
-            }
-        }
-        Some(m) if m.primary_protocol == Some(Protocol::Gemini) => {
-            if zh {
-                "Gemini 原生 thinkingConfig".into()
-            } else {
-                "Gemini native thinkingConfig".into()
-            }
-        }
+        Some(m) if m.primary_protocol == Some(Protocol::AnthropicMessages) => crate::ui::tr(cx)
+            .chat()
+            .reasoning_diag_anthropic_native_thinking_effort()
+            .into(),
+        Some(m) if m.primary_protocol == Some(Protocol::OpenaiResponses) => crate::ui::tr(cx)
+            .chat()
+            .reasoning_diag_openai_responses_native_reasoning()
+            .into(),
+        Some(m) if m.primary_protocol == Some(Protocol::Gemini) => crate::ui::tr(cx)
+            .chat()
+            .reasoning_diag_gemini_native_thinkingconfig()
+            .into(),
         Some(m) => match m.reasoning_request {
             Some(style) => format_reasoning_style_label(style),
-            None if m.preset_id.is_some() => {
-                if zh {
-                    "跟随服务商预设".into()
-                } else {
-                    "Preset default".into()
-                }
-            }
-            None => {
-                if zh {
-                    "未配置（自定义兼容接口默认不发送推理参数）".into()
-                } else {
-                    "Not configured (custom compat omits reasoning param)".into()
-                }
-            }
+            None if m.preset_id.is_some() => crate::ui::tr(cx)
+                .chat()
+                .reasoning_diag_preset_default()
+                .into(),
+            None => crate::ui::tr(cx)
+                .chat()
+                .reasoning_diag_not_configured_custom_compat_omits()
+                .into(),
         },
-        None => if zh { "未知" } else { "Unknown" }.into(),
+        None => crate::ui::tr(cx).chat().panel_mcp_unknown().into(),
     };
 
     let effort_label = match msg_effort.or(session_effort) {
-        Some(eff) => format_effort_short(eff, zh).to_owned(),
-        None if zh => "自动（未主动请求思考）".to_owned(),
-        None => "Auto (no explicit reasoning requested)".to_owned(),
+        Some(eff) => format_effort_short(eff, lang).to_owned(),
+        None => crate::ui::tr(cx).chat().diag_effort_auto().to_owned(),
     };
 
     let timing_label = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
         (Some(ttft), Some(stream)) => {
             let total = ttft.saturating_add(stream);
-            if zh {
-                format!(
-                    "首字 {} · 生成 {} · 总耗时 {}",
-                    format_duration_ms(ttft),
-                    format_duration_ms(stream),
-                    format_duration_ms(total),
-                )
-            } else {
-                format!(
-                    "TTFT {} · Gen {} · Total {}",
-                    format_duration_ms(ttft),
-                    format_duration_ms(stream),
-                    format_duration_ms(total),
-                )
-            }
+            crate::ui::tr(cx).chat().reasoning_diag_ttft_gen_total(
+                format_duration_ms(ttft),
+                format_duration_ms(stream),
+                format_duration_ms(total),
+            )
         }
         (Some(ttft), None) => format!("TTFT {}", format_duration_ms(ttft)),
         (None, Some(stream)) => format_duration_ms(stream),
@@ -257,21 +199,17 @@ pub fn render_no_reasoning_panel(
     };
 
     let reason_hint = if missing_quirk {
-        if zh {
-            "原因定位：当前自定义兼容服务商尚未设置「推理参数格式」，PingDeck 不会向该中转发送 reasoning / thinking 参数。请前往「服务商 › 配置 › 推理参数格式」选择对应方言（或切换为 Anthropic Messages 协议），并在下方将「推理」设为中/高。"
-        } else {
-            "Cause: this custom OpenAI-compatible provider has no Reasoning Format configured, so PingDeck omits reasoning params. Configure it under Providers › Config (or use Anthropic Messages) and pick Medium/High effort below."
-        }
+        crate::ui::tr(cx)
+            .chat()
+            .reasoning_diag_cause_this_custom_openai_compatible()
     } else if session_effort.is_none() {
-        if zh {
-            "原因定位：当前会话推理强度为「自动」，Claude 等模型在不传 thinking 参数时默认直接回复、不输出思考过程。开启下方「推理: 中」或「推理: 高」后，下一轮对话即可展示完整思考过程。"
-        } else {
-            "Cause: session effort is set to Auto, so models like Claude answer directly without thinking. Switch effort to Medium or High below to see reasoning on the next turn."
-        }
-    } else if zh {
-        "上游本轮未返回 thinking / reasoning_content / <think> 内容。常见原因：问题较简单模型跳过思考、上游中转过滤了思考字段，或该模型不支持返回思考摘要。"
+        crate::ui::tr(cx)
+            .chat()
+            .reasoning_diag_cause_session_effort_is_set()
     } else {
-        "Upstream returned no thinking / reasoning_content / <think> data. The model may have skipped thinking for a trivial prompt, or the relay stripped reasoning fields."
+        crate::ui::tr(cx)
+            .chat()
+            .reasoning_diag_upstream_returned_no_thinking_reasoning()
     };
 
     let mut card = v_col()
@@ -294,18 +232,14 @@ pub fn render_no_reasoning_panel(
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink_2))
                         .child(icon_xs(UiIcon::Brain))
-                        .child(if zh {
-                            "本轮思考与调用诊断"
-                        } else {
-                            "Turn thinking & call diagnostics"
-                        }),
+                        .child(
+                            crate::ui::tr(cx)
+                                .chat()
+                                .reasoning_diag_turn_thinking_call_diagnostics(),
+                        ),
                 )
                 .child(badge(
-                    if zh {
-                        "未返回思考"
-                    } else {
-                        "No reasoning"
-                    },
+                    crate::ui::tr(cx).chat().reasoning_diag_no_reasoning(),
                     if missing_quirk || session_effort.is_none() {
                         Tone::Warning
                     } else {
@@ -315,27 +249,27 @@ pub fn render_no_reasoning_panel(
                 )),
         )
         .child(detail_kv(
-            if zh { "目标模型" } else { "Model" },
+            crate::ui::tr(cx).chat().reasoning_diag_model(),
             model_display.to_owned(),
             cx,
         ))
         .child(detail_kv(
-            if zh { "服务商协议" } else { "Protocol" },
+            crate::ui::tr(cx).chat().reasoning_diag_protocol_2(),
             proto_label,
             cx,
         ))
         .child(detail_kv(
-            if zh { "推理方言" } else { "Dialect" },
+            crate::ui::tr(cx).chat().reasoning_diag_dialect(),
             dialect_label,
             cx,
         ))
         .child(detail_kv(
-            if zh { "推理强度" } else { "Effort" },
+            crate::ui::tr(cx).chat().model_effort(),
             effort_label,
             cx,
         ))
         .child(detail_kv(
-            if zh { "调用耗时" } else { "Timing" },
+            crate::ui::tr(cx).chat().reasoning_diag_timing(),
             timing_label,
             cx,
         ))
@@ -359,11 +293,7 @@ pub fn render_no_reasoning_panel(
                 .child(
                     btn_secondary(
                         mid_id,
-                        if zh {
-                            "开启推理: 中"
-                        } else {
-                            "Enable Effort: Med"
-                        },
+                        crate::ui::tr(cx).chat().reasoning_diag_enable_effort_med(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_reasoning_effort(Some(ReasoningEffort::Medium), cx);
@@ -372,11 +302,7 @@ pub fn render_no_reasoning_panel(
                 .child(
                     btn_secondary(
                         high_id,
-                        if zh {
-                            "开启推理: 高"
-                        } else {
-                            "Enable Effort: High"
-                        },
+                        crate::ui::tr(cx).chat().reasoning_diag_enable_effort_high(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.set_reasoning_effort(Some(ReasoningEffort::High), cx);
@@ -409,15 +335,15 @@ fn detail_kv(label: &'static str, value: String, cx: &gpui_kit::App) -> Div {
         )
 }
 
-fn format_protocol_label(proto: Protocol, zh: bool) -> String {
+fn format_protocol_label(
+    proto: Protocol,
+    lang: pingdeck_desktop::core::model::settings::Language,
+) -> String {
     match proto {
-        Protocol::OpenaiChat => {
-            if zh {
-                "OpenAI 兼容 (/chat/completions)".into()
-            } else {
-                "OpenAI Chat (/chat/completions)".into()
-            }
-        }
+        Protocol::OpenaiChat => crate::ui::Tr(lang)
+            .chat()
+            .reasoning_diag_openai_chat_chat_completions()
+            .into(),
         Protocol::OpenaiResponses => "OpenAI Responses (/responses)".into(),
         Protocol::AnthropicMessages => "Anthropic Messages (/v1/messages)".into(),
         Protocol::Gemini => "Google Gemini".into(),

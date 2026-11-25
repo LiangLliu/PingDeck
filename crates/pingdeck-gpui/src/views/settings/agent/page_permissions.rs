@@ -6,7 +6,6 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::agent::permissions::PermissionAction;
 use pingdeck_desktop::core::model::settings::{Language, ToolApproval};
-use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
     Tone, UiIcon, badge, btn_ghost, btn_secondary, h_row, icon_xs, palette, status_indicator,
@@ -20,7 +19,6 @@ use super::widgets::{num_box, section_card, section_card_flush, set_row};
 pub(super) fn render_permissions(
     view: &AgentSettingsView,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -53,9 +51,9 @@ pub(super) fn render_permissions(
         .count();
 
     let mode_label = match ag.default_permission_mode {
-        ToolApproval::Ask => t(lang, "set.perm.mode.ask"),
+        ToolApproval::Ask => crate::ui::Tr(lang).settings().perm_mode_ask(),
         ToolApproval::AutoReadOnly | ToolApproval::AutoAll => {
-            t(lang, "set.perm.mode.auto_read_only")
+            crate::ui::Tr(lang).settings().perm_mode_auto_read_only()
         }
     };
 
@@ -63,24 +61,26 @@ pub(super) fn render_permissions(
     let steps: [(usize, &str, String, String, Tone); 6] = [
         (
             1,
-            t(lang, "set.perm.order.hard_block"),
-            t(lang, "set.perm.order.hard_block.d").to_owned(),
-            if zh {
-                format!("内置 · {} 条", pinned_cnt + user_block_cnt)
-            } else {
-                format!("Built-in · {}", pinned_cnt + user_block_cnt)
-            },
+            crate::ui::Tr(lang).settings().perm_order_hard_block(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_hard_block_d()
+                .to_owned(),
+            crate::ui::tr(cx)
+                .settings()
+                .page_permissions_built_in(pinned_cnt + user_block_cnt),
             Tone::Neutral,
         ),
         (
             2,
-            t(lang, "set.perm.order.tool_block"),
-            t(lang, "set.perm.order.tool_block.d").to_owned(),
-            if zh {
-                format!("{tool_block_cnt} 条")
-            } else {
-                format!("{tool_block_cnt}")
-            },
+            crate::ui::Tr(lang).settings().perm_order_tool_block(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_tool_block_d()
+                .to_owned(),
+            crate::ui::tr(cx)
+                .settings()
+                .page_permissions_label(tool_block_cnt),
             if tool_block_cnt > 0 {
                 Tone::Warning
             } else {
@@ -89,20 +89,27 @@ pub(super) fn render_permissions(
         ),
         (
             3,
-            t(lang, "set.perm.order.forced_ask"),
-            t(lang, "set.perm.order.forced_ask.d").to_owned(),
-            t(lang, "set.perm.order.builtin").to_owned(),
+            crate::ui::Tr(lang).settings().perm_order_forced_ask(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_forced_ask_d()
+                .to_owned(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_builtin()
+                .to_owned(),
             Tone::Neutral,
         ),
         (
             4,
-            t(lang, "set.perm.order.stored_rule"),
-            t(lang, "set.perm.order.stored_rule.d").to_owned(),
-            if zh {
-                format!("{stored_allow_cnt} 条")
-            } else {
-                format!("{stored_allow_cnt}")
-            },
+            crate::ui::Tr(lang).settings().perm_order_stored_rule(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_stored_rule_d()
+                .to_owned(),
+            crate::ui::tr(cx)
+                .settings()
+                .page_permissions_label_2(stored_allow_cnt),
             if stored_allow_cnt > 0 {
                 Tone::Accent
             } else {
@@ -111,23 +118,22 @@ pub(super) fn render_permissions(
         ),
         (
             5,
-            t(lang, "set.perm.order.tool_allow"),
-            t(lang, "set.perm.order.tool_allow.d").to_owned(),
-            if zh {
-                format!("{tool_allow_cnt} 条")
-            } else {
-                format!("{tool_allow_cnt}")
-            },
+            crate::ui::Tr(lang).settings().perm_order_tool_allow(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_tool_allow_d()
+                .to_owned(),
+            crate::ui::tr(cx)
+                .settings()
+                .page_permissions_label_3(tool_allow_cnt),
             Tone::Neutral,
         ),
         (
             6,
-            t(lang, "set.perm.order.mode_default"),
-            t_args(
-                lang,
-                "set.perm.order.mode_default.d",
-                &[("mode", mode_label)],
-            ),
+            crate::ui::Tr(lang).settings().perm_order_mode_default(),
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_order_mode_default_d(mode_label),
             mode_label.to_owned(),
             Tone::Neutral,
         ),
@@ -183,11 +189,9 @@ pub(super) fn render_permissions(
         .w_full()
         .gap(px(8.0))
         .child(section_card_flush(
-            if zh {
-                "固定权限评估顺序（从上到下，命中即止）"
-            } else {
-                "Fixed permission evaluation order (top to bottom)"
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .page_permissions_fixed_permission_evaluation_order_top(),
             None,
             perm_box,
             cx,
@@ -197,7 +201,7 @@ pub(super) fn render_permissions(
                 .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(t(lang, "set.perm.order.full").to_owned()),
+                .child(crate::ui::Tr(lang).settings().perm_order_full().to_owned()),
         );
 
     // ── Section 2: Defaults, sandbox, timeouts & safety rules ────────────────
@@ -205,8 +209,15 @@ pub(super) fn render_permissions(
     let ent_mode = cx.entity().clone();
     let mode_seg = tab_bar_segmented("agent-perm-mode-seg")
         .selected_index(mode_idx)
-        .child(tab_item(t(lang, "set.perm.mode.ask").to_owned()))
-        .child(tab_item(t(lang, "set.perm.mode.auto_read_only").to_owned()))
+        .child(tab_item(
+            crate::ui::Tr(lang).settings().perm_mode_ask().to_owned(),
+        ))
+        .child(tab_item(
+            crate::ui::Tr(lang)
+                .settings()
+                .perm_mode_auto_read_only()
+                .to_owned(),
+        ))
         .on_click(move |idx, _, cx| {
             let val = if *idx == 0 { "ask" } else { "auto_read_only" };
             ent_mode.update(cx, |this, cx| {
@@ -236,92 +247,99 @@ pub(super) fn render_permissions(
         .child(
             btn_ghost(
                 "agent-perm-sandbox-recheck",
-                t(lang, "set.agent.sandbox.test").to_owned(),
+                crate::ui::Tr(lang)
+                    .settings()
+                    .agent_sandbox_test()
+                    .to_owned(),
             )
             .icon(icon_xs(UiIcon::Refresh))
             .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx))),
         );
 
-    let reset_perm_btn = btn_ghost("agent-perm-reset", if zh { "恢复默认" } else { "Reset" })
-        .icon(icon_xs(UiIcon::RotateCcw))
-        .on_click(cx.listener(|this, _, window, cx| {
-            this.reset_ai_keys(
-                &[
-                    "agent.default_permission_mode",
-                    "agent.sandbox_writes_to_workspace",
-                    "agent.sandbox_auto_run",
-                    "agent.approval_timeout_s",
-                    "agent.shell_timeout_s",
-                    "agent.blocked_commands",
-                    "agent.shell_env_passthrough",
-                ],
-                window,
-                cx,
-            );
-        }))
-        .into_any_element();
+    let reset_perm_btn = btn_ghost(
+        "agent-perm-reset",
+        crate::ui::tr(cx).settings().page_defaults_reset(),
+    )
+    .icon(icon_xs(UiIcon::RotateCcw))
+    .on_click(cx.listener(|this, _, window, cx| {
+        this.reset_ai_keys(
+            &[
+                "agent.default_permission_mode",
+                "agent.sandbox_writes_to_workspace",
+                "agent.sandbox_auto_run",
+                "agent.approval_timeout_s",
+                "agent.shell_timeout_s",
+                "agent.blocked_commands",
+                "agent.shell_env_passthrough",
+            ],
+            window,
+            cx,
+        );
+    }))
+    .into_any_element();
 
     let sec_defaults = section_card(
-        if zh {
-            "默认权限与沙箱"
-        } else {
-            "Default permissions & sandbox"
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .page_permissions_default_permissions_sandbox(),
         Some(reset_perm_btn),
         v_col()
             .w_full()
             .child(set_row(
-                if zh {
-                    "新对话默认权限模式"
-                } else {
-                    "Default permission mode"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_permissions_default_permission_mode(),
                 None,
                 Some(SharedString::from(
-                    t(lang, "set.f.ai.agent.default_permission_mode.d").to_owned(),
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .f_ai_agent_default_permission_mode_d()
+                        .to_owned(),
                 )),
                 mode_seg,
                 cx,
             ))
             .child(set_row(
-                t(lang, "set.agent.sandbox").to_owned(),
+                crate::ui::Tr(lang).settings().agent_sandbox().to_owned(),
                 None,
                 Some(SharedString::from(sb_detail)),
                 sandbox_ctl,
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "将 Shell 写入限制在工作目录内"
-                } else {
-                    "Confine shell writes to workspace"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_permissions_confine_shell_writes_to_workspace(),
                 None,
-                Some(SharedString::from(if zh {
-                    "开启后由 OS 沙箱禁止 run_shell 修改项目目录之外的文件（推荐保持开启）。"
-                } else {
-                    "Uses the OS sandbox to prevent run_shell from writing outside the active workspace (recommended)."
-                })),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_permissions_uses_the_os_sandbox_to(),
+                )),
                 toggle_switch("agent-sandbox-writes", ag.sandbox_writes_to_workspace).on_change(
                     cx.listener(|this, checked: &bool, _, cx| {
                         this.patch_ai(
-                            serde_json::json!({ "agent": { "sandbox_writes_to_workspace": *checked } }),
-                            None,
-                            cx,
-                        );
+                        serde_json::json!({ "agent": { "sandbox_writes_to_workspace": *checked } }),
+                        None,
+                        cx,
+                    );
                     }),
                 ),
                 cx,
             ))
             .child(set_row(
-                t(lang, "set.f.ai.agent.sandbox_auto_run").to_owned(),
-                Some(SharedString::from(if zh {
-                    "仅这台电脑"
-                } else {
-                    "Local only"
-                })),
+                crate::ui::Tr(lang)
+                    .settings()
+                    .f_ai_agent_sandbox_auto_run()
+                    .to_owned(),
                 Some(SharedString::from(
-                    t(lang, "set.f.ai.agent.sandbox_auto_run.d").to_owned(),
+                    crate::ui::tr(cx).settings().page_defaults_local_only(),
+                )),
+                Some(SharedString::from(
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .f_ai_agent_sandbox_auto_run_d()
+                        .to_owned(),
                 )),
                 toggle_switch("agent-sandbox-auto", ag.sandbox_auto_run).on_change(cx.listener(
                     |this, checked: &bool, _, cx| {
@@ -335,59 +353,67 @@ pub(super) fn render_permissions(
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "无人应答审批超时"
-                } else {
-                    "Unattended approval timeout"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_permissions_unattended_approval_timeout(),
                 None,
                 Some(SharedString::from(
-                    t(lang, "set.f.ai.agent.approval_timeout_s.d").to_owned(),
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .f_ai_agent_approval_timeout_s_d()
+                        .to_owned(),
                 )),
                 num_box(
                     &view.approval_timeout_input,
-                    Some(if zh { "秒" } else { "s" }),
+                    Some(crate::ui::tr(cx).settings().unit_s()),
                     84.0,
                     cx,
                 ),
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "Shell 命令执行超时"
-                } else {
-                    "Shell command timeout"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_permissions_shell_command_timeout(),
                 None,
                 Some(SharedString::from(
-                    t(lang, "set.f.ai.agent.shell_timeout_s.d").to_owned(),
+                    crate::ui::Tr(lang)
+                        .settings()
+                        .f_ai_agent_shell_timeout_s_d()
+                        .to_owned(),
                 )),
                 num_box(
                     &view.shell_timeout_input,
-                    Some(if zh { "秒" } else { "s" }),
+                    Some(crate::ui::tr(cx).settings().unit_s()),
                     84.0,
                     cx,
                 ),
                 cx,
             ))
             .child(render_chip_list_row(
-                t(lang, "set.f.ai.agent.blocked_commands"),
-                t(lang, "set.f.ai.agent.blocked_commands.d"),
+                crate::ui::Tr(lang).settings().f_ai_agent_blocked_commands(),
+                crate::ui::Tr(lang)
+                    .settings()
+                    .f_ai_agent_blocked_commands_d(),
                 &ag.blocked_commands,
                 &view.blocked_cmd_input,
                 "blocked-cmd",
-                t(lang, "set.agent.rules.add"),
+                crate::ui::Tr(lang).settings().agent_rules_add(),
                 |this, window, cx| this.add_blocked_command(window, cx),
                 |this, item, cx| this.remove_blocked_command(&item, cx),
                 cx,
             ))
             .child(render_chip_list_row(
-                t(lang, "set.f.ai.agent.shell_env_passthrough"),
-                t(lang, "set.f.ai.agent.shell_env_passthrough.d"),
+                crate::ui::Tr(lang)
+                    .settings()
+                    .f_ai_agent_shell_env_passthrough(),
+                crate::ui::Tr(lang)
+                    .settings()
+                    .f_ai_agent_shell_env_passthrough_d(),
                 &ag.shell_env_passthrough,
                 &view.env_pass_input,
                 "env-pass",
-                t(lang, "set.agent.env.add"),
+                crate::ui::Tr(lang).settings().agent_env_add(),
                 |this, window, cx| this.add_shell_env(window, cx),
                 |this, item, cx| this.remove_shell_env(&item, cx),
                 cx,
@@ -396,7 +422,7 @@ pub(super) fn render_permissions(
     );
 
     // ── Section 3: Remembered rules ──────────────────────────────────────────
-    let sec_rules = render_remembered_rules(view, lang, zh, cx);
+    let sec_rules = render_remembered_rules(view, lang, cx);
 
     v_col()
         .w_full()

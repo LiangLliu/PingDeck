@@ -88,16 +88,6 @@ pub struct UsageView {
 
 impl UsageView {
     #[must_use]
-    pub fn is_zh(&self) -> bool {
-        self.lang == Language::ZhCn
-    }
-
-    #[must_use]
-    pub fn t<'a>(&self, zh_s: &'a str, en_s: &'a str) -> &'a str {
-        if self.is_zh() { zh_s } else { en_s }
-    }
-
-    #[must_use]
     pub fn build_usage_query(&self, now_ms: i64, group_by: Vec<UsageGroup>) -> UsageQuery {
         let (from_ms, to_ms, bucket_minutes) = self.range.bounds(now_ms);
         let sources = self.filter_source.map_or_else(Vec::new, |s| vec![s]);
@@ -131,7 +121,10 @@ impl UsageView {
             .map(|c| c.name.clone())
             .unwrap_or_else(|| {
                 if id.is_empty() {
-                    self.t("非网关调用", "Direct").to_owned()
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_state_direct()
+                        .to_owned()
                 } else {
                     id.to_owned()
                 }

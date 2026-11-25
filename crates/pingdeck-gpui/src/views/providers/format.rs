@@ -8,6 +8,7 @@ use pingdeck_desktop::core::llm::router::RuleStatus;
 use pingdeck_desktop::core::llm::status::{ProviderStatus, ReasonCode, StatusReason};
 use pingdeck_desktop::core::llm::store::ProviderKey;
 use pingdeck_desktop::core::llm::wire::{AuthStyle, GatewayFamily, Protocol, ReasoningStyle};
+use pingdeck_desktop::core::model::settings::Language;
 
 use crate::ui::{StatusShape, Tone};
 
@@ -39,132 +40,91 @@ pub const fn provider_status_tone(status: ProviderStatus) -> Tone {
 }
 
 #[must_use]
-pub const fn provider_status_label(status: ProviderStatus, zh: bool) -> &'static str {
-    match (status, zh) {
-        (ProviderStatus::Healthy, true) => "正常",
-        (ProviderStatus::Healthy, false) => "Healthy",
-        (ProviderStatus::NeedsAttention, true) => "需要关注",
-        (ProviderStatus::NeedsAttention, false) => "Needs attention",
-        (ProviderStatus::Unreachable, true) => "无法连接",
-        (ProviderStatus::Unreachable, false) => "Unreachable",
-        (ProviderStatus::Unverified, true) => "未验证",
-        (ProviderStatus::Unverified, false) => "Unverified",
-        (ProviderStatus::Disabled, true) => "已停用",
-        (ProviderStatus::Disabled, false) => "Disabled",
+pub const fn provider_status_label(status: ProviderStatus, lang: Language) -> &'static str {
+    let p = crate::ui::Tr(lang).providers();
+    match status {
+        ProviderStatus::Healthy => p.prov_fmt_status_healthy(),
+        ProviderStatus::NeedsAttention => p.prov_fmt_status_attention(),
+        ProviderStatus::Unreachable => p.prov_fmt_status_unreachable(),
+        ProviderStatus::Unverified => p.prov_fmt_status_unverified(),
+        ProviderStatus::Disabled => p.prov_fmt_status_disabled(),
     }
 }
 
 #[must_use]
-pub fn format_reason(reason: &StatusReason, zh: bool) -> String {
-    if !zh {
-        return reason.text.clone();
-    }
+pub fn format_reason(reason: &StatusReason, lang: Language) -> String {
+    let p = crate::ui::Tr(lang).providers();
     let get = |k: &str| reason.params.get(k).copied().unwrap_or(0);
     match reason.code {
-        ReasonCode::NoKey => "没有密钥".into(),
-        ReasonCode::LastVerified => format!("上次验证在 {} 天前", get("days")),
-        ReasonCode::NoModelAnswered => "还没有模型应答过".into(),
-        ReasonCode::ConnectivityFailed => "上次连通性检查失败".into(),
-        ReasonCode::RecentFailures => format!("最近 {} 个请求都失败了", get("count")),
+        ReasonCode::NoKey => p.prov_fmt_reason_no_key().into(),
+        ReasonCode::LastVerified => p.prov_fmt_reason_last_verified(get("days")),
+        ReasonCode::NoModelAnswered => p.prov_fmt_reason_no_model_answered().into(),
+        ReasonCode::ConnectivityFailed => p.prov_fmt_reason_connectivity_failed().into(),
+        ReasonCode::RecentFailures => p.prov_fmt_reason_recent_failures(get("count")),
         ReasonCode::AllKeysRejected => {
             let n = get("keys");
             if n > 1 {
-                format!("全部 {n} 个密钥都被拒绝")
+                p.prov_fmt_reason_all_keys_rejected_n(n)
             } else {
-                "密钥被拒绝".into()
+                p.prov_fmt_reason_key_rejected().into()
             }
         }
-        ReasonCode::ModelsFailed => {
-            format!("{} / {} 模型测试失败", get("failed"), get("total"))
-        }
-        ReasonCode::CircuitOpen => format!("有 {} 个熔断已打开", get("count")),
-        ReasonCode::BalanceExhausted => "余额已用完".into(),
-        ReasonCode::AllKeysExhausted => "所有密钥额度已用完".into(),
-        ReasonCode::BalanceAuthFailed => "无法读取余额：密钥被拒绝".into(),
-        ReasonCode::HighFailureRate => "近期失败率过高".into(),
+        ReasonCode::ModelsFailed => p.prov_fmt_reason_models_failed(get("failed"), get("total")),
+        ReasonCode::CircuitOpen => p.prov_fmt_reason_circuit_open(get("count")),
+        ReasonCode::BalanceExhausted => p.prov_fmt_reason_balance_exhausted().into(),
+        ReasonCode::AllKeysExhausted => p.prov_fmt_reason_all_keys_exhausted().into(),
+        ReasonCode::BalanceAuthFailed => p.prov_fmt_reason_balance_auth_failed().into(),
+        ReasonCode::HighFailureRate => p.prov_fmt_reason_high_failure_rate().into(),
     }
 }
 
 #[must_use]
-pub fn format_protocol(proto: Protocol, zh: bool) -> &'static str {
+pub const fn format_protocol(proto: Protocol, lang: Language) -> &'static str {
     match proto {
-        Protocol::OpenaiChat => {
-            if zh {
-                "OpenAI 对话"
-            } else {
-                "OpenAI Chat"
-            }
-        }
+        Protocol::OpenaiChat => crate::ui::Tr(lang).providers().prov_format_openai_chat(),
         Protocol::OpenaiResponses => "Responses",
         Protocol::AnthropicMessages => "Messages",
         Protocol::Gemini => "Gemini",
         Protocol::Embeddings => "Embeddings",
-        Protocol::DecisionSystemone => {
-            if zh {
-                "决策 (SystemOne)"
-            } else {
-                "Decision (SystemOne)"
-            }
-        }
-        Protocol::DecisionOpenai => {
-            if zh {
-                "决策 (OpenAI)"
-            } else {
-                "Decision (OpenAI)"
-            }
-        }
+        Protocol::DecisionSystemone => crate::ui::Tr(lang)
+            .providers()
+            .prov_format_decision_systemone(),
+        Protocol::DecisionOpenai => crate::ui::Tr(lang)
+            .providers()
+            .prov_format_decision_openai(),
     }
 }
 
 #[must_use]
-pub const fn format_auth(auth: AuthStyle, zh: bool) -> &'static str {
+pub const fn format_auth(auth: AuthStyle, lang: Language) -> &'static str {
     match auth {
         AuthStyle::Bearer => "Bearer",
         AuthStyle::XApiKey => "x-api-key",
         AuthStyle::XGoogApiKey => "x-goog-api-key",
         AuthStyle::RawAuthorization => "Raw Authorization",
-        AuthStyle::None => {
-            if zh {
-                "无认证"
-            } else {
-                "None"
-            }
-        }
+        AuthStyle::None => crate::ui::Tr(lang).providers().prov_format_none(),
     }
 }
 
 #[must_use]
-pub const fn format_reasoning_style(style: ReasoningStyle, zh: bool) -> &'static str {
-    match (style, zh) {
-        (ReasoningStyle::ReasoningEffort, true) => "推理强度 (reasoning_effort)",
-        (ReasoningStyle::ReasoningEffort, false) => "reasoning_effort",
-        (ReasoningStyle::ReasoningObject, true) => "推理对象 (reasoning)",
-        (ReasoningStyle::ReasoningObject, false) => "reasoning object",
-        (ReasoningStyle::ThinkingType, true) => "思考类型 (thinking.type)",
-        (ReasoningStyle::ThinkingType, false) => "thinking.type",
-        (ReasoningStyle::EnableThinking, true) => "思考开关 (enable_thinking)",
-        (ReasoningStyle::EnableThinking, false) => "enable_thinking",
-        (ReasoningStyle::ChatTemplateKwargs, true) => "模板参数 (chat_template_kwargs)",
-        (ReasoningStyle::ChatTemplateKwargs, false) => "chat_template_kwargs",
-        (ReasoningStyle::AnthropicAdaptive, true) => "Anthropic 自适应",
-        (ReasoningStyle::AnthropicAdaptive, false) => "Anthropic adaptive",
-        (ReasoningStyle::GeminiThinkingLevel, true) => "Gemini 思考级别",
-        (ReasoningStyle::GeminiThinkingLevel, false) => "Gemini thinkingLevel",
-        (ReasoningStyle::None, true) => "不发送推理参数",
-        (ReasoningStyle::None, false) => "None",
+pub const fn format_reasoning_style(style: ReasoningStyle, lang: Language) -> &'static str {
+    let p = crate::ui::Tr(lang).providers();
+    match style {
+        ReasoningStyle::ReasoningEffort => p.prov_fmt_reasoning_effort(),
+        ReasoningStyle::ReasoningObject => p.prov_fmt_reasoning_object(),
+        ReasoningStyle::ThinkingType => p.prov_fmt_thinking_type(),
+        ReasoningStyle::EnableThinking => p.prov_fmt_enable_thinking(),
+        ReasoningStyle::ChatTemplateKwargs => p.prov_fmt_chat_template_kwargs(),
+        ReasoningStyle::AnthropicAdaptive => p.prov_fmt_anthropic_adaptive(),
+        ReasoningStyle::GeminiThinkingLevel => p.prov_fmt_gemini_thinking_level(),
+        ReasoningStyle::None => p.prov_fmt_reasoning_none(),
     }
 }
 
 #[must_use]
-pub const fn format_family(family: GatewayFamily, zh: bool) -> &'static str {
+pub const fn format_family(family: GatewayFamily, lang: Language) -> &'static str {
     match family {
-        GatewayFamily::Official => {
-            if zh {
-                "官方"
-            } else {
-                "Official"
-            }
-        }
+        GatewayFamily::Official => crate::ui::Tr(lang).providers().sniff_picker_official(),
         GatewayFamily::NewApi => "new-api",
         GatewayFamily::OneApi => "one-api",
         GatewayFamily::Veloera => "Veloera",
@@ -183,32 +143,21 @@ pub const fn format_family(family: GatewayFamily, zh: bool) -> &'static str {
         GatewayFamily::Sglang => "SGLang",
         GatewayFamily::LocalAi => "LocalAI",
         GatewayFamily::UnknownCompatible => {
-            if zh {
-                "兼容接口"
-            } else {
-                "Compatible"
-            }
+            crate::ui::Tr(lang).providers().prov_format_compatible()
         }
     }
 }
 
 #[must_use]
-pub fn format_balance_report(rep: &BalanceReport, zh: bool) -> String {
+pub fn format_balance_report(rep: &BalanceReport, lang: Language) -> String {
     if !rep.supported {
-        return if zh {
-            "无余额接口".into()
-        } else {
-            "No balance API".into()
-        };
+        return crate::ui::Tr(lang)
+            .providers()
+            .prov_format_no_balance_api()
+            .into();
     }
     match rep.unit {
-        BalanceUnit::Unlimited => {
-            if zh {
-                "不限额".into()
-            } else {
-                "Unlimited".into()
-            }
-        }
+        BalanceUnit::Unlimited => crate::ui::Tr(lang).providers().prov_bal_unlimited().into(),
         BalanceUnit::Usd => rep
             .remaining
             .map_or_else(|| "—".into(), |v| format!("${v:.2}")),
@@ -219,11 +168,9 @@ pub fn format_balance_report(rep: &BalanceReport, zh: bool) -> String {
             if let Some(usd) = rep.remaining_usd {
                 format!("${usd:.2}")
             } else if let Some(rem) = rep.remaining {
-                if zh {
-                    format!("{rem:.0} 额度")
-                } else {
-                    format!("{rem:.0} quota")
-                }
+                crate::ui::Tr(lang)
+                    .providers()
+                    .prov_format_quota(format!("{rem:.0}"))
             } else {
                 "—".into()
             }
@@ -235,11 +182,10 @@ pub fn format_balance_report(rep: &BalanceReport, zh: bool) -> String {
         }
         BalanceUnit::Unsupported => rep.remaining.map_or_else(
             || {
-                if zh {
-                    "单位未知".into()
-                } else {
-                    "Unknown unit".into()
-                }
+                crate::ui::Tr(lang)
+                    .providers()
+                    .prov_format_unknown_unit()
+                    .into()
             },
             |v| format!("{v:.2}"),
         ),
@@ -247,13 +193,18 @@ pub fn format_balance_report(rep: &BalanceReport, zh: bool) -> String {
 }
 
 #[must_use]
-pub fn provider_best_balance(keys: &[ProviderKey], category: &str, zh: bool) -> Option<String> {
+pub fn provider_best_balance(
+    keys: &[ProviderKey],
+    category: &str,
+    lang: Language,
+) -> Option<String> {
     if category == "local" {
-        return Some(if zh {
-            "本地免费".into()
-        } else {
-            "Local · Free".into()
-        });
+        return Some(
+            crate::ui::Tr(lang)
+                .providers()
+                .prov_format_local_free()
+                .into(),
+        );
     }
     let best = keys
         .iter()
@@ -261,13 +212,9 @@ pub fn provider_best_balance(keys: &[ProviderKey], category: &str, zh: bool) -> 
         .filter_map(|k| k.balance.as_ref().and_then(|b| b.last_good.as_ref()))
         .find(|r| r.supported);
     best.map(|r| {
-        let val = format_balance_report(r, zh);
+        let val = format_balance_report(r, lang);
         if r.scope == BalanceScope::Key && r.unit != BalanceUnit::Unlimited {
-            if zh {
-                format!("密钥 {val}")
-            } else {
-                format!("Key {val}")
-            }
+            crate::ui::Tr(lang).providers().prov_format_key(val)
         } else {
             val
         }
@@ -275,14 +222,12 @@ pub fn provider_best_balance(keys: &[ProviderKey], category: &str, zh: bool) -> 
 }
 
 #[must_use]
-pub fn format_balance_dto_error(dto: &KeyBalanceResultDto, zh: bool) -> Option<String> {
+pub fn format_balance_dto_error(dto: &KeyBalanceResultDto, lang: Language) -> Option<String> {
     dto.error.as_ref().map(|e| {
         if e.message.is_empty() {
-            if zh {
-                format!("刷新失败 ({:?})", e.kind)
-            } else {
-                format!("Refresh failed ({:?})", e.kind)
-            }
+            crate::ui::Tr(lang)
+                .providers()
+                .prov_format_refresh_failed(format!("{:?}", e.kind))
         } else {
             e.message.clone()
         }
@@ -323,23 +268,15 @@ pub fn currency_symbol(code: &str) -> &str {
 }
 
 #[must_use]
-pub fn format_price_state(state: Option<&EffectivePriceState>, zh: bool) -> String {
+pub fn format_price_state(state: Option<&EffectivePriceState>, lang: Language) -> String {
     match state {
-        Some(EffectivePriceState::Free) => {
-            if zh {
-                "免费".into()
-            } else {
-                "Free".into()
-            }
-        }
+        Some(EffectivePriceState::Free) => crate::ui::Tr(lang).common().free().into(),
         Some(EffectivePriceState::Known(view)) => {
             let sym = currency_symbol(&view.price.currency);
             if let Some(per_call) = view.price.per_call {
-                if zh {
-                    format!("{sym}{per_call:.3}/次")
-                } else {
-                    format!("{sym}{per_call:.3}/call")
-                }
+                crate::ui::Tr(lang)
+                    .providers()
+                    .prov_format_call(sym, format!("{per_call:.3}"))
             } else {
                 format!(
                     "{sym}{:.2} / {sym}{:.2}",
@@ -352,210 +289,125 @@ pub fn format_price_state(state: Option<&EffectivePriceState>, zh: bool) -> Stri
 }
 
 #[must_use]
-pub fn format_relative_time(ts_ms: i64, zh: bool) -> String {
+pub fn format_relative_time(ts_ms: i64, lang: Language) -> String {
     if ts_ms <= 0 {
         return "—".into();
     }
     let delta_s = ((now_ms() - ts_ms).max(0)) / 1000;
     if delta_s < 45 {
-        if zh {
-            "刚刚".into()
-        } else {
-            "just now".into()
-        }
+        crate::ui::Tr(lang).common().time_just_now().into()
     } else if delta_s < 3600 {
         let m = (delta_s / 60).max(1);
-        if zh {
-            format!("{m} 分钟前")
-        } else {
-            format!("{m}m ago")
-        }
+        crate::ui::Tr(lang).providers().prov_format_m_ago(m)
     } else if delta_s < 86_400 {
         let h = delta_s / 3600;
-        if zh {
-            format!("{h} 小时前")
-        } else {
-            format!("{h}h ago")
-        }
+        crate::ui::Tr(lang).providers().prov_format_h_ago(h)
     } else {
         let d = delta_s / 86_400;
-        if zh {
-            format!("{d} 天前")
-        } else {
-            format!("{d}d ago")
-        }
+        crate::ui::Tr(lang).providers().prov_format_d_ago(d)
     }
 }
 
 #[must_use]
-pub fn format_uptime(secs: u64, zh: bool) -> String {
+pub fn format_uptime(secs: u64, lang: Language) -> String {
     if secs < 60 {
-        if zh {
-            format!("{secs} 秒")
-        } else {
-            format!("{secs}s")
-        }
+        crate::ui::Tr(lang).providers().prov_format_s(secs)
     } else if secs < 3600 {
         let m = secs / 60;
-        if zh {
-            format!("{m} 分钟")
-        } else {
-            format!("{m}m")
-        }
+        crate::ui::Tr(lang).providers().prov_format_m(m)
     } else {
         let h = secs / 3600;
         let m = (secs % 3600) / 60;
-        if zh {
-            format!("{h} 小时 {m} 分")
-        } else {
-            format!("{h}h {m}m")
-        }
+        crate::ui::Tr(lang).providers().prov_format_h_m(h, m)
     }
 }
 
 #[must_use]
-pub fn format_client_status(
+pub const fn format_client_status(
     status: &ClientStatus,
     drift: &Drift,
-    zh: bool,
+    lang: Language,
 ) -> (&'static str, Tone) {
+    let p = crate::ui::Tr(lang).providers();
     match status {
-        ClientStatus::Verified { .. } => (if zh { "已验证" } else { "Verified" }, Tone::Success),
-        ClientStatus::Configured => (if zh { "已连接" } else { "Connected" }, Tone::Success),
-        ClientStatus::WaitingForFirstRequest => (
-            if zh {
-                "等待首个请求"
-            } else {
-                "Waiting for request"
-            },
-            Tone::Accent,
-        ),
-        ClientStatus::Overridden { .. } => {
-            (if zh { "被覆盖" } else { "Overridden" }, Tone::Warning)
-        }
-        ClientStatus::ModelUnavailable => (
-            if zh {
-                "模型不可用"
-            } else {
-                "Model unavailable"
-            },
-            Tone::Warning,
-        ),
-        ClientStatus::NoRequest => (if zh { "未收到请求" } else { "No request" }, Tone::Neutral),
-        ClientStatus::Rejected { .. } => (if zh { "请求被拒" } else { "Rejected" }, Tone::Danger),
+        ClientStatus::Verified { .. } => (p.gwa_gateway_writer_verified(), Tone::Success),
+        ClientStatus::Configured => (p.connect_status_connected(), Tone::Success),
+        ClientStatus::WaitingForFirstRequest => (p.prov_format_waiting_for_request(), Tone::Accent),
+        ClientStatus::Overridden { .. } => (p.gwa_gateway_writer_overridden(), Tone::Warning),
+        ClientStatus::ModelUnavailable => (p.gwa_gateway_writer_model_unavailable(), Tone::Warning),
+        ClientStatus::NoRequest => (p.prov_format_no_request(), Tone::Neutral),
+        ClientStatus::Rejected { .. } => (p.prov_format_rejected(), Tone::Danger),
         ClientStatus::Drifted => {
             let lbl = match drift {
-                Drift::DifferentAddress { .. } => {
-                    if zh {
-                        "地址不同"
-                    } else {
-                        "Different address"
-                    }
-                }
-                Drift::TokenNotRecognised => {
-                    if zh {
-                        "令牌无法识别"
-                    } else {
-                        "Token unknown"
-                    }
-                }
-                Drift::AliasMissing => {
-                    if zh {
-                        "模型不存在"
-                    } else {
-                        "Model missing"
-                    }
-                }
-                _ => {
-                    if zh {
-                        "配置已漂移"
-                    } else {
-                        "Drifted"
-                    }
-                }
+                Drift::DifferentAddress { .. } => p.connect_status_different_address(),
+                Drift::TokenNotRecognised => p.prov_format_token_unknown(),
+                Drift::AliasMissing => p.connect_status_alias_missing(),
+                _ => p.prov_format_drifted(),
             };
             (lbl, Tone::Warning)
         }
-        ClientStatus::NotConfigured => {
-            (if zh { "未配置" } else { "Not configured" }, Tone::Neutral)
-        }
+        ClientStatus::NotConfigured => (p.connect_status_not_configured(), Tone::Neutral),
     }
 }
 
 #[must_use]
-pub const fn snippet_client_name(client: SnippetClient, zh: bool) -> &'static str {
+pub const fn snippet_client_name(client: SnippetClient, lang: Language) -> &'static str {
     match client {
         SnippetClient::Zed => "Zed Editor",
         SnippetClient::Cursor => "Cursor",
         SnippetClient::CherryStudio => "Cherry Studio",
-        SnippetClient::GenericEnv => {
-            if zh {
-                "其他（环境变量）"
-            } else {
-                "Other (Env vars)"
-            }
-        }
+        SnippetClient::GenericEnv => crate::ui::Tr(lang).providers().prov_format_other_env_vars(),
     }
 }
 
 #[must_use]
-pub const fn format_rule_status(status: RuleStatus, zh: bool) -> (&'static str, Tone) {
+pub const fn format_rule_status(status: RuleStatus, lang: Language) -> (&'static str, Tone) {
+    let p = crate::ui::Tr(lang).providers();
     match status {
-        RuleStatus::Ok => (if zh { "生效" } else { "Active" }, Tone::Success),
-        RuleStatus::Disabled => (if zh { "已停用" } else { "Disabled" }, Tone::Neutral),
-        RuleStatus::NoKey => (if zh { "无密钥" } else { "No key" }, Tone::Warning),
-        RuleStatus::CircuitOpen => (if zh { "熔断中" } else { "Circuit open" }, Tone::Warning),
-        RuleStatus::Unresolved => (if zh { "未解析" } else { "Unresolved" }, Tone::Danger),
+        RuleStatus::Ok => (p.gwa_rules_st_ok(), Tone::Success),
+        RuleStatus::Disabled => (p.prov_status_disabled(), Tone::Neutral),
+        RuleStatus::NoKey => (p.sniff_key_none(), Tone::Warning),
+        RuleStatus::CircuitOpen => (p.prov_format_circuit_open(), Tone::Warning),
+        RuleStatus::Unresolved => (p.prov_format_unresolved(), Tone::Danger),
     }
 }
 
 #[must_use]
-pub const fn format_probe_status(status: ProbeStatus, zh: bool) -> (&'static str, Tone) {
+pub const fn format_probe_status(status: ProbeStatus, lang: Language) -> (&'static str, Tone) {
+    let t = crate::ui::Tr(lang);
+    let p = t.providers();
+    let c = t.common();
     match status {
-        ProbeStatus::Ready => (if zh { "就绪" } else { "Ready" }, Tone::Success),
-        ProbeStatus::Rejected => (if zh { "被拒绝" } else { "Rejected" }, Tone::Danger),
-        ProbeStatus::RateLimited => (if zh { "限流" } else { "Rate limited" }, Tone::Warning),
-        ProbeStatus::Unreachable => (if zh { "无法连接" } else { "Unreachable" }, Tone::Danger),
-        ProbeStatus::InvalidResponse => (if zh { "响应无效" } else { "Invalid" }, Tone::Warning),
-        ProbeStatus::Unsupported => (if zh { "不支持" } else { "Unsupported" }, Tone::Neutral),
-        ProbeStatus::NotObserved => (if zh { "未观察到" } else { "Not observed" }, Tone::Neutral),
-        ProbeStatus::Skipped => (if zh { "跳过" } else { "Skipped" }, Tone::Neutral),
-        ProbeStatus::TimedOut => (if zh { "超时" } else { "Timed out" }, Tone::Warning),
+        ProbeStatus::Ready => (c.status_ready(), Tone::Success),
+        ProbeStatus::Rejected => (c.status_rejected(), Tone::Danger),
+        ProbeStatus::RateLimited => (p.prov_format_rate_limited(), Tone::Warning),
+        ProbeStatus::Unreachable => (c.status_unreachable(), Tone::Danger),
+        ProbeStatus::InvalidResponse => (p.prov_format_invalid(), Tone::Warning),
+        ProbeStatus::Unsupported => (c.status_unsupported(), Tone::Neutral),
+        ProbeStatus::NotObserved => (c.status_not_observed(), Tone::Neutral),
+        ProbeStatus::Skipped => (p.prov_format_skipped(), Tone::Neutral),
+        ProbeStatus::TimedOut => (c.status_timed_out(), Tone::Warning),
     }
 }
 
 #[must_use]
-pub const fn format_probe_test(test: ProbeTest, zh: bool) -> &'static str {
-    match (test, zh) {
-        (ProbeTest::Connectivity, true) => "连通性",
-        (ProbeTest::Connectivity, false) => "Connectivity",
-        (ProbeTest::Auth, true) => "鉴权",
-        (ProbeTest::Auth, false) => "Auth",
-        (ProbeTest::Models, true) => "模型列表",
-        (ProbeTest::Models, false) => "Models",
-        (ProbeTest::Chat, true) => "对话",
-        (ProbeTest::Chat, false) => "Chat",
-        (ProbeTest::Stream, true) => "流式",
-        (ProbeTest::Stream, false) => "Stream",
-        (ProbeTest::Tools, true) => "工具",
-        (ProbeTest::Tools, false) => "Tools",
-        (ProbeTest::JsonSchema, true) => "JSON",
-        (ProbeTest::JsonSchema, false) => "JSON",
-        (ProbeTest::Vision, true) => "视觉",
-        (ProbeTest::Vision, false) => "Vision",
-        (ProbeTest::Reasoning, true) => "推理",
-        (ProbeTest::Reasoning, false) => "Reasoning",
-        (ProbeTest::Cache, true) => "缓存",
-        (ProbeTest::Cache, false) => "Cache",
-        (ProbeTest::Embeddings, true) => "嵌入",
-        (ProbeTest::Embeddings, false) => "Embed",
-        (ProbeTest::Search, true) => "搜索",
-        (ProbeTest::Search, false) => "Search",
-        (ProbeTest::Pdf, true) => "PDF",
-        (ProbeTest::Pdf, false) => "PDF",
-        (ProbeTest::Decision, true) => "决策",
-        (ProbeTest::Decision, false) => "Decision",
-        (ProbeTest::Context, true) => "上下文",
-        (ProbeTest::Context, false) => "Context",
+pub const fn format_probe_test(test: ProbeTest, lang: Language) -> &'static str {
+    let p = crate::ui::Tr(lang).providers();
+    match test {
+        ProbeTest::Connectivity => p.prov_fmt_probe_connectivity(),
+        ProbeTest::Auth => p.prov_fmt_probe_auth(),
+        ProbeTest::Models => p.prov_fmt_probe_models(),
+        ProbeTest::Chat => p.prov_fmt_probe_chat(),
+        ProbeTest::Stream => p.prov_fmt_probe_stream(),
+        ProbeTest::Tools => p.prov_fmt_probe_tools(),
+        ProbeTest::JsonSchema => "JSON",
+        ProbeTest::Vision => p.prov_fmt_probe_vision(),
+        ProbeTest::Reasoning => p.prov_fmt_probe_reasoning(),
+        ProbeTest::Cache => p.prov_fmt_probe_cache(),
+        ProbeTest::Embeddings => p.prov_fmt_probe_embed(),
+        ProbeTest::Search => p.prov_fmt_probe_search(),
+        ProbeTest::Pdf => "PDF",
+        ProbeTest::Decision => p.prov_fmt_probe_decision(),
+        ProbeTest::Context => p.prov_fmt_probe_context(),
     }
 }

@@ -367,11 +367,9 @@ impl UsageView {
                     Ok(rep) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已清空 {} 条调用日志", rep.rows)
-                            } else {
-                                format!("Cleared {} call log(s)", rep.rows)
-                            },
+                            crate::ui::Tr(this.lang)
+                                .usage()
+                                .usage_actions_cleared_call_log_s(rep.rows),
                         ));
                         this.reload_all(cx);
                     }
@@ -393,11 +391,9 @@ impl UsageView {
                     Ok(bytes) => {
                         this.status_msg = Some((
                             Tone::Success,
-                            if this.is_zh() {
-                                format!("已清理捕获负载（释放 {} KB）", bytes / 1024)
-                            } else {
-                                format!("Deleted stored captures ({} KB freed)", bytes / 1024)
-                            },
+                            crate::ui::Tr(this.lang)
+                                .usage()
+                                .usage_actions_deleted_stored_captures_kb_freed(bytes / 1024),
                         ));
                         this.reload_all(cx);
                     }
@@ -475,11 +471,9 @@ impl UsageView {
             Ok(()) => {
                 self.status_msg = Some((
                     Tone::Success,
-                    if self.is_zh() {
-                        format!("已导出用量明细至 {}", path.display())
-                    } else {
-                        format!("Exported CSV to {}", path.display())
-                    },
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_actions_exported_csv_to(path.display()),
                 ));
             }
             Err(e) => {

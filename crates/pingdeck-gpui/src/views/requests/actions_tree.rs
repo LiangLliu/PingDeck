@@ -374,17 +374,12 @@ impl RequestsView {
 
     pub fn request_close_tab(&mut self, tab_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.snapshot_active_tab(cx);
+        let lang = crate::ui::active_language(cx);
         let dirty_name = self
             .tabs
             .iter()
             .find(|t| t.tab_id() == tab_id)
-            .and_then(|t| {
-                t.is_dirty().then(|| {
-                    let zh = self.settings.general.language
-                        == pingdeck_desktop::core::model::settings::Language::ZhCn;
-                    t.title(zh)
-                })
-            });
+            .and_then(|t| t.is_dirty().then(|| t.title(lang)));
         if let Some(name) = dirty_name {
             self.active_modal = Some(ActiveModal::ConfirmCloseDirty {
                 tab_id: tab_id.to_owned(),
@@ -440,7 +435,10 @@ impl RequestsView {
                             t.saved_snapshot = Some(saved.clone());
                             t.dirty = false;
                         }
-                        this.status_msg = Some((Tone::Success, format!("已保存 {}", saved.name)));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).requests().act_saved_item(&saved.name),
+                        ));
                         this.reload_workspace_no_window(ws_id, cx);
                         this.persist_tab_session(cx);
                     }
@@ -500,7 +498,10 @@ impl RequestsView {
                             t.dirty = false;
                         }
                         this.active_modal = None;
-                        this.status_msg = Some((Tone::Success, format!("已保存 {}", saved.name)));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).requests().act_saved_item(&saved.name),
+                        ));
                         this.reload_workspace_no_window(ws_id, cx);
                         this.refresh_effective_auth(cx);
                         this.persist_tab_session(cx);

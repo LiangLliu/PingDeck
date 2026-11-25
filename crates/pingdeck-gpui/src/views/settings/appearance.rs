@@ -18,11 +18,7 @@ use crate::ui::{
 
 use super::SettingsView;
 
-pub fn render_appearance(
-    view: &SettingsView,
-    zh: bool,
-    cx: &mut Context<SettingsView>,
-) -> gpui_kit::Div {
+pub fn render_appearance(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
     let app = &view.settings.appearance;
     let p = palette(cx);
     let is_dark = p.is_dark;
@@ -59,30 +55,39 @@ pub fn render_appearance(
         .w_full()
         .gap(px(20.0))
         .child(settings_section(
-            if zh { "外观与排版" } else { "Theme & Typography" },
+            crate::ui::tr(cx).settings().appearance_theme_typography(),
             Some(
-                btn_ghost("app-reset-sec", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_section(CoreSection::Appearance, cx);
-                    }))
-                    .into_any_element(),
+                btn_ghost(
+                    "app-reset-sec",
+                    crate::ui::tr(cx).settings().page_defaults_reset(),
+                )
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_section(CoreSection::Appearance, cx);
+                }))
+                .into_any_element(),
             ),
             v_col()
                 .w_full()
                 .child(setting_row(
-                    if zh { "色彩模式" } else { "Color mode" },
-                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
-                    Some(SharedString::from(if zh {
-                        "跟随操作系统浅色/深色外观，或固定为其中一种。"
-                    } else {
-                        "Follow system light/dark appearance automatically or lock one mode."
-                    })),
+                    crate::ui::tr(cx).settings().appearance_color_mode(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx).settings().page_defaults_local_only(),
+                    )),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .appearance_follow_system_light_dark_appearance(),
+                    )),
                     tab_bar_segmented("appearance-theme-seg")
                         .selected_index(theme_idx)
-                        .child(tab_item(if zh { "跟随系统" } else { "System" }))
-                        .child(tab_item(if zh { "浅色" } else { "Light" }))
-                        .child(tab_item(if zh { "深色" } else { "Dark" }))
+                        .child(tab_item(crate::ui::tr(cx).settings().appearance_system()))
+                        .child(tab_item(
+                            crate::ui::tr(cx).settings().opt_appearance_theme_light(),
+                        ))
+                        .child(tab_item(
+                            crate::ui::tr(cx).settings().opt_appearance_theme_dark(),
+                        ))
                         .on_click(move |idx, _, cx| {
                             let mode = match *idx {
                                 1 => "light",
@@ -100,17 +105,25 @@ pub fn render_appearance(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "界面密度" } else { "Density" },
+                    crate::ui::tr(cx).settings().appearance_density(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "紧凑模式缩小行距与内边距，适合多面板高信息量调试。"
-                    } else {
-                        "Compact tightens row padding for information-dense debugging."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .appearance_compact_tightens_row_padding_for(),
+                    )),
                     tab_bar_segmented("appearance-density-seg")
                         .selected_index(density_idx)
-                        .child(tab_item(if zh { "舒适" } else { "Comfortable" }))
-                        .child(tab_item(if zh { "紧凑" } else { "Compact" }))
+                        .child(tab_item(
+                            crate::ui::tr(cx)
+                                .settings()
+                                .opt_appearance_density_comfortable(),
+                        ))
+                        .child(tab_item(
+                            crate::ui::tr(cx)
+                                .settings()
+                                .opt_appearance_density_compact(),
+                        ))
                         .on_click(move |idx, _, cx| {
                             let density = if *idx == 1 { "compact" } else { "comfortable" };
                             ent_density.update(cx, |this, cx| {
@@ -124,13 +137,15 @@ pub fn render_appearance(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "界面字号" } else { "UI font size" },
-                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
-                    Some(SharedString::from(if zh {
-                        "实时按比例缩放全局界面字体（10–26 px，默认 13 px）。"
-                    } else {
-                        "Proportionally scales global interface typography live (10–26 px, default 13 px)."
-                    })),
+                    crate::ui::tr(cx).settings().appearance_ui_font_size(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx).settings().page_defaults_local_only(),
+                    )),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .appearance_proportionally_scales_global_interface_typ(),
+                    )),
                     h_row()
                         .gap(px(10.0))
                         .w(px(220.0))
@@ -145,13 +160,17 @@ pub fn render_appearance(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "等宽代码字号" } else { "Monospace font size" },
-                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
-                    Some(SharedString::from(if zh {
-                        "用于请求编辑器、响应体、脚本与日志（10–24 px，默认 12 px）。"
-                    } else {
-                        "Used for request editors, response viewers, scripts, and logs (10–24 px, default 12 px)."
-                    })),
+                    crate::ui::tr(cx)
+                        .settings()
+                        .appearance_monospace_font_size(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx).settings().page_defaults_local_only(),
+                    )),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .appearance_used_for_request_editors_response(),
+                    )),
                     h_row()
                         .gap(px(10.0))
                         .w(px(220.0))
@@ -165,20 +184,27 @@ pub fn render_appearance(
                         ),
                     cx,
                 ))
-                .child(render_live_preview(ui_font_val, mono_font_val, app.density, zh, cx))
+                .child(render_live_preview(
+                    ui_font_val,
+                    mono_font_val,
+                    app.density,
+                    cx,
+                ))
                 .child(setting_row(
-                    if zh { "侧栏呈现方式" } else { "Sidebar layout" },
+                    crate::ui::tr(cx).settings().appearance_sidebar_layout(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "自动模式沿用你用 ⌘B 切换的状态；也可锁定始终展开或紧凑窄轨。"
-                    } else {
-                        "Auto remembers your ⌘B toggle; or lock the sidebar always expanded or compact rail."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .appearance_auto_remembers_your_b_toggle(),
+                    )),
                     tab_bar_segmented("appearance-sidebar-seg")
                         .selected_index(sidebar_idx)
-                        .child(tab_item(if zh { "自动" } else { "Auto" }))
-                        .child(tab_item(if zh { "展开" } else { "Expanded" }))
-                        .child(tab_item(if zh { "窄轨" } else { "Rail" }))
+                        .child(tab_item(
+                            crate::ui::tr(cx).settings().opt_network_http_version_auto(),
+                        ))
+                        .child(tab_item(crate::ui::tr(cx).settings().appearance_expanded()))
+                        .child(tab_item(crate::ui::tr(cx).settings().appearance_rail()))
                         .on_click(move |idx, _, cx| {
                             let val = match *idx {
                                 1 => "expanded",
@@ -196,18 +222,22 @@ pub fn render_appearance(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "减少动态效果" } else { "Reduce motion" },
+                    crate::ui::tr(cx).settings().f_appearance_reduce_motion(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "降低面板折叠、流式淡入与过渡动画强度。"
-                    } else {
-                        "Minimize transitions, collapsible animations, and streaming fade effects."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .appearance_minimize_transitions_collapsible_animation(),
+                    )),
                     tab_bar_segmented("appearance-motion-seg")
                         .selected_index(motion_idx)
-                        .child(tab_item(if zh { "跟随系统" } else { "System" }))
-                        .child(tab_item(if zh { "开启" } else { "On" }))
-                        .child(tab_item(if zh { "关闭" } else { "Off" }))
+                        .child(tab_item(crate::ui::tr(cx).settings().appearance_system()))
+                        .child(tab_item(
+                            crate::ui::tr(cx)
+                                .settings()
+                                .opt_appearance_reduce_motion_on(),
+                        ))
+                        .child(tab_item(crate::ui::tr(cx).settings().notify_off()))
                         .on_click(move |idx, _, cx| {
                             let val = match *idx {
                                 1 => "on",
@@ -227,13 +257,11 @@ pub fn render_appearance(
             cx,
         ))
         .child(settings_section_padded(
-            if zh {
-                "8 套护眼 OKLCH 色系（单帧零闪烁切换）"
-            } else {
-                "8 Eye-Care OKLCH Palettes (Instant Single-Frame Switch)"
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .appearance_8_eye_care_oklch_palettes(),
             None,
-            render_palette_grid(view, is_dark, zh, cx),
+            render_palette_grid(view, is_dark, cx),
             cx,
         ))
 }
@@ -241,7 +269,6 @@ pub fn render_appearance(
 fn render_palette_grid(
     view: &SettingsView,
     is_dark: bool,
-    zh: bool,
     cx: &mut Context<SettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -399,17 +426,13 @@ fn render_palette_grid(
                                                 .text_xs()
                                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
                                                 .text_color(to_hsla(p.ink))
-                                                .child(if zh {
-                                                    pid.label_zh()
-                                                } else {
-                                                    pid.label_en()
-                                                }),
+                                                .child(palette_name(pid, cx)),
                                         )
                                         .child(
                                             div()
                                                 .text_size(px(10.0))
                                                 .text_color(to_hsla(p.faint))
-                                                .child(palette_subtitle(pid, zh)),
+                                                .child(palette_subtitle(pid, cx)),
                                         ),
                                 )
                                 .child(if selected {
@@ -435,7 +458,6 @@ fn render_live_preview(
     ui_px: u8,
     mono_px: u8,
     density: Density,
-    zh: bool,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -480,11 +502,11 @@ fn render_live_preview(
                                         div()
                                             .text_size(px(11.0))
                                             .text_color(to_hsla(p.muted))
-                                            .child(if zh {
-                                                "148 ms · 实时预览"
-                                            } else {
-                                                "148 ms · Live preview"
-                                            }),
+                                            .child(
+                                                crate::ui::tr(cx)
+                                                    .settings()
+                                                    .appearance_148_ms_live_preview(),
+                                            ),
                                     ),
                             ),
                     )
@@ -517,23 +539,30 @@ fn render_live_preview(
         )
 }
 
-const fn palette_subtitle(pid: PaletteId, zh: bool) -> &'static str {
-    match (pid, zh) {
-        (PaletteId::Slate, true) => "冷灰青蓝 · 默认专注",
-        (PaletteId::Slate, false) => "Focused cool slate",
-        (PaletteId::Ocean, true) => "深海清蓝 · 清晰",
-        (PaletteId::Ocean, false) => "Crisp deep ocean",
-        (PaletteId::Nord, true) => "北欧冰蓝 · 冷静",
-        (PaletteId::Nord, false) => "Calm nordic frost",
-        (PaletteId::Sage, true) => "鼠尾草绿 · 低蓝光",
-        (PaletteId::Sage, false) => "Low-blue soft sage",
-        (PaletteId::Emerald, true) => "翡翠翠绿 · 通透",
-        (PaletteId::Emerald, false) => "Fresh crisp emerald",
-        (PaletteId::Amber, true) => "暖纸琥珀 · 护眼阅读",
-        (PaletteId::Amber, false) => "Warm amber reading",
-        (PaletteId::Violet, true) => "柔和紫调 · 夜间舒适",
-        (PaletteId::Violet, false) => "Soft violet night",
-        (PaletteId::Graphite, true) => "纯灰无彩 · 极简",
-        (PaletteId::Graphite, false) => "Minimal neutral gray",
+fn palette_name(pid: PaletteId, cx: &gpui_kit::App) -> &'static str {
+    let s = crate::ui::tr(cx).settings();
+    match pid {
+        PaletteId::Slate => s.palette_slate_name(),
+        PaletteId::Ocean => s.palette_ocean_name(),
+        PaletteId::Nord => s.palette_nord_name(),
+        PaletteId::Sage => s.palette_sage_name(),
+        PaletteId::Emerald => s.palette_emerald_name(),
+        PaletteId::Amber => s.palette_amber_name(),
+        PaletteId::Violet => s.palette_violet_name(),
+        PaletteId::Graphite => s.palette_graphite_name(),
+    }
+}
+
+fn palette_subtitle(pid: PaletteId, cx: &gpui_kit::App) -> &'static str {
+    let s = crate::ui::tr(cx).settings();
+    match pid {
+        PaletteId::Slate => s.palette_slate_sub(),
+        PaletteId::Ocean => s.palette_ocean_sub(),
+        PaletteId::Nord => s.palette_nord_sub(),
+        PaletteId::Sage => s.palette_sage_sub(),
+        PaletteId::Emerald => s.palette_emerald_sub(),
+        PaletteId::Amber => s.palette_amber_sub(),
+        PaletteId::Violet => s.palette_violet_sub(),
+        PaletteId::Graphite => s.palette_graphite_sub(),
     }
 }

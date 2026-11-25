@@ -17,11 +17,7 @@ use super::model::{ActiveModal, NewItemKind, OpenTab, RequestsHandoff, method_st
 pub use super::toolbar_url::render_http_url_strip;
 use super::toolbar_url::render_variables_popover;
 
-pub fn render_doc_tabbar(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::Div {
+pub fn render_doc_tabbar(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let mut tabs_row = h_row()
         .flex_1()
@@ -34,7 +30,7 @@ pub fn render_doc_tabbar(
         let tid = tab.tab_id().to_owned();
         let active = view.active_tab_id.as_deref() == Some(tid.as_str());
         let dirty = tab.is_dirty();
-        let title = tab.title(zh);
+        let title = tab.title(crate::ui::active_language(cx));
         let tid_sel = tid.clone();
         let tid_x = tid.clone();
 
@@ -77,11 +73,7 @@ pub fn render_doc_tabbar(
     tabs_row = tabs_row.child(
         div().pb(px(3.0)).flex_shrink_0().child(
             btn_icon("doc-tab-plus", UiIcon::Plus)
-                .tooltip(if zh {
-                    "新建请求标签 (⌘T)"
-                } else {
-                    "New tab (⌘T)"
-                })
+                .tooltip(crate::ui::tr(cx).requests().toolbar_new_tab_t())
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_new_request_tab(NewItemKind::HttpGet, None, None, window, cx);
                 })),
@@ -101,11 +93,7 @@ pub fn render_doc_tabbar(
 }
 
 /// Compact Request Identity, Breadcrumb, HTTP ⇄ AI Mode switch, Variables, Code, Save & More strip.
-pub fn render_identity_strip(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::Div {
+pub fn render_identity_strip(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return div();
@@ -133,7 +121,7 @@ pub fn render_identity_strip(
             parts.push(f.name.clone());
         }
         if parts.is_empty() {
-            if zh { "草稿 /" } else { "Draft /" }.to_owned()
+            crate::ui::tr(cx).requests().toolbar_draft().to_owned()
         } else {
             format!("{} /", parts.join(" / "))
         }
@@ -170,7 +158,7 @@ pub fn render_identity_strip(
             m = m.child(menu_item(
                 "req-more-saveas",
                 UiIcon::Folder,
-                if zh { "另存为…" } else { "Save as…" },
+                crate::ui::tr(pop_cx).requests().editor_url_save_as(),
                 false,
                 pop_cx,
                 move |_, window, cx| {
@@ -206,11 +194,7 @@ pub fn render_identity_strip(
             m = m.child(menu_item(
                 "req-more-download",
                 UiIcon::Download,
-                if zh {
-                    "发送并保存到文件…"
-                } else {
-                    "Send & save to file…"
-                },
+                crate::ui::tr(pop_cx).requests().toolbar_send_save_to_file(),
                 false,
                 pop_cx,
                 move |_, window, cx| {
@@ -224,11 +208,7 @@ pub fn render_identity_strip(
             m = m.child(menu_item(
                 "req-more-hist",
                 UiIcon::History,
-                if zh {
-                    "查看执行历史 ↗"
-                } else {
-                    "View history ↗"
-                },
+                crate::ui::tr(pop_cx).requests().toolbar_view_history(),
                 false,
                 pop_cx,
                 move |_, window, cx| {
@@ -246,7 +226,7 @@ pub fn render_identity_strip(
                 m = m.child(menu_divider(pop_cx)).child(menu_item(
                     "req-more-del",
                     UiIcon::Trash,
-                    if zh { "删除请求" } else { "Delete" },
+                    crate::ui::tr(pop_cx).requests().toolbar_delete(),
                     true,
                     pop_cx,
                     move |_, window, cx| {
@@ -297,13 +277,21 @@ pub fn render_identity_strip(
                 .gap(px(6.0))
                 .child(bc_el)
                 .child(div().w(px(220.0)).child(text_input(&view.name_input)))
-                .children(
-                    agent_touched.then(|| badge(if zh { "AI 改" } else { "AI" }, Tone::Accent, cx)),
-                )
+                .children(agent_touched.then(|| {
+                    badge(
+                        crate::ui::tr(cx).requests().sidebar_nodes_ai(),
+                        Tone::Accent,
+                        cx,
+                    )
+                }))
                 .child(if is_dirty {
-                    badge(if zh { "未保存" } else { "Unsaved" }, Tone::Warning, cx)
+                    badge(
+                        crate::ui::tr(cx).requests().tabs_unsaved_hint(),
+                        Tone::Warning,
+                        cx,
+                    )
                 } else {
-                    badge(if zh { "已保存" } else { "Saved" }, Tone::Success, cx)
+                    badge(crate::ui::tr(cx).common().save_saved(), Tone::Success, cx)
                 }),
         )
         .child(
@@ -311,9 +299,9 @@ pub fn render_identity_strip(
                 .gap(px(6.0))
                 .flex_shrink_0()
                 .child(mode_seg)
-                .child(render_variables_popover(view, zh, cx))
+                .child(render_variables_popover(view, cx))
                 .child(
-                    btn_ghost("req-code-btn", if zh { "代码" } else { "Code" })
+                    btn_ghost("req-code-btn", crate::ui::tr(cx).requests().code_title())
                         .icon(icon_xs(UiIcon::FileCode))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_code_snippets_modal(window, cx);
@@ -322,12 +310,10 @@ pub fn render_identity_strip(
                 .child(
                     btn_secondary(
                         "req-save-btn",
-                        if zh {
-                            if is_saved { "保存" } else { "保存到…" }
-                        } else if is_saved {
-                            "Save"
+                        if is_saved {
+                            crate::ui::tr(cx).common().save()
                         } else {
-                            "Save to…"
+                            crate::ui::tr(cx).requests().toolbar_save_to()
                         },
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {

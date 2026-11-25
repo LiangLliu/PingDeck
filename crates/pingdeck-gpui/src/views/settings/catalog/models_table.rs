@@ -32,8 +32,7 @@ fn th_bar(cx: &gpui_kit::App) -> gpui_kit::Div {
         .text_color(to_hsla(p.muted))
 }
 
-fn th_col(width: f32, right: bool, zh: bool, z: &'static str, e: &'static str) -> gpui_kit::Div {
-    let label = if zh { z } else { e };
+fn th_col(width: f32, right: bool, label: &'static str) -> gpui_kit::Div {
     if right {
         div().w(px(width)).flex().justify_end().child(label)
     } else {
@@ -43,7 +42,6 @@ fn th_col(width: f32, right: bool, zh: bool, z: &'static str, e: &'static str) -
 
 pub fn render_models_section(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -67,7 +65,7 @@ pub fn render_models_section(
                 .child(
                     filter_chip(
                         "cat-filter-inuse",
-                        if zh { "只看在用的" } else { "In use only" },
+                        crate::ui::tr(cx).settings().models_table_in_use_only(),
                         Some(UiIcon::Zap),
                         view.in_use,
                         cx,
@@ -80,11 +78,9 @@ pub fn render_models_section(
                 .child(
                     filter_chip(
                         "cat-filter-dist",
-                        if zh {
-                            "分发商自有条目"
-                        } else {
-                            "Distributor entries"
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .models_table_distributor_entries(),
                         Some(UiIcon::Globe),
                         view.distributor_entries,
                         cx,
@@ -97,11 +93,7 @@ pub fn render_models_section(
                 .child(
                     btn_primary(
                         "cat-add-user-model",
-                        if zh {
-                            "+ 添加自建模型"
-                        } else {
-                            "+ Add custom model"
-                        },
+                        crate::ui::tr(cx).settings().models_table_add_custom_model(),
                     )
                     .h(px(30.0))
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -110,11 +102,9 @@ pub fn render_models_section(
                 ),
         );
 
-    let count_text = if zh {
-        format!("已显示 {shown} 个，共 {total} 个")
-    } else {
-        format!("Showing {shown} of {total}")
-    };
+    let count_text = crate::ui::tr(cx)
+        .settings()
+        .models_table_showing_of(shown, total);
 
     let toolbar_filters = h_row()
         .justify_between()
@@ -124,14 +114,14 @@ pub fn render_models_section(
             h_row()
                 .gap(px(6.0))
                 .flex_wrap()
-                .child(render_publisher_filter(view, zh, cx))
-                .child(render_kind_filter(view, zh, cx))
-                .child(render_source_filter(view, zh, cx))
-                .child(render_mode_filter(view, zh, cx))
+                .child(render_publisher_filter(view, cx))
+                .child(render_kind_filter(view, cx))
+                .child(render_source_filter(view, cx))
+                .child(render_mode_filter(view, cx))
                 .children(has_filters.then(|| {
                     btn_ghost(
                         "cat-clear-filters",
-                        if zh { "清除筛选" } else { "Clear filters" },
+                        crate::ui::tr(cx).settings().catalog_clear_filters(),
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.clear_filters(window, cx)))
                 })),
@@ -143,18 +133,14 @@ pub fn render_models_section(
                 .child(SharedString::from(count_text)),
         );
 
+    let s = crate::ui::tr(cx).settings();
     let thead = th_bar(cx)
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(210.0))
-                .child(if zh { "模型" } else { "Model" }),
-        )
-        .child(th_col(108.0, false, zh, "上下文 / 输出", "Context / Out"))
-        .child(th_col(82.0, true, zh, "输入 / 1M", "Input / 1M"))
-        .child(th_col(82.0, true, zh, "输出 / 1M", "Output / 1M"))
-        .child(th_col(110.0, true, zh, "缓存 读 / 写", "Cache R / W"))
-        .child(th_col(88.0, true, zh, "计价", "Pricing"));
+        .child(div().flex_1().min_w(px(210.0)).child(s.catalog_col_model()))
+        .child(th_col(108.0, false, s.catalog_th_ctx_out()))
+        .child(th_col(82.0, true, s.catalog_th_input_1m()))
+        .child(th_col(82.0, true, s.catalog_th_output_1m()))
+        .child(th_col(110.0, true, s.catalog_th_cache_rw()))
+        .child(th_col(88.0, true, s.catalog_th_pricing()));
 
     let mut tbody = v_col();
     if view.loading_page && shown == 0 {
@@ -164,11 +150,13 @@ pub fn render_models_section(
                 .py(px(28.0))
                 .gap(px(8.0))
                 .child(status_indicator(StatusShape::Run, cx))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "正在加载模型目录…"
-                } else {
-                    "Loading model catalog…"
-                })),
+                .child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .models_table_loading_model_catalog(),
+                    ),
+                ),
         );
     } else if shown == 0 {
         tbody = tbody.child(
@@ -182,15 +170,11 @@ pub fn render_models_section(
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
                         .child(if has_filters {
-                            if zh {
-                                "没有符合筛选条件的模型"
-                            } else {
-                                "No models match these filters"
-                            }
-                        } else if zh {
-                            "模型目录是空的"
+                            crate::ui::tr(cx)
+                                .settings()
+                                .models_table_no_models_match_these_filters()
                         } else {
-                            "The model catalog is empty"
+                            crate::ui::tr(cx).settings().catalog_empty_title()
                         }),
                 )
                 .child(
@@ -198,27 +182,19 @@ pub fn render_models_section(
                         .text_xs()
                         .text_color(to_hsla(p.muted))
                         .child(if has_filters {
-                            if zh {
-                                "尝试放宽搜索关键词或清除筛选条件。"
-                            } else {
-                                "Try clearing filters or broadening your search."
-                            }
-                        } else if zh {
-                            "点击「立即同步」下载 models.dev 目录，或添加自建模型。"
+                            crate::ui::tr(cx)
+                                .settings()
+                                .models_table_try_clearing_filters_or_broadening()
                         } else {
-                            "Click Sync now to download models.dev, or add a custom model."
+                            crate::ui::tr(cx)
+                                .settings()
+                                .models_table_click_sync_now_to_download()
                         }),
                 ),
         );
     } else if let Some(pg) = &view.page {
         for (idx, row) in pg.rows.iter().enumerate() {
-            tbody = tbody.child(render_catalog_row(
-                idx,
-                row,
-                idx + 1 < pg.rows.len(),
-                zh,
-                cx,
-            ));
+            tbody = tbody.child(render_catalog_row(idx, row, idx + 1 < pg.rows.len(), cx));
         }
     }
 
@@ -250,15 +226,11 @@ pub fn render_models_section(
                     btn_secondary(
                         "cat-load-more",
                         if view.loading_more {
-                            if zh {
-                                "加载中…".into()
-                            } else {
-                                "Loading…".into()
-                            }
-                        } else if zh {
-                            format!("再加载 {step} 个（剩余 {remaining} 个）")
+                            crate::ui::tr(cx).common().loading().into()
                         } else {
-                            format!("Load {step} more ({remaining} left)")
+                            crate::ui::tr(cx)
+                                .settings()
+                                .models_table_load_more_left(step, remaining)
                         },
                     )
                     .disabled(view.loading_more)
@@ -275,27 +247,33 @@ pub fn render_models_section(
         .w_full()
         .gap(px(8.0))
         .child(settings_section_flush(
-            if zh { "模型目录" } else { "Models" },
+            crate::ui::tr(cx).settings().models_table_models(),
             None,
             table_body,
             cx,
         ))
-        .child(div().px(px(4.0)).text_xs().text_color(to_hsla(p.faint)).child(if zh {
-            "价格按每百万 token 计，币种见各行；固定价格按每次成功请求计。不同币种的金额不会相加或换算。点击任意行可编辑价格、查看各分发商报价与配置服务商覆盖。"
-        } else {
-            "Prices are per 1M tokens in each row's currency; fixed prices apply per successful request. Currencies are never mixed or converted. Click any row to edit pricing or provider overrides."
-        }))
+        .child(
+            div()
+                .px(px(4.0))
+                .text_xs()
+                .text_color(to_hsla(p.faint))
+                .child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .models_table_prices_are_per_1m_tokens(),
+                ),
+        )
 }
 
 fn render_catalog_row(
     idx: usize,
     row: &ModelCatalogRow,
     has_border: bool,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
-    let (inp, out, cache, mode_label, mode_tone) = format_row_prices(row, zh);
+    let lang = crate::ui::active_language(cx);
+    let (inp, out, cache, mode_label, mode_tone) = format_row_prices(row, lang);
     let ctx_str = format!(
         "{} / {}",
         format_tokens(row.context_tokens),
@@ -310,30 +288,39 @@ fn render_catalog_row(
 
     let mut caps = h_row().gap(px(4.0)).flex_wrap();
     if row.source == CatalogSource::User {
-        caps = caps.child(badge(if zh { "自建" } else { "Custom" }, Tone::Accent, cx));
+        caps = caps.child(badge(
+            crate::ui::tr(cx).settings().catalog_source_user(),
+            Tone::Accent,
+            cx,
+        ));
     }
     if row.in_use.unwrap_or(0) > 0 {
-        caps = caps.child(badge(if zh { "在用" } else { "In use" }, Tone::Success, cx));
+        caps = caps.child(badge(
+            crate::ui::tr(cx).settings().models_table_in_use(),
+            Tone::Success,
+            cx,
+        ));
     }
     if row.provider_overrides > 0 {
         caps = caps.child(badge(
-            if zh {
-                format!("{}家另计", row.provider_overrides)
-            } else {
-                format!("{} ovr", row.provider_overrides)
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .models_table_ovr(row.provider_overrides),
             Tone::Warning,
             cx,
         ));
     }
     if row.reasoning {
-        caps = caps.child(cap_chip(if zh { "推理" } else { "Reason" }, cx));
+        caps = caps.child(cap_chip(
+            crate::ui::tr(cx).settings().models_table_reason(),
+            cx,
+        ));
     }
     if row.vision {
-        caps = caps.child(cap_chip(if zh { "视觉" } else { "Vision" }, cx));
+        caps = caps.child(cap_chip(crate::ui::tr(cx).common().cap_vision(), cx));
     }
     if row.tools {
-        caps = caps.child(cap_chip(if zh { "工具" } else { "Tools" }, cx));
+        caps = caps.child(cap_chip(crate::ui::tr(cx).common().cap_tools(), cx));
     }
 
     let mut el = div()
@@ -455,35 +442,26 @@ fn cap_chip(label: &'static str, cx: &gpui_kit::App) -> gpui_kit::Div {
 
 pub fn render_unlisted_section(
     view: &CatalogSettingsView,
-    zh: bool,
     cx: &mut Context<CatalogSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
+    let lang = crate::ui::active_language(cx);
+    let s = crate::ui::tr(cx).settings();
     let count = view.unlisted.len();
 
     let thead = th_bar(cx)
-        .child(th_col(180.0, false, zh, "你的服务商", "Provider"))
-        .child(
-            div()
-                .flex_1()
-                .child(if zh { "模型 ID" } else { "Model ID" }),
-        )
-        .child(th_col(150.0, false, zh, "当前价格", "Price"))
-        .child(th_col(120.0, true, zh, "操作", "Action"));
+        .child(th_col(180.0, false, s.catalog_th_provider()))
+        .child(div().flex_1().child(s.catalog_user_id()))
+        .child(th_col(150.0, false, s.catalog_th_price()))
+        .child(th_col(120.0, true, s.catalog_th_action()));
 
     let mut tbody = v_col();
     for (idx, item) in view.unlisted.iter().enumerate() {
         let price_str = item
             .effective
             .as_ref()
-            .map(|e| format_effective_price(e, zh))
-            .unwrap_or_else(|| {
-                if zh {
-                    "无价格".into()
-                } else {
-                    "No price".into()
-                }
-            });
+            .map(|e| format_effective_price(e, lang))
+            .unwrap_or_else(|| s.catalog_mode_none().into());
         let has_price = item.effective.is_some();
         let item_click = item.clone();
         let item_btn = item.clone();
@@ -540,11 +518,7 @@ pub fn render_unlisted_section(
                     .child(
                         btn_secondary(
                             SharedString::from(format!("cat-unlisted-btn-{idx}")),
-                            if zh {
-                                "设置价格 / 指认"
-                            } else {
-                                "Price / Match"
-                            },
+                            crate::ui::tr(cx).settings().models_table_price_match(),
                         )
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
@@ -565,18 +539,22 @@ pub fn render_unlisted_section(
         .w_full()
         .gap(px(8.0))
         .child(settings_section_flush(
-            if zh {
-                format!("未收录的模型（{count}）")
-            } else {
-                format!("Unlisted models ({count})")
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .models_table_unlisted_models(count),
             None,
             v_col().w_full().child(thead).child(tbody),
             cx,
         ))
-        .child(div().px(px(4.0)).text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "你的服务商提供、目录里还没有的模型；点击行可关联到目录模型或单独定价。"
-        } else {
-            "Models your providers serve that are not in the catalog; click a row to match to a catalog model or set a price."
-        }))
+        .child(
+            div()
+                .px(px(4.0))
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .models_table_models_your_providers_serve_that(),
+                ),
+        )
 }

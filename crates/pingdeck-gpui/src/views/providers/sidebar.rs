@@ -24,11 +24,7 @@ const QUICK_PRESET_IDS: [&str; 8] = [
     "ollama",
 ];
 
-pub fn render_sidebar(
-    view: &ProvidersView,
-    zh: bool,
-    cx: &mut Context<ProvidersView>,
-) -> gpui_kit::Div {
+pub fn render_sidebar(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
     let p = palette(cx);
     let gw_running = view.overview.as_ref().is_some_and(|o| o.status.running);
     let gw_port = view
@@ -52,15 +48,13 @@ pub fn render_sidebar(
 
     // Pinned Local Gateway hero item.
     let gw_sub = if gw_running {
-        if zh {
-            format!("127.0.0.1:{gw_port} · {active_clients} 个客户端")
-        } else {
-            format!("127.0.0.1:{gw_port} · {active_clients} clients")
-        }
-    } else if zh {
-        format!("已停止 · {active_clients} 个客户端")
+        crate::ui::tr(cx)
+            .providers()
+            .prov_sidebar_127_0_0_1_clients(gw_port, active_clients)
     } else {
-        format!("Stopped · {active_clients} clients")
+        crate::ui::tr(cx)
+            .providers()
+            .prov_sidebar_stopped_clients(active_clients)
     };
 
     left_list = left_list.child(
@@ -98,7 +92,7 @@ pub fn render_sidebar(
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                 .text_color(to_hsla(p.ink))
                                 .truncate()
-                                .child(if zh { "本地网关" } else { "Local Gateway" }),
+                                .child(crate::ui::tr(cx).providers().prov_gateway_local_gateway()),
                         )
                         .child(
                             div()
@@ -153,18 +147,18 @@ pub fn render_sidebar(
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                 .text_color(to_hsla(if has_providers { p.ink } else { p.muted }))
                                 .truncate()
-                                .child(if zh { "测试台" } else { "Test Bench" }),
+                                .child(crate::ui::tr(cx).providers().prov_sidebar_test_bench()),
                         )
                         .child(
                             div()
                                 .text_size(px(11.0))
                                 .text_color(to_hsla(p.muted))
                                 .truncate()
-                                .child(if zh {
-                                    "模型探测与能力矩阵"
-                                } else {
-                                    "Model probe & matrix"
-                                }),
+                                .child(
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_sidebar_model_probe_matrix(),
+                                ),
                         ),
                 ),
         ),
@@ -193,11 +187,7 @@ pub fn render_sidebar(
             .child(section_heading(
                 format!(
                     "{} ({})",
-                    if zh {
-                        "已配置服务商"
-                    } else {
-                        "Providers"
-                    },
+                    crate::ui::tr(cx).providers().prov_sidebar_providers(),
                     view.providers.len()
                 ),
                 cx,
@@ -205,7 +195,7 @@ pub fn render_sidebar(
     );
 
     if view.providers.is_empty() {
-        left_list = left_list.child(render_empty_onboarding(view, zh, cx));
+        left_list = left_list.child(render_empty_onboarding(view, cx));
     } else if filtered.is_empty() {
         left_list = left_list.child(
             v_col()
@@ -217,20 +207,22 @@ pub fn render_sidebar(
                     div()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(SharedString::from(if zh {
-                            format!("没有服务商匹配“{query}”")
-                        } else {
-                            format!("No providers match \"{query}\"")
-                        })),
+                        .child(SharedString::from(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sidebar_no_providers_match(query),
+                        )),
                 )
                 .child(
-                    btn_ghost("prov-clear-search", if zh { "清除搜索" } else { "Clear" }).on_click(
-                        cx.listener(|this, _, window, cx| {
-                            this.search_input
-                                .update(cx, |i, cx| i.set_value("", window, cx));
-                            cx.notify();
-                        }),
-                    ),
+                    btn_ghost(
+                        "prov-clear-search",
+                        crate::ui::tr(cx).providers().prov_sidebar_clear(),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.search_input
+                            .update(cx, |i, cx| i.set_value("", window, cx));
+                        cx.notify();
+                    })),
                 ),
         );
     } else {
@@ -265,19 +257,21 @@ pub fn render_sidebar(
                 .count();
 
             let mut parts: Vec<String> = Vec::new();
-            if let Some(bal) = provider_best_balance(&prov_keys, &prov.category, zh) {
+            if let Some(bal) =
+                provider_best_balance(&prov_keys, &prov.category, crate::ui::active_language(cx))
+            {
                 parts.push(bal);
             }
             if let Some(reason) = status_dto.and_then(|s| s.reasons.first()) {
-                parts.push(format_reason(reason, zh));
+                parts.push(format_reason(reason, crate::ui::active_language(cx)));
             } else if let Some(ms) = status_dto.and_then(|s| s.latency_ms) {
                 parts.push(format!("{ms} ms"));
             } else if total_models > 0 {
-                parts.push(if zh {
-                    format!("{enabled_models}/{total_models} 模型")
-                } else {
-                    format!("{enabled_models}/{total_models} models")
-                });
+                parts.push(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_sidebar_models(enabled_models, total_models),
+                );
             } else {
                 parts.push(prov.category.clone());
             }
@@ -325,7 +319,7 @@ pub fn render_sidebar(
                                         )
                                         .children(unreviewed.then(|| {
                                             badge(
-                                                if zh { "未复核" } else { "Review" },
+                                                crate::ui::tr(cx).providers().prov_sidebar_review(),
                                                 Tone::Warning,
                                                 cx,
                                             )
@@ -363,53 +357,39 @@ pub fn render_sidebar(
     }
     let mut foot_parts = Vec::new();
     if ok_n > 0 {
-        foot_parts.push(if zh {
-            format!("{ok_n} 正常")
-        } else {
-            format!("{ok_n} ok")
-        });
+        foot_parts.push(crate::ui::tr(cx).providers().prov_sidebar_ok(ok_n));
     }
     if warn_n > 0 {
-        foot_parts.push(if zh {
-            format!("{warn_n} 需关注")
-        } else {
-            format!("{warn_n} warn")
-        });
+        foot_parts.push(crate::ui::tr(cx).providers().prov_sidebar_warn(warn_n));
     }
     if bad_n > 0 {
-        foot_parts.push(if zh {
-            format!("{bad_n} 不可达")
-        } else {
-            format!("{bad_n} down")
-        });
+        foot_parts.push(crate::ui::tr(cx).providers().prov_sidebar_down(bad_n));
     }
     if unv_n > 0 {
-        foot_parts.push(if zh {
-            format!("{unv_n} 未验证")
-        } else {
-            format!("{unv_n} unverified")
-        });
+        foot_parts.push(crate::ui::tr(cx).providers().prov_sidebar_unverified(unv_n));
     }
     let foot_text = if foot_parts.is_empty() {
-        if zh {
-            "点击「添加」配置首个服务商".into()
-        } else {
-            "Click Add to configure a provider".into()
-        }
+        crate::ui::tr(cx)
+            .providers()
+            .prov_sidebar_click_add_to_configure_a()
+            .into()
     } else {
         foot_parts.join(" · ")
     };
 
     let header = pane_header(
-        if zh { "服务商" } else { "Providers" },
+        crate::ui::tr(cx).providers().prov_title(),
         None,
         Some(
-            btn_primary("prov-add-open", if zh { "添加" } else { "Add" })
-                .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_sniff_sheet(None, None, None, window, cx);
-                }))
-                .into_any_element(),
+            btn_primary(
+                "prov-add-open",
+                crate::ui::tr(cx).providers().prov_first_go(),
+            )
+            .icon(icon_xs(UiIcon::Plus))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_sniff_sheet(None, None, None, window, cx);
+            }))
+            .into_any_element(),
         ),
         Some(search_input(&view.search_input, cx).into_any_element()),
         cx,
@@ -437,11 +417,7 @@ pub fn render_sidebar(
         .child(footer)
 }
 
-fn render_empty_onboarding(
-    view: &ProvidersView,
-    zh: bool,
-    cx: &mut Context<ProvidersView>,
-) -> gpui_kit::Div {
+fn render_empty_onboarding(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
     let p = palette(cx);
     let mut chips = h_row().flex_wrap().gap(px(4.0));
     for pid in QUICK_PRESET_IDS {
@@ -468,21 +444,17 @@ fn render_empty_onboarding(
                     .text_xs()
                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                     .text_color(to_hsla(p.ink))
-                    .child(if zh {
-                        "添加你的第一个服务商"
-                    } else {
-                        "Add your first provider"
-                    }),
+                    .child(crate::ui::tr(cx).providers().prov_state_empty_title()),
             )
             .child(
                 div()
                     .text_size(px(11.0))
                     .text_color(to_hsla(p.muted))
-                    .child(if zh {
-                        "粘贴任意中转或官方 Base URL，自动探测协议、模型和余额。"
-                    } else {
-                        "Paste any Base URL to auto-detect protocols, models, and balance."
-                    }),
+                    .child(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_sidebar_paste_any_base_url_to(),
+                    ),
             )
             .child(
                 h_row()
@@ -494,24 +466,22 @@ fn render_empty_onboarding(
                             .child(text_input(&view.quick_url_input)),
                     )
                     .child(
-                        btn_primary("prov-quick-go", if zh { "探测" } else { "Go" }).on_click(
-                            cx.listener(|this, _, window, cx| {
-                                let url = this.quick_url_input.read(cx).value().trim().to_owned();
-                                let url_opt = (!url.is_empty()).then_some(url);
-                                this.open_sniff_sheet(None, url_opt, None, window, cx);
-                            }),
-                        ),
+                        btn_primary(
+                            "prov-quick-go",
+                            crate::ui::tr(cx).providers().prov_sidebar_go(),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let url = this.quick_url_input.read(cx).value().trim().to_owned();
+                            let url_opt = (!url.is_empty()).then_some(url);
+                            this.open_sniff_sheet(None, url_opt, None, window, cx);
+                        })),
                     ),
             )
             .child(
                 div()
                     .text_size(px(10.5))
                     .text_color(to_hsla(p.faint))
-                    .child(if zh {
-                        "或者从预设开始"
-                    } else {
-                        "Or start from a preset"
-                    }),
+                    .child(crate::ui::tr(cx).providers().prov_state_empty_presets()),
             )
             .child(chips),
     )

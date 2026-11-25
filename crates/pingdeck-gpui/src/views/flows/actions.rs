@@ -147,7 +147,10 @@ impl FlowsView {
                         this.pending_sync = true;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已新建流程", "Created flow").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .actions_created_flow()
+                                .to_owned(),
                         ));
                         this.reload(ws_reload, cx);
                     }
@@ -174,8 +177,13 @@ impl FlowsView {
                         this.draft = Some(saved.clone());
                         this.dirty = false;
                         this.pending_sync = true;
-                        this.status_msg =
-                            Some((Tone::Success, this.t("已保存流程", "Saved flow").to_owned()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .actions_saved_flow()
+                                .to_owned(),
+                        ));
                         if let Some(ws) = ws_reload {
                             this.reload(ws, cx);
                         }
@@ -207,7 +215,10 @@ impl FlowsView {
                         this.pending_sync = true;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已复制流程", "Duplicated flow").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .actions_duplicated_flow()
+                                .to_owned(),
                         ));
                         if let Some(ws) = ws_reload {
                             this.reload(ws, cx);
@@ -238,7 +249,10 @@ impl FlowsView {
                         this.dirty = false;
                         this.status_msg = Some((
                             Tone::Success,
-                            this.t("已删除流程", "Deleted flow").to_owned(),
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .actions_deleted_flow()
+                                .to_owned(),
                         ));
                         this.reload(ws_reload, cx);
                     }
@@ -526,25 +540,18 @@ impl FlowsView {
                     Ok(run) => {
                         this.dirty = false;
                         let summary_msg = if run.cancelled {
-                            this.t("流程已取消", "Flow run cancelled").to_owned()
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .actions_flow_run_cancelled()
+                                .to_owned()
                         } else if run.passed {
-                            if this.is_zh() {
-                                format!(
-                                    "流程执行通过 · {} 步 · {} ms",
-                                    run.steps.len(),
-                                    run.elapsed_ms
-                                )
-                            } else {
-                                format!(
-                                    "Flow passed · {} steps · {} ms",
-                                    run.steps.len(),
-                                    run.elapsed_ms
-                                )
-                            }
-                        } else if this.is_zh() {
-                            format!("流程执行存在失败步骤 · {} ms", run.elapsed_ms)
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .actions_flow_passed_steps_ms(run.steps.len(), run.elapsed_ms)
                         } else {
-                            format!("Flow failed · {} ms", run.elapsed_ms)
+                            crate::ui::Tr(this.lang)
+                                .flows()
+                                .run_failed_ms(run.elapsed_ms)
                         };
                         let tone = if run.cancelled {
                             Tone::Warning
@@ -578,7 +585,9 @@ impl FlowsView {
             let _ = execution_cancel_impl(runtime(cx).state(), tok);
             self.status_msg = Some((
                 Tone::Warning,
-                self.t("正在取消流程运行…", "Cancelling flow run…")
+                crate::ui::Tr(self.lang)
+                    .flows()
+                    .actions_cancelling_flow_run()
                     .to_owned(),
             ));
             cx.notify();

@@ -21,7 +21,6 @@ use super::types::{ChatHandoff, ChatModal};
 pub fn render_active_modal(
     view: &ChatView,
     modal: ChatModal,
-    zh: bool,
     window: &mut Window,
     cx: &mut Context<ChatView>,
 ) -> AnyElement {
@@ -40,19 +39,19 @@ pub fn render_active_modal(
                 .gap(px(10.0))
                 .child(alert_banner(
                     Tone::Warning,
-                    if zh {
-                        "完全权限模式会自动执行文件修改与常规 Shell 命令而不再逐条询问。"
-                    } else {
-                        "Full access auto-runs edits and regular shell commands without asking."
-                    },
+                    crate::ui::tr(cx)
+                        .chat()
+                        .modals_full_access_auto_runs_edits(),
                     None,
                     cx,
                 ))
-                .child(div().text_xs().text_color(to_hsla(p.ink_2)).child(if zh {
-                    "硬阻止列表、用户禁止规则、强制询问边界与 OS 沙箱仍会保持开启，不会被关闭。"
-                } else {
-                    "Hard blocks, Block rules, forced-ask gates, and the OS sandbox stay enabled."
-                }))
+                .child(
+                    div().text_xs().text_color(to_hsla(p.ink_2)).child(
+                        crate::ui::tr(cx)
+                            .chat()
+                            .modals_hard_blocks_block_rules_forced(),
+                    ),
+                )
                 .child(
                     h_row()
                         .id("chat-fa-ack")
@@ -83,20 +82,20 @@ pub fn render_active_modal(
                                 .text_color(to_hsla(p.surface))
                                 .children(acknowledged.then(|| icon_xs(UiIcon::Check))),
                         )
-                        .child(div().text_xs().text_color(to_hsla(p.ink)).child(if zh {
-                            "我已了解风险，仅为当前对话开启完全权限"
-                        } else {
-                            "I understand — enable Full access for this chat"
-                        })),
+                        .child(
+                            div().text_xs().text_color(to_hsla(p.ink)).child(
+                                crate::ui::tr(cx)
+                                    .chat()
+                                    .modals_i_understand_enable_full_access(),
+                            ),
+                        ),
                 )
                 .child(
                     btn_ghost(
                         "chat-fa-eval-link",
-                        if zh {
-                            "查看 6 层权限评估顺序 ↗"
-                        } else {
-                            "View 6-layer evaluation order ↗"
-                        },
+                        crate::ui::tr(cx)
+                            .chat()
+                            .modals_view_6_layer_evaluation_order(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.active_modal = None;
@@ -110,11 +109,7 @@ pub fn render_active_modal(
 
             let mut ok_btn = btn_danger(
                 "chat-fa-confirm",
-                if zh {
-                    "开启完全权限"
-                } else {
-                    "Enable Full access"
-                },
+                crate::ui::tr(cx).chat().modals_enable_full_access(),
             );
             if acknowledged {
                 ok_btn = ok_btn.on_click(cx.listener(|this, _, _, cx| {
@@ -127,7 +122,7 @@ pub fn render_active_modal(
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("chat-fa-cancel", if zh { "取消" } else { "Cancel" }).on_click(
+                    btn_secondary("chat-fa-cancel", crate::ui::tr(cx).common().cancel()).on_click(
                         cx.listener(|this, _, _, cx| {
                             this.active_modal = None;
                             cx.notify();
@@ -139,11 +134,7 @@ pub fn render_active_modal(
 
             modal_dialog(
                 "chat-fa-modal",
-                if zh {
-                    "确认开启完全权限"
-                } else {
-                    "Enable Full Access?"
-                },
+                crate::ui::tr(cx).chat().modals_enable_full_access_2(),
                 460.0,
                 body,
                 footer,
@@ -157,17 +148,17 @@ pub fn render_active_modal(
             let body = div()
                 .text_sm()
                 .text_color(to_hsla(p.ink))
-                .child(if zh {
-                    format!("对话「{title}」仍有任务正在运行。删除会先中断运行并移入最近删除，确认继续吗？")
-                } else {
-                    format!("Chat \"{title}\" has an active run. Deleting stops the run and moves it to Trash.")
-                })
+                .child(
+                    crate::ui::tr(cx)
+                        .chat()
+                        .modals_chat_has_an_active_run(title),
+                )
                 .into_any_element();
             let sid_del = session_id;
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("chat-del-cancel", if zh { "取消" } else { "Cancel" }).on_click(
+                    btn_secondary("chat-del-cancel", crate::ui::tr(cx).common().cancel()).on_click(
                         cx.listener(|this, _, _, cx| {
                             this.active_modal = None;
                             cx.notify();
@@ -177,11 +168,7 @@ pub fn render_active_modal(
                 .child(
                     btn_danger(
                         "chat-del-confirm",
-                        if zh {
-                            "停止并删除"
-                        } else {
-                            "Stop & Delete"
-                        },
+                        crate::ui::tr(cx).chat().modals_stop_delete(),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.active_modal = None;
@@ -191,11 +178,7 @@ pub fn render_active_modal(
                 .into_any_element();
             modal_dialog(
                 "chat-del-running-modal",
-                if zh {
-                    "删除运行中的对话"
-                } else {
-                    "Delete Running Chat?"
-                },
+                crate::ui::tr(cx).chat().modals_delete_running_chat(),
                 440.0,
                 body,
                 footer,
@@ -208,18 +191,19 @@ pub fn render_active_modal(
         ChatModal::RenameSession { session_id } => {
             let body = v_col()
                 .gap(px(6.0))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "对话标题"
-                } else {
-                    "Chat title"
-                }))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.muted))
+                        .child(crate::ui::tr(cx).chat().pane_row_rename_label()),
+                )
                 .child(text_input(&view.modal_input))
                 .into_any_element();
             let sid = session_id;
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("chat-rn-cancel", if zh { "取消" } else { "Cancel" }).on_click(
+                    btn_secondary("chat-rn-cancel", crate::ui::tr(cx).common().cancel()).on_click(
                         cx.listener(|this, _, _, cx| {
                             this.active_modal = None;
                             cx.notify();
@@ -227,7 +211,7 @@ pub fn render_active_modal(
                     ),
                 )
                 .child(
-                    btn_primary("chat-rn-save", if zh { "保存" } else { "Save" }).on_click(
+                    btn_primary("chat-rn-save", crate::ui::tr(cx).common().save()).on_click(
                         cx.listener(move |this, _, _, cx| {
                             let val = this.modal_input.read(cx).value().trim().to_owned();
                             this.active_modal = None;
@@ -248,7 +232,7 @@ pub fn render_active_modal(
                 .into_any_element();
             modal_dialog(
                 "chat-rename-modal",
-                if zh { "重命名对话" } else { "Rename Chat" },
+                crate::ui::tr(cx).chat().modals_rename_chat(),
                 420.0,
                 body,
                 footer,
@@ -272,7 +256,7 @@ pub fn render_active_modal(
                     h_row()
                         .gap(px(6.0))
                         .child(badge(
-                            if zh { "匹配规则" } else { "Rule" },
+                            crate::ui::tr(cx).chat().modals_rule(),
                             Tone::Accent,
                             cx,
                         ))
@@ -291,35 +275,19 @@ pub fn render_active_modal(
             let scopes: [(ApprovalScope, &str); 4] = [
                 (
                     ApprovalScope::Once,
-                    if zh {
-                        "仅允许本次调用"
-                    } else {
-                        "Allow once"
-                    },
+                    crate::ui::tr(cx).chat().modals_allow_once(),
                 ),
                 (
                     ApprovalScope::Session,
-                    if zh {
-                        "本对话内允许"
-                    } else {
-                        "Allow in this chat"
-                    },
+                    crate::ui::tr(cx).chat().modals_allow_in_this_chat(),
                 ),
                 (
                     ApprovalScope::WorkspacePattern,
-                    if zh {
-                        "本目录内记住此规则"
-                    } else {
-                        "Allow in this folder"
-                    },
+                    crate::ui::tr(cx).chat().modals_allow_in_this_folder(),
                 ),
                 (
                     ApprovalScope::Tool,
-                    if zh {
-                        "全局始终允许此工具"
-                    } else {
-                        "Allow tool always"
-                    },
+                    crate::ui::tr(cx).chat().modals_allow_tool_always(),
                 ),
             ];
             for (sc, lbl) in scopes {
@@ -344,7 +312,7 @@ pub fn render_active_modal(
                     ),
                 );
             }
-            let footer = btn_ghost("chat-sc-close", if zh { "关闭" } else { "Close" })
+            let footer = btn_ghost("chat-sc-close", crate::ui::tr(cx).common().close())
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.active_modal = None;
                     cx.notify();
@@ -352,11 +320,7 @@ pub fn render_active_modal(
                 .into_any_element();
             modal_dialog(
                 "chat-scope-modal",
-                if zh {
-                    "选择允许范围"
-                } else {
-                    "Choose Approval Scope"
-                },
+                crate::ui::tr(cx).chat().modals_choose_approval_scope(),
                 440.0,
                 body.into_any_element(),
                 footer,
@@ -369,12 +333,12 @@ pub fn render_active_modal(
         ChatModal::DiffPreview { path, diff, binary } => {
             let mut lines_col = v_col().w_full().gap(px(1.0)).p(px(10.0));
             if binary {
-                lines_col =
-                    lines_col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                        "二进制文件已修改，无法以文本 Diff 预览。"
-                    } else {
-                        "Binary file changed."
-                    }));
+                lines_col = lines_col.child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.muted))
+                        .child(crate::ui::tr(cx).chat().modals_binary_file_changed()),
+                );
             } else {
                 for line in diff.lines().take(400) {
                     let color = if line.starts_with('+') && !line.starts_with("+++") {
@@ -403,7 +367,7 @@ pub fn render_active_modal(
                 .overflow_y_scrollbar()
                 .child(lines_col)
                 .into_any_element();
-            let footer = btn_primary("chat-diff-ok", if zh { "关闭" } else { "Close" })
+            let footer = btn_primary("chat-diff-ok", crate::ui::tr(cx).common().close())
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.active_modal = None;
                     cx.notify();
@@ -443,14 +407,13 @@ pub fn render_active_modal(
                         .child(content),
                 )
                 .children(has_more.then(|| {
-                    div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                        "仅展示前 32 KB 输出"
-                    } else {
-                        "Showing first 32 KB of output"
-                    })
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.muted))
+                        .child(crate::ui::tr(cx).chat().modals_showing_first_32_kb_of())
                 }))
                 .into_any_element();
-            let footer = btn_primary("chat-tout-close", if zh { "关闭" } else { "Close" })
+            let footer = btn_primary("chat-tout-close", crate::ui::tr(cx).common().close())
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.active_modal = None;
                     cx.notify();
@@ -458,11 +421,7 @@ pub fn render_active_modal(
                 .into_any_element();
             modal_dialog(
                 "chat-tout-modal",
-                if zh {
-                    format!("工具输出 · {name}")
-                } else {
-                    format!("Tool Output · {name}")
-                },
+                crate::ui::tr(cx).chat().modals_tool_output(name),
                 660.0,
                 body,
                 footer,
@@ -475,41 +434,36 @@ pub fn render_active_modal(
         ChatModal::EditMessage { message_id } => {
             let body = v_col()
                 .gap(px(6.0))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "编辑该条消息并从此处重新生成回复"
-                } else {
-                    "Edit message and regenerate from this turn"
-                }))
+                .child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .chat()
+                            .modals_edit_message_and_regenerate_from(),
+                    ),
+                )
                 .child(multiline_input(&view.modal_textarea))
                 .into_any_element();
             let mid = message_id;
-            let footer = h_row()
-                .gap(px(8.0))
-                .child(
-                    btn_secondary("chat-ed-cancel", if zh { "取消" } else { "Cancel" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
-                )
-                .child(
-                    btn_primary(
-                        "chat-ed-ok",
-                        if zh {
-                            "保存并重新生成"
-                        } else {
-                            "Save & Run"
-                        },
+            let footer =
+                h_row()
+                    .gap(px(8.0))
+                    .child(
+                        btn_secondary("chat-ed-cancel", crate::ui::tr(cx).common().cancel())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.active_modal = None;
+                                cx.notify();
+                            })),
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.confirm_edit_message(mid.clone(), cx);
-                    })),
-                )
-                .into_any_element();
+                    .child(
+                        btn_primary("chat-ed-ok", crate::ui::tr(cx).chat().modals_save_run())
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.confirm_edit_message(mid.clone(), cx);
+                            })),
+                    )
+                    .into_any_element();
             modal_dialog(
                 "chat-edit-msg-modal",
-                if zh { "编辑消息" } else { "Edit Message" },
+                crate::ui::tr(cx).chat().modals_edit_message(),
                 520.0,
                 body,
                 footer,

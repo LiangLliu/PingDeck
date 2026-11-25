@@ -9,14 +9,12 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::app::{
     ModelPriceDetail, UnlistedModel, llm_model_catalog_list_impl, llm_model_price_detail_impl,
-    settings_get_impl,
 };
 use pingdeck_desktop::core::model::model_catalog::{
     CatalogKind, CatalogSource, DEFAULT_CURRENCY, ModelCatalogQuery, ModelCatalogRow, PricingMode,
 };
-use pingdeck_desktop::core::model::settings::Language;
 
-use crate::bridge::{runtime, spawn_async_into};
+use crate::bridge::spawn_async_into;
 use crate::ui::{
     InputEvent, InputState, ScrollableElement as _, StatusShape, WindowExt as _, h_row, palette,
     section_heading, status_indicator, to_hsla, v_col,
@@ -96,7 +94,11 @@ impl CatalogDrawer {
         let user_name = make_input("Display name", window, cx);
         let user_context = make_input("128000", window, cx);
         let user_max_output = make_input("16384", window, cx);
-        let alias_search = make_input("搜索目录模型 / Search catalog…", window, cx);
+        let alias_search = make_input(
+            crate::ui::tr(cx).settings().catalog_search_placeholder(),
+            window,
+            cx,
+        );
 
         let alias_sub = cx.subscribe(&alias_search, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
@@ -258,23 +260,18 @@ impl CatalogDrawer {
     }
 
     pub fn sheet_title(&self, cx: &gpui_kit::App) -> SharedString {
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         match &self.kind {
-            DrawerKind::ModelDetail { row, .. } => SharedString::from(if zh {
-                format!("编辑价格与参数 · {}", row.name)
-            } else {
-                format!("Edit pricing · {}", row.name)
-            }),
-            DrawerKind::AddUserModel => SharedString::from(if zh {
-                "添加自建模型"
-            } else {
-                "Add custom model"
-            }),
-            DrawerKind::Unlisted { item } => SharedString::from(if zh {
-                format!("{} · 未收录 ({})", item.model_id, item.provider_name)
-            } else {
-                format!("{} · Unlisted ({})", item.model_id, item.provider_name)
-            }),
+            DrawerKind::ModelDetail { row, .. } => {
+                SharedString::from(crate::ui::tr(cx).settings().drawer_edit_pricing(&row.name))
+            }
+            DrawerKind::AddUserModel => {
+                SharedString::from(crate::ui::tr(cx).settings().catalog_add())
+            }
+            DrawerKind::Unlisted { item } => SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .drawer_unlisted(&item.model_id, &item.provider_name),
+            ),
         }
     }
 
@@ -375,7 +372,6 @@ impl Render for CatalogDrawer {
             window.close_sheet(cx);
         }
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
 
         let mut content = v_col()
             .flex_1()
@@ -408,77 +404,69 @@ impl Render for CatalogDrawer {
                     .map(|d| d.offers.as_slice())
                     .unwrap_or(&[]);
                 let heading = if let Some((_, pname, _)) = &self.editing_provider_override {
-                    if zh {
-                        format!("专属服务商覆盖价 · {pname}")
-                    } else {
-                        format!("Provider override · {pname}")
-                    }
-                } else if zh {
-                    "默认价格（所有服务商）".into()
+                    crate::ui::tr(cx).settings().drawer_provider_override(pname)
                 } else {
-                    "Default pricing (all providers)".into()
+                    crate::ui::tr(cx)
+                        .settings()
+                        .drawer_default_pricing_all_providers()
+                        .into()
                 };
                 content = content
                     .child(render_model_facts(
                         row,
                         offers.len().max(row.provider_count as usize),
-                        zh,
                         cx,
                     ))
-                    .children(self.editing_provider_override.as_ref().map(|(_, pname, _)| {
-                        crate::ui::alert_banner(
-                            crate::ui::Tone::Accent,
-                            if zh {
-                                format!("正在为「{pname}」设置专属价格覆盖（不影响其他服务商）。")
-                            } else {
-                                format!("Editing per-provider override for \"{pname}\" (other providers unchanged).")
-                            },
-                            Some(
-                                crate::ui::btn_ghost(
-                                    "cat-ovr-back",
-                                    if zh { "返回默认价" } else { "Back to default" },
-                                )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.editing_provider_override = None;
-                                    cx.notify();
-                                }))
-                                .into_any_element(),
-                            ),
-                            cx,
-                        )
-                    }))
                     .children(
-                        (row.source == CatalogSource::User && self.editing_provider_override.is_none())
-                            .then(|| {
-                                super::drawer_forms_extra::render_user_model_meta_editor(
-                                    self, zh, cx,
+                        self.editing_provider_override
+                            .as_ref()
+                            .map(|(_, pname, _)| {
+                                crate::ui::alert_banner(
+                                    crate::ui::Tone::Accent,
+                                    crate::ui::tr(cx)
+                                        .settings()
+                                        .drawer_editing_per_provider_override_for(pname),
+                                    Some(
+                                        crate::ui::btn_ghost(
+                                            "cat-ovr-back",
+                                            crate::ui::tr(cx).settings().drawer_back_to_default(),
+                                        )
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.editing_provider_override = None;
+                                            cx.notify();
+                                        }))
+                                        .into_any_element(),
+                                    ),
+                                    cx,
                                 )
                             }),
+                    )
+                    .children(
+                        (row.source == CatalogSource::User
+                            && self.editing_provider_override.is_none())
+                        .then(|| {
+                            super::drawer_forms_extra::render_user_model_meta_editor(self, cx)
+                        }),
                     )
                     .child(
                         v_col()
                             .gap(px(6.0))
                             .child(section_heading(heading, cx))
-                            .child(render_pricing_editor_fields(self, offers, zh, cx)),
+                            .child(render_pricing_editor_fields(self, offers, cx)),
                     );
                 if let Some(d) = detail.as_deref() {
-                    content = content
-                        .child(render_provider_overrides_list(d, zh, cx))
-                        .child(render_offers_table(
-                            &d.offers,
-                            self.selected_catalog_family.as_deref(),
-                            zh,
-                            cx,
-                        ));
+                    content = content.child(render_provider_overrides_list(d, cx)).child(
+                        render_offers_table(&d.offers, self.selected_catalog_family.as_deref(), cx),
+                    );
                 }
                 (true, row.source == CatalogSource::User)
             }
             DrawerKind::AddUserModel => {
-                content = content.child(render_add_user_model_body(self, zh, cx));
+                content = content.child(render_add_user_model_body(self, cx));
                 (false, false)
             }
             DrawerKind::Unlisted { item } => {
-                content = content.child(render_unlisted_body(self, &item.provider_name, zh, cx));
+                content = content.child(render_unlisted_body(self, &item.provider_name, cx));
                 (true, false)
             }
         };
@@ -491,7 +479,6 @@ impl Render for CatalogDrawer {
                 show_reset,
                 show_delete_user,
                 self.busy,
-                zh,
                 cx,
             ))
     }

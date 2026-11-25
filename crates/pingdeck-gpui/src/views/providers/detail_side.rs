@@ -18,7 +18,6 @@ use super::format::{format_auth, format_balance_report, format_protocol, format_
 pub fn render_endpoints_card(
     view: &ProvidersView,
     prov: &Provider,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -32,9 +31,10 @@ pub fn render_endpoints_card(
         } else {
             &ep.path_prefix
         };
-        let auth_str = ep
-            .auth
-            .map_or_else(|| format_auth(prov.auth, zh), |a| format_auth(a, zh));
+        let auth_str = ep.auth.map_or_else(
+            || format_auth(prov.auth, crate::ui::active_language(cx)),
+            |a| format_auth(a, crate::ui::active_language(cx)),
+        );
         ep_rows = ep_rows.child(
             h_row()
                 .justify_between()
@@ -56,7 +56,7 @@ pub fn render_endpoints_card(
                             cx,
                         ))
                         .child(badge(
-                            format_protocol(ep.protocol, zh),
+                            format_protocol(ep.protocol, crate::ui::active_language(cx)),
                             if ep.enabled {
                                 Tone::Accent
                             } else {
@@ -65,7 +65,11 @@ pub fn render_endpoints_card(
                             cx,
                         ))
                         .children(is_primary.then(|| {
-                            badge(if zh { "主协议" } else { "Primary" }, Tone::Success, cx)
+                            badge(
+                                crate::ui::tr(cx).providers().sniff_proto_primary(),
+                                Tone::Success,
+                                cx,
+                            )
                         }))
                         .child(
                             div()
@@ -84,11 +88,9 @@ pub fn render_endpoints_card(
                         .child(badge(auth_str, Tone::Neutral, cx))
                         .child(badge(
                             if ep.enabled {
-                                if zh { "启用" } else { "Enabled" }
-                            } else if zh {
-                                "停用"
+                                crate::ui::tr(cx).common().kv_enabled()
                             } else {
-                                "Disabled"
+                                crate::ui::tr(cx).providers().prov_detail_side_disabled()
                             },
                             if ep.enabled {
                                 Tone::Success
@@ -159,19 +161,12 @@ pub fn render_endpoints_card(
             .child(
                 btn_ghost(
                     "prov-toggle-ev",
-                    if zh {
-                        format!(
-                            "{} 嗅探依据（{} 条请求）",
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_side_sniff_evidence_requests(
                             if ev_open { "▾" } else { "▸" },
-                            prov.sniff_evidence.len()
-                        )
-                    } else {
-                        format!(
-                            "{} Sniff evidence ({} requests)",
-                            if ev_open { "▾" } else { "▸" },
-                            prov.sniff_evidence.len()
-                        )
-                    },
+                            prov.sniff_evidence.len(),
+                        ),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.evidence_open = !this.evidence_open;
@@ -188,19 +183,15 @@ pub fn render_endpoints_card(
                 h_row()
                     .justify_between()
                     .child(section_heading(
-                        if zh {
-                            "协议端点与探测矩阵"
-                        } else {
-                            "Protocol Endpoints & Evidence"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_side_protocol_endpoints_evidence(),
                         cx,
                     ))
                     .child(badge(
-                        if zh {
-                            format!("{enabled_eps} / {} 协议已启用", prov.endpoints.len())
-                        } else {
-                            format!("{enabled_eps} / {} enabled", prov.endpoints.len())
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_side_enabled(enabled_eps, prov.endpoints.len()),
                         Tone::Accent,
                         cx,
                     )),
@@ -214,7 +205,6 @@ pub fn render_balance_card(
     view: &ProvidersView,
     prov: &Provider,
     keys: &[ProviderKey],
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -228,22 +218,25 @@ pub fn render_balance_card(
     let mut content = v_col().gap(px(7.0)).child(
         h_row()
             .justify_between()
-            .child(section_heading(if zh { "账户余额" } else { "Balance" }, cx))
+            .child(section_heading(
+                crate::ui::tr(cx).providers().prov_detail_side_balance(),
+                cx,
+            ))
             .child(
                 btn_ghost(
                     "prov-bal-refresh",
                     if view.refreshing_balance {
-                        if zh { "刷新中…" } else { "Refreshing…" }
-                    } else if zh {
-                        "刷新"
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_models_refreshing()
                     } else {
-                        "Refresh"
+                        crate::ui::tr(cx).common().refresh()
                     },
                 )
                 .icon(icon_xs(UiIcon::Refresh))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if !this.refreshing_balance {
-                        this.refresh_provider_balance(pid.clone(), zh, cx);
+                        this.refresh_provider_balance(pid.clone(), cx);
                     }
                 })),
             ),
@@ -255,11 +248,7 @@ pub fn render_balance_card(
                 .text_base()
                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                 .text_color(to_hsla(p.ok))
-                .child(if zh {
-                    "本地，免费"
-                } else {
-                    "Local · Free"
-                }),
+                .child(crate::ui::tr(cx).providers().prov_detail_side_local_free()),
         );
     } else if let Some(stored) = best
         && let Some(rep) = &stored.last_good
@@ -269,7 +258,10 @@ pub fn render_balance_card(
                 .text_lg()
                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                 .text_color(to_hsla(if rep.exhausted { p.bad } else { p.ink }))
-                .child(SharedString::from(format_balance_report(rep, zh))),
+                .child(SharedString::from(format_balance_report(
+                    rep,
+                    crate::ui::active_language(cx),
+                ))),
         );
         if let (Some(rem), Some(tot)) = (rep.remaining, rep.total)
             && tot > 0.0
@@ -284,11 +276,10 @@ pub fn render_balance_card(
                     div()
                         .text_size(px(11.0))
                         .text_color(to_hsla(p.muted))
-                        .child(if zh {
-                            format!("总额度 {tot:.2} · 已用 {used:.2}")
-                        } else {
-                            format!("Total {tot:.2} · Used {used:.2}")
-                        }),
+                        .child(crate::ui::tr(cx).providers().prov_detail_side_total_used(
+                            format!("{:.2}", tot),
+                            format!("{:.2}", used),
+                        )),
                 );
         }
         if let Some(src) = &rep.source_endpoint {
@@ -297,17 +288,12 @@ pub fn render_balance_card(
                     .text_size(px(11.0))
                     .text_color(to_hsla(p.faint))
                     .truncate()
-                    .child(SharedString::from(if zh {
-                        format!(
-                            "来源 {src} · {}",
-                            format_relative_time(rep.checked_at_ms, true)
-                        )
-                    } else {
-                        format!(
-                            "From {src} · {}",
-                            format_relative_time(rep.checked_at_ms, false)
-                        )
-                    })),
+                    .child(SharedString::from(
+                        crate::ui::tr(cx).providers().prov_side_balance_from(
+                            src,
+                            format_relative_time(rep.checked_at_ms, crate::ui::active_language(cx)),
+                        ),
+                    )),
             );
         }
         if let Some(err) = &stored.error {
@@ -329,11 +315,13 @@ pub fn render_balance_card(
                 .child(SharedString::from(err.message.clone())),
         );
     } else {
-        content = content.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "尚未查询或该服务商未提供余额接口"
-        } else {
-            "Not checked yet or no balance API"
-        }));
+        content = content.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_side_not_checked_yet_or_no(),
+            ),
+        );
     }
 
     card(cx).p(px(14.0)).child(content)
@@ -342,7 +330,6 @@ pub fn render_balance_card(
 pub fn render_health_card(
     view: &ProvidersView,
     prov: &Provider,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -350,20 +337,16 @@ pub fn render_health_card(
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh {
-                    "健康与熔断（24h）"
-                } else {
-                    "Health & Circuits (24h)"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_side_health_circuits_24h(),
                 cx,
             ))
             .children(view.provider_health.as_ref().map(|h| {
                 badge(
-                    if zh {
-                        format!("{} 次请求", h.requests)
-                    } else {
-                        format!("{} reqs", h.requests)
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_side_reqs(h.requests),
                     Tone::Neutral,
                     cx,
                 )
@@ -385,16 +368,22 @@ pub fn render_health_card(
                 h_row()
                     .flex_wrap()
                     .gap(px(5.0))
-                    .child(kv_chip(if zh { "成功率" } else { "OK" }, sr, cx))
+                    .child(kv_chip(
+                        crate::ui::tr(cx).providers().prov_detail_side_ok(),
+                        sr,
+                        cx,
+                    ))
                     .child(kv_chip("p50", p50, cx))
                     .child(kv_chip("p95", p95, cx)),
             );
         } else {
-            col = col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "最近 24 小时请求不足 10 次，暂未生成延迟分位统计。"
-            } else {
-                "Not enough requests (<10 in 24h) for latency percentiles."
-            }));
+            col = col.child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_side_not_enough_requests_10_in(),
+                ),
+            );
         }
 
         if !h.open_circuits.is_empty() {
@@ -404,20 +393,20 @@ pub fn render_health_card(
                     .justify_between()
                     .pt(px(4.0))
                     .child(badge(
-                        if zh {
-                            format!("{} 个熔断已打开", h.open_circuits.len())
-                        } else {
-                            format!("{} open circuit(s)", h.open_circuits.len())
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_side_open_circuit_s(h.open_circuits.len()),
                         Tone::Danger,
                         cx,
                     ))
                     .child(
-                        btn_ghost("prov-reset-cb", if zh { "重置熔断" } else { "Reset" }).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.reset_provider_circuits(pid_reset.clone(), zh, cx);
-                            }),
-                        ),
+                        btn_ghost(
+                            "prov-reset-cb",
+                            crate::ui::tr(cx).providers().prov_detail_side_reset(),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.reset_provider_circuits(pid_reset.clone(), cx);
+                        })),
                     ),
             );
             for oc in h.open_circuits.iter().take(4) {
@@ -447,11 +436,13 @@ pub fn render_health_card(
             }
         }
     } else {
-        col = col.child(div().text_xs().text_color(to_hsla(p.faint)).child(if zh {
-            "加载健康数据中…"
-        } else {
-            "Loading health…"
-        }));
+        col = col.child(
+            div().text_xs().text_color(to_hsla(p.faint)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_side_loading_health(),
+            ),
+        );
     }
 
     card(cx).p(px(14.0)).child(col)
@@ -460,7 +451,6 @@ pub fn render_health_card(
 pub fn render_recent_calls_card(
     view: &ProvidersView,
     prov_id: &str,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -469,28 +459,34 @@ pub fn render_recent_calls_card(
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh { "最近调用" } else { "Recent Calls" },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_side_recent_calls(),
                 cx,
             ))
             .child(
-                btn_ghost("prov-calls-all", if zh { "全部 ↗" } else { "All ↗" }).on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        this.pending_handoff
-                            .set(Some(super::ProvidersHandoff::OpenUsageProvider(Some(
-                                pid.clone(),
-                            ))));
-                        cx.notify();
-                    }),
-                ),
+                btn_ghost(
+                    "prov-calls-all",
+                    crate::ui::tr(cx).providers().prov_detail_side_all(),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.pending_handoff
+                        .set(Some(super::ProvidersHandoff::OpenUsageProvider(Some(
+                            pid.clone(),
+                        ))));
+                    cx.notify();
+                })),
             ),
     );
 
     if view.recent_logs.is_empty() {
-        col = col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "还没有调用记录。"
-        } else {
-            "No recent calls yet."
-        }));
+        col = col.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_side_no_recent_calls_yet(),
+            ),
+        );
     } else {
         for (i, log) in view.recent_logs.iter().take(6).enumerate() {
             let tone = if (200..300).contains(&log.status) {

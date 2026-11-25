@@ -12,11 +12,7 @@ use crate::ui::{
 
 use super::SettingsView;
 
-pub fn render_general(
-    view: &SettingsView,
-    zh: bool,
-    cx: &mut Context<SettingsView>,
-) -> gpui_kit::Div {
+pub fn render_general(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
     let general = &view.settings.general;
     let lang_idx = usize::from(general.language == Language::En);
     let notif_idx = match general.notify_when_away {
@@ -32,28 +28,31 @@ pub fn render_general(
         .w_full()
         .gap(px(20.0))
         .child(settings_section(
-            if zh { "语言与启动" } else { "Language & Startup" },
+            crate::ui::tr(cx).settings().page_general_language_startup(),
             Some(
-                btn_ghost("gen-reset-sec", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_section(CoreSection::General, cx);
-                    }))
-                    .into_any_element(),
+                btn_ghost(
+                    "gen-reset-sec",
+                    crate::ui::tr(cx).settings().page_defaults_reset(),
+                )
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_section(CoreSection::General, cx);
+                }))
+                .into_any_element(),
             ),
             v_col()
                 .w_full()
                 .child(setting_row(
-                    if zh { "界面语言" } else { "Interface language" },
+                    crate::ui::tr(cx).settings().f_general_language(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "立即切换界面文案语言；AI 模型的回复语言始终跟随你的输入语言。"
-                    } else {
-                        "Switch UI copy immediately; AI replies always follow the language you write in."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_general_switch_ui_copy_immediately_ai(),
+                    )),
                     tab_bar_segmented("gen-lang-seg")
                         .selected_index(lang_idx)
-                        .child(tab_item("简体中文"))
+                        .child(tab_item(crate::ui::tr(cx).settings().language_zh_label()))
                         .child(tab_item("English"))
                         .on_click(move |idx, _, cx| {
                             let val = if *idx == 1 { "en" } else { "zh-CN" };
@@ -68,13 +67,15 @@ pub fn render_general(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "启动时恢复上次会话" } else { "Restore session on launch" },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_general_restore_session_on_launch(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "重新打开上次退出前的工作区与请求标签页。"
-                    } else {
-                        "Reopen your last active workspace and request tabs when PingDeck starts."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_general_reopen_your_last_active_workspace(),
+                    )),
                     toggle_switch("gen-restore", general.restore_session).on_change(cx.listener(
                         |this, checked: &bool, _, cx| {
                             this.patch_section(
@@ -87,13 +88,17 @@ pub fn render_general(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "启动时检查更新" } else { "Check for updates on launch" },
-                    Some(SharedString::from(if zh { "默认关闭" } else { "Off by default" })),
-                    Some(SharedString::from(if zh {
-                        "开启后将在启动时向官方发布接口查询新版本（绝不发送遥测或本地数据）。"
-                    } else {
-                        "Query the release feed on startup for newer versions (zero telemetry or local data)."
-                    })),
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_general_check_for_updates_on_launch(),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx).settings().page_data_off_by_default(),
+                    )),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_general_query_the_release_feed_on(),
+                    )),
                     toggle_switch("gen-updates", general.check_updates_on_launch).on_change(
                         cx.listener(|this, checked: &bool, _, cx| {
                             this.patch_section(
@@ -108,23 +113,31 @@ pub fn render_general(
             cx,
         ))
         .child(settings_section(
-            if zh { "后台提醒" } else { "Background Notifications" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_general_background_notifications(),
             None,
             v_col()
                 .w_full()
                 .child(setting_row(
-                    if zh { "失焦时发送系统通知" } else { "Notify when window is unfocused" },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_general_notify_when_window_is_unfocused(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "仅在窗口不在前台时推送，通知正文绝不包含命令、路径或秘密内容。"
-                    } else {
-                        "Sent only while PingDeck is in the background; never includes commands, paths, or secrets."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_general_sent_only_while_pingdeck_is(),
+                    )),
                     tab_bar_segmented("gen-notify-seg")
                         .selected_index(notif_idx)
-                        .child(tab_item(if zh { "关闭" } else { "Off" }))
-                        .child(tab_item(if zh { "仅需要你时" } else { "Gates only" }))
-                        .child(tab_item(if zh { "需要你与结束" } else { "Gates & finished" }))
+                        .child(tab_item(crate::ui::tr(cx).settings().notify_off()))
+                        .child(tab_item(
+                            crate::ui::tr(cx).settings().page_general_gates_only(),
+                        ))
+                        .child(tab_item(
+                            crate::ui::tr(cx).settings().page_general_gates_finished(),
+                        ))
                         .on_click(move |idx, _, cx| {
                             let val = match *idx {
                                 0 => "off",
@@ -142,19 +155,21 @@ pub fn render_general(
                     cx,
                 ))
                 .child(setting_row(
-                    if zh { "程序坞图标跳动提醒" } else { "Dock attention bounce" },
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_general_dock_attention_bounce(),
                     (general.notify_when_away == NotifyWhenAway::Off).then(|| {
-                        SharedString::from(if zh {
-                            "已被上方关闭"
-                        } else {
-                            "Muted by setting above"
-                        })
+                        SharedString::from(
+                            crate::ui::tr(cx)
+                                .settings()
+                                .page_general_muted_by_setting_above(),
+                        )
                     }),
-                    Some(SharedString::from(if zh {
-                        "窗口不在前台且有待审批门控或长运行（≥ 30 秒）结束时跳动一次图标；角标数字始终显示待审批数。"
-                    } else {
-                        "Bounce the Dock icon once for pending approvals or finished runs (≥ 30s) while unfocused; badge count always tracks approvals."
-                    })),
+                    Some(SharedString::from(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_general_bounce_the_dock_icon_once(),
+                    )),
                     div().child(
                         toggle_switch("gen-dock-bounce", general.dock_bounce)
                             .disabled(general.notify_when_away == NotifyWhenAway::Off)

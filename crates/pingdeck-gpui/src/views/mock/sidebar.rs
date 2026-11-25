@@ -15,7 +15,6 @@ use super::state::MockView;
 
 pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let query = view.search_input.read(cx).value().trim().to_lowercase();
 
     let filtered: Vec<_> = view
@@ -39,16 +38,17 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
         .gap(px(4.0))
         .child(
             btn_icon("mock-import-btn", UiIcon::Upload)
-                .tooltip(view.t(
-                    "导入 Mock / OpenAPI / Mockoon",
-                    "Import Mock / OpenAPI / Mockoon",
-                ))
+                .tooltip(
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .sidebar_import_mock_openapi_mockoon(),
+                )
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_import_modal(window, cx);
                 })),
         )
         .child(
-            btn_primary("mock-new-btn", view.t("新建", "New"))
+            btn_primary("mock-new-btn", crate::ui::Tr(view.lang).mock().pane_new())
                 .icon(icon_xs(UiIcon::Plus))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_create_server_modal(window, cx);
@@ -57,7 +57,7 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
         .into_any_element();
 
     let header = pane_header(
-        view.t("Mock 服务", "Mock Servers"),
+        crate::ui::Tr(view.lang).mock().sidebar_mock_servers(),
         Some(view.servers.len()),
         Some(header_actions),
         Some(search_input(&view.search_input, cx).into_any_element()),
@@ -68,14 +68,19 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
     if filtered.is_empty() {
         list = list.child(empty_inline(
             if view.servers.is_empty() {
-                view.t("暂无 Mock 服务", "No mock servers yet")
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .sidebar_no_mock_servers_yet()
             } else {
-                view.t("没有匹配的 Mock 服务", "No matching mock servers")
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .sidebar_no_matching_mock_servers()
             },
-            Some(SharedString::from(view.t(
-                "可新建本地服务，或从 OpenAPI / Mockoon 导入。",
-                "Create a local mock server or import from OpenAPI / Mockoon.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .sidebar_create_a_local_mock_server(),
+            )),
             None,
             cx,
         ));
@@ -88,26 +93,11 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
             let hits = st.map_or(0, |s| s.hit_count);
             let recording = st.is_some_and(|s| s.recording);
             let port_str = format!(":{}", srv.port);
-            let sub = if zh {
-                format!(
-                    "{} 条路由{}",
-                    srv.routes.len(),
-                    if running {
-                        format!(" · {hits} 次命中")
-                    } else {
-                        String::new()
-                    }
-                )
+            let m_tr = crate::ui::Tr(view.lang).mock();
+            let sub = if running {
+                m_tr.sidebar_routes_hits_count(srv.routes.len(), hits)
             } else {
-                format!(
-                    "{} routes{}",
-                    srv.routes.len(),
-                    if running {
-                        format!(" · {hits} hits")
-                    } else {
-                        String::new()
-                    }
-                )
+                m_tr.sidebar_routes_count(srv.routes.len())
             };
 
             let mut row = list_row(
@@ -160,9 +150,13 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
                                     .truncate()
                                     .child(sub),
                             )
-                            .children(
-                                recording.then(|| badge(view.t("录制中", "REC"), Tone::Danger, cx)),
-                            ),
+                            .children(recording.then(|| {
+                                badge(
+                                    crate::ui::Tr(view.lang).mock().sidebar_rec(),
+                                    Tone::Danger,
+                                    cx,
+                                )
+                            })),
                     ),
             );
             if active && view.dirty {
@@ -179,11 +173,9 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
         }
     }
 
-    let footer_text = if zh {
-        format!("{running_count} 个运行中 · 共 {} 个", view.servers.len())
-    } else {
-        format!("{running_count} running · {} total", view.servers.len())
-    };
+    let footer_text = crate::ui::tr(cx)
+        .mock()
+        .sidebar_running_total(running_count, view.servers.len());
     let footer = pane_footer(
         div()
             .text_size(px(11.0))

@@ -14,11 +14,7 @@ use crate::ui::{
 use super::ChatView;
 use super::types::ChatHandoff;
 
-pub fn render_skills_popover(
-    view: &ChatView,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
+pub fn render_skills_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let skills = view.available_skills.clone();
     let selected = view.selected_skills.clone();
     let chat_ent = cx.entity().clone();
@@ -27,7 +23,10 @@ pub fn render_skills_popover(
         .trigger(pill_btn(
             "chat-skills-trigger",
             if selected.is_empty() {
-                if zh { "/ 技能" } else { "/ Skills" }.to_owned()
+                crate::ui::tr(cx)
+                    .chat()
+                    .composer_popovers_skills()
+                    .to_owned()
             } else {
                 format!("/ {}", selected.len())
             },
@@ -37,11 +36,7 @@ pub fn render_skills_popover(
         .content(move |_, _, pop_cx| {
             let pp = palette(pop_cx);
             let mut m = v_col().w(px(260.0)).gap(px(3.0)).child(section_heading(
-                if zh {
-                    "可用技能 (SKILL.md)"
-                } else {
-                    "Skills"
-                },
+                crate::ui::tr(pop_cx).chat().composer_popovers_skills_2(),
                 pop_cx,
             ));
             if skills.is_empty() {
@@ -50,11 +45,11 @@ pub fn render_skills_popover(
                         .py(px(8.0))
                         .text_xs()
                         .text_color(to_hsla(pp.muted))
-                        .child(if zh {
-                            "未发现技能，可在 设置 › 技能 中配置目录"
-                        } else {
-                            "No skills found — configure in Settings › Skills"
-                        }),
+                        .child(
+                            crate::ui::tr(pop_cx)
+                                .chat()
+                                .composer_popovers_no_skills_found_configure_in(),
+                        ),
                 );
             } else {
                 for sk in skills.iter().filter(|s| s.enabled) {
@@ -108,19 +103,18 @@ pub fn render_skills_popover(
         })
 }
 
-pub fn render_perm_popover(
-    mode: ToolApproval,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
+pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> impl IntoElement {
     let (label, glyph) = match mode {
-        ToolApproval::Ask => (if zh { "每次询问" } else { "Ask" }, UiIcon::Shield),
+        ToolApproval::Ask => (
+            crate::ui::tr(cx).chat().composer_popovers_ask(),
+            UiIcon::Shield,
+        ),
         ToolApproval::AutoReadOnly => (
-            if zh { "只读自动" } else { "Auto reads" },
+            crate::ui::tr(cx).chat().composer_popovers_auto_reads(),
             UiIcon::ShieldCheck,
         ),
         ToolApproval::AutoAll => (
-            if zh { "完全权限" } else { "Full access" },
+            crate::ui::tr(cx).chat().composer_perm_full(),
             UiIcon::ShieldAlert,
         ),
     };
@@ -128,30 +122,24 @@ pub fn render_perm_popover(
     let options: [(ToolApproval, &str, &str); 3] = [
         (
             ToolApproval::Ask,
-            if zh { "每次询问" } else { "Ask every time" },
-            if zh {
-                "所有工具调用前均需你确认"
-            } else {
-                "Confirm before every tool call"
-            },
+            crate::ui::tr(cx).chat().composer_perm_ask(),
+            crate::ui::tr(cx)
+                .chat()
+                .composer_popovers_confirm_before_every_tool_call(),
         ),
         (
             ToolApproval::AutoReadOnly,
-            if zh { "只读自动" } else { "Auto read-only" },
-            if zh {
-                "读取类自动放行，写入和执行仍需审批"
-            } else {
-                "Auto-allow reads; ask for edits and exec"
-            },
+            crate::ui::tr(cx).chat().composer_popovers_auto_read_only(),
+            crate::ui::tr(cx)
+                .chat()
+                .composer_popovers_auto_allow_reads_ask_for(),
         ),
         (
             ToolApproval::AutoAll,
-            if zh { "完全权限" } else { "Full access" },
-            if zh {
-                "自动放行常规工具（硬阻止与 OS 沙箱保持开启）"
-            } else {
-                "Auto-run tools (hard blocks & OS sandbox stay on)"
-            },
+            crate::ui::tr(cx).chat().composer_perm_full(),
+            crate::ui::tr(cx)
+                .chat()
+                .composer_popovers_auto_run_tools_hard_blocks(),
         ),
     ];
 
@@ -165,18 +153,14 @@ pub fn render_perm_popover(
         ))
         .content(move |_st, _window, pop_cx| {
             let pop_p = palette(pop_cx);
-            let mut box_el =
-                v_col()
-                    .w(px(276.0))
-                    .gap(px(4.0))
-                    .child(div().px(px(6.0)).pb(px(2.0)).child(section_heading(
-                        if zh {
-                            "工具权限模式"
-                        } else {
-                            "Permission mode"
-                        },
-                        pop_cx,
-                    )));
+            let mut box_el = v_col().w(px(276.0)).gap(px(4.0)).child(
+                div().px(px(6.0)).pb(px(2.0)).child(section_heading(
+                    crate::ui::tr(pop_cx)
+                        .chat()
+                        .composer_popovers_permission_mode(),
+                    pop_cx,
+                )),
+            );
             for (opt, title, desc) in options {
                 let selected = opt == mode;
                 let entity = chat_ref.clone();
@@ -221,11 +205,9 @@ pub fn render_perm_popover(
                     .child(
                         btn_ghost(
                             "chat-perm-eval-order",
-                            if zh {
-                                "评估顺序与权限规则 ↗"
-                            } else {
-                                "Evaluation order ↗"
-                            },
+                            crate::ui::tr(pop_cx)
+                                .chat()
+                                .composer_popovers_evaluation_order(),
                         )
                         .on_click(move |_, w, cx| {
                             ent_link.update(cx, |this, cx| {
@@ -244,74 +226,46 @@ pub fn render_perm_popover(
 pub fn render_effort_popover(
     effort: Option<ReasoningEffort>,
     missing_reasoning_quirk: bool,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let label = match effort {
-        None => {
-            if zh {
-                "推理: 自动"
-            } else {
-                "Effort: Auto"
-            }
-        }
+        None => crate::ui::tr(cx).chat().composer_popovers_effort_auto(),
         Some(ReasoningEffort::Minimal) => {
-            if zh {
-                "推理: 极简"
-            } else {
-                "Effort: Minimal"
-            }
+            crate::ui::tr(cx).chat().composer_popovers_effort_minimal()
         }
-        Some(ReasoningEffort::Low) => {
-            if zh {
-                "推理: 低"
-            } else {
-                "Effort: Low"
-            }
-        }
-        Some(ReasoningEffort::Medium) => {
-            if zh {
-                "推理: 中"
-            } else {
-                "Effort: Medium"
-            }
-        }
-        Some(ReasoningEffort::High) => {
-            if zh {
-                "推理: 高"
-            } else {
-                "Effort: High"
-            }
-        }
-        Some(ReasoningEffort::Max) => {
-            if zh {
-                "推理: 最高"
-            } else {
-                "Effort: Max"
-            }
-        }
+        Some(ReasoningEffort::Low) => crate::ui::tr(cx).chat().composer_popovers_effort_low(),
+        Some(ReasoningEffort::Medium) => crate::ui::tr(cx).chat().composer_popovers_effort_medium(),
+        Some(ReasoningEffort::High) => crate::ui::tr(cx).chat().composer_popovers_effort_high(),
+        Some(ReasoningEffort::Max) => crate::ui::tr(cx).chat().composer_popovers_effort_max(),
     };
     let chat_ref = cx.entity().clone();
     let opts: [(Option<ReasoningEffort>, &str); 6] = [
         (
             None,
-            if zh {
-                "自动 (模型默认)"
-            } else {
-                "Auto (model default)"
-            },
+            crate::ui::tr(cx)
+                .chat()
+                .composer_popovers_auto_model_default(),
         ),
         (
             Some(ReasoningEffort::Minimal),
-            if zh { "极简" } else { "Minimal" },
+            crate::ui::tr(cx).chat().composer_popovers_minimal(),
         ),
-        (Some(ReasoningEffort::Low), if zh { "低" } else { "Low" }),
+        (
+            Some(ReasoningEffort::Low),
+            crate::ui::tr(cx).chat().composer_popovers_low(),
+        ),
         (
             Some(ReasoningEffort::Medium),
-            if zh { "中" } else { "Medium" },
+            crate::ui::tr(cx).chat().composer_popovers_medium(),
         ),
-        (Some(ReasoningEffort::High), if zh { "高" } else { "High" }),
-        (Some(ReasoningEffort::Max), if zh { "最高" } else { "Max" }),
+        (
+            Some(ReasoningEffort::High),
+            crate::ui::tr(cx).chat().composer_popovers_high(),
+        ),
+        (
+            Some(ReasoningEffort::Max),
+            crate::ui::tr(cx).chat().composer_popovers_max(),
+        ),
     ];
 
     popover("chat-effort-popover")
@@ -358,11 +312,11 @@ pub fn render_effort_popover(
                         .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
                         .text_size(px(11.0))
                         .text_color(to_hsla(pop_p.muted))
-                        .child(if zh {
-                            "自定义服务商未设置「推理参数格式」，可在「服务商 › 配置」开启。"
-                        } else {
-                            "Custom provider has no reasoning format; configure in Providers › Config."
-                        }),
+                        .child(
+                            crate::ui::tr(pop_cx)
+                                .chat()
+                                .composer_popovers_custom_provider_has_no_reasoning(),
+                        ),
                 );
             }
             list
@@ -373,7 +327,6 @@ pub fn render_model_popover(
     view: &ChatView,
     model_label: String,
     highlight_missing: bool,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let models = view.available_models.clone();
@@ -418,11 +371,9 @@ pub fn render_model_popover(
                     h_row()
                         .justify_between()
                         .child(section_heading(
-                            if zh {
-                                "选择对话模型"
-                            } else {
-                                "Select model"
-                            },
+                            crate::ui::tr(pop_cx)
+                                .chat()
+                                .composer_popovers_select_model(),
                             pop_cx,
                         ))
                         .child(badge(filtered.len().to_string(), Tone::Neutral, pop_cx)),
@@ -435,11 +386,11 @@ pub fn render_model_popover(
                     .py(px(12.0))
                     .text_xs()
                     .text_color(to_hsla(pop_p.muted))
-                    .child(if zh {
-                        "无匹配模型，可在「服务商」页面添加"
-                    } else {
-                        "No matching models — add one in Providers"
-                    })
+                    .child(
+                        crate::ui::tr(pop_cx)
+                            .chat()
+                            .composer_popovers_no_matching_models_add_one(),
+                    )
                     .into_any_element()
             } else {
                 let scroll_h = ((filtered.len() as f32) * 32.0 + 8.0).clamp(64.0, 300.0);

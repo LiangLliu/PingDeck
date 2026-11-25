@@ -45,12 +45,20 @@ pub fn render_variables_panel(
                         .child(search_input(&view.var_filter_input, cx)),
                 )
                 .child(if view.globals_dirty {
-                    btn_primary("glob-save-btn", view.t("保存全局变量", "Save Globals"))
-                        .icon(icon_xs(UiIcon::Check))
-                        .on_click(cx.listener(|this, _, _, cx| this.save_globals(cx)))
+                    btn_primary(
+                        "glob-save-btn",
+                        crate::ui::Tr(view.lang)
+                            .environments()
+                            .tab_vars_save_globals(),
+                    )
+                    .icon(icon_xs(UiIcon::Check))
+                    .on_click(cx.listener(|this, _, _, cx| this.save_globals(cx)))
                 } else {
-                    btn_secondary("glob-save-btn", view.t("已保存", "Saved"))
-                        .on_click(cx.listener(|this, _, _, cx| this.save_globals(cx)))
+                    btn_secondary(
+                        "glob-save-btn",
+                        crate::ui::Tr(view.lang).common().save_saved(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.save_globals(cx)))
                 }),
         );
     } else {
@@ -65,10 +73,9 @@ pub fn render_variables_panel(
                         .child(search_input(&view.var_filter_input, cx)),
                 )
                 .child(meta_pill(
-                    view.t(
-                        "机密变量保存在 0600 权限明文 .secrets 文件，永不向界面回传明文",
-                        "Secrets live in owner-only 0600 plaintext .secrets and never echo to UI",
-                    ),
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .tab_vars_secrets_live_in_owner_only(),
                     cx,
                 )),
         );
@@ -77,10 +84,24 @@ pub fn render_variables_panel(
     let mut tbl = card(cx).p(px(12.0)).gap(px(6.0)).child(table_header(
         &[
             ("", Some(26.0)),
-            (view.t("变量名 Key", "Key"), Some(180.0)),
-            (view.t("值 Value", "Value"), None),
-            (view.t("备注 Note", "Note"), Some(140.0)),
-            (view.t("操作", "Actions"), Some(100.0)),
+            (
+                crate::ui::Tr(view.lang).environments().modals_key(),
+                Some(180.0),
+            ),
+            (
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .modals_resources_value(),
+                None,
+            ),
+            (
+                crate::ui::Tr(view.lang).environments().modals_note(),
+                Some(140.0),
+            ),
+            (
+                crate::ui::Tr(view.lang).environments().tab_vars_actions(),
+                Some(100.0),
+            ),
         ],
         cx,
     ));
@@ -102,14 +123,19 @@ pub fn render_variables_panel(
             if let Some(new_v) = &row.value
                 && !new_v.is_empty()
             {
-                view.t("••••（已更新，待保存）", "•••• (pending save)")
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .tab_vars_pending_save()
                     .to_owned()
             } else if let Some(hint) = &row.secret_hint {
                 hint.clone()
             } else if row.has_secret {
                 "••••••••".to_owned()
             } else {
-                view.t("（未设置机密值）", "(empty secret)").to_owned()
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .tab_vars_empty_secret()
+                    .to_owned()
             }
         } else {
             row.value.clone().unwrap_or_default()
@@ -172,10 +198,13 @@ pub fn render_variables_panel(
                                 .truncate()
                                 .child(row.key.clone()),
                         )
-                        .children(
-                            row.is_secret
-                                .then(|| badge(view.t("机密", "Secret"), Tone::Warning, cx)),
-                        ),
+                        .children(row.is_secret.then(|| {
+                            badge(
+                                crate::ui::Tr(view.lang).environments().type_secret(),
+                                Tone::Warning,
+                                cx,
+                            )
+                        })),
                 )
                 .child(
                     div()
@@ -211,7 +240,11 @@ pub fn render_variables_panel(
                                 SharedString::from(format!("var-cpsec-{is_global}-{idx}")),
                                 UiIcon::Copy,
                             )
-                            .tooltip(view.t("直接复制机密值到剪贴板", "Copy secret to clipboard"))
+                            .tooltip(
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_vars_copy_secret_to_clipboard(),
+                            )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     this.copy_secret_variable(
@@ -227,7 +260,11 @@ pub fn render_variables_panel(
                                 SharedString::from(format!("var-ed-{is_global}-{idx}")),
                                 UiIcon::Pencil,
                             )
-                            .tooltip(view.t("编辑变量", "Edit variable"))
+                            .tooltip(
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_vars_edit_variable(),
+                            )
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
                                     this.edit_var_key.update(cx, |s, cx| {
@@ -253,7 +290,11 @@ pub fn render_variables_panel(
                                 SharedString::from(format!("var-rm-{is_global}-{idx}")),
                                 UiIcon::Trash,
                             )
-                            .tooltip(view.t("删除变量", "Delete variable"))
+                            .tooltip(
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_vars_delete_variable(),
+                            )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     let list = if is_global {
@@ -279,11 +320,14 @@ pub fn render_variables_panel(
 
     if visible_count == 0 {
         tbl = tbl.child(empty_inline(
-            view.t("暂无变量", "No variables yet"),
-            Some(SharedString::from(view.t(
-                "在下方添加变量后点击保存即可在 {{var}} 模板中生效。",
-                "Add variables below and save to resolve {{var}} across requests.",
-            ))),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_vars_no_variables_yet(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .tab_vars_add_variables_below_and_save(),
+            )),
             None,
             cx,
         ));
@@ -294,11 +338,15 @@ pub fn render_variables_panel(
         .p(px(12.0))
         .gap(px(8.0))
         .child(section_header(
-            view.t("添加新变量", "Add Variable"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_vars_add_variable(),
             Some(
                 choice_chip(
                     SharedString::from(format!("var-new-sec-{is_global}")),
-                    view.t("设为机密变量", "Mark as Secret"),
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .tab_vars_mark_as_secret(),
                     view.new_var_secret,
                     cx,
                 )
@@ -325,7 +373,7 @@ pub fn render_variables_panel(
                 .child(
                     btn_secondary(
                         SharedString::from(format!("var-add-btn-{is_global}")),
-                        view.t("+ 添加", "+ Add"),
+                        crate::ui::Tr(view.lang).environments().tab_vars_add(),
                     )
                     .icon(icon_xs(UiIcon::Plus))
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -344,11 +392,10 @@ pub fn render_variables_panel(
                         if list.iter().any(|r| r.key == key) {
                             this.status_msg = Some((
                                 Tone::Warning,
-                                this.t(
-                                    "同名变量已存在，请直接编辑该行",
-                                    "Key already exists — edit the existing row",
-                                )
-                                .to_owned(),
+                                crate::ui::Tr(this.lang)
+                                    .environments()
+                                    .tab_vars_key_already_exists_edit_the()
+                                    .to_owned(),
                             ));
                             cx.notify();
                             return;
@@ -395,7 +442,9 @@ pub fn render_variables_panel(
                         .p(px(12.0))
                         .gap(px(6.0))
                         .child(section_header(
-                            view.t("未解析变量扫描", "Unresolved Variables"),
+                            crate::ui::Tr(view.lang)
+                                .environments()
+                                .tab_vars_unresolved_variables(),
                             Some(
                                 badge(
                                     unres_cnt.to_string(),
@@ -410,33 +459,32 @@ pub fn render_variables_panel(
                             ),
                             cx,
                         ))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.muted))
-                                .child(if unres_cnt == 0 {
-                                    view.t(
-                                        "工作区所有请求的 {{var}} 均可在此环境下解析。",
-                                        "All {{var}} references resolve cleanly.",
-                                    )
-                                } else {
-                                    view.t(
-                                        "部分已保存请求引用了未定义的 {{var}}，点击前往一键定义。",
-                                        "Some saved requests reference missing {{var}} placeholders.",
-                                    )
-                                }),
-                        )
+                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(
+                            if unres_cnt == 0 {
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_vars_all_references_resolve_cleanly()
+                            } else {
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_vars_some_saved_requests_reference_missing()
+                            },
+                        ))
                         .child(
                             div().pt(px(2.0)).child(
                                 btn_secondary(
                                     "env-goto-resolved",
-                                    view.t("查看解析顺序与扫描 →", "Open Resolved & Scan →"),
+                                    crate::ui::Tr(view.lang)
+                                        .environments()
+                                        .tab_vars_open_resolved_scan(),
                                 )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.detail_tab = EnvDetailTab::Resolved;
-                                    this.refresh_env_analysis(cx);
-                                    cx.notify();
-                                })),
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.detail_tab = EnvDetailTab::Resolved;
+                                        this.refresh_env_analysis(cx);
+                                        cx.notify();
+                                    },
+                                )),
                             ),
                         ),
                 )
@@ -447,24 +495,28 @@ pub fn render_variables_panel(
                         .p(px(12.0))
                         .gap(px(6.0))
                         .child(section_header(
-                            view.t("本地 .secrets 明文库", "Local .secrets Store"),
+                            crate::ui::Tr(view.lang)
+                                .environments()
+                                .tab_vars_local_secrets_store(),
                             Some(meta_pill(format!("{secret_cnt} secrets"), cx).into_any_element()),
                             cx,
                         ))
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(view.t(
-                            "机密变量值保存在本机 0600 权限明文 SQLite (.secrets) 中，不在界面明文回显，仅在发送时由核心注入。",
-                            "Secret values live in owner-only 0600 plaintext SQLite (.secrets), never echoed to UI, injected by core at send time.",
-                        ))),
+                        .child(
+                            div().text_xs().text_color(to_hsla(p.muted)).child(
+                                crate::ui::Tr(view.lang)
+                                    .environments()
+                                    .tab_vars_secret_values_live_in_owner(),
+                            ),
+                        ),
                 ),
         );
     }
     if (is_global && view.globals_dirty) || (!is_global && view.env_dirty) {
         page = page.child(alert_banner(
             Tone::Accent,
-            view.t(
-                "有未保存的更改，点击右上角保存按钮写入数据库。",
-                "You have unsaved changes — click Save to persist.",
-            ),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .tab_vars_you_have_unsaved_changes_click(),
             None,
             cx,
         ));

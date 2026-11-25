@@ -18,7 +18,7 @@ use pingdeck_desktop::core::llm::store::{
     GatewayClient, LogFilter, ProbeResult, ProviderKey, RequestLogEntry,
 };
 use pingdeck_desktop::core::model::events::Sequenced;
-use pingdeck_desktop::core::model::settings::{AiGatewaySettings, Language};
+use pingdeck_desktop::core::model::settings::AiGatewaySettings;
 use pingdeck_desktop::streams::channel_sink;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
@@ -215,11 +215,9 @@ impl ProvidersView {
             return;
         }
         if let Some(pv) = self.providers.iter().find(|p| p.provider.id == id).cloned() {
-            let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
             let parent = cx.entity().clone();
-            self.config_form = Some(
-                cx.new(|cx| detail_config::ProviderConfigForm::new(parent, pv, zh, window, cx)),
-            );
+            self.config_form =
+                Some(cx.new(|cx| detail_config::ProviderConfigForm::new(parent, pv, window, cx)));
         }
     }
 
@@ -231,14 +229,12 @@ impl ProvidersView {
         cx: &mut Context<Self>,
     ) {
         self.selection = LeftSelection::Bench;
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         if let Some(b) = &self.bench_view {
             b.update(cx, |bv, cx| bv.focus_provider(provider_id, models, cx));
         } else {
             let parent = cx.entity().clone();
-            self.bench_view = Some(
-                cx.new(|cx| bench::BenchView::new(parent, provider_id, models, zh, window, cx)),
-            );
+            self.bench_view =
+                Some(cx.new(|cx| bench::BenchView::new(parent, provider_id, models, window, cx)));
         }
         cx.notify();
     }
@@ -251,7 +247,6 @@ impl ProvidersView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let is_resniff = resniff_provider_id.is_some();
         let parent = cx.entity().clone();
         let presets = self.presets.clone();
@@ -273,24 +268,19 @@ impl ProvidersView {
                 resniff_url,
                 resniff_name,
                 initial_preset,
-                zh,
                 window,
                 cx,
             )
         });
-        window.open_sheet(cx, move |sheet, _, _| {
+        window.open_sheet(cx, move |sheet, _, cx| {
             sheet
                 .size(px(640.0))
                 .title(if is_resniff {
-                    if zh {
-                        "重新嗅探服务商"
-                    } else {
-                        "Re-scan Provider"
-                    }
-                } else if zh {
-                    "添加 AI 服务商（智能嗅探）"
+                    crate::ui::tr(cx).providers().prov_loader_re_scan_provider()
                 } else {
-                    "Add AI Provider (Smart Sniff)"
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_loader_add_ai_provider_smart_sniff()
                 })
                 .child(sheet_ent.clone())
         });
@@ -315,7 +305,6 @@ impl ProvidersView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let parent = cx.entity().clone();
         let gw_url = self
             .overview
@@ -343,19 +332,18 @@ impl ProvidersView {
                 initial_tool,
                 gw_url,
                 available_models,
-                zh,
                 window,
                 cx,
             )
         });
-        window.open_sheet(cx, move |sheet, _, _| {
+        window.open_sheet(cx, move |sheet, _, cx| {
             sheet
                 .size(px(640.0))
-                .title(if zh {
-                    "一键接入本地 AI 编码工具"
-                } else {
-                    "Connect Local AI Coding Tool"
-                })
+                .title(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_loader_connect_local_ai_coding_tool(),
+                )
                 .child(sheet_ent.clone())
         });
     }

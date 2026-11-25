@@ -7,6 +7,7 @@ pub mod assets;
 pub mod data;
 pub mod dialog;
 pub mod feedback;
+pub mod i18n;
 pub mod icons;
 pub mod layout;
 pub mod menus;
@@ -43,6 +44,7 @@ pub use dialog::modal_dialog;
 pub use feedback::{
     alert_banner, dismissible_banner, empty_inline, empty_state, empty_state_with_actions,
 };
+pub use i18n::{PingDeckLanguage, Tr, active_language, apply_language, tr};
 pub use icons::{UiIcon, app_icon, icon, icon_sized, icon_xs, pingmark};
 pub use layout::{
     doc_tab, master_pane, meta_pill, number_field, pane_footer, pane_header, section_header,

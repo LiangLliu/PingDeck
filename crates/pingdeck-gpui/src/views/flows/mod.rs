@@ -41,11 +41,11 @@ pub use state::{FlowsHandoff, FlowsView};
 impl FlowsView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
+        let f_tr = crate::ui::tr(cx).flows();
         let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选流程 / Filter…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_filter_flows()));
         let flow_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Flow name"));
-        let flow_desc_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("流程描述 / Description…"));
+        let flow_desc_input = cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_desc()));
         let step_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Step name"));
         let step_url_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("https://api.example.com/..."));
@@ -74,10 +74,9 @@ impl FlowsView {
         let seed_key_input = cx.new(|cx| InputState::new(window, cx).placeholder("Variable key"));
         let seed_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Seed value"));
         let req_picker_search =
-            cx.new(|cx| InputState::new(window, cx).placeholder("搜索已保存请求…"));
-        let new_flow_name_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("例如：登录并下单 / Auth + Checkout")
-        });
+            cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_search_requests()));
+        let new_flow_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_new_flow_name()));
 
         let mut subs = Vec::new();
         for inp in [
@@ -227,6 +226,7 @@ impl FlowsView {
 
 impl Render for FlowsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.lang = crate::ui::active_language(cx);
         if self.pending_sync {
             self.sync_inputs(window, cx);
         }
@@ -237,7 +237,6 @@ impl Render for FlowsView {
             let fid_del = flow.id.clone();
             let fname_del = flow.name.clone();
 
-            let zh = self.is_zh();
             let ent_env = cx.entity().clone();
             let envs_pop = self.environments.clone();
             let sel_env_id = self.selected_env_id.clone();
@@ -247,12 +246,12 @@ impl Render for FlowsView {
             let env_label = sel_env
                 .map(|e| {
                     if e.confirm_before_send {
-                        format!("● {} ({})", e.name, if zh { "保护" } else { "Guard" })
+                        format!("● {} ({})", e.name, crate::ui::tr(cx).flows().flows_guard())
                     } else {
                         e.name.clone()
                     }
                 })
-                .unwrap_or_else(|| if zh { "无环境" } else { "No Env" }.to_owned());
+                .unwrap_or_else(|| crate::ui::tr(cx).flows().flows_no_env().to_owned());
 
             let env_picker = popover("flow-env-pop")
                 .anchor(Anchor::TopLeft)
@@ -281,11 +280,11 @@ impl Render for FlowsView {
                         )
                         .gap(px(6.0))
                         .child(status_indicator(StatusShape::Idle, pop_cx))
-                        .child(div().text_xs().child(if zh {
-                            "不使用环境"
-                        } else {
-                            "No environment"
-                        })),
+                        .child(
+                            div()
+                                .text_xs()
+                                .child(crate::ui::tr(pop_cx).flows().flows_no_environment()),
+                        ),
                     );
                     for env in &envs_pop {
                         let eid = env.id.clone();
@@ -320,7 +319,11 @@ impl Render for FlowsView {
                                     .child(div().text_xs().child(env.name.clone())),
                             )
                             .children(env.confirm_before_send.then(|| {
-                                badge(if zh { "确认" } else { "Guard" }, Tone::Warning, pop_cx)
+                                badge(
+                                    crate::ui::tr(pop_cx).flows().flows_guard_2(),
+                                    Tone::Warning,
+                                    pop_cx,
+                                )
                             })),
                         );
                     }
@@ -351,9 +354,9 @@ impl Render for FlowsView {
                             btn_ghost(
                                 "flow-insp-tog",
                                 if self.inspector_open {
-                                    self.t("收起检查器", "Hide Inspector")
+                                    crate::ui::Tr(self.lang).flows().flows_hide_inspector()
                                 } else {
-                                    self.t("展开检查器", "Inspector")
+                                    crate::ui::Tr(self.lang).flows().flows_inspector()
                                 },
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -362,42 +365,54 @@ impl Render for FlowsView {
                             })),
                         )
                         .child(
-                            btn_secondary("flow-opt-btn", self.t("选项", "Options"))
-                                .icon(icon_xs(UiIcon::Sliders))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.active_modal = Some(FlowModal::Options);
-                                    cx.notify();
-                                })),
+                            btn_secondary(
+                                "flow-opt-btn",
+                                crate::ui::Tr(self.lang).flows().flows_options(),
+                            )
+                            .icon(icon_xs(UiIcon::Sliders))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.active_modal = Some(FlowModal::Options);
+                                cx.notify();
+                            })),
                         )
                         .child(if self.dirty {
-                            btn_primary("flow-save-btn", self.t("保存", "Save"))
+                            btn_primary("flow-save-btn", crate::ui::Tr(self.lang).common().save())
                                 .icon(icon_xs(UiIcon::Check))
                                 .on_click(cx.listener(|this, _, _, cx| this.save_flow(cx)))
                         } else {
-                            btn_secondary("flow-save-btn", self.t("已保存", "Saved"))
-                                .on_click(cx.listener(|this, _, _, cx| this.save_flow(cx)))
+                            btn_secondary(
+                                "flow-save-btn",
+                                crate::ui::Tr(self.lang).common().save_saved(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.save_flow(cx)))
                         })
                         .child(if self.running {
-                            btn_danger("flow-run-btn", self.t("停止", "Stop"))
-                                .icon(icon_xs(UiIcon::Stop))
-                                .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx)))
+                            btn_danger(
+                                "flow-run-btn",
+                                crate::ui::Tr(self.lang).flows().flows_stop(),
+                            )
+                            .icon(icon_xs(UiIcon::Stop))
+                            .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx)))
                         } else {
-                            btn_primary("flow-run-btn", self.t("运行流程", "Run Flow"))
-                                .icon(icon_xs(UiIcon::Play))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.run_flow(None, None, None, cx);
-                                }))
+                            btn_primary(
+                                "flow-run-btn",
+                                crate::ui::Tr(self.lang).flows().flows_run_flow(),
+                            )
+                            .icon(icon_xs(UiIcon::Play))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.run_flow(None, None, None, cx);
+                            }))
                         })
                         .child(
                             btn_icon("flow-dup-btn", UiIcon::Copy)
-                                .tooltip(self.t("复制流程", "Duplicate flow"))
+                                .tooltip(crate::ui::Tr(self.lang).flows().head_duplicate())
                                 .on_click(
                                     cx.listener(|this, _, _, cx| this.duplicate_selected(cx)),
                                 ),
                         )
                         .child(
                             btn_icon("flow-del-btn", UiIcon::Trash)
-                                .tooltip(self.t("删除流程", "Delete flow"))
+                                .tooltip(crate::ui::Tr(self.lang).flows().head_delete())
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.active_modal = Some(FlowModal::DeleteFlow {
                                         id: fid_del.clone(),
@@ -438,21 +453,18 @@ impl Render for FlowsView {
                         .child(
                             h_row()
                                 .justify_between()
-                                .child(div().text_xs().text_color(to_hsla(p.ink)).child(
-                                    SharedString::from(if zh {
-                                        format!(
-                                            "正在执行流程… {}/{} 步已完成",
-                                            self.live_steps.len(),
-                                            self.live_total
-                                        )
-                                    } else {
-                                        format!(
-                                            "Running flow… {}/{} steps complete",
-                                            self.live_steps.len(),
-                                            self.live_total
-                                        )
-                                    }),
-                                ))
+                                .child(
+                                    div().text_xs().text_color(to_hsla(p.ink)).child(
+                                        SharedString::from(
+                                            crate::ui::tr(cx)
+                                                .flows()
+                                                .flows_running_flow_steps_complete(
+                                                    self.live_steps.len(),
+                                                    self.live_total,
+                                                ),
+                                        ),
+                                    ),
+                                )
                                 .child(meta_pill("HistoryOnly", cx)),
                         )
                         .child(progress_bar("flow-live-prog", pct)),
@@ -494,26 +506,29 @@ impl Render for FlowsView {
                         .border_color(to_hsla(p.line.composite_over(p.pane)))
                         .text_size(px(10.5))
                         .text_color(to_hsla(p.faint))
-                        .child(self.t(
-                            "持久化模式：HistoryOnly（写入执行历史，不改写工作区 Cookie 罐）",
-                            "Persistence: HistoryOnly (writes history; does not mutate workspace Cookie Jar)",
-                        )),
+                        .child(
+                            crate::ui::Tr(self.lang)
+                                .flows()
+                                .flows_persistence_historyonly_writes_history_doe(),
+                        ),
                 )
         } else {
             v_col().size_full().child(empty_state_with_actions(
                 UiIcon::Workflow,
-                self.t("还没有流程", "No Flow Selected"),
-                self.t(
-                    "创建多步骤接口编排流程，自动串联登录鉴权、参数提取、条件跳过、失败重试与断言验证。",
-                    "Create multi-step API flows with variable chaining, conditions, retries, and assertions.",
-                ),
+                crate::ui::Tr(self.lang).flows().flows_no_flow_selected(),
+                crate::ui::Tr(self.lang)
+                    .flows()
+                    .flows_create_multi_step_api_flows(),
                 Some(
-                    btn_primary("flow-empty-new", self.t("新建流程", "New Flow"))
-                        .icon(icon_xs(UiIcon::Plus))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_create_flow_modal(window, cx);
-                        }))
-                        .into_any_element(),
+                    btn_primary(
+                        "flow-empty-new",
+                        crate::ui::Tr(self.lang).flows().flows_new_flow(),
+                    )
+                    .icon(icon_xs(UiIcon::Plus))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_create_flow_modal(window, cx);
+                    }))
+                    .into_any_element(),
                 ),
                 cx,
             ))

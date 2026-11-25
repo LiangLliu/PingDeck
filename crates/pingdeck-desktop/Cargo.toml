@@ -19,5 +19,8 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
+[build-dependencies]
+serde_json.workspace = true
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

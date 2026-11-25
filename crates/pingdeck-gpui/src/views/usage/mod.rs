@@ -41,10 +41,8 @@ pub use state::{UsageHandoff, UsageView};
 impl UsageView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = settings_get_impl(runtime(cx).state());
-        let calls_search_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("筛选：is:failed source:gateway model:deepseek body:<关键词>…")
-        });
+        let search_ph = crate::ui::tr(cx).usage().usage_calls_search_placeholder();
+        let calls_search_input = cx.new(|cx| InputState::new(window, cx).placeholder(search_ph));
         let search_sub = cx.subscribe(&calls_search_input, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
                 this.handle_calls_search_changed(cx);
@@ -165,18 +163,23 @@ impl UsageView {
 
 impl Render for UsageView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.lang = crate::ui::active_language(cx);
         if let Some(call_id) = self.pending_open_call_id.take() {
             self.open_call_drawer(call_id, window, cx);
         }
         let p = palette(cx);
-        let zh = self.is_zh();
         let left = sidebar::render_sidebar(self, cx);
 
         let scope_title = self
             .scope_provider_id
             .as_deref()
             .map(|id| self.provider_name(id))
-            .unwrap_or_else(|| self.t("全部服务商", "All Providers").to_owned());
+            .unwrap_or_else(|| {
+                crate::ui::Tr(self.lang)
+                    .usage()
+                    .usage_usage_all_providers()
+                    .to_owned()
+            });
 
         let tabs = tab_bar_underline("usage-view-tabs")
             .selected_index(self.active_tab.index())
@@ -184,18 +187,16 @@ impl Render for UsageView {
                 this.active_tab = UsageViewTab::from_index(*idx);
                 cx.notify();
             }))
-            .child(tab_item(self.t("统计", "Overview")))
-            .child(tab_item(if zh {
-                format!("调用 ({})", self.logs.len())
-            } else {
-                format!("Calls ({})", self.logs.len())
-            }));
+            .child(tab_item(
+                crate::ui::Tr(self.lang).usage().usage_usage_overview(),
+            ))
+            .child(tab_item(
+                crate::ui::tr(cx).usage().usage_usage_calls(self.logs.len()),
+            ));
 
-        let updated_lbl = if zh {
-            format!("更新于 {}", format_local_time(self.updated_at_ms))
-        } else {
-            format!("Updated {}", format_local_time(self.updated_at_ms))
-        };
+        let updated_lbl = crate::ui::tr(cx)
+            .usage()
+            .usage_usage_updated(format_local_time(self.updated_at_ms));
 
         let header = toolbar_strip(cx)
             .justify_between()
@@ -221,14 +222,17 @@ impl Render for UsageView {
                             .child(updated_lbl),
                     )
                     .child(
-                        btn_ghost("usage-refresh", self.t("刷新", "Refresh"))
+                        btn_ghost("usage-refresh", crate::ui::Tr(self.lang).common().refresh())
                             .icon(icon_xs(UiIcon::Refresh))
                             .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx))),
                     )
                     .child(
-                        btn_secondary("usage-export-csv", self.t("导出 CSV", "Export CSV"))
-                            .icon(icon_xs(UiIcon::Download))
-                            .on_click(cx.listener(|this, _, _, cx| this.export_csv(cx))),
+                        btn_secondary(
+                            "usage-export-csv",
+                            crate::ui::Tr(self.lang).usage().usage_usage_export_csv(),
+                        )
+                        .icon(icon_xs(UiIcon::Download))
+                        .on_click(cx.listener(|this, _, _, cx| this.export_csv(cx))),
                     ),
             );
 
@@ -273,34 +277,22 @@ impl Render for UsageView {
             };
             let (title, body_txt, confirm_id, is_logs) = match modal {
                 UsageModal::ClearLogs { count } => (
-                    self.t("清空调用日志", "Clear Call Logs"),
-                    if zh {
-                        format!(
-                            "确定永久删除当前筛选范围内的 {count} 条调用日志及其捕获正文吗？此操作无法撤销。"
-                        )
-                    } else {
-                        format!(
-                            "Permanently delete {count} matching call log(s) and captures? This cannot be undone."
-                        )
-                    },
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_usage_clear_call_logs(),
+                    crate::ui::tr(cx)
+                        .usage()
+                        .usage_usage_permanently_delete_matching_call_log(count),
                     "usage-clr-logs-ok",
                     true,
                 ),
                 UsageModal::ClearCaptures { stats } => (
-                    self.t("清理捕获正文", "Delete Stored Captures"),
-                    if zh {
-                        format!(
-                            "确定删除 {} 条捕获正文（约 {} KB）？调用日志元信息与统计汇总将保留。",
-                            stats.count,
-                            stats.bytes / 1024
-                        )
-                    } else {
-                        format!(
-                            "Delete {} captured exchange(s) (~{} KB)? Log metadata and usage totals remain intact.",
-                            stats.count,
-                            stats.bytes / 1024
-                        )
-                    },
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_usage_delete_stored_captures(),
+                    crate::ui::tr(cx)
+                        .usage()
+                        .usage_usage_delete_captured_exchange_s_kb(stats.count, stats.bytes / 1024),
                     "usage-clr-caps-ok",
                     false,
                 ),
@@ -313,23 +305,27 @@ impl Render for UsageView {
             let footer = h_row()
                 .gap(px(8.0))
                 .child(
-                    btn_secondary("usage-modal-cancel", self.t("取消", "Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = None;
-                            cx.notify();
-                        }),
-                    ),
+                    btn_secondary(
+                        "usage-modal-cancel",
+                        crate::ui::Tr(self.lang).common().cancel(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = None;
+                        cx.notify();
+                    })),
                 )
                 .child(
-                    btn_danger(confirm_id, self.t("确认删除", "Delete")).on_click(cx.listener(
-                        move |this, _, _, cx| {
-                            if is_logs {
-                                this.confirm_clear_logs(cx);
-                            } else {
-                                this.confirm_clear_captures(cx);
-                            }
-                        },
-                    )),
+                    btn_danger(
+                        confirm_id,
+                        crate::ui::Tr(self.lang).usage().usage_usage_delete(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if is_logs {
+                            this.confirm_clear_logs(cx);
+                        } else {
+                            this.confirm_clear_captures(cx);
+                        }
+                    })),
                 )
                 .into_any_element();
             root = root.child(modal_dialog(

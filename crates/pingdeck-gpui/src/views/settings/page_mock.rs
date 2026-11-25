@@ -12,7 +12,7 @@ use crate::ui::{
 
 use super::SettingsView;
 
-pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
+pub fn render_mock(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let mock = &view.settings.mock;
     let gw_port = view.settings.ai.gateway.port;
@@ -20,23 +20,25 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
     let defaults_rows = v_col()
         .w_full()
         .child(setting_row(
-            if zh { "默认起始端口" } else { "Default starting port" },
-            Some(SharedString::from(if zh {
-                format!("AI 网关端口：{gw_port}")
-            } else {
-                format!("AI Gateway port: {gw_port}")
-            })),
-            Some(SharedString::from(if zh {
-                "新建 Mock 服务器优先尝试此端口（1024–65535，默认 3001，不能与 AI 网关端口相同）。"
-            } else {
-                "First port tried for new mock servers (1024–65535, default 3001; must differ from AI gateway port)."
-            })),
+            crate::ui::tr(cx)
+                .settings()
+                .page_mock_default_starting_port(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_mock_ai_gateway_port(gw_port),
+            )),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_mock_first_port_tried_for_new(),
+            )),
             h_row()
                 .gap(px(6.0))
                 .child(number_field(&view.inputs.mock_first_port, None, 88.0, cx))
                 .child(
-                    btn_secondary("mock-save-port", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
+                    btn_secondary("mock-save-port", crate::ui::tr(cx).common().kv_bulk_apply())
+                        .on_click(cx.listener(|this, _, _, cx| {
                             let v = this.inputs.mock_first_port.read(cx).value().to_string();
                             this.commit_u64(
                                 &v,
@@ -46,47 +48,55 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
                                 |n| serde_json::json!({ "first_port": n }),
                                 cx,
                             );
-                        }),
-                    ),
+                        })),
                 ),
             cx,
         ))
         .child(setting_row(
-            if zh { "默认模拟延迟" } else { "Default latency" },
+            crate::ui::tr(cx).settings().page_mock_default_latency(),
             None,
-            Some(SharedString::from(if zh {
-                "新建 Mock 服务响应前附加的人工延迟（0–60,000 ms，默认 0 ms）。"
-            } else {
-                "Artificial delay added before responses on new mock servers (0–60,000 ms, default 0 ms)."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_mock_artificial_delay_added_before_responses(),
+            )),
             h_row()
                 .gap(px(6.0))
-                .child(number_field(&view.inputs.mock_latency_ms, Some("ms"), 96.0, cx))
+                .child(number_field(
+                    &view.inputs.mock_latency_ms,
+                    Some("ms"),
+                    96.0,
+                    cx,
+                ))
                 .child(
-                    btn_secondary("mock-save-latency", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.mock_latency_ms.read(cx).value().to_string();
-                            this.commit_u64(
-                                &v,
-                                0,
-                                60_000,
-                                CoreSection::Mock,
-                                |n| serde_json::json!({ "default_latency_ms": n }),
-                                cx,
-                            );
-                        }),
-                    ),
+                    btn_secondary(
+                        "mock-save-latency",
+                        crate::ui::tr(cx).common().kv_bulk_apply(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let v = this.inputs.mock_latency_ms.read(cx).value().to_string();
+                        this.commit_u64(
+                            &v,
+                            0,
+                            60_000,
+                            CoreSection::Mock,
+                            |n| serde_json::json!({ "default_latency_ms": n }),
+                            cx,
+                        );
+                    })),
                 ),
             cx,
         ))
         .child(setting_row(
-            if zh { "默认启用 CORS 响应头" } else { "Enable CORS headers by default" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_mock_enable_cors_headers_by_default(),
             None,
-            Some(SharedString::from(if zh {
-                "新建 Mock 服务自动允许跨域预检（OPTIONS）与常见响应头。"
-            } else {
-                "New mock servers respond to CORS preflight (OPTIONS) and return permissive headers."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_mock_new_mock_servers_respond_to(),
+            )),
             toggle_switch("mock-cors", mock.cors_default).on_change(cx.listener(
                 |this, checked: &bool, _, cx| {
                     this.patch_section(
@@ -99,52 +109,57 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
             cx,
         ))
         .child(setting_row(
-            if zh { "内存请求日志容量" } else { "In-memory log capacity" },
+            crate::ui::tr(cx)
+                .settings()
+                .page_mock_in_memory_log_capacity(),
             None,
-            Some(SharedString::from(if zh {
-                "每个运行中的 Mock 实例保留的最近请求记录条数（10–5,000，默认 200）。"
-            } else {
-                "Transactions kept in each running mock server's ring buffer (10–5,000, default 200)."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_mock_transactions_kept_in_each_running(),
+            )),
             h_row()
                 .gap(px(6.0))
                 .child(number_field(
                     &view.inputs.mock_log_capacity,
-                    Some(if zh { "条" } else { "rows" }),
+                    Some(crate::ui::tr(cx).settings().page_advanced_rows()),
                     92.0,
                     cx,
                 ))
                 .child(
-                    btn_secondary("mock-save-logcap", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.mock_log_capacity.read(cx).value().to_string();
-                            this.commit_u64(
-                                &v,
-                                10,
-                                5_000,
-                                CoreSection::Mock,
-                                |n| serde_json::json!({ "log_capacity": n }),
-                                cx,
-                            );
-                        }),
-                    ),
+                    btn_secondary(
+                        "mock-save-logcap",
+                        crate::ui::tr(cx).common().kv_bulk_apply(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let v = this.inputs.mock_log_capacity.read(cx).value().to_string();
+                        this.commit_u64(
+                            &v,
+                            10,
+                            5_000,
+                            CoreSection::Mock,
+                            |n| serde_json::json!({ "log_capacity": n }),
+                            cx,
+                        );
+                    })),
                 ),
             cx,
         ));
 
     let mut defaults_sec = v_col().w_full().gap(px(10.0)).child(settings_section(
-        if zh {
-            "Mock 服务默认值"
-        } else {
-            "Mock Server Defaults"
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .page_mock_mock_server_defaults(),
         Some(
-            btn_ghost("mock-reset-all", if zh { "恢复默认" } else { "Reset" })
-                .icon(icon_xs(UiIcon::RotateCcw))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.reset_section(CoreSection::Mock, cx);
-                }))
-                .into_any_element(),
+            btn_ghost(
+                "mock-reset-all",
+                crate::ui::tr(cx).settings().page_defaults_reset(),
+            )
+            .icon(icon_xs(UiIcon::RotateCcw))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.reset_section(CoreSection::Mock, cx);
+            }))
+            .into_any_element(),
         ),
         defaults_rows,
         cx,
@@ -153,11 +168,9 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
     if mock.first_port == gw_port {
         defaults_sec = defaults_sec.child(alert_banner(
             Tone::Warning,
-            if zh {
-                format!("Mock 起始端口与 AI 网关端口（{gw_port}）相同，请修改其中一项。")
-            } else {
-                format!("Mock starting port matches the AI gateway port ({gw_port}); change one of them.")
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .page_mock_mock_starting_port_matches_the(gw_port),
             None,
             cx,
         ));
@@ -194,16 +207,20 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
     }
 
     let hosts_sec = settings_section_padded(
-        if zh { "额外允许的 Host 头" } else { "Extra Allowed Host Headers" },
+        crate::ui::tr(cx)
+            .settings()
+            .page_mock_extra_allowed_host_headers(),
         None,
         v_col()
             .w_full()
             .gap(px(10.0))
-            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "Mock 监听器始终仅绑定本机回环地址（127.0.0.1），此列表用于放行 Docker 容器（host.docker.internal）或 Android 模拟器（10.0.2.2）转发来的 Host 头（格式 host 或 host:port，最多 16 项）。"
-            } else {
-                "Mock listeners always bind loopback only (127.0.0.1). Add host or host:port entries such as host.docker.internal or 10.0.2.2 for containers/emulators (up to 16 entries)."
-            }))
+            .child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_mock_mock_listeners_always_bind_loopback(),
+                ),
+            )
             .children((!mock.extra_allowed_hosts.is_empty()).then_some(chips))
             .child(
                 h_row()
@@ -211,11 +228,14 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
                     .gap(px(8.0))
                     .child(div().flex_1().child(text_input(&view.inputs.mock_host_add)))
                     .child(
-                        btn_secondary("mock-host-add-btn", if zh { "添加主机" } else { "Add host" })
-                            .icon(icon_xs(UiIcon::Plus))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.add_mock_host(window, cx);
-                            })),
+                        btn_secondary(
+                            "mock-host-add-btn",
+                            crate::ui::tr(cx).settings().network_no_proxy_add(),
+                        )
+                        .icon(icon_xs(UiIcon::Plus))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.add_mock_host(window, cx);
+                        })),
                     ),
             ),
         cx,

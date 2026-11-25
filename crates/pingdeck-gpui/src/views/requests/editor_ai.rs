@@ -14,11 +14,7 @@ use super::editor_auth_net::render_assertions_tab;
 use super::editor_http::render_scripts_tab;
 use super::model::AiEdTab;
 
-pub fn render_ai_editor(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> impl IntoElement {
+pub fn render_ai_editor(view: &RequestsView, cx: &mut Context<RequestsView>) -> impl IntoElement {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return v_col().size_full();
@@ -32,42 +28,28 @@ pub fn render_ai_editor(
         .iter()
         .map(|m| (m.content.len() / 4).max(1))
         .sum();
-    let meta_hint = if zh {
-        format!(
-            "约 {est_tokens} 输入 Token · {}",
-            if tab.ai_params.stream {
-                "流式输出已开"
-            } else {
-                "非流式"
-            }
-        )
+    let r = crate::ui::tr(cx).requests();
+    let mode = if tab.ai_params.stream {
+        r.editor_ai_stream_on()
     } else {
-        format!(
-            "~{est_tokens} in tok · {}",
-            if tab.ai_params.stream {
-                "stream on"
-            } else {
-                "non-stream"
-            }
-        )
+        r.editor_ai_non_stream()
     };
+    let meta_hint = r.editor_ai_meta_hint(est_tokens, mode);
 
     let tabs = tab_bar_underline("req-ai-ed-tabs")
         .selected_index(tab.ai_ed_tab.index())
-        .child(tab_item(if zh {
-            format!("消息 ({msg_cnt})")
-        } else {
-            format!("Messages ({msg_cnt})")
-        }))
-        .child(tab_item(if zh { "参数" } else { "Params" }))
-        .child(tab_item(if zh { "工具" } else { "Tools" }))
+        .child(tab_item(
+            crate::ui::tr(cx).requests().editor_ai_messages(msg_cnt),
+        ))
+        .child(tab_item(crate::ui::tr(cx).requests().editor_tabs_params()))
+        .child(tab_item(crate::ui::tr(cx).common().cap_tools()))
         .child(tab_item("Raw JSON"))
-        .child(tab_item(if zh {
-            format!("断言 ({assert_cnt})")
-        } else {
-            format!("Assertions ({assert_cnt})")
-        }))
-        .child(tab_item(if zh { "脚本" } else { "Scripts" }))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .requests()
+                .editor_ai_assertions(assert_cnt),
+        ))
+        .child(tab_item(crate::ui::tr(cx).requests().coll_tab_scripts()))
         .on_click(move |idx, window, cx| {
             let next = AiEdTab::from_index(*idx);
             ent.update(cx, |this, cx| {
@@ -83,9 +65,9 @@ pub fn render_ai_editor(
         });
 
     let body: gpui_kit::AnyElement = match tab.ai_ed_tab {
-        AiEdTab::Messages => render_ai_messages_tab(view, zh, cx).into_any_element(),
-        AiEdTab::Params => render_ai_params_tab(view, zh, cx).into_any_element(),
-        AiEdTab::Tools => render_ai_tools_tab(view, zh, cx).into_any_element(),
+        AiEdTab::Messages => render_ai_messages_tab(view, cx).into_any_element(),
+        AiEdTab::Params => render_ai_params_tab(view, cx).into_any_element(),
+        AiEdTab::Tools => render_ai_tools_tab(view, cx).into_any_element(),
         AiEdTab::RawJson => v_col()
             .size_full()
             .p(px(10.0))
@@ -100,11 +82,7 @@ pub fn render_ai_editor(
                             .child(
                                 btn_ghost(
                                     "ai-raw-from-form",
-                                    if zh {
-                                        "从消息生成"
-                                    } else {
-                                        "From builder"
-                                    },
+                                    crate::ui::tr(cx).requests().editor_ai_from_builder(),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, window, cx| {
@@ -115,11 +93,7 @@ pub fn render_ai_editor(
                             .child(
                                 btn_ghost(
                                     "ai-raw-to-form",
-                                    if zh {
-                                        "解析回消息"
-                                    } else {
-                                        "Parse to builder"
-                                    },
+                                    crate::ui::tr(cx).requests().editor_ai_parse_to_builder(),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, window, cx| {
@@ -136,8 +110,8 @@ pub fn render_ai_editor(
                     .child(code_editor(&view.ai_raw_editor)),
             )
             .into_any_element(),
-        AiEdTab::Assertions => render_assertions_tab(view, zh, true, cx).into_any_element(),
-        AiEdTab::Scripts => render_scripts_tab(view, zh, true, cx).into_any_element(),
+        AiEdTab::Assertions => render_assertions_tab(view, true, cx).into_any_element(),
+        AiEdTab::Scripts => render_scripts_tab(view, true, cx).into_any_element(),
     };
 
     v_col()
@@ -163,7 +137,6 @@ pub fn render_ai_editor(
 
 fn render_ai_messages_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -192,11 +165,7 @@ fn render_ai_messages_tab(
                     .child(
                         btn_ghost(SharedString::from(format!("ai-role-{idx}")), "")
                             .px(px(2.0))
-                            .tooltip(if zh {
-                                "点击切换角色 (system / user / assistant)"
-                            } else {
-                                "Click to cycle role"
-                            })
+                            .tooltip(crate::ui::tr(cx).requests().editor_ai_click_to_cycle_role())
                             .child(badge(format!("{} ▾", msg.role), tone, cx))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.ai_cycle_message_role(idx, window, cx);
@@ -239,11 +208,7 @@ fn render_ai_messages_tab(
             .child(
                 btn_secondary(
                     "ai-msg-add",
-                    if zh {
-                        "+ 添加消息"
-                    } else {
-                        "+ Add message"
-                    },
+                    crate::ui::tr(cx).requests().editor_ai_add_message(),
                 )
                 .on_click(cx.listener(|this, _, window, cx| this.ai_add_message(window, cx))),
             ),
@@ -253,7 +218,6 @@ fn render_ai_messages_tab(
 
 fn render_ai_params_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let Some(tab) = view.active_req() else {
@@ -292,11 +256,7 @@ fn render_ai_params_tab(
             cx,
         ))
         .child(field_row(
-            if zh {
-                "流式输出 (stream)"
-            } else {
-                "Stream output"
-            },
+            crate::ui::tr(cx).requests().editor_ai_stream_output(),
             None,
             toggle_switch("ai-stream-sw", tab.ai_params.stream).on_change(cx.listener(
                 |this, c: &bool, window, cx| {
@@ -309,11 +269,7 @@ fn render_ai_params_tab(
             cx,
         ))
         .child(field_row(
-            if zh {
-                "推理强度"
-            } else {
-                "Reasoning effort"
-            },
+            crate::ui::tr(cx).requests().editor_ai_reasoning_effort(),
             None,
             tab_bar_segmented("ai-effort-seg")
                 .selected_index(eff_idx)
@@ -337,16 +293,14 @@ fn render_ai_params_tab(
             cx,
         ))
         .child(field_row(
-            if zh {
-                "保留完整交换到日志"
-            } else {
-                "Keep exchange in log"
-            },
-            Some(SharedString::from(if zh {
-                "开启后本次调用载荷写入本地日志，可在「用量与日志」中复核"
-            } else {
-                "Captures this exchange in Usage & Logs regardless of global policy"
-            })),
+            crate::ui::tr(cx)
+                .requests()
+                .editor_ai_keep_exchange_in_log(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .editor_ai_captures_this_exchange_in_usage(),
+            )),
             toggle_switch("ai-keep-log-sw", tab.ai_params.keep_exchange).on_change(cx.listener(
                 |this, c: &bool, _, cx| {
                     if let Some(t) = this.active_req_mut() {
@@ -360,11 +314,7 @@ fn render_ai_params_tab(
         .into_any_element()
 }
 
-fn render_ai_tools_tab(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::Div {
+fn render_ai_tools_tab(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::Div {
     v_col()
         .size_full()
         .p(px(10.0))
@@ -373,21 +323,15 @@ fn render_ai_tools_tab(
             h_row()
                 .justify_between()
                 .child(section_heading(
-                    if zh {
-                        "Function Calling 工具定义（JSON 数组）"
-                    } else {
-                        "Tool Definitions (JSON array)"
-                    },
+                    crate::ui::tr(cx)
+                        .requests()
+                        .editor_ai_tool_definitions_json_array(),
                     cx,
                 ))
                 .child(
                     btn_secondary(
                         "ai-tool-sample",
-                        if zh {
-                            "+ 插入示例工具"
-                        } else {
-                            "+ Insert sample tool"
-                        },
+                        crate::ui::tr(cx).requests().editor_ai_insert_sample_tool(),
                     )
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.ai_insert_sample_tool(window, cx);

@@ -37,7 +37,7 @@ use pingdeck_desktop::core::app::{
 use pingdeck_desktop::core::llm::gateway::GatewayStatus;
 use pingdeck_desktop::core::model::settings::registry::SettingsRegistryDto;
 use pingdeck_desktop::core::model::settings::{
-    Language, Settings, SettingsEvent, SettingsSection as CoreSection,
+    Settings, SettingsEvent, SettingsSection as CoreSection,
 };
 use pingdeck_desktop::core::sync::SyncStatus;
 use pingdeck_desktop::state::{NavModule, SettingsGroup, SettingsSection};
@@ -101,8 +101,10 @@ impl SettingsView {
         let rt = runtime(cx);
         let settings = settings_get_impl(rt.state());
         let registry = settings_registry_get_impl();
-        let search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("搜索设置 / Search…"));
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(crate::ui::tr(cx).settings().nav_search_placeholder())
+        });
         let inputs = SettingsInputs::new(&settings, window, cx);
         let proxy_mode = ProxyModeChoice::from_proxy_url(&settings.network.proxy_url);
 
@@ -294,15 +296,13 @@ impl Render for SettingsView {
         }
 
         let p = palette(cx);
-        let zh = self.settings.general.language == Language::ZhCn;
-        let left = nav::render_settings_sidebar(self, zh, cx);
+        let lang = crate::ui::active_language(cx);
+        let left = nav::render_settings_sidebar(self, cx);
 
-        let (gz, ge) = self.active.group().label_pair();
-        let (sz, se) = self.active.label_pair();
-        let group_lbl = if zh { gz } else { ge };
-        let page_lbl = if zh { sz } else { se };
+        let group_lbl = self.active.group().label(lang);
+        let page_lbl = self.active.label(lang);
         let show_group_crumb = group_lbl != page_lbl;
-        let page_sub = dispatch::page_subtitle(self.active, zh);
+        let page_sub = dispatch::page_subtitle(self.active, lang);
 
         let breadcrumb_row = h_row()
             .gap(px(6.0))
@@ -329,11 +329,7 @@ impl Render for SettingsView {
                     to_hsla(p.bad_line.composite_over(p.bad_soft)),
                     to_hsla(p.bad),
                     status_indicator(StatusShape::Bad, cx),
-                    if zh {
-                        "未保存（有错误）"
-                    } else {
-                        "Save error"
-                    },
+                    crate::ui::tr(cx).settings().settings_save_error(),
                 )
             } else {
                 (
@@ -341,7 +337,7 @@ impl Render for SettingsView {
                     to_hsla(p.ok_line.composite_over(p.ok_soft)),
                     to_hsla(p.ok),
                     icon_xs(UiIcon::Check).into_any_element(),
-                    if zh { "已自动保存" } else { "Auto-saved" },
+                    crate::ui::tr(cx).settings().settings_auto_saved(),
                 )
             };
             h_row()
@@ -359,7 +355,7 @@ impl Render for SettingsView {
                 .child(text)
         });
 
-        let page_body = dispatch::render_page_body(self, zh, window, cx);
+        let page_body = dispatch::render_page_body(self, window, cx);
 
         let flash_banner = self.flash.clone().map(|(tone, msg)| {
             h_row()
@@ -378,7 +374,7 @@ impl Render for SettingsView {
                     cx,
                 )))
                 .children(self.can_undo_reset_all.then(|| {
-                    btn_secondary("settings-flash-undo", if zh { "撤销" } else { "Undo" })
+                    btn_secondary("settings-flash-undo", crate::ui::tr(cx).common().undo())
                         .icon(icon_xs(UiIcon::RotateCcw))
                         .on_click(cx.listener(|this, _, _, cx| this.undo_last_reset(cx)))
                 }))
@@ -445,6 +441,6 @@ impl Render for SettingsView {
             .items_start()
             .child(left)
             .child(right)
-            .children(modals::render_settings_modal(self, zh, window, cx))
+            .children(modals::render_settings_modal(self, window, cx))
     }
 }

@@ -9,7 +9,6 @@ use pingdeck_desktop::core::agent::mcp::{AgentMcpServerView, McpServerStatus};
 use pingdeck_desktop::core::app::ProviderView;
 use pingdeck_desktop::core::llm::store::ProviderModel;
 use pingdeck_desktop::core::model::settings::Language;
-use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
     Anchor, InputState, Popover, ScrollableElement as _, StatusShape, Tone, UiIcon,
@@ -151,14 +150,13 @@ pub fn model_picker_popover(
     active_ref: Option<String>,
     clear_option: Option<SharedString>,
     choices: Vec<ModelChoice>,
-    lang: Language,
+    _lang: Language,
     on_pick: impl Fn(Option<ModelChoice>, &mut App) + Clone + 'static,
     cx: &App,
 ) -> Popover {
     let pop_id_s: SharedString = pop_id.into();
     let btn_id_s: SharedString = btn_id.into();
     let active = active_ref.is_some();
-    let zh = lang == Language::ZhCn;
 
     popover(pop_id_s.clone())
         .anchor(Anchor::TopRight)
@@ -205,11 +203,11 @@ pub fn model_picker_popover(
                         .p(px(10.0))
                         .text_xs()
                         .text_color(to_hsla(pop_p.muted))
-                        .child(if zh {
-                            "没有可用模型（请先在「服务商」启用服务商与模型）"
-                        } else {
-                            "No enabled models (add a provider and enable models first)"
-                        }),
+                        .child(
+                            crate::ui::tr(pop_cx)
+                                .settings()
+                                .widgets_no_enabled_models_add_a(),
+                        ),
                 );
             } else {
                 for (i, choice) in choices.iter().take(80).enumerate() {
@@ -262,7 +260,6 @@ pub fn render_fallback_chain(
     chain: &[String],
     providers: &[ProviderView],
     lang: Language,
-    zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -310,11 +307,7 @@ pub fn render_fallback_chain(
         row = row.child(model_picker_popover(
             format!("fb-add-pop-{site}"),
             format!("fb-add-btn-{site}"),
-            if zh {
-                "+ 添加备用"
-            } else {
-                "+ Add fallback"
-            },
+            crate::ui::tr(cx).settings().widgets_add_fallback(),
             None,
             None,
             remaining,
@@ -332,80 +325,57 @@ pub fn render_fallback_chain(
     row
 }
 
-/// Formats relative time compactly (`刚刚`, `12 分钟前`, `3 天前`).
+/// Formats relative time compactly.
 #[must_use]
-pub fn format_ago_short(ts_ms: i64, now_ms: i64, zh: bool) -> String {
+pub fn format_ago_short(ts_ms: i64, now_ms: i64, lang: Language) -> String {
     let diff_s = (now_ms - ts_ms).max(0) / 1000;
     if diff_s < 60 {
-        if zh { "刚刚" } else { "just now" }.to_owned()
+        crate::ui::Tr(lang).common().time_just_now().to_owned()
     } else if diff_s < 3600 {
         let m = diff_s / 60;
-        if zh {
-            format!("{m} 分钟前")
-        } else {
-            format!("{m}m ago")
-        }
+        crate::ui::Tr(lang).settings().widgets_m_ago(m)
     } else if diff_s < 86_400 {
         let h = diff_s / 3600;
-        if zh {
-            format!("{h} 小时前")
-        } else {
-            format!("{h}h ago")
-        }
+        crate::ui::Tr(lang).settings().widgets_h_ago(h)
     } else {
         let d = diff_s / 86_400;
-        if zh {
-            format!("{d} 天前")
-        } else {
-            format!("{d}d ago")
-        }
+        crate::ui::Tr(lang).settings().widgets_d_ago(d)
     }
 }
 
 pub(super) fn format_mcp_status(
     sv: &AgentMcpServerView,
     lang: Language,
-    zh: bool,
     p: &pingdeck_desktop::theme::ResolvedPalette,
 ) -> (StatusShape, String, gpui_kit::Hsla) {
+    let s = crate::ui::Tr(lang).settings();
     match &sv.status {
         McpServerStatus::Running => {
             let txt = match sv.tool_count {
-                Some(n) if zh => format!("已连接 · {n} 个工具"),
-                Some(n) => format!("Connected · {n} tool(s)"),
-                None => t(lang, "set.tools.mcp.state.running").to_owned(),
+                Some(n) => s.agent_mcp_connected_tools(n),
+                None => s.tools_mcp_state_running().to_owned(),
             };
             (StatusShape::Ok, txt, to_hsla(p.ink_2))
         }
         McpServerStatus::Starting => (
             StatusShape::Run,
-            t(lang, "set.tools.mcp.state.starting").to_owned(),
+            s.tools_mcp_state_starting().to_owned(),
             to_hsla(p.muted),
         ),
         McpServerStatus::NeedsAuth => (
             StatusShape::Warn,
-            if zh {
-                "需要处理：缺少令牌"
-            } else {
-                "Needs auth token"
-            }
-            .to_owned(),
+            s.widgets_needs_auth_token().to_owned(),
             to_hsla(p.warn),
         ),
         McpServerStatus::NeedsReview => (
             StatusShape::Warn,
-            if zh {
-                "配置已变，待保存复核"
-            } else {
-                "Config changed — review"
-            }
-            .to_owned(),
+            s.widgets_config_changed_review().to_owned(),
             to_hsla(p.warn),
         ),
         McpServerStatus::Error { message } => (
             StatusShape::Bad,
             if message.is_empty() {
-                t(lang, "set.tools.mcp.state.error").to_owned()
+                s.tools_mcp_state_error().to_owned()
             } else {
                 message.clone()
             },
@@ -413,7 +383,7 @@ pub(super) fn format_mcp_status(
         ),
         McpServerStatus::Disabled => (
             StatusShape::Idle,
-            t(lang, "set.tools.mcp.state.disabled").to_owned(),
+            s.tools_mcp_state_disabled().to_owned(),
             to_hsla(p.muted),
         ),
     }

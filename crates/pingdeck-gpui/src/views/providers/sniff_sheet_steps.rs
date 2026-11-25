@@ -21,7 +21,6 @@ pub(super) fn render_step_two(
     cx: &mut Context<SniffProviderSheet>,
 ) -> Div {
     let p = palette(cx);
-    let zh = sheet.zh;
     let mut out = v_col().gap(px(12.0));
 
     if sheet.scanning {
@@ -78,15 +77,20 @@ pub(super) fn render_step_two(
                                 div()
                                     .text_xs()
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                    .child(if zh {
-                                        "正在嗅探服务商协议、模型与余额…"
-                                    } else {
-                                        "Scanning protocols, models & balance…"
-                                    }),
+                                    .child(
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_sniff_sheet_steps_scanning_protocols_models_balance(),
+                                ),
                             )
                             .child(
-                                btn_secondary("sn-cancel", if zh { "取消扫描" } else { "Cancel" })
-                                    .on_click(cx.listener(|this, _, _, cx| this.cancel_sniff(cx))),
+                                btn_secondary(
+                                    "sn-cancel",
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_sniff_sheet_steps_cancel(),
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_sniff(cx))),
                             ),
                     )
                     .child(progress_bar("sn-prog", pct))
@@ -97,49 +101,51 @@ pub(super) fn render_step_two(
 
     let Some(rep) = &sheet.report else {
         return out.child(
-            btn_secondary("sn-retry-1", if zh { "← 返回修改" } else { "← Back" }).on_click(
-                cx.listener(|this, _, _, cx| {
-                    this.step = 1;
-                    cx.notify();
-                }),
-            ),
+            btn_secondary(
+                "sn-retry-1",
+                crate::ui::tr(cx).providers().prov_sniff_sheet_steps_back(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.step = 1;
+                cx.notify();
+            })),
         );
     };
 
     let key_badge = match rep.key_status {
-        KeyCheckStatus::Accepted => {
-            badge(if zh { "密钥有效" } else { "Key valid" }, Tone::Success, cx)
-        }
+        KeyCheckStatus::Accepted => badge(
+            crate::ui::tr(cx)
+                .providers()
+                .prov_sniff_sheet_steps_key_valid(),
+            Tone::Success,
+            cx,
+        ),
         KeyCheckStatus::Rejected => badge(
-            if zh {
-                "密钥被拒绝"
-            } else {
-                "Key rejected"
-            },
+            crate::ui::tr(cx).providers().prov_bal_err_auth(),
             Tone::Danger,
             cx,
         ),
         KeyCheckStatus::QuotaExhausted => badge(
-            if zh {
-                "额度已用完"
-            } else {
-                "Quota exhausted"
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_sniff_sheet_steps_quota_exhausted(),
             Tone::Warning,
             cx,
         ),
         KeyCheckStatus::ModelsBlockedButChatWorks => badge(
-            if zh {
-                "对话可用（列表受限）"
-            } else {
-                "Chat works"
-            },
+            crate::ui::tr(cx)
+                .providers()
+                .prov_sniff_sheet_steps_chat_works(),
             Tone::Warning,
             cx,
         ),
-        KeyCheckStatus::Untested => {
-            badge(if zh { "未验密钥" } else { "Untested" }, Tone::Neutral, cx)
-        }
+        KeyCheckStatus::Untested => badge(
+            crate::ui::tr(cx)
+                .providers()
+                .prov_sniff_sheet_steps_untested(),
+            Tone::Neutral,
+            cx,
+        ),
     };
 
     if let Some(dup) = &sheet.duplicate
@@ -155,19 +161,19 @@ pub(super) fn render_step_two(
                     h_row()
                         .justify_between()
                         .gap(px(8.0))
-                        .child(div().text_xs().child(SharedString::from(if zh {
-                            format!("该地址已添加为「{}」", existing.name)
-                        } else {
-                            format!("Host already exists as \"{}\"", existing.name)
-                        })))
+                        .child(
+                            div().text_xs().child(SharedString::from(
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_sniff_sheet_steps_host_already_exists_as(&existing.name),
+                            )),
+                        )
                         .child(
                             btn_secondary(
                                 "sn-add-key-dup",
-                                if zh {
-                                    "把密钥加入已有服务商"
-                                } else {
-                                    "Add key to it"
-                                },
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_sniff_sheet_steps_add_key_to_it(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
@@ -183,7 +189,7 @@ pub(super) fn render_step_two(
         let msgs: Vec<String> = rep
             .warnings
             .iter()
-            .map(|w| format_sniff_warning(w, zh))
+            .map(|w| format_sniff_warning(w, crate::ui::active_language(cx)))
             .collect();
         out = out.child(crate::ui::alert_banner(
             Tone::Warning,
@@ -197,13 +203,12 @@ pub(super) fn render_step_two(
         .balance
         .as_ref()
         .filter(|b| b.supported)
-        .map(|b| format_balance_report(b, zh))
+        .map(|b| format_balance_report(b, crate::ui::active_language(cx)))
         .unwrap_or_else(|| {
-            if zh {
-                "无余额接口".into()
-            } else {
-                "No balance API".into()
-            }
+            crate::ui::tr(cx)
+                .providers()
+                .prov_format_no_balance_api()
+                .into()
         });
 
     let mut ep_table = v_col().gap(px(5.0));
@@ -213,9 +218,25 @@ pub(super) fn render_step_two(
         let is_prim = sheet.primary_protocol == Some(ep.protocol);
         let proto = ep.protocol;
         let verdict_badge = match ep.route {
-            RouteVerdict::Works => badge(if zh { "可用" } else { "Works" }, Tone::Success, cx),
-            RouteVerdict::Exists => badge(if zh { "路由存在" } else { "Exists" }, Tone::Accent, cx),
-            RouteVerdict::Absent => badge(if zh { "不可用" } else { "Absent" }, Tone::Neutral, cx),
+            RouteVerdict::Works => badge(
+                crate::ui::tr(cx).providers().prov_ep_works(),
+                Tone::Success,
+                cx,
+            ),
+            RouteVerdict::Exists => badge(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_sheet_steps_exists(),
+                Tone::Accent,
+                cx,
+            ),
+            RouteVerdict::Absent => badge(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_sheet_steps_absent(),
+                Tone::Neutral,
+                cx,
+            ),
             _ => badge(format!("{:?}", ep.route), Tone::Warning, cx),
         };
         ep_table = ep_table.child(
@@ -246,7 +267,7 @@ pub(super) fn render_step_two(
                             div()
                                 .text_xs()
                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .child(format_protocol(proto, zh)),
+                                .child(format_protocol(proto, crate::ui::active_language(cx))),
                         )
                         .child(verdict_badge)
                         .child(
@@ -262,12 +283,18 @@ pub(super) fn render_step_two(
                         .gap(px(5.0))
                         .children((checked && proto.is_chat()).then(|| {
                             if is_prim {
-                                badge(if zh { "主协议" } else { "Primary" }, Tone::Success, cx)
-                                    .into_any_element()
+                                badge(
+                                    crate::ui::tr(cx).providers().sniff_proto_primary(),
+                                    Tone::Success,
+                                    cx,
+                                )
+                                .into_any_element()
                             } else {
                                 btn_ghost(
                                     SharedString::from(format!("sn-prim-{i}")),
-                                    if zh { "设为主" } else { "Primary" },
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_sniff_sheet_steps_primary(),
                                 )
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.primary_protocol = Some(proto);
@@ -292,7 +319,11 @@ pub(super) fn render_step_two(
                         .child(
                             h_row()
                                 .gap(px(6.0))
-                                .child(badge(format_family(rep.family, zh), Tone::Accent, cx))
+                                .child(badge(
+                                    format_family(rep.family, crate::ui::active_language(cx)),
+                                    Tone::Accent,
+                                    cx,
+                                ))
                                 .children(
                                     rep.version
                                         .as_ref()
@@ -314,21 +345,15 @@ pub(super) fn render_step_two(
                         ),
                 )
                 .child(field_row(
-                    if zh {
-                        "服务商名称"
-                    } else {
-                        "Provider name"
-                    },
+                    crate::ui::tr(cx).providers().sniff_id_name(),
                     None,
                     div().w(px(220.0)).child(text_input(&sheet.name_input)),
                     cx,
                 ))
                 .child(section_heading(
-                    if zh {
-                        "探测到的协议"
-                    } else {
-                        "Detected Protocols"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_sniff_sheet_steps_detected_protocols(),
                     cx,
                 ))
                 .child(ep_table),
@@ -340,11 +365,9 @@ pub(super) fn render_step_two(
             .child(
                 btn_secondary(
                     "sn-back-1",
-                    if zh {
-                        "← 返回修改"
-                    } else {
-                        "← Edit address"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_sniff_sheet_steps_edit_address(),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.step = 1;
@@ -354,11 +377,9 @@ pub(super) fn render_step_two(
             .child(
                 btn_primary(
                     "sn-next-3",
-                    if zh {
-                        "下一步：审核模型 →"
-                    } else {
-                        "Next: Review models →"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_sniff_sheet_steps_next_review_models(),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.step = 3;
@@ -373,7 +394,6 @@ pub(super) fn render_step_three(
     cx: &mut Context<SniffProviderSheet>,
 ) -> Div {
     let p = palette(cx);
-    let zh = sheet.zh;
     let mut out = v_col().gap(px(12.0));
 
     let Some(rep) = &sheet.report else {
@@ -398,11 +418,13 @@ pub(super) fn render_step_three(
             card(cx).p(px(12.0)).child(
                 v_col()
                     .gap(px(8.0))
-                    .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                        "此主机未返回模型列表。每行输入一个要启用的模型 ID（可留空稍后添加）："
-                    } else {
-                        "No model list returned. Enter model IDs (one per line):"
-                    }))
+                    .child(
+                        div().text_xs().text_color(to_hsla(p.muted)).child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sniff_sheet_steps_no_model_list_returned_enter(),
+                        ),
+                    )
                     .child(
                         div()
                             .h(px(140.0))
@@ -467,36 +489,56 @@ pub(super) fn render_step_three(
                                 h_row()
                                     .gap(px(4.0))
                                     .child(badge(
-                                        if zh {
-                                            format!("已选 {sel_cnt} / {}", all_models.len())
-                                        } else {
-                                            format!("{sel_cnt} / {} selected", all_models.len())
-                                        },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_sniff_sheet_steps_selected(
+                                                sel_cnt,
+                                                all_models.len(),
+                                            ),
                                         Tone::Accent,
                                         cx,
                                     ))
                                     .child(
-                                        btn_ghost("sn-m-all", if zh { "全选" } else { "All" })
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        btn_ghost(
+                                            "sn-m-all",
+                                            crate::ui::tr(cx)
+                                                .providers()
+                                                .prov_sniff_sheet_steps_all(),
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 this.checked_models =
                                                     all_ids.iter().cloned().collect();
                                                 cx.notify();
-                                            })),
+                                            }),
+                                        ),
                                     )
                                     .child(
-                                        btn_ghost("sn-m-def", if zh { "仅对话" } else { "Chat" })
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        btn_ghost(
+                                            "sn-m-def",
+                                            crate::ui::tr(cx)
+                                                .providers()
+                                                .prov_sniff_sheet_steps_chat(),
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 this.checked_models =
                                                     def_ids.iter().cloned().collect();
                                                 cx.notify();
-                                            })),
+                                            }),
+                                        ),
                                     )
                                     .child(
-                                        btn_ghost("sn-m-none", if zh { "全不选" } else { "None" })
-                                            .on_click(cx.listener(|this, _, _, cx| {
+                                        btn_ghost(
+                                            "sn-m-none",
+                                            crate::ui::tr(cx).providers().bench_apply_none(),
+                                        )
+                                        .on_click(
+                                            cx.listener(|this, _, _, cx| {
                                                 this.checked_models.clear();
                                                 cx.notify();
-                                            })),
+                                            }),
+                                        ),
                                     ),
                             ),
                     )
@@ -509,28 +551,32 @@ pub(super) fn render_step_three(
         h_row()
             .justify_between()
             .child(
-                btn_secondary("sn-back-2", if zh { "← 上一步" } else { "← Back" }).on_click(
-                    cx.listener(|this, _, _, cx| {
-                        this.step = 2;
-                        cx.notify();
-                    }),
-                ),
+                btn_secondary(
+                    "sn-back-2",
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_sniff_sheet_steps_back_2(),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.step = 2;
+                    cx.notify();
+                })),
             )
             .child(
                 btn_primary(
                     "sn-save-final",
                     if sheet.saving {
-                        if zh { "保存中…" } else { "Saving…" }
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_config_extra_saving()
                     } else if sheet.resniff_provider_id.is_some() {
-                        if zh {
-                            "应用嗅探更改"
-                        } else {
-                            "Apply changes"
-                        }
-                    } else if zh {
-                        "保存服务商"
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_sniff_sheet_steps_apply_changes()
                     } else {
-                        "Save provider"
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_sniff_sheet_steps_save_provider()
                     },
                 )
                 .on_click(cx.listener(|this, _, _, cx| {

@@ -13,7 +13,6 @@ use super::model::assertion_short_label;
 
 pub fn render_assertions_tab(
     view: &RequestsView,
-    zh: bool,
     is_ai: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
@@ -120,40 +119,44 @@ pub fn render_assertions_tab(
                         .min_w_0()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(if zh {
-                            "该断言不需要期望值，直接点击右侧添加。"
-                        } else {
-                            "No expected value needed for this assertion."
-                        })
+                        .child(
+                            crate::ui::tr(cx)
+                                .requests()
+                                .editor_assertions_no_expected_value_needed_for(),
+                        )
                 }))
                 .child(
-                    btn_secondary("assert-add-btn", if zh { "+ 添加断言" } else { "+ Add" })
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            let target_txt =
-                                this.assert_target_input.read(cx).value().trim().to_owned();
-                            let val_txt = this.assert_val_input.read(cx).value().trim().to_owned();
-                            let assertion = build_assertion(
-                                is_ai,
-                                this.assert_target_kind,
-                                this.assert_op_idx,
-                                &target_txt,
-                                &val_txt,
-                            );
-                            match assertion {
-                                Ok(a) => {
-                                    if let Err(err) = a.validate() {
-                                        this.status_msg = Some((Tone::Danger, err.to_string()));
-                                    } else if let Some(t) = this.active_req_mut() {
-                                        t.draft.assertions.push(a);
-                                        t.recompute_dirty();
-                                        this.assert_val_input
-                                            .update(cx, |i, cx| i.set_value("", window, cx));
-                                    }
+                    btn_secondary(
+                        "assert-add-btn",
+                        crate::ui::tr(cx).requests().editor_assertions_add(),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        let target_txt =
+                            this.assert_target_input.read(cx).value().trim().to_owned();
+                        let val_txt = this.assert_val_input.read(cx).value().trim().to_owned();
+                        let assertion = build_assertion(
+                            is_ai,
+                            this.assert_target_kind,
+                            this.assert_op_idx,
+                            &target_txt,
+                            &val_txt,
+                            crate::ui::active_language(cx),
+                        );
+                        match assertion {
+                            Ok(a) => {
+                                if let Err(err) = a.validate() {
+                                    this.status_msg = Some((Tone::Danger, err.to_string()));
+                                } else if let Some(t) = this.active_req_mut() {
+                                    t.draft.assertions.push(a);
+                                    t.recompute_dirty();
+                                    this.assert_val_input
+                                        .update(cx, |i, cx| i.set_value("", window, cx));
                                 }
-                                Err(msg) => this.status_msg = Some((Tone::Danger, msg)),
                             }
-                            cx.notify();
-                        })),
+                            Err(msg) => this.status_msg = Some((Tone::Danger, msg)),
+                        }
+                        cx.notify();
+                    })),
                 ),
         );
 
@@ -183,11 +186,9 @@ pub fn render_assertions_tab(
                 .children(res.map(|r| {
                     badge(
                         if r.passed {
-                            if zh { "通过" } else { "Pass" }
-                        } else if zh {
-                            "未通过"
+                            crate::ui::tr(cx).requests().editor_assertions_pass()
                         } else {
-                            "Fail"
+                            crate::ui::tr(cx).requests().editor_assertions_fail()
                         },
                         if r.passed {
                             Tone::Success
@@ -224,6 +225,7 @@ fn build_assertion(
     op_idx: usize,
     target_txt: &str,
     val_txt: &str,
+    lang: pingdeck_desktop::core::model::settings::Language,
 ) -> Result<Assertion, String> {
     if is_ai {
         return Ok(match kind {
@@ -241,14 +243,21 @@ fn build_assertion(
                 value: val_txt.parse().unwrap_or(4096),
             },
             _ => {
-                let schema =
-                    serde_json::from_str(val_txt).map_err(|e| format!("JSON Schema 无效: {e}"))?;
+                let schema = serde_json::from_str(val_txt).map_err(|e| {
+                    crate::ui::Tr(lang)
+                        .requests()
+                        .editor_assertions_invalid_schema(e)
+                })?;
                 Assertion::AiJsonSchemaValid { schema }
             }
         });
     }
     if kind == 5 {
-        let schema = serde_json::from_str(val_txt).map_err(|e| format!("JSON Schema 无效: {e}"))?;
+        let schema = serde_json::from_str(val_txt).map_err(|e| {
+            crate::ui::Tr(lang)
+                .requests()
+                .editor_assertions_invalid_schema(e)
+        })?;
         return Ok(Assertion::JsonSchemaValid {
             schema,
             path: (!target_txt.is_empty()).then(|| target_txt.to_owned()),

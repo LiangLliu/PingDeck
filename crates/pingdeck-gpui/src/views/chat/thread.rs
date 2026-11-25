@@ -27,7 +27,7 @@ use super::trace::{render_live_turn, render_message_tool_traces};
 use super::types::ChatModal;
 use super::welcome::render_welcome_empty;
 
-pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
+pub fn render_messages(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let has_live = view.is_run_active()
         || !view.thread.streaming_text.is_empty()
@@ -44,7 +44,7 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         .px(px(16.0));
 
     if view.thread.messages.is_empty() && !has_live && !has_pending_user {
-        col = col.child(render_welcome_empty(zh, cx));
+        col = col.child(render_welcome_empty(cx));
     } else {
         let mut tool_results: HashMap<&str, (&[HubPart], bool)> = HashMap::new();
         for msg in &view.thread.messages {
@@ -69,7 +69,7 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         for msg in &view.thread.messages {
             match msg.role {
                 AgentRole::User => {
-                    col = col.child(render_user_message(view, msg, zh, cx));
+                    col = col.child(render_user_message(view, msg, cx));
                 }
                 AgentRole::Assistant => {
                     col = col.child(render_assistant_message(
@@ -77,13 +77,12 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
                         msg,
                         &tool_results,
                         &audit_map,
-                        zh,
                         cx,
                     ));
                 }
                 AgentRole::Tool => {}
                 AgentRole::Summary => {
-                    col = col.child(render_compaction_divider(zh, cx));
+                    col = col.child(render_compaction_divider(cx));
                 }
             }
         }
@@ -93,7 +92,7 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         }
 
         if has_live {
-            col = col.child(render_live_turn(view, zh, cx));
+            col = col.child(render_live_turn(view, cx));
         }
     }
 
@@ -121,15 +120,9 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
     let show_jump =
         max_scroll_y > 40.0 && (!view.stick_to_bottom || view.distance_from_bottom() > 48.0);
     let jump_label = if has_live {
-        if zh {
-            "跳到最新 ↓"
-        } else {
-            "Jump to latest ↓"
-        }
-    } else if zh {
-        "回到底部 ↓"
+        crate::ui::tr(cx).chat().thread_jump_to_latest()
     } else {
-        "Latest ↓"
+        crate::ui::tr(cx).chat().thread_latest()
     };
 
     div()
@@ -197,7 +190,6 @@ fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElemen
 fn render_user_message(
     view: &ChatView,
     msg: &AgentMessage,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -239,11 +231,11 @@ fn render_user_message(
                 .gap(px(2.0))
                 .child(
                     btn_icon(SharedString::from(format!("u-cp-{}", msg.id)), UiIcon::Copy)
-                        .tooltip(if zh { "复制" } else { "Copy" })
+                        .tooltip(crate::ui::tr(cx).common().copy())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let _ = clipboard::set_text(&txt_cp);
                             this.status_msg =
-                                Some((Tone::Success, if zh { "已复制" } else { "Copied" }.into()));
+                                Some((Tone::Success, crate::ui::tr(cx).common().copied().into()));
                             cx.notify();
                         })),
                 )
@@ -252,11 +244,7 @@ fn render_user_message(
                         SharedString::from(format!("u-ed-{}", msg.id)),
                         UiIcon::Pencil,
                     )
-                    .tooltip(if zh {
-                        "编辑并重发"
-                    } else {
-                        "Edit & rerun"
-                    })
+                    .tooltip(crate::ui::tr(cx).chat().thread_edit_rerun())
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.modal_textarea.update(cx, |s, cx| {
                             s.set_value(txt_ed.clone(), window, cx);
@@ -272,7 +260,7 @@ fn render_user_message(
                         SharedString::from(format!("u-br-{}", msg.id)),
                         UiIcon::Branch,
                     )
-                    .tooltip(if zh { "从此处分支" } else { "Branch here" })
+                    .tooltip(crate::ui::tr(cx).chat().thread_branch_here())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.branch_from_message(mid_br.clone(), cx);
                     })),
@@ -282,7 +270,7 @@ fn render_user_message(
                         SharedString::from(format!("u-dl-{}", msg.id)),
                         UiIcon::Trash,
                     )
-                    .tooltip(if zh { "删除消息" } else { "Delete" })
+                    .tooltip(crate::ui::tr(cx).chat().thread_delete_2())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.delete_message(mid_del.clone(), cx);
                     }))
@@ -295,7 +283,6 @@ fn render_assistant_message(
     msg: &AgentMessage,
     tool_results: &HashMap<&str, (&[HubPart], bool)>,
     audit_map: &HashMap<&str, &AgentToolCallRecord>,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -345,16 +332,17 @@ fn render_assistant_message(
                     .text_color(to_hsla(p.ink))
                     .child(SharedString::from(model.clone())),
             )
-            .children(
-                msg.meta
-                    .reasoning_effort
-                    .map(|eff| badge(format_effort_short(eff, zh), Tone::Accent, cx)),
-            )
+            .children(msg.meta.reasoning_effort.map(|eff| {
+                badge(
+                    format_effort_short(eff, crate::ui::active_language(cx)),
+                    Tone::Accent,
+                    cx,
+                )
+            }))
             .child(render_reasoning_header_chip(
                 &msg.id,
                 &r_info,
                 reason_open,
-                zh,
                 cx,
             )),
     );
@@ -369,24 +357,17 @@ fn render_assistant_message(
                 r_info.text,
                 r_info.duration_ms,
                 r_info.reasoning_tokens,
-                zh,
                 cx.listener(move |this, _, _, cx| this.toggle_reasoning(k_click.clone(), cx)),
                 cx,
             ));
         }
         ReasoningKind::Sealed => {
-            body = body.child(render_sealed_reasoning_card(
-                msg,
-                &r_info,
-                reason_open,
-                zh,
-                cx,
-            ));
+            body = body.child(render_sealed_reasoning_card(msg, &r_info, reason_open, cx));
         }
         ReasoningKind::NoneReturned => {
             if reason_open {
                 let pmeta = view.provider_meta_for_raw(raw_model);
-                body = body.child(render_no_reasoning_panel(view, msg, &model, pmeta, zh, cx));
+                body = body.child(render_no_reasoning_panel(view, msg, &model, pmeta, cx));
             }
         }
     }
@@ -397,7 +378,6 @@ fn render_assistant_message(
             &tool_calls,
             tool_results,
             audit_map,
-            zh,
             cx,
         ));
     }
@@ -435,12 +415,12 @@ fn render_assistant_message(
         .gap(px(4.0))
         .child(
             btn_icon(SharedString::from(format!("a-cp-{}", msg.id)), UiIcon::Copy)
-                .tooltip(if zh { "复制回复" } else { "Copy" })
+                .tooltip(crate::ui::tr(cx).chat().thread_copy_2())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let _ = clipboard::set_text(&joined_text);
                     this.status_msg = Some((
                         Tone::Success,
-                        if zh { "已复制回复" } else { "Copied" }.into(),
+                        crate::ui::tr(cx).chat().thread_copied_2().into(),
                     ));
                     cx.notify();
                 })),
@@ -450,7 +430,7 @@ fn render_assistant_message(
                 SharedString::from(format!("a-rt-{}", msg.id)),
                 UiIcon::Refresh,
             )
-            .tooltip(if zh { "重新生成" } else { "Regenerate" })
+            .tooltip(crate::ui::tr(cx).chat().thread_regenerate())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.retry_message(mid_retry.clone(), cx);
             }))
@@ -460,7 +440,7 @@ fn render_assistant_message(
                 SharedString::from(format!("a-br-{}", msg.id)),
                 UiIcon::Branch,
             )
-            .tooltip(if zh { "从此处分支" } else { "Branch" })
+            .tooltip(crate::ui::tr(cx).chat().thread_branch_2())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.branch_from_message(mid_br.clone(), cx);
             })),
@@ -470,7 +450,7 @@ fn render_assistant_message(
                 SharedString::from(format!("a-dl-{}", msg.id)),
                 UiIcon::Trash,
             )
-            .tooltip(if zh { "删除消息" } else { "Delete" })
+            .tooltip(crate::ui::tr(cx).chat().thread_delete_2())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.delete_message(mid_del.clone(), cx);
             }))
@@ -481,7 +461,6 @@ fn render_assistant_message(
         msg,
         view.thread.context_limit_tokens,
         view.thread.cost_currency.as_deref(),
-        zh,
         cx,
     ) {
         body = body.child(footer);
@@ -490,7 +469,7 @@ fn render_assistant_message(
     body
 }
 
-fn render_compaction_divider(zh: bool, cx: &gpui_kit::App) -> impl IntoElement {
+fn render_compaction_divider(cx: &gpui_kit::App) -> impl IntoElement {
     let p = palette(cx);
     h_row()
         .gap(px(10.0))
@@ -502,11 +481,7 @@ fn render_compaction_divider(zh: bool, cx: &gpui_kit::App) -> impl IntoElement {
                 .bg(to_hsla(p.line.composite_over(p.surface))),
         )
         .child(badge(
-            if zh {
-                "已压缩上下文摘要"
-            } else {
-                "Context compacted"
-            },
+            crate::ui::tr(cx).chat().thread_context_compacted(),
             Tone::Neutral,
             cx,
         ))

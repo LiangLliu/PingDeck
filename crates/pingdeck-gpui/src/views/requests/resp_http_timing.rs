@@ -12,7 +12,6 @@ use super::RequestsView;
 
 pub(super) fn render_timing_popover(
     resp: &ExecutionResult,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> Popover {
     let p = palette(cx);
@@ -72,11 +71,9 @@ pub(super) fn render_timing_popover(
                 .gap(px(5.0))
                 .p(px(4.0))
                 .child(section_heading(
-                    if zh {
-                        "阶段耗时拆解"
-                    } else {
-                        "Timing Breakdown"
-                    },
+                    crate::ui::tr(pop_cx)
+                        .exchange()
+                        .resp_http_timing_timing_breakdown(),
                     pop_cx,
                 ))
                 .child(timing_row("DNS", t.dns_ms, total, pp.ph_dns, pp.sunken))
@@ -93,18 +90,16 @@ pub(super) fn render_timing_popover(
                 ))
                 .child(timing_row("TLS", t.tls_ms, total, pp.ph_tls, pp.sunken))
                 .child(timing_row(
-                    if zh {
-                        "等待首包 (TTFB)"
-                    } else {
-                        "Wait (TTFB)"
-                    },
+                    crate::ui::tr(pop_cx)
+                        .exchange()
+                        .resp_http_timing_wait_ttfb(),
                     PhaseValue::Ms(wait),
                     total,
                     pp.ph_wait,
                     pp.sunken,
                 ))
                 .child(timing_row(
-                    if zh { "接收正文" } else { "Receive" },
+                    crate::ui::tr(pop_cx).exchange().resp_http_tabs_receive(),
                     PhaseValue::Ms(recv),
                     total,
                     pp.ph_recv,

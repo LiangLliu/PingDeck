@@ -4,14 +4,12 @@ use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::app::{
     llm_model_alias_save_impl, llm_model_catalog_user_delete_impl,
     llm_model_catalog_user_save_impl, llm_model_pricing_delete_impl, llm_model_pricing_save_impl,
-    settings_get_impl,
 };
 use pingdeck_desktop::core::model::model_catalog::{
     ModelAlias, ModelPricing, PricingMode, UserModelInput,
 };
-use pingdeck_desktop::core::model::settings::Language;
 
-use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
+use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::drawer::{CatalogDrawer, DrawerKind};
@@ -92,7 +90,6 @@ impl CatalogDrawer {
             return;
         }
         self.error_msg = None;
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
 
         match &self.kind {
             DrawerKind::ModelDetail { row, .. } => {
@@ -118,11 +115,9 @@ impl CatalogDrawer {
                                 Ok(_) => {
                                     this.editing_provider_override = None;
                                     this.load_detail(key_reload, cx);
-                                    let msg = if zh {
-                                        format!("已保存「{ovr_pname}」的专属覆盖价")
-                                    } else {
-                                        format!("Saved override for {ovr_pname}")
-                                    };
+                                    let msg = crate::ui::tr(cx)
+                                        .settings()
+                                        .drawer_save_saved_override_for(ovr_pname);
                                     this.parent.update(cx, |p, cx| {
                                         p.set_flash(Tone::Success, msg, cx);
                                         p.reload_all(cx);
@@ -174,11 +169,9 @@ impl CatalogDrawer {
                         this.busy = false;
                         match res {
                             Ok(_) => {
-                                let msg = if zh {
-                                    format!("已保存 {name} 的价格设置")
-                                } else {
-                                    format!("Saved pricing for {name}")
-                                };
+                                let msg = crate::ui::tr(cx)
+                                    .settings()
+                                    .drawer_save_saved_pricing_for(name);
                                 this.parent.update(cx, |p, cx| {
                                     p.set_flash(Tone::Success, msg, cx);
                                     p.reload_all(cx);
@@ -211,11 +204,9 @@ impl CatalogDrawer {
                         this.busy = false;
                         match res {
                             Ok(_) => {
-                                let msg = if zh {
-                                    format!("已添加自建模型 {label}")
-                                } else {
-                                    format!("Added custom model {label}")
-                                };
+                                let msg = crate::ui::tr(cx)
+                                    .settings()
+                                    .drawer_save_added_custom_model(label);
                                 this.parent.update(cx, |p, cx| {
                                     p.set_flash(Tone::Success, msg, cx);
                                     p.reload_all(cx);
@@ -248,12 +239,10 @@ impl CatalogDrawer {
 
                 if alias_key.is_none() && pricing.is_none() {
                     self.error_msg = Some(
-                        if zh {
-                            "请先选择一个要关联的目录模型，或切换到「自定义 / 按次」设定价格。"
-                        } else {
-                            "Pick a catalog model to match, or choose Custom / Per call pricing."
-                        }
-                        .into(),
+                        crate::ui::tr(cx)
+                            .settings()
+                            .drawer_save_pick_a_catalog_model_to()
+                            .into(),
                     );
                     cx.notify();
                     return;
@@ -286,11 +275,9 @@ impl CatalogDrawer {
                         this.busy = false;
                         match res {
                             Ok(()) => {
-                                let msg = if zh {
-                                    format!("已保存未收录模型 {label} 的关联与定价")
-                                } else {
-                                    format!("Saved match & pricing for {label}")
-                                };
+                                let msg = crate::ui::tr(cx)
+                                    .settings()
+                                    .drawer_save_saved_match_pricing_for(label);
                                 this.parent.update(cx, |p, cx| {
                                     p.set_flash(Tone::Success, msg, cx);
                                     p.reload_all(cx);
@@ -313,7 +300,6 @@ impl CatalogDrawer {
             DrawerKind::Unlisted { item } => (item.provider_id.clone(), item.model_id.clone()),
             DrawerKind::AddUserModel => return,
         };
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_model_pricing_delete_impl(state, &provider_id, &model_id),
@@ -323,11 +309,10 @@ impl CatalogDrawer {
                         this.parent.update(cx, |p, cx| {
                             p.set_flash(
                                 Tone::Success,
-                                if zh {
-                                    "已恢复默认定价".into()
-                                } else {
-                                    "Reset pricing to default".into()
-                                },
+                                crate::ui::tr(cx)
+                                    .settings()
+                                    .drawer_save_reset_pricing_to_default()
+                                    .into(),
                                 cx,
                             );
                             p.reload_all(cx);
@@ -376,7 +361,6 @@ impl CatalogDrawer {
         };
         let fam = row.family.clone();
         let mid = row.model_id.clone();
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_model_catalog_user_delete_impl(state, &fam, &mid),
@@ -386,11 +370,10 @@ impl CatalogDrawer {
                         this.parent.update(cx, |p, cx| {
                             p.set_flash(
                                 Tone::Success,
-                                if zh {
-                                    "已删除自建模型".into()
-                                } else {
-                                    "Deleted custom model".into()
-                                },
+                                crate::ui::tr(cx)
+                                    .settings()
+                                    .drawer_save_deleted_custom_model()
+                                    .into(),
                                 cx,
                             );
                             p.reload_all(cx);

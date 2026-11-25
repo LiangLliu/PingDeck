@@ -14,7 +14,6 @@ use super::model::ScriptSubTab;
 
 pub fn render_scripts_tab(
     view: &RequestsView,
-    zh: bool,
     is_ai: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::Div {
@@ -32,16 +31,16 @@ pub fn render_scripts_tab(
 
     let seg = tab_bar_segmented("req-script-phase-seg")
         .selected_index(usize::from(sub == ScriptSubTab::Post))
-        .child(tab_item(if zh {
-            "请求前脚本 (Pre)"
-        } else {
-            "Pre-request"
-        }))
-        .child(tab_item(if zh {
-            "响应后脚本 (Post)"
-        } else {
-            "Post-response"
-        }))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .requests()
+                .editor_scripts_docs_pre_request(),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .requests()
+                .editor_scripts_docs_post_response(),
+        ))
         .on_click(move |idx, _, cx| {
             ent.update(cx, |this, cx| {
                 if let Some(t) = this.active_req_mut() {
@@ -118,11 +117,9 @@ pub fn render_scripts_tab(
             .join(", ");
         col = col.child(alert_banner(
             Tone::Warning,
-            if zh {
-                format!("沙箱不支持以下接口：{apis}")
-            } else {
-                format!("Unsupported in sandbox: {apis}")
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_scripts_docs_unsupported_in_sandbox(apis),
             None,
             cx,
         ));
@@ -143,7 +140,6 @@ pub fn render_scripts_tab(
 
 pub(super) fn render_docs_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -160,11 +156,9 @@ pub(super) fn render_docs_tab(
         .gap(px(10.0))
         .overflow_y_scrollbar()
         .child(section_header(
-            if zh {
-                "请求说明（Markdown）"
-            } else {
-                "Description (Markdown)"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_scripts_docs_description_markdown(),
             Some(
                 h_row()
                     .gap(px(6.0))
@@ -172,11 +166,9 @@ pub(super) fn render_docs_tab(
                         btn_ghost(
                             "docs-toggle-prev",
                             if preview {
-                                if zh { "编辑" } else { "Edit" }
-                            } else if zh {
-                                "预览"
+                                crate::ui::tr(cx).requests().editor_docs_edit()
                             } else {
-                                "Preview"
+                                crate::ui::tr(cx).requests().editor_scripts_docs_preview()
                             },
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -190,11 +182,9 @@ pub(super) fn render_docs_tab(
                     .children(has_resp.then(|| {
                         btn_secondary(
                             "docs-save-ex",
-                            if zh {
-                                "存当前响应为示例"
-                            } else {
-                                "Save response as example"
-                            },
+                            crate::ui::tr(cx)
+                                .requests()
+                                .editor_scripts_docs_save_response_as_example(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.save_current_response_as_example(cx);
@@ -209,34 +199,36 @@ pub(super) fn render_docs_tab(
         let md = view.docs_input.read(cx).value().to_string();
         root = root.child(card(cx).p(px(12.0)).child(markdown_view(
             "req-docs-md",
-            if md.is_empty() { "_无说明_" } else { &md },
+            if md.is_empty() {
+                crate::ui::tr(cx)
+                    .requests()
+                    .editor_scripts_docs_no_docs_md()
+            } else {
+                &md
+            },
         )));
     } else {
         root = root.child(div().h(px(130.0)).child(multiline_input(&view.docs_input)));
     }
 
     root = root.child(section_header(
-        if zh {
-            format!("已保存响应示例 ({}/20)", tab.draft.examples.len())
-        } else {
-            format!("Saved Response Examples ({}/20)", tab.draft.examples.len())
-        },
+        crate::ui::tr(cx)
+            .requests()
+            .editor_scripts_docs_saved_response_examples_20(tab.draft.examples.len()),
         None,
         cx,
     ));
 
     if tab.draft.examples.is_empty() {
         root = root.child(empty_inline(
-            if zh {
-                "暂无响应示例"
-            } else {
-                "No saved examples yet"
-            },
-            Some(SharedString::from(if zh {
-                "从 Postman / OpenAPI 导入的示例，或发送后手动保存的响应会列在这里。"
-            } else {
-                "Examples imported from Postman/OpenAPI or saved from a live response appear here."
-            })),
+            crate::ui::tr(cx)
+                .requests()
+                .editor_scripts_docs_no_saved_examples_yet(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .editor_scripts_docs_examples_imported_from_postman_openapi(),
+            )),
             None,
             cx,
         ));
@@ -276,11 +268,9 @@ pub(super) fn render_docs_tab(
                                 btn_ghost(
                                     SharedString::from(format!("ex-exp-{i}")),
                                     if expanded {
-                                        if zh { "收起" } else { "Collapse" }
-                                    } else if zh {
-                                        "展开详情"
+                                        crate::ui::tr(cx).requests().editor_scripts_docs_collapse()
                                     } else {
-                                        "Expand"
+                                        crate::ui::tr(cx).requests().editor_scripts_docs_expand()
                                     },
                                 )
                                 .on_click(cx.listener(

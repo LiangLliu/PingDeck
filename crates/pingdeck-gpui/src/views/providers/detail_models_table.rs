@@ -27,7 +27,6 @@ pub(super) fn render_models_table(
     latest_probe: &HashMap<&str, &ProbeResult>,
     total_cnt: usize,
     shown_limit: usize,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> Div {
     let p = palette(cx);
@@ -76,50 +75,58 @@ pub(super) fn render_models_table(
                 ),
         )
         .child(
-            div()
-                .flex_1()
-                .min_w(px(200.0))
-                .child(if zh { "模型 ID" } else { "Model ID" }),
+            div().flex_1().min_w(px(200.0)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_models_table_model_id(),
+            ),
         )
-        .child(div().w(px(105.0)).child(if zh {
-            "上下文 / 输出"
-        } else {
-            "Context / Out"
-        }))
-        .child(div().w(px(110.0)).flex().justify_end().child(if zh {
-            "生效价 / 1M"
-        } else {
-            "Price / 1M"
-        }))
-        .child(div().w(px(110.0)).flex().justify_end().child(if zh {
-            "上次测试"
-        } else {
-            "Last test"
-        }))
-        .child(div().w(px(110.0)).flex().justify_end().child(if zh {
-            "启用 / 操作"
-        } else {
-            "Enabled"
-        }));
+        .child(
+            div().w(px(105.0)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_models_table_context_out(),
+            ),
+        )
+        .child(
+            div().w(px(110.0)).flex().justify_end().child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_models_table_price_1m(),
+            ),
+        )
+        .child(
+            div()
+                .w(px(110.0))
+                .flex()
+                .justify_end()
+                .child(crate::ui::tr(cx).providers().models_col_last()),
+        )
+        .child(
+            div().w(px(110.0)).flex().justify_end().child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_models_table_enabled(),
+            ),
+        );
 
     let mut tbody = v_col();
     if filtered.is_empty() {
         tbody = tbody.child(
-            v_col()
-                .items_center()
-                .gap(px(6.0))
-                .py(px(28.0))
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if total_cnt == 0 {
-                    if zh {
-                        "暂无模型。点击「刷新模型」拉取服务商列表，或点击「+ 添加模型」手动录入。"
+            v_col().items_center().gap(px(6.0)).py(px(28.0)).child(
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(if total_cnt == 0 {
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_models_table_no_models_yet_click_refresh()
                     } else {
-                        "No models yet. Click Refresh models or + Add model."
-                    }
-                } else if zh {
-                    "没有符合当前筛选条件的模型。"
-                } else {
-                    "No models match the current filter."
-                })),
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_models_table_no_models_match_the_current()
+                    }),
+            ),
         );
     } else {
         for (idx, mv) in filtered.iter().take(shown_limit).enumerate() {
@@ -142,7 +149,8 @@ pub(super) fn render_models_table(
                 (Some(c), None) => format_tokens(c),
                 _ => "—".into(),
             };
-            let price_str = format_price_state(mv.effective_price.as_ref(), zh);
+            let price_str =
+                format_price_state(mv.effective_price.as_ref(), crate::ui::active_language(cx));
 
             let probe_badge = latest_probe.get(m.model_id.as_str()).map(|pr| {
                 let st = if pr.ok {
@@ -156,7 +164,7 @@ pub(super) fn render_models_table(
                         _ => ProbeStatus::InvalidResponse,
                     }
                 };
-                let (lbl, tone) = format_probe_status(st, zh);
+                let (lbl, tone) = format_probe_status(st, crate::ui::active_language(cx));
                 let text = if pr.ok {
                     pr.ttft_ms
                         .or(pr.latency_ms)
@@ -169,23 +177,30 @@ pub(super) fn render_models_table(
 
             let mut tags = h_row().gap(px(4.0)).flex_wrap();
             if is_new {
-                tags = tags.child(badge(if zh { "新增" } else { "New" }, Tone::Accent, cx));
+                tags = tags.child(badge(
+                    crate::ui::tr(cx).providers().models_filter_new(),
+                    Tone::Accent,
+                    cx,
+                ));
             }
             if is_removed {
                 tags = tags.child(badge(
-                    if zh { "已移除" } else { "Removed" },
+                    crate::ui::tr(cx).providers().prov_detail_models_removed(),
                     Tone::Warning,
                     cx,
                 ));
             }
             if m.tools {
-                tags = tags.child(cap_tag(if zh { "工具" } else { "Tools" }, cx));
+                tags = tags.child(cap_tag(crate::ui::tr(cx).common().cap_tools(), cx));
             }
             if m.capabilities.reasoning.supported {
-                tags = tags.child(cap_tag(if zh { "推理" } else { "Reason" }, cx));
+                tags = tags.child(cap_tag(
+                    crate::ui::tr(cx).providers().prov_bench_table_reason(),
+                    cx,
+                ));
             }
             if m.vision || mv.inputs.iter().any(|i| i.modality == InputModality::Image) {
-                tags = tags.child(cap_tag(if zh { "视觉" } else { "Vision" }, cx));
+                tags = tags.child(cap_tag(crate::ui::tr(cx).common().cap_vision(), cx));
             }
             if mv.inputs.iter().any(|i| i.modality == InputModality::Pdf) {
                 tags = tags.child(cap_tag("PDF", cx));
@@ -258,7 +273,11 @@ pub(super) fn render_models_table(
                             None => div()
                                 .text_size(px(11.0))
                                 .text_color(to_hsla(p.faint))
-                                .child(if zh { "未测试" } else { "Untested" }),
+                                .child(
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_detail_models_table_untested(),
+                                ),
                         }),
                 )
                 .child(
@@ -275,7 +294,6 @@ pub(super) fn render_models_table(
                                             pid_tog.clone(),
                                             mid_tog.clone(),
                                             next_en,
-                                            zh,
                                             cx,
                                         );
                                     }
@@ -288,11 +306,10 @@ pub(super) fn render_models_table(
                                         pingdeck_desktop::services::clipboard::set_text(&mid_copy);
                                     this.status_msg = Some((
                                         Tone::Success,
-                                        if zh {
-                                            "已复制模型 ID".into()
-                                        } else {
-                                            "Model ID copied".into()
-                                        },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_detail_models_table_model_id_copied()
+                                            .into(),
                                     ));
                                     cx.notify();
                                 })),
@@ -300,12 +317,7 @@ pub(super) fn render_models_table(
                         .child(
                             btn_icon(SharedString::from(format!("pm-del-{mid}")), UiIcon::Trash)
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.delete_single_model(
-                                        pid_del.clone(),
-                                        mid_del.clone(),
-                                        zh,
-                                        cx,
-                                    );
+                                    this.delete_single_model(pid_del.clone(), mid_del.clone(), cx);
                                 })),
                         ),
                 );
@@ -329,11 +341,9 @@ pub(super) fn render_models_table(
                     .child(
                         btn_secondary(
                             "pm-load-more",
-                            if zh {
-                                format!("再显示 80 个（剩余 {rem} 个）")
-                            } else {
-                                format!("Show 80 more ({rem} left)")
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_models_table_show_80_more_left(rem),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.models_page_limit += 80;

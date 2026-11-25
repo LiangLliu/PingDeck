@@ -14,11 +14,7 @@ use crate::ui::{
 use super::ChatView;
 use super::types::ChatHandoff;
 
-pub(super) fn render_context_tab(
-    view: &ChatView,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> gpui_kit::Div {
+pub(super) fn render_context_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
     let used = view.thread.context_used_tokens;
     let limit = view.thread.context_limit_tokens;
@@ -31,11 +27,7 @@ pub(super) fn render_context_tab(
             v_col()
                 .gap(px(6.0))
                 .child(section_heading(
-                    if zh {
-                        "上下文窗口"
-                    } else {
-                        "Context window"
-                    },
+                    crate::ui::tr(cx).chat().inspector_tabs_context_window(),
                     cx,
                 ))
                 .child(
@@ -55,11 +47,9 @@ pub(super) fn render_context_tab(
                 .child(
                     btn_secondary(
                         "chat-ctx-compact",
-                        if zh {
-                            "立即压缩上下文"
-                        } else {
-                            "Compact context now"
-                        },
+                        crate::ui::tr(cx)
+                            .chat()
+                            .inspector_tabs_compact_context_now(),
                     )
                     .disabled(!can_compact)
                     .on_click(cx.listener(|this, _, _, cx| this.compact_context(cx))),
@@ -76,26 +66,26 @@ pub(super) fn render_context_tab(
                 v_col()
                     .gap(px(5.0))
                     .child(section_heading(
-                        if zh { "累计消耗" } else { "Session totals" },
+                        crate::ui::tr(cx).chat().inspector_tabs_session_totals(),
                         cx,
                     ))
                     .child(metric_line(
-                        if zh { "输入 Tokens" } else { "Input tokens" },
+                        crate::ui::tr(cx).chat().inspector_tabs_input_tokens(),
                         super::metrics::format_tokens_int(in_tok),
                         cx,
                     ))
                     .child(metric_line(
-                        if zh { "输出 Tokens" } else { "Output tokens" },
+                        crate::ui::tr(cx).chat().inspector_tabs_output_tokens(),
                         super::metrics::format_tokens_int(out_tok),
                         cx,
                     ))
                     .child(metric_line(
-                        if zh { "缓存命中" } else { "Cached input" },
+                        crate::ui::tr(cx).chat().inspector_tabs_cached_input(),
                         super::metrics::format_tokens_int(cached),
                         cx,
                     ))
                     .child(metric_line(
-                        if zh { "估算费用" } else { "Estimated cost" },
+                        crate::ui::tr(cx).chat().inspector_tabs_estimated_cost(),
                         format!("{currency} {cost_usd:.4}"),
                         cx,
                     )),
@@ -104,7 +94,10 @@ pub(super) fn render_context_tab(
     }
 
     if !view.thread.notices.is_empty() {
-        col = col.child(section_heading(if zh { "系统提示" } else { "Notices" }, cx));
+        col = col.child(section_heading(
+            crate::ui::tr(cx).chat().inspector_tabs_notices(),
+            cx,
+        ));
         for n in &view.thread.notices {
             col = col.child(
                 div()
@@ -117,11 +110,7 @@ pub(super) fn render_context_tab(
     col
 }
 
-pub(super) fn render_options_tab(
-    view: &ChatView,
-    zh: bool,
-    cx: &mut Context<ChatView>,
-) -> gpui_kit::Div {
+pub(super) fn render_options_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
     let web_on = view.session.as_ref().is_some_and(|s| s.web_enabled);
     let pinned = view
@@ -137,22 +126,14 @@ pub(super) fn render_options_tab(
     v_col()
         .gap(px(10.0))
         .child(field_row(
-            if zh {
-                "联网搜索与抓取"
-            } else {
-                "Web access"
-            },
+            crate::ui::tr(cx).chat().inspector_tabs_web_access(),
             None,
             toggle_switch("chat-opt-web", web_on)
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_web_enabled(cx))),
             cx,
         ))
         .child(field_row(
-            if zh {
-                "置顶本对话"
-            } else {
-                "Pin conversation"
-            },
+            crate::ui::tr(cx).chat().inspector_tabs_pin_conversation(),
             None,
             toggle_switch("chat-opt-pin", pinned)
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
@@ -166,11 +147,7 @@ pub(super) fn render_options_tab(
                         h_row()
                             .justify_between()
                             .child(section_heading(
-                                if zh {
-                                    "OS 沙箱与权限"
-                                } else {
-                                    "OS Sandbox"
-                                },
+                                crate::ui::tr(cx).chat().inspector_tabs_os_sandbox(),
                                 cx,
                             ))
                             .child(badge(format!("{:?}", sb.tier), Tone::Accent, cx)),
@@ -184,11 +161,9 @@ pub(super) fn render_options_tab(
                     .child(
                         btn_ghost(
                             "chat-opt-perm-link",
-                            if zh {
-                                "查看 6 层权限顺序 ↗"
-                            } else {
-                                "View 6-layer permissions ↗"
-                            },
+                            crate::ui::tr(cx)
+                                .chat()
+                                .inspector_tabs_view_6_layer_permissions(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.pending_handoff.set(Some(ChatHandoff::OpenSettings(
@@ -203,18 +178,17 @@ pub(super) fn render_options_tab(
             v_col()
                 .gap(px(6.0))
                 .child(section_heading(
-                    if zh {
-                        "本对话附加指令"
-                    } else {
-                        "Chat instructions"
-                    },
+                    crate::ui::tr(cx).chat().inspector_tabs_chat_instructions(),
                     cx,
                 ))
                 .child(multiline_input(&view.instructions_input))
                 .child(
                     h_row().justify_end().child(
-                        btn_primary("chat-opt-save-inst", if zh { "保存指令" } else { "Save" })
-                            .on_click(cx.listener(|this, _, _, cx| this.save_instructions(cx))),
+                        btn_primary(
+                            "chat-opt-save-inst",
+                            crate::ui::tr(cx).chat().inspector_tabs_save(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.save_instructions(cx))),
                     ),
                 ),
         )
@@ -226,11 +200,9 @@ pub(super) fn render_options_tab(
                     btn_secondary(
                         "chat-opt-arch",
                         if archived {
-                            if zh { "取消归档" } else { "Unarchive" }
-                        } else if zh {
-                            "归档"
+                            crate::ui::tr(cx).chat().pane_menu_unarchive()
                         } else {
-                            "Archive"
+                            crate::ui::tr(cx).chat().pane_menu_archive()
                         },
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -244,8 +216,11 @@ pub(super) fn render_options_tab(
                     })),
                 )
                 .child(
-                    btn_danger("chat-opt-del", if zh { "删除对话" } else { "Delete" })
-                        .on_click(cx.listener(|this, _, _, cx| this.request_delete_current(cx))),
+                    btn_danger(
+                        "chat-opt-del",
+                        crate::ui::tr(cx).chat().inspector_tabs_delete(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.request_delete_current(cx))),
                 ),
         )
 }

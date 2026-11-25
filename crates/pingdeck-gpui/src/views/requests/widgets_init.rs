@@ -27,17 +27,19 @@ impl RequestsView {
                 })
             };
 
-        let search_input = mk_in("筛选请求 / Filter requests…", window, cx);
-        let name_input = mk_in("请求名称 / Request name", window, cx);
+        let r = crate::ui::tr(cx).requests();
+        let sh = crate::ui::tr(cx).shared();
+        let search_input = mk_in(r.ph_search(), window, cx);
+        let name_input = mk_in(r.ph_name(), window, cx);
         let url_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("https://api.example.com/v1/resource  ({{base_url}})")
                 .default_value("https://httpbin.org/get")
         });
-        let kv_key_input = mk_in("键 / Key", window, cx);
-        let kv_val_input = mk_in("值 / Value", window, cx);
-        let kv_desc_input = mk_in("说明 / Description", window, cx);
-        let kv_file_input = mk_in("文件路径（可选）/ File path", window, cx);
+        let kv_key_input = mk_in(sh.key(), window, cx);
+        let kv_val_input = mk_in(sh.value(), window, cx);
+        let kv_desc_input = mk_in(sh.description(), window, cx);
+        let kv_file_input = mk_in(r.ph_kv_file(), window, cx);
         let auth_f1 = mk_in("Token / Username / Key / Access Key", window, cx);
         let auth_f2 = cx.new(|cx| {
             InputState::new(window, cx)
@@ -66,16 +68,16 @@ impl RequestsView {
         );
         let docs_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("Markdown 接口文档说明…")
+                .placeholder(r.ph_docs())
                 .rows(6)
         });
         let net_timeout_input = mk_in("30000", window, cx);
-        let net_total_timeout_input = mk_in("不限 / Off", window, cx);
+        let net_total_timeout_input = mk_in(r.ph_net_off(), window, cx);
         let net_retry_input = mk_in("0", window, cx);
         let net_max_redir_input = mk_in("10", window, cx);
         let net_proxy_input = mk_in("http://127.0.0.1:7890", window, cx);
         let assert_target_input = mk_in("$.data[0].id / Content-Type", window, cx);
-        let assert_val_input = mk_in("期望值 / Expected", window, cx);
+        let assert_val_input = mk_in(r.ph_assert_val(), window, cx);
         let oauth_var_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("oauth_token")
@@ -86,7 +88,7 @@ impl RequestsView {
         let ai_custom_model_input = mk_in("gpt-4o-mini", window, cx);
         let ai_msg_new_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("输入消息内容，点击「+ 添加消息」追加到对话列表…")
+                .placeholder(r.ph_ai_msg())
                 .rows(2)
         });
         let ai_temp_input = mk_in("0.2", window, cx);
@@ -95,13 +97,8 @@ impl RequestsView {
         let ai_tools_editor = mk_ed("json", "", window, cx);
         let ai_raw_editor = mk_ed("json", "", window, cx);
 
-        let response_editor = mk_ed(
-            "json",
-            "// 发送请求后在此查看实时响应 / Send a request to inspect the response",
-            window,
-            cx,
-        );
-        let resp_filter_input = mk_in("JSONPath（如 $.data[0].id）或筛选关键字…", window, cx);
+        let response_editor = mk_ed("json", r.ph_resp_init(), window, cx);
+        let resp_filter_input = mk_in(r.ph_resp_filter(), window, cx);
 
         let runner_iter_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -113,22 +110,22 @@ impl RequestsView {
                 .placeholder("0")
                 .default_value("0")
         });
-        let container_name_input = mk_in("名称 / Name", window, cx);
+        let container_name_input = mk_in(sh.name(), window, cx);
         let container_desc_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("集合或文件夹说明（Markdown）…")
+                .placeholder(r.ph_container_desc())
                 .rows(4)
         });
-        let container_var_key = mk_in("变量名 / Key", window, cx);
-        let container_var_val = mk_in("变量值 / Value", window, cx);
+        let container_var_key = mk_in(r.ph_var_key(), window, cx);
+        let container_var_val = mk_in(r.ph_var_val(), window, cx);
         let container_pre_editor = mk_ed("javascript", "", window, cx);
         let container_post_editor = mk_ed("javascript", "", window, cx);
 
         let snippet_editor = mk_ed("bash", "", window, cx);
-        let modal_name_input = mk_in("输入名称…", window, cx);
+        let modal_name_input = mk_in(r.ph_modal_name(), window, cx);
         let modal_text_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("粘贴 cURL 命令或 Postman / OpenAPI / HAR JSON…")
+                .placeholder(r.ph_modal_import())
                 .rows(8)
         });
 

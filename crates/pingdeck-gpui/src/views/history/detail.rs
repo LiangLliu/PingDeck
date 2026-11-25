@@ -18,23 +18,23 @@ use super::state::{HistoryDetailTab, HistoryView};
 
 pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
 
     let mut top_banners = v_col().w_full().gap(px(6.0));
     if let Some((_, count)) = &view.last_undo {
         top_banners = top_banners.child(
             div().px(px(12.0)).pt(px(8.0)).child(alert_banner(
                 Tone::Warning,
-                if zh {
-                    format!("已删除 {count} 条历史记录（60 秒内可撤销）")
-                } else {
-                    format!("Deleted {count} history entry (undo available for 60s)")
-                },
+                crate::ui::tr(cx)
+                    .history()
+                    .detail_deleted_history_entry_undo_available(count),
                 Some(
-                    btn_secondary("hist-undo-btn", view.t("撤销删除", "Undo"))
-                        .icon(icon_xs(UiIcon::RotateCcw))
-                        .on_click(cx.listener(|this, _, _, cx| this.undo_delete(cx)))
-                        .into_any_element(),
+                    btn_secondary(
+                        "hist-undo-btn",
+                        crate::ui::Tr(view.lang).history().detail_undo(),
+                    )
+                    .icon(icon_xs(UiIcon::RotateCcw))
+                    .on_click(cx.listener(|this, _, _, cx| this.undo_delete(cx)))
+                    .into_any_element(),
                 ),
                 cx,
             )),
@@ -55,16 +55,16 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
     if let Some(dropped) = view.mock_dropped
         && dropped > 0
     {
-        top_banners = top_banners.child(div().px(px(12.0)).pt(px(6.0)).child(alert_banner(
-            Tone::Warning,
-            if zh {
-                format!("Mock 历史写入队列满时丢弃了 {dropped} 条高频命中记录。")
-            } else {
-                format!("{dropped} mock hit(s) were dropped while the history queue was full.")
-            },
-            None,
-            cx,
-        )));
+        top_banners = top_banners.child(
+            div().px(px(12.0)).pt(px(6.0)).child(alert_banner(
+                Tone::Warning,
+                crate::ui::tr(cx)
+                    .history()
+                    .detail_mock_hit_s_were_dropped(dropped),
+                None,
+                cx,
+            )),
+        );
     }
 
     let Some(entry) = view.active_entry().cloned() else {
@@ -74,11 +74,12 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
             .child(
                 div().flex_1().min_h_0().child(empty_state(
                     UiIcon::History,
-                    view.t("选择一条历史记录", "Select a History Entry"),
-                    view.t(
-                        "查看脱敏后的响应正文、响应头、实发请求、请求快照、阶段耗时与校验结果，或一键回到请求模块重放。",
-                        "Inspect response body, headers, wire request, snapshot, timing waterfall, and checks, or replay in Requests.",
-                    ),
+                    crate::ui::Tr(view.lang)
+                        .history()
+                        .detail_select_a_history_entry(),
+                    crate::ui::Tr(view.lang)
+                        .history()
+                        .detail_inspect_response_body_headers_wire(),
                     cx,
                 )),
             )
@@ -97,11 +98,9 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
         )
     } else if checks_failed {
         (
-            if zh {
-                format!("{} · 断言失败", entry.status_code)
-            } else {
-                format!("{} · Checks Failed", entry.status_code)
-            },
+            crate::ui::tr(cx)
+                .history()
+                .detail_checks_failed(entry.status_code),
             Tone::Danger,
         )
     } else {
@@ -166,7 +165,7 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
                             (!entry.protocol.is_empty())
                                 .then(|| meta_pill(entry.protocol.clone(), cx)),
                         )
-                        .child(meta_pill(source_label(entry.source, zh), cx))
+                        .child(meta_pill(source_label(entry.source, view.lang), cx))
                         .children(
                             (!entry.source_name.is_empty())
                                 .then(|| meta_pill(entry.source_name.clone(), cx)),
@@ -193,18 +192,24 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
                 .gap(px(6.0))
                 .flex_shrink_0()
                 .child(
-                    btn_primary("hist-open-req", view.t("在请求中打开", "Open in Requests"))
-                        .icon(icon_xs(UiIcon::Send))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.open_in_requests(&entry_open, cx);
-                        })),
+                    btn_primary(
+                        "hist-open-req",
+                        crate::ui::Tr(view.lang).history().toast_open(),
+                    )
+                    .icon(icon_xs(UiIcon::Send))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_in_requests(&entry_open, cx);
+                    })),
                 )
                 .child(
-                    btn_secondary("hist-ask-agent", view.t("问 Agent", "Ask Agent"))
-                        .icon(icon_xs(UiIcon::Sparkles))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.ask_agent(&entry_agent, cx);
-                        })),
+                    btn_secondary(
+                        "hist-ask-agent",
+                        crate::ui::Tr(view.lang).history().detail_ask_agent(),
+                    )
+                    .icon(icon_xs(UiIcon::Sparkles))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.ask_agent(&entry_agent, cx);
+                    })),
                 )
                 .child(
                     btn_ghost("hist-single-har", "HAR")
@@ -215,7 +220,7 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
                 )
                 .child(
                     btn_icon("hist-del-one", UiIcon::Trash)
-                        .tooltip(view.t("删除此记录", "Delete entry"))
+                        .tooltip(crate::ui::Tr(view.lang).history().detail_delete_entry())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.delete_entry(eid_del.clone(), cx);
                         })),
@@ -230,22 +235,26 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
         }));
     for tab in HistoryDetailTab::ALL {
         let lbl = match tab {
-            HistoryDetailTab::Headers if !entry.response_headers.is_empty() => SharedString::from(
-                format!("{} ({})", tab.label(zh), entry.response_headers.len()),
-            ),
+            HistoryDetailTab::Headers if !entry.response_headers.is_empty() => {
+                SharedString::from(format!(
+                    "{} ({})",
+                    tab.label(view.lang),
+                    entry.response_headers.len()
+                ))
+            }
             HistoryDetailTab::Checks => {
                 if let Some(cs) = &entry.check_summary {
                     SharedString::from(format!(
                         "{} ({}/{})",
-                        tab.label(zh),
+                        tab.label(view.lang),
                         cs.passed,
                         cs.passed + cs.failed
                     ))
                 } else {
-                    SharedString::from(tab.label(zh))
+                    SharedString::from(tab.label(view.lang))
                 }
             }
-            _ => SharedString::from(tab.label(zh)),
+            _ => SharedString::from(tab.label(view.lang)),
         };
         tabs = tabs.child(tab_item(lbl));
     }
@@ -257,7 +266,7 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
         .child(top_banners)
         .child(subtab_strip(
             tabs,
-            Some(meta_pill(format_timestamp(&entry.executed_at, zh), cx).into_any_element()),
+            Some(meta_pill(format_timestamp(&entry.executed_at, view.lang), cx).into_any_element()),
             cx,
         ))
         .child(
@@ -280,9 +289,12 @@ pub fn format_bytes(bytes: usize) -> String {
     }
 }
 
-pub fn format_timestamp(raw: &str, zh: bool) -> String {
+pub fn format_timestamp(
+    raw: &str,
+    lang: pingdeck_desktop::core::model::settings::Language,
+) -> String {
     if let Ok(ms) = raw.trim().parse::<i64>() {
-        return format_smart_timestamp(ms, current_time_ms() as i64, zh);
+        return format_smart_timestamp(ms, current_time_ms() as i64, lang);
     }
     raw.to_owned()
 }

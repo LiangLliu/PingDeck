@@ -10,11 +10,13 @@ use gpui_kit::{
     px,
 };
 use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::i18n::tr as tr_lang;
 use pingdeck_desktop::state::{PaletteAction, PaletteCategory, PaletteDynamicItems, PaletteEngine};
 
 use crate::ui::{
-    InputEvent, InputState, ScrollableElement as _, Tone, UiIcon, badge, card, h_row, icon,
-    kbd_chip, list_row, method_badge, palette, section_heading, text_input, to_hsla, v_col,
+    InputEvent, InputState, ScrollableElement as _, Tone, UiIcon, active_language, badge, card,
+    h_row, icon, kbd_chip, list_row, method_badge, palette, section_heading, text_input, to_hsla,
+    tr, v_col,
 };
 
 pub struct CommandPaletteView {
@@ -30,9 +32,9 @@ pub struct CommandPaletteView {
 
 impl CommandPaletteView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("搜索模块、请求、对话、服务商、设置、命令…")
-        });
+        let initial_lang = active_language(cx);
+        let init_ph = tr(cx).shell().palette_placeholder_init();
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder(init_ph));
         let sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| match ev {
             InputEvent::Change => {
                 this.selected_idx = 0;
@@ -50,7 +52,7 @@ impl CommandPaletteView {
             selected_idx: 0,
             pending_action: None,
             dismissed: Cell::new(false),
-            lang: Language::ZhCn,
+            lang: initial_lang,
             _subscriptions: vec![sub],
         }
     }
@@ -72,11 +74,7 @@ impl CommandPaletteView {
         self.selected_idx = 0;
         self.pending_action = None;
         self.dismissed.set(false);
-        let placeholder = if lang == Language::ZhCn {
-            "搜索模块、请求、对话、Mock、流程、服务商、设置…"
-        } else {
-            "Search modules, requests, chats, mocks, flows, providers, settings…"
-        };
+        let placeholder = tr_lang(lang).shell().palette_placeholder();
         self.search_input.update(cx, |input, cx| {
             input.set_placeholder(placeholder, window, cx);
             input.set_value("", window, cx);
@@ -127,7 +125,8 @@ impl CommandPaletteView {
 impl Render for CommandPaletteView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx);
-        let zh = self.lang == Language::ZhCn;
+        let sh = tr_lang(self.lang).shell();
+        let gate_badge = sh.palette_badge_gate();
         let query = self.search_input.read(cx).value().to_string();
         let matches = self.engine.search(&query, &self.frecency, 24);
         let clamped_idx = self.selected_idx.min(matches.len().saturating_sub(1));
@@ -140,11 +139,7 @@ impl Render for CommandPaletteView {
                     .py(px(24.0))
                     .text_xs()
                     .text_color(to_hsla(p.muted))
-                    .child(if zh {
-                        "没有匹配的命令、实体或页面"
-                    } else {
-                        "No matching commands, items, or views"
-                    }),
+                    .child(sh.palette_empty()),
             );
         } else {
             let mut last_cat: Option<PaletteCategory> = None;
@@ -156,7 +151,7 @@ impl Render for CommandPaletteView {
                             .px(px(8.0))
                             .pt(if idx == 0 { px(2.0) } else { px(8.0) })
                             .pb(px(2.0))
-                            .child(section_heading(item.category.label(zh), cx)),
+                            .child(section_heading(item.category.label(self.lang), cx)),
                     );
                 }
                 let id = item.id.clone();
@@ -168,11 +163,14 @@ impl Render for CommandPaletteView {
                     ) {
                         method_badge(lbl, cx).into_any_element()
                     } else {
-                        let tone = match lbl {
-                            "LIVE" => Tone::Success,
-                            "GATE" | "待批" => Tone::Warning,
-                            "AI" | "GW" => Tone::Accent,
-                            _ => Tone::Neutral,
+                        let tone = if lbl == "LIVE" {
+                            Tone::Success
+                        } else if lbl == gate_badge {
+                            Tone::Warning
+                        } else if matches!(lbl, "AI" | "GW") {
+                            Tone::Accent
+                        } else {
+                            Tone::Neutral
                         };
                         badge(SharedString::from(lbl.to_owned()), tone, cx).into_any_element()
                     }
@@ -215,12 +213,6 @@ impl Render for CommandPaletteView {
                 list = list.child(row);
             }
         }
-
-        let footer_hint = if zh {
-            "↑↓ 选择 · ↵ 打开 · Esc 关闭"
-        } else {
-            "↑↓ Navigate · ↵ Open · Esc Close"
-        };
 
         card(cx)
             .w_full()
@@ -279,17 +271,13 @@ impl Render for CommandPaletteView {
                         div()
                             .text_size(px(10.5))
                             .text_color(to_hsla(p.faint))
-                            .child(footer_hint),
+                            .child(sh.palette_footer_hint()),
                     )
                     .child(
                         div()
                             .text_size(px(10.5))
                             .text_color(to_hsla(p.faint))
-                            .child(format!(
-                                "{} {}",
-                                matches.len(),
-                                if zh { "项" } else { "items" }
-                            )),
+                            .child(sh.palette_items_count(matches.len())),
                     ),
             )
     }

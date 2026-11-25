@@ -18,11 +18,7 @@ use super::RequestsView;
 use super::model::{ImportExportTab, NewItemKind, method_str};
 use super::sidebar_nodes::{render_collection_menu, render_folder_branch, render_request_row};
 
-pub fn render_sidebar(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> impl IntoElement {
+pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> impl IntoElement {
     let p = palette(cx);
     let query = view.search_input.read(cx).value().trim().to_lowercase();
     let active_req_id = view.active_req().and_then(|t| t.saved_request_id.clone());
@@ -57,13 +53,9 @@ pub fn render_sidebar(
         list = list.child(
             div().mb(px(6.0)).child(alert_banner(
                 Tone::Warning,
-                if zh {
-                    format!("已删除 {lbl}")
-                } else {
-                    format!("Deleted {lbl}")
-                },
+                crate::ui::tr(cx).requests().sidebar_deleted(lbl),
                 Some(
-                    btn_ghost("req-undo-del", if zh { "撤销" } else { "Undo" })
+                    btn_ghost("req-undo-del", crate::ui::tr(cx).common().undo())
                         .on_click(cx.listener(|this, _, _, cx| this.undo_last_delete(cx)))
                         .into_any_element(),
                 ),
@@ -157,7 +149,7 @@ pub fn render_sidebar(
                                 SharedString::from(format!("col-run-{}", col.id)),
                                 UiIcon::Play,
                             )
-                            .tooltip(if zh { "运行集合" } else { "Run collection" })
+                            .tooltip(crate::ui::tr(cx).requests().sidebar_run_collection())
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
                                     this.open_collection_runner_tab(
@@ -174,11 +166,7 @@ pub fn render_sidebar(
                                 SharedString::from(format!("col-cfg-{}", col.id)),
                                 UiIcon::Settings,
                             )
-                            .tooltip(if zh {
-                                "集合设置"
-                            } else {
-                                "Collection settings"
-                            })
+                            .tooltip(crate::ui::tr(cx).requests().coll_title_collection())
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
                                     this.open_collection_settings_tab(
@@ -189,7 +177,7 @@ pub fn render_sidebar(
                                 },
                             )),
                         )
-                        .child(render_collection_menu(col_id_menu, col_name_menu, zh, cx)),
+                        .child(render_collection_menu(col_id_menu, col_name_menu, cx)),
                 ),
         );
 
@@ -211,7 +199,6 @@ pub fn render_sidebar(
                     &query,
                     active_req_id.as_deref(),
                     &matches_req,
-                    zh,
                     cx,
                 );
                 list = list.child(branch);
@@ -222,7 +209,6 @@ pub fn render_sidebar(
                     req,
                     1,
                     active_req_id.as_deref(),
-                    zh,
                     cx,
                 ));
             }
@@ -250,7 +236,7 @@ pub fn render_sidebar(
                 .pt(px(10.0))
                 .pb(px(3.0))
                 .child(section_heading(
-                    if zh { "未归档请求" } else { "Unfiled" },
+                    crate::ui::tr(cx).requests().sidebar_unfiled(),
                     cx,
                 ))
                 .child(
@@ -266,7 +252,6 @@ pub fn render_sidebar(
                 req,
                 0,
                 active_req_id.as_deref(),
-                zh,
                 cx,
             ));
         }
@@ -280,7 +265,7 @@ pub fn render_sidebar(
                 .pt(px(10.0))
                 .pb(px(3.0))
                 .child(section_heading(
-                    if zh { "AI 调试请求" } else { "AI Requests" },
+                    crate::ui::tr(cx).requests().sidebar_ai_requests(),
                     cx,
                 ))
                 .child(
@@ -296,7 +281,6 @@ pub fn render_sidebar(
                 req,
                 0,
                 active_req_id.as_deref(),
-                zh,
                 cx,
             ));
         }
@@ -305,45 +289,47 @@ pub fn render_sidebar(
     // Empty / no-search-results states (centered with outlined action buttons).
     if view.collections.is_empty() && view.requests.is_empty() {
         list = list.child(empty_inline(
-            if zh {
-                "还没有集合或请求"
-            } else {
-                "No collections yet"
-            },
-            Some(SharedString::from(if zh {
-                "新建集合管理接口，或直接导入 Postman / OpenAPI / cURL / HAR。"
-            } else {
-                "Create a collection or import Postman, OpenAPI, cURL, or HAR."
-            })),
+            crate::ui::tr(cx).requests().sidebar_no_collections_yet(),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .requests()
+                    .sidebar_create_a_collection_or_import(),
+            )),
             Some(
                 h_row()
                     .gap(px(6.0))
                     .flex_wrap()
                     .justify_center()
                     .child(
-                        btn_secondary("req-empty-new-col", if zh { "新建集合" } else { "New col" })
-                            .icon(icon_xs(UiIcon::Folder))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_new_item_modal(
-                                    NewItemKind::Collection,
-                                    None,
-                                    None,
-                                    window,
-                                    cx,
-                                );
-                            })),
+                        btn_secondary(
+                            "req-empty-new-col",
+                            crate::ui::tr(cx).requests().sidebar_new_col(),
+                        )
+                        .icon(icon_xs(UiIcon::Folder))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_new_item_modal(
+                                NewItemKind::Collection,
+                                None,
+                                None,
+                                window,
+                                cx,
+                            );
+                        })),
                     )
                     .child(
-                        btn_secondary("req-empty-import", if zh { "导入…" } else { "Import…" })
-                            .icon(icon_xs(UiIcon::Upload))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_import_export_modal(
-                                    ImportExportTab::Import,
-                                    None,
-                                    window,
-                                    cx,
-                                );
-                            })),
+                        btn_secondary(
+                            "req-empty-import",
+                            crate::ui::tr(cx).requests().state_empty_tree_import(),
+                        )
+                        .icon(icon_xs(UiIcon::Upload))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_import_export_modal(
+                                ImportExportTab::Import,
+                                None,
+                                window,
+                                cx,
+                            );
+                        })),
                     )
                     .into_any_element(),
             ),
@@ -351,16 +337,12 @@ pub fn render_sidebar(
         ));
     } else if visible_total == 0 && (!query.is_empty() || view.agent_touched_only) {
         list = list.child(empty_inline(
-            if zh {
-                "没有匹配的请求"
-            } else {
-                "No matching requests"
-            },
+            crate::ui::tr(cx).requests().sidebar_no_matching_requests(),
             None,
             Some(
                 btn_secondary(
                     "req-clear-filter",
-                    if zh { "清除筛选" } else { "Clear filter" },
+                    crate::ui::tr(cx).common().list_clear_filter(),
                 )
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.agent_touched_only = false;
@@ -376,11 +358,9 @@ pub fn render_sidebar(
 
     let col_cnt = view.collections.len();
     let req_cnt = view.requests.len();
-    let footer_stats = if zh {
-        format!("{col_cnt} 个集合 · {req_cnt} 个请求")
-    } else {
-        format!("{col_cnt} col · {req_cnt} req")
-    };
+    let footer_stats = crate::ui::tr(cx)
+        .requests()
+        .sidebar_col_req(col_cnt, req_cnt);
 
     let mut filter_slot = v_col()
         .w_full()
@@ -390,11 +370,9 @@ pub fn render_sidebar(
         filter_slot = filter_slot.child(
             filter_chip(
                 "req-agent-filter",
-                if zh {
-                    format!("智能体改过 ({agent_touched_count})")
-                } else {
-                    format!("Agent modified ({agent_touched_count})")
-                },
+                crate::ui::tr(cx)
+                    .requests()
+                    .sidebar_agent_modified(agent_touched_count),
                 Some(UiIcon::Sparkles),
                 view.agent_touched_only,
                 cx,
@@ -407,15 +385,18 @@ pub fn render_sidebar(
     }
 
     let header = pane_header(
-        if zh { "请求" } else { "Requests" },
+        crate::ui::tr(cx).requests().title(),
         Some(req_cnt),
         Some(
-            btn_primary("req-sidebar-new", if zh { "新建" } else { "New" })
-                .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_new_item_modal(NewItemKind::HttpGet, None, None, window, cx);
-                }))
-                .into_any_element(),
+            btn_primary(
+                "req-sidebar-new",
+                crate::ui::tr(cx).requests().sidebar_new(),
+            )
+            .icon(icon_xs(UiIcon::Plus))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_new_item_modal(NewItemKind::HttpGet, None, None, window, cx);
+            }))
+            .into_any_element(),
         ),
         Some(filter_slot.into_any_element()),
         cx,
@@ -437,11 +418,7 @@ pub fn render_sidebar(
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_import_export_modal(ImportExportTab::Import, None, window, cx);
                 }))
-                .child(if zh {
-                    "导入 / 导出"
-                } else {
-                    "Import / Export"
-                })
+                .child(crate::ui::tr(cx).requests().sidebar_import_export())
                 .into_any_element(),
         ),
         cx,

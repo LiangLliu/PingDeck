@@ -24,11 +24,12 @@ pub fn render_callbacks_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyE
     let mut list = v_col().w_full().p(px(8.0)).gap(px(4.0));
     if srv.callbacks.is_empty() {
         list = list.child(empty_inline(
-            view.t("暂无 Webhook 回调", "No callbacks yet"),
-            Some(SharedString::from(view.t(
-                "可在响应分支上绑定回调，在返回响应后异步发送出站请求。",
-                "Attach callbacks to response branches to trigger async webhooks.",
-            ))),
+            crate::ui::Tr(view.lang).mock().tab_ops_no_callbacks_yet(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_ops_attach_callbacks_to_response_branches(),
+            )),
             None,
             cx,
         ));
@@ -103,11 +104,14 @@ pub fn render_callbacks_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyE
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(view.t("回调列表", "Callbacks")),
+                        .child(crate::ui::Tr(view.lang).mock().tab_ops_callbacks()),
                 )
                 .child(
-                    btn_secondary("mock-add-cb", view.t("+ 新建", "+ Add"))
-                        .on_click(cx.listener(|this, _, _, cx| this.add_callback(cx))),
+                    btn_secondary(
+                        "mock-add-cb",
+                        crate::ui::Tr(view.lang).mock().tab_extra_add(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.add_callback(cx))),
                 ),
         )
         .child(
@@ -155,12 +159,17 @@ pub fn render_callbacks_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyE
                     .p(px(14.0))
                     .gap(px(10.0))
                     .child(section_header(
-                        view.t("回调配置", "Callback Configuration"),
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .tab_ops_callback_configuration(),
                         Some(
-                            btn_secondary("mock-cb-test-now", view.t("立即测试", "Test Now"))
-                                .icon(icon_xs(UiIcon::Send))
-                                .on_click(cx.listener(|this, _, _, cx| this.test_callback_now(cx)))
-                                .into_any_element(),
+                            btn_secondary(
+                                "mock-cb-test-now",
+                                crate::ui::Tr(view.lang).mock().tab_ops_test_now(),
+                            )
+                            .icon(icon_xs(UiIcon::Send))
+                            .on_click(cx.listener(|this, _, _, cx| this.test_callback_now(cx)))
+                            .into_any_element(),
                         ),
                         cx,
                     ))
@@ -187,7 +196,7 @@ pub fn render_callbacks_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyE
             )
             .child(render_kv_card(
                 view,
-                view.t("回调请求头", "Callback Headers"),
+                crate::ui::Tr(view.lang).mock().tab_ops_callback_headers(),
                 &cb.headers,
                 KvListTarget::Callback,
                 cx,
@@ -201,11 +210,12 @@ pub fn render_callbacks_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyE
     } else {
         empty_state(
             UiIcon::Zap,
-            view.t("选择或新建回调", "Select or create a callback"),
-            view.t(
-                "配置出站 Webhook 请求，供响应分支异步触发。",
-                "Configure outbound webhook requests triggered by mock responses.",
-            ),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_ops_select_or_create_a_callback(),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_ops_configure_outbound_webhook_requests_trigge(),
             cx,
         )
         .into_any_element()
@@ -231,32 +241,43 @@ pub fn render_proxy_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEleme
         card(cx)
             .p(px(14.0))
             .gap(px(8.0))
-            .child(section_header(view.t("透明代理回源", "Transparent Proxy"), None, cx))
-            .child(setting_row(
-                view.t("未命中本地路由时转发到上游", "Proxy unmatched requests upstream"),
+            .child(section_header(
+                crate::ui::Tr(view.lang).mock().tab_ops_transparent_proxy(),
                 None,
-                Some(SharedString::from(view.t(
-                    "开启后未匹配路由的请求会透传至目标服务器，并可录制为本地路由。",
-                    "Forwards unmatched requests to the upstream URL and supports recording them into routes.",
-                ))),
-                toggle_switch("mock-proxy-en", srv.proxy_enabled).on_click(cx.listener(|this, _, _, cx| {
-                    if let Some(s) = this.draft.as_mut() {
-                        s.proxy_enabled = !s.proxy_enabled;
-                        this.dirty = true;
-                        cx.notify();
-                    }
-                })),
                 cx,
             ))
             .child(setting_row(
-                view.t("上游基础 URL", "Upstream Base URL"),
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_ops_proxy_unmatched_requests_upstream(),
+                None,
+                Some(SharedString::from(
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .tab_ops_forwards_unmatched_requests_to_the(),
+                )),
+                toggle_switch("mock-proxy-en", srv.proxy_enabled).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        if let Some(s) = this.draft.as_mut() {
+                            s.proxy_enabled = !s.proxy_enabled;
+                            this.dirty = true;
+                            cx.notify();
+                        }
+                    },
+                )),
+                cx,
+            ))
+            .child(setting_row(
+                crate::ui::Tr(view.lang).mock().tab_ops_upstream_base_url(),
                 None,
                 None,
                 div().w(px(340.0)).child(text_input(&view.proxy_url_input)),
                 cx,
             ))
             .child(setting_row(
-                view.t("转发时剥离服务前缀", "Strip endpoint prefix when forwarding"),
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_ops_strip_endpoint_prefix_when_forwarding(),
                 None,
                 None,
                 toggle_switch("mock-proxy-strip", srv.proxy_remove_prefix).on_click(cx.listener(
@@ -279,16 +300,14 @@ pub fn render_proxy_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEleme
             } else {
                 Tone::Neutral
             },
-            if view.is_zh() {
-                format!(
-                    "代理录制{} · 当前已捕获 {rec_count} 条回源交换",
-                    if recording { "进行中" } else { "未开启" }
-                )
+            if recording {
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .proxy_recording_active(rec_count)
             } else {
-                format!(
-                    "Proxy recording {} · {rec_count} exchange(s) captured",
-                    if recording { "active" } else { "idle" }
-                )
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .proxy_recording_idle(rec_count)
             },
             Some(
                 h_row()
@@ -297,16 +316,19 @@ pub fn render_proxy_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEleme
                         btn_secondary(
                             "mock-proxy-rec-toggle",
                             if recording {
-                                view.t("停止录制", "Stop Recording")
+                                crate::ui::Tr(view.lang).mock().tab_ops_stop_recording()
                             } else {
-                                view.t("开始录制", "Start Recording")
+                                crate::ui::Tr(view.lang).mock().tab_ops_start_recording()
                             },
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_recording(cx))),
                     )
                     .children((rec_count > 0).then(|| {
-                        btn_secondary("mock-proxy-rec-save", view.t("生成路由", "Save as Routes"))
-                            .on_click(cx.listener(|this, _, _, cx| this.save_recorded_routes(cx)))
+                        btn_secondary(
+                            "mock-proxy-rec-save",
+                            crate::ui::Tr(view.lang).mock().tab_ops_save_as_routes(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.save_recorded_routes(cx)))
                     }))
                     .into_any_element(),
             ),
@@ -317,14 +339,18 @@ pub fn render_proxy_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEleme
     body = body
         .child(render_kv_card(
             view,
-            view.t("代理请求附加头", "Proxy Request Headers"),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_ops_proxy_request_headers(),
             &srv.proxy_req_headers,
             KvListTarget::ProxyReq,
             cx,
         ))
         .child(render_kv_card(
             view,
-            view.t("代理响应附加头", "Proxy Response Headers"),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_ops_proxy_response_headers(),
             &srv.proxy_res_headers,
             KvListTarget::ProxyRes,
             cx,
@@ -346,7 +372,7 @@ pub fn render_settings_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEl
     let mut env_chips = h_row().gap(px(4.0)).flex_wrap().child(
         choice_chip(
             "mock-env-none",
-            view.t("无绑定环境", "None"),
+            crate::ui::Tr(view.lang).mock().tab_ops_none(),
             srv.environment_id.is_none(),
             cx,
         )
@@ -385,10 +411,9 @@ pub fn render_settings_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEl
         .children(running.then(|| {
             alert_banner(
                 Tone::Warning,
-                view.t(
-                    "服务运行期间修改端口需先停止服务；其余路由、响应与代理改动点击保存后立即热生效。",
-                    "Stop the server before changing its port; other route/response edits hot-reload on save.",
-                ),
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_ops_stop_the_server_before_changing(),
                 None,
                 cx,
             )
@@ -396,49 +421,64 @@ pub fn render_settings_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEl
         .child(
             card(cx)
                 .p(px(14.0))
-                .child(section_header(view.t("基础配置", "Server Settings"), None, cx))
+                .child(section_header(
+                    crate::ui::Tr(view.lang).mock().tab_ops_server_settings(),
+                    None,
+                    cx,
+                ))
                 .child(setting_row(
-                    view.t("服务名称", "Server Name"),
+                    crate::ui::Tr(view.lang).mock().modals_server_name(),
                     None,
                     None,
                     div().w(px(260.0)).child(text_input(&view.srv_name_input)),
                     cx,
                 ))
                 .child(setting_row(
-                    view.t("监听端口（仅绑定 127.0.0.1）", "Listen Port (127.0.0.1 only)"),
-                    running.then(|| SharedString::from(view.t("运行中锁定", "Locked while running"))),
+                    crate::ui::Tr(view.lang).mock().modals_listen_port_127_0_0(),
+                    running.then(|| {
+                        SharedString::from(
+                            crate::ui::Tr(view.lang)
+                                .mock()
+                                .tab_ops_locked_while_running(),
+                        )
+                    }),
                     None,
                     h_row()
                         .gap(px(6.0))
                         .child(number_field(&view.srv_port_input, None, 100.0, cx))
                         .child(
-                            btn_ghost("mock-suggest-port", view.t("推荐端口", "Find Free")).on_click(
-                                cx.listener(|this, _, _, cx| this.suggest_free_port(cx)),
-                            ),
+                            btn_ghost(
+                                "mock-suggest-port",
+                                crate::ui::Tr(view.lang).mock().tab_ops_find_free(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.suggest_free_port(cx))),
                         ),
                     cx,
                 ))
                 .child(setting_row(
-                    view.t("端点前缀", "Endpoint Prefix"),
+                    crate::ui::Tr(view.lang).mock().tab_ops_endpoint_prefix(),
                     None,
-                    Some(SharedString::from(view.t("例如 /api/v1，留空表示根路径。", "e.g. /api/v1; blank for root."))),
+                    Some(SharedString::from(
+                        crate::ui::Tr(view.lang).mock().tab_ops_e_g_api_v1_blank(),
+                    )),
                     div().w(px(220.0)).child(text_input(&view.srv_prefix_input)),
                     cx,
                 ))
                 .child(setting_row(
-                    view.t("全局默认延迟", "Default Latency"),
+                    crate::ui::Tr(view.lang).mock().tab_ops_default_latency(),
                     None,
                     None,
                     number_field(&view.srv_latency_input, Some("ms"), 100.0, cx),
                     cx,
                 ))
                 .child(setting_row(
-                    view.t("模板绑定环境", "Bound Environment"),
+                    crate::ui::Tr(view.lang).mock().tab_ops_bound_environment(),
                     None,
-                    Some(SharedString::from(view.t(
-                        "在响应模板中解析 {{var}} 时使用的工作区环境。",
-                        "Workspace environment used when resolving {{var}} in response templates.",
-                    ))),
+                    Some(SharedString::from(
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .tab_ops_workspace_environment_used_when_resolving(),
+                    )),
                     env_chips,
                     cx,
                 )),
@@ -446,22 +486,32 @@ pub fn render_settings_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEl
         .child(
             card(cx)
                 .p(px(14.0))
-                .child(section_header(view.t("导入与导出", "Import & Export"), None, cx))
-                .child(setting_row(
-                    view.t("导出为 PingDeck JSON", "Export PingDeck JSON"),
+                .child(section_header(
+                    crate::ui::Tr(view.lang).mock().tab_ops_import_export(),
                     None,
-                    Some(SharedString::from(view.t(
-                        "默认剥离代理和回调中的明文凭据头，可在弹窗中选择是否保留。",
-                        "Strips literal credential headers by default unless opted in.",
-                    ))),
-                    btn_secondary("mock-settings-export", view.t("导出…", "Export…"))
-                        .icon(icon_xs(UiIcon::Download))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.active_modal = Some(MockModal::ExportOptions {
-                                include_credentials: false,
-                            });
-                            cx.notify();
-                        })),
+                    cx,
+                ))
+                .child(setting_row(
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .tab_ops_export_pingdeck_json(),
+                    None,
+                    Some(SharedString::from(
+                        crate::ui::Tr(view.lang)
+                            .mock()
+                            .tab_ops_strips_literal_credential_headers_by(),
+                    )),
+                    btn_secondary(
+                        "mock-settings-export",
+                        crate::ui::Tr(view.lang).mock().tab_ops_export(),
+                    )
+                    .icon(icon_xs(UiIcon::Download))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.active_modal = Some(MockModal::ExportOptions {
+                            include_credentials: false,
+                        });
+                        cx.notify();
+                    })),
                     cx,
                 )),
         );

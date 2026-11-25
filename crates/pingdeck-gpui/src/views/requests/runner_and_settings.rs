@@ -17,7 +17,6 @@ use super::model::{OpenTab, method_str};
 
 pub fn render_runner_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::AnyElement {
     let p = palette(cx);
@@ -74,16 +73,16 @@ pub fn render_runner_tab(
                             div()
                                 .text_sm()
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .child(SharedString::from(if zh {
-                                    format!("集合运行 · {title}")
-                                } else {
-                                    format!("Collection Runner · {title}")
-                                })),
+                                .child(SharedString::from(
+                                    crate::ui::tr(cx)
+                                        .requests()
+                                        .runner_and_settings_collection_runner(title),
+                                )),
                         )
                         .children(running.then(|| status_indicator(StatusShape::Run, cx))),
                 )
                 .child(if running {
-                    btn_danger("runner-stop", if zh { "停止运行" } else { "Stop run" })
+                    btn_danger("runner-stop", crate::ui::tr(cx).requests().run_stop())
                         .icon(icon_xs(UiIcon::Stop))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.stop_collection_run(&tid_stop, cx);
@@ -91,7 +90,9 @@ pub fn render_runner_tab(
                 } else {
                     btn_primary(
                         "runner-start",
-                        if zh { "开始运行" } else { "Run collection" },
+                        crate::ui::tr(cx)
+                            .requests()
+                            .runner_and_settings_run_collection(),
                     )
                     .icon(icon_xs(UiIcon::Play))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -111,9 +112,11 @@ pub fn render_runner_tab(
                     h_row()
                         .gap(px(6.0))
                         .child(
-                            div()
-                                .text_xs()
-                                .child(if zh { "轮次" } else { "Iterations" }),
+                            div().text_xs().child(
+                                crate::ui::tr(cx)
+                                    .requests()
+                                    .runner_and_settings_iterations(),
+                            ),
                         )
                         .child(div().w(px(72.0)).child(text_input(&view.runner_iter_input))),
                 )
@@ -123,7 +126,7 @@ pub fn render_runner_tab(
                         .child(
                             div()
                                 .text_xs()
-                                .child(if zh { "间隔 (ms)" } else { "Delay (ms)" }),
+                                .child(crate::ui::tr(cx).requests().runner_and_settings_delay_ms()),
                         )
                         .child(
                             div()
@@ -134,11 +137,13 @@ pub fn render_runner_tab(
                 .child(
                     h_row()
                         .gap(px(6.0))
-                        .child(div().text_xs().child(if zh {
-                            "遇错停止"
-                        } else {
-                            "Stop on error"
-                        }))
+                        .child(
+                            div().text_xs().child(
+                                crate::ui::tr(cx)
+                                    .requests()
+                                    .runner_and_settings_stop_on_error(),
+                            ),
+                        )
                         .child(
                             toggle_switch("runner-stop-err", run.stop_on_error).on_change(
                                 cx.listener(move |this, c: &bool, _, cx| {
@@ -153,7 +158,7 @@ pub fn render_runner_tab(
                         ),
                 )
                 .child(kv_chip(
-                    if zh { "选中请求" } else { "Selected" },
+                    crate::ui::tr(cx).requests().runner_and_settings_selected(),
                     format!("{}/{}", run.selected_request_ids.len(), scope_reqs.len()),
                     cx,
                 )),
@@ -167,11 +172,9 @@ pub fn render_runner_tab(
     // Request checklist (when idle)
     if !scope_reqs.is_empty() && items.is_empty() && !running {
         let mut checks = v_col().gap(px(4.0)).child(section_heading(
-            if zh {
-                "要执行的请求（按集合顺序）"
-            } else {
-                "Requests in execution order"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .runner_and_settings_requests_in_execution_order(),
             cx,
         ));
         let tid_chk = run.tab_id.clone();
@@ -213,9 +216,13 @@ pub fn render_runner_tab(
                 h_row().justify_between().child(
                     h_row()
                         .gap(px(6.0))
-                        .child(badge(format!("通过 {passed}"), Tone::Success, cx))
                         .child(badge(
-                            format!("失败 {failed}"),
+                            crate::ui::tr(cx).requests().runner_passed(passed),
+                            Tone::Success,
+                            cx,
+                        ))
+                        .child(badge(
+                            crate::ui::tr(cx).requests().runner_failed(failed),
                             if failed > 0 {
                                 Tone::Danger
                             } else {
@@ -223,7 +230,11 @@ pub fn render_runner_tab(
                             },
                             cx,
                         ))
-                        .child(kv_chip("总数", items.len().to_string(), cx)),
+                        .child(kv_chip(
+                            crate::ui::tr(cx).requests().runner_total(),
+                            items.len().to_string(),
+                            cx,
+                        )),
                 ),
             )
             .child(progress_bar("runner-prog", pct));

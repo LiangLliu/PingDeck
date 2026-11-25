@@ -17,11 +17,7 @@ use super::editor_scripts_docs::render_docs_tab;
 pub use super::editor_scripts_docs::render_scripts_tab;
 use super::model::HttpEdTab;
 
-pub fn render_http_editor(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> impl IntoElement {
+pub fn render_http_editor(view: &RequestsView, cx: &mut Context<RequestsView>) -> impl IntoElement {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return v_col().size_full();
@@ -32,8 +28,8 @@ pub fn render_http_editor(
     let hdr_cnt = tab.draft.headers.len();
     let assert_cnt = tab.draft.assertions.len();
 
-    let lbl = |base_zh: &str, base_en: &str, cnt: usize| -> String {
-        let base = if zh { base_zh } else { base_en };
+    let r = crate::ui::tr(cx).requests();
+    let lbl = |base: &str, cnt: usize| -> String {
         if cnt > 0 {
             format!("{base} ({cnt})")
         } else {
@@ -43,14 +39,14 @@ pub fn render_http_editor(
 
     let tabs = tab_bar_underline("req-http-ed-tabs")
         .selected_index(tab.http_ed_tab.index())
-        .child(tab_item(lbl("参数", "Params", params_cnt)))
-        .child(tab_item(lbl("请求头", "Headers", hdr_cnt)))
-        .child(tab_item(if zh { "认证" } else { "Auth" }))
-        .child(tab_item(if zh { "请求体" } else { "Body" }))
-        .child(tab_item(lbl("断言", "Assertions", assert_cnt)))
-        .child(tab_item(if zh { "脚本" } else { "Scripts" }))
-        .child(tab_item(if zh { "网络" } else { "Network" }))
-        .child(tab_item(if zh { "文档" } else { "Docs" }))
+        .child(tab_item(lbl(r.editor_http_tab_params(), params_cnt)))
+        .child(tab_item(lbl(r.editor_http_tab_headers(), hdr_cnt)))
+        .child(tab_item(r.coll_tab_auth()))
+        .child(tab_item(r.editor_tabs_body()))
+        .child(tab_item(lbl(r.editor_http_tab_assertions(), assert_cnt)))
+        .child(tab_item(r.coll_tab_scripts()))
+        .child(tab_item(r.editor_tabs_network()))
+        .child(tab_item(r.editor_tabs_docs()))
         .on_click(move |idx, _, cx| {
             let next = HttpEdTab::from_index(*idx);
             ent.update(cx, |this, cx| {
@@ -70,39 +66,29 @@ pub fn render_http_editor(
         .effective_auth
         .as_ref()
         .map(|ea| match &ea.source {
-            AuthSource::Collection { name, .. } => {
-                if zh {
-                    format!("认证：继承集合「{name}」")
-                } else {
-                    format!("Auth: inherited ({name})")
-                }
-            }
-            AuthSource::Folder { name, .. } => {
-                if zh {
-                    format!("认证：继承文件夹「{name}」")
-                } else {
-                    format!("Auth: inherited ({name})")
-                }
-            }
-            AuthSource::Request => if zh {
-                "认证：本请求"
-            } else {
-                "Auth: request"
-            }
-            .into(),
-            AuthSource::None => if zh { "认证：无" } else { "Auth: none" }.into(),
+            AuthSource::Collection { name, .. } => crate::ui::tr(cx)
+                .requests()
+                .editor_http_auth_inherited(name),
+            AuthSource::Folder { name, .. } => crate::ui::tr(cx)
+                .requests()
+                .editor_http_auth_inherited_2(name),
+            AuthSource::Request => crate::ui::tr(cx)
+                .requests()
+                .editor_http_auth_request()
+                .into(),
+            AuthSource::None => crate::ui::tr(cx).requests().editor_http_auth_none().into(),
         })
         .unwrap_or_default();
 
     let content: gpui_kit::AnyElement = match tab.http_ed_tab {
-        HttpEdTab::Params => render_params_tab(view, zh, cx).into_any_element(),
-        HttpEdTab::Headers => render_headers_tab(view, zh, cx).into_any_element(),
-        HttpEdTab::Auth => render_auth_tab(view, zh, cx).into_any_element(),
-        HttpEdTab::Body => render_body_tab(view, zh, cx).into_any_element(),
-        HttpEdTab::Assertions => render_assertions_tab(view, zh, false, cx).into_any_element(),
-        HttpEdTab::Scripts => render_scripts_tab(view, zh, false, cx).into_any_element(),
-        HttpEdTab::Network => render_network_tab(view, zh, cx).into_any_element(),
-        HttpEdTab::Docs => render_docs_tab(view, zh, cx).into_any_element(),
+        HttpEdTab::Params => render_params_tab(view, cx).into_any_element(),
+        HttpEdTab::Headers => render_headers_tab(view, cx).into_any_element(),
+        HttpEdTab::Auth => render_auth_tab(view, cx).into_any_element(),
+        HttpEdTab::Body => render_body_tab(view, cx).into_any_element(),
+        HttpEdTab::Assertions => render_assertions_tab(view, false, cx).into_any_element(),
+        HttpEdTab::Scripts => render_scripts_tab(view, false, cx).into_any_element(),
+        HttpEdTab::Network => render_network_tab(view, cx).into_any_element(),
+        HttpEdTab::Docs => render_docs_tab(view, cx).into_any_element(),
     };
 
     let auth_pill = (!auth_hint.is_empty()).then(|| meta_pill(auth_hint, cx).into_any_element());
@@ -114,11 +100,7 @@ pub fn render_http_editor(
         .child(div().flex_1().min_h_0().w_full().child(content))
 }
 
-fn render_params_tab(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::AnyElement {
+fn render_params_tab(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::AnyElement {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return v_col().into_any_element();
@@ -133,11 +115,7 @@ fn render_params_tab(
     // 1. Path variables extracted automatically from URL (`:id` or `{id}`).
     if !tab.draft.path_variables.is_empty() {
         let mut pv_box = v_col().gap(px(4.0)).child(section_heading(
-            if zh {
-                "路径变量（自动从 URL :name / {name} 提取）"
-            } else {
-                "Path Variables (auto-extracted from URL)"
-            },
+            crate::ui::tr(cx).requests().editor_http_path_vars_heading(),
             cx,
         ));
         for (idx, pv) in tab.draft.path_variables.iter().enumerate() {
@@ -151,12 +129,7 @@ fn render_params_tab(
                             .text_xs()
                             .text_color(to_hsla(p.ink))
                             .child(SharedString::from(if pv.value.is_empty() {
-                                if zh {
-                                    "(未填值 — 在下方输入并点击设为路径值)"
-                                } else {
-                                    "(empty)"
-                                }
-                                .to_owned()
+                                crate::ui::tr(cx).requests().editor_http_empty().to_owned()
                             } else {
                                 pv.value.clone()
                             })),
@@ -164,11 +137,7 @@ fn render_params_tab(
                     .child(
                         btn_ghost(
                             SharedString::from(format!("pv-set-{idx}")),
-                            if zh {
-                                "填入右侧值"
-                            } else {
-                                "Set from Value"
-                            },
+                            crate::ui::tr(cx).requests().editor_http_set_from_value(),
                         )
                         .on_click(cx.listener(move |this, _, _, cx| {
                             let v = this.kv_val_input.read(cx).value().to_string();
@@ -188,29 +157,17 @@ fn render_params_tab(
 
     // 2. Query Parameters (synced bidirectionally with URL bar).
     root = root.child(section_heading(
-        if zh {
-            "查询参数（与 URL 双向实时同步）"
-        } else {
-            "Query Parameters (synced with URL)"
-        },
+        crate::ui::tr(cx)
+            .requests()
+            .editor_http_query_parameters_synced_with_url(),
         cx,
     ));
-    root = root.child(render_kv_adder(view, "param", true, zh, cx));
-    root = root.child(render_kv_rows(
-        &tab.draft.query_params,
-        "param",
-        true,
-        zh,
-        cx,
-    ));
+    root = root.child(render_kv_adder(view, "param", true, cx));
+    root = root.child(render_kv_rows(&tab.draft.query_params, "param", true, cx));
     root.into_any_element()
 }
 
-fn render_headers_tab(
-    view: &RequestsView,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> gpui_kit::AnyElement {
+fn render_headers_tab(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::AnyElement {
     let p = palette(cx);
     let Some(tab) = view.active_req() else {
         return v_col().into_any_element();
@@ -231,7 +188,7 @@ fn render_headers_tab(
         auto_rows.push((
             prev.name.clone(),
             prev.value.clone(),
-            if zh { "认证注入" } else { "Auth" },
+            crate::ui::tr(cx).requests().editor_http_auth(),
             Tone::Accent,
         ));
     }
@@ -239,18 +196,16 @@ fn render_headers_tab(
         auto_rows.push((
             "Content-Type".into(),
             ct.into(),
-            if zh { "自动" } else { "Auto" },
+            crate::ui::tr(cx).requests().editor_network_auto(),
             Tone::Neutral,
         ));
     }
 
     if !auto_rows.is_empty() {
         let mut auto_box = v_col().gap(px(3.0)).child(section_heading(
-            if zh {
-                "隐式 / 继承请求头（发送时自动附加）"
-            } else {
-                "Implicit & inherited headers"
-            },
+            crate::ui::tr(cx)
+                .requests()
+                .editor_http_implicit_inherited_headers(),
             cx,
         ));
         for (k, v, tag, tone) in auto_rows {
@@ -287,15 +242,11 @@ fn render_headers_tab(
     }
 
     root = root.child(section_heading(
-        if zh {
-            "显式请求头"
-        } else {
-            "Explicit Headers"
-        },
+        crate::ui::tr(cx).requests().editor_http_explicit_headers(),
         cx,
     ));
-    root = root.child(render_kv_adder(view, "hdr", false, zh, cx));
-    root = root.child(render_kv_rows(&tab.draft.headers, "hdr", false, zh, cx));
+    root = root.child(render_kv_adder(view, "hdr", false, cx));
+    root = root.child(render_kv_rows(&tab.draft.headers, "hdr", false, cx));
     root.into_any_element()
 }
 
@@ -303,7 +254,6 @@ fn render_kv_adder(
     view: &RequestsView,
     prefix: &'static str,
     is_param: bool,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::Div {
     h_row()
@@ -320,7 +270,7 @@ fn render_kv_adder(
         .child(
             btn_secondary(
                 SharedString::from(format!("kv-add-{prefix}")),
-                if zh { "添加" } else { "Add" },
+                crate::ui::tr(cx).requests().container_settings_add(),
             )
             .on_click(cx.listener(move |this, _, window, cx| {
                 let key = this.kv_key_input.read(cx).value().trim().to_owned();
@@ -362,7 +312,6 @@ fn render_kv_rows(
     rows: &[KeyValue],
     prefix: &'static str,
     is_param: bool,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -371,9 +320,12 @@ fn render_kv_rows(
         list = list.child(table_header(
             &[
                 ("", Some(22.0)),
-                (if zh { "键" } else { "Key" }, Some(180.0)),
-                (if zh { "值" } else { "Value" }, None),
-                (if zh { "说明" } else { "Description" }, Some(140.0)),
+                (crate::ui::tr(cx).requests().editor_kv_key(), Some(180.0)),
+                (crate::ui::tr(cx).common().secret_value_placeholder(), None),
+                (
+                    crate::ui::tr(cx).requests().editor_kv_description(),
+                    Some(140.0),
+                ),
                 ("", Some(28.0)),
             ],
             cx,

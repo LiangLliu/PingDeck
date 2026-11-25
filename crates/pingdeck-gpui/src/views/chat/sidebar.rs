@@ -18,7 +18,7 @@ use super::ChatView;
 use super::sidebar_board::{group_label, render_board_list, render_trash_list};
 use super::types::{ChatModal, ChatSidebarMode};
 
-pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
+pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let attention_n = view.pending_attention_count();
 
@@ -27,7 +27,7 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
         .child(
             choice_chip(
                 "chat-mode-time",
-                if zh { "时间" } else { "Time" },
+                crate::ui::tr(cx).chat().sidebar_time(),
                 view.sidebar_mode == ChatSidebarMode::Time,
                 cx,
             )
@@ -39,15 +39,9 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
             choice_chip(
                 "chat-mode-board",
                 if attention_n > 0 {
-                    if zh {
-                        format!("运行看板 ({attention_n})")
-                    } else {
-                        format!("Board ({attention_n})")
-                    }
-                } else if zh {
-                    "运行看板".to_owned()
+                    crate::ui::tr(cx).chat().sidebar_board(attention_n)
                 } else {
-                    "Board".to_owned()
+                    crate::ui::tr(cx).chat().sidebar_board_2().to_owned()
                 },
                 view.sidebar_mode == ChatSidebarMode::Board,
                 cx,
@@ -59,7 +53,7 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
         .child(
             choice_chip(
                 "chat-mode-trash",
-                if zh { "最近删除" } else { "Trash" },
+                crate::ui::tr(cx).chat().sidebar_trash(),
                 view.sidebar_mode == ChatSidebarMode::Trash,
                 cx,
             )
@@ -75,25 +69,21 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
         .child(search_input(&view.search_input, cx));
 
     let header = pane_header(
-        if zh { "对话" } else { "Chats" },
+        crate::ui::tr(cx).chat().pane_label(),
         Some(view.sessions.len()),
         Some(
             h_row()
                 .gap(px(4.0))
                 .child(
                     btn_icon("chat-toggle-arch", UiIcon::Archive)
-                        .tooltip(if zh {
-                            "显示/隐藏已归档"
-                        } else {
-                            "Toggle archived"
-                        })
+                        .tooltip(crate::ui::tr(cx).chat().sidebar_toggle_archived())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.show_archived = !this.show_archived;
                             this.reload_sessions(cx);
                         })),
                 )
                 .child(
-                    btn_primary("chat-new", if zh { "新建" } else { "New" })
+                    btn_primary("chat-new", crate::ui::tr(cx).chat().inspector_new())
                         .icon(icon_xs(UiIcon::MessageSquarePlus))
                         .on_click(cx.listener(|this, _, _, cx| this.create_session(cx))),
                 )
@@ -104,9 +94,9 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
     );
 
     let list_body = match view.sidebar_mode {
-        ChatSidebarMode::Time => render_time_list(view, zh, cx),
-        ChatSidebarMode::Board => render_board_list(view, zh, cx),
-        ChatSidebarMode::Trash => render_trash_list(view, zh, cx),
+        ChatSidebarMode::Time => render_time_list(view, cx),
+        ChatSidebarMode::Board => render_board_list(view, cx),
+        ChatSidebarMode::Trash => render_trash_list(view, cx),
     };
 
     let footer = view.board.as_ref().map(|b| {
@@ -127,11 +117,7 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
             .py(px(6.0))
             .text_xs()
             .text_color(to_hsla(p.muted))
-            .child(if zh {
-                format!("今日 {tok_total} tok")
-            } else {
-                format!("Today {tok_total} tok")
-            })
+            .child(crate::ui::tr(cx).chat().sidebar_today_tok(tok_total))
             .child(cost_txt)
             .into_any_element()
     });
@@ -139,7 +125,7 @@ pub fn render_sidebar(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
     master_pane(header, list_body, footer, cx)
 }
 
-fn render_time_list(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> AnyElement {
+fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     let query = view.search_input.read(cx).value().trim().to_lowercase();
     let now_ms = current_time_ms();
     let needs_ids: std::collections::HashSet<&str> = view
@@ -182,49 +168,43 @@ fn render_time_list(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> An
     let mut list = v_col().w_full().gap(px(2.0)).p(px(8.0));
     if !needs_you.is_empty() {
         list = list.child(group_label(
-            if zh { "待你处理" } else { "Needs you" },
+            crate::ui::tr(cx).chat().sidebar_needs_you(),
             needs_you.len(),
             Some(StatusShape::Warn),
             cx,
         ));
         for s in needs_you {
-            list = list.child(render_session_row(view, s, now_ms, true, zh, cx));
+            list = list.child(render_session_row(view, s, now_ms, true, cx));
         }
     }
     if !pinned.is_empty() {
         list = list.child(group_label(
-            if zh { "已置顶" } else { "Pinned" },
+            crate::ui::tr(cx).chat().sidebar_pinned(),
             pinned.len(),
             None,
             cx,
         ));
         for s in pinned {
-            list = list.child(render_session_row(view, s, now_ms, false, zh, cx));
+            list = list.child(render_session_row(view, s, now_ms, false, cx));
         }
     }
     if !recent.is_empty() {
         list = list.child(group_label(
-            if zh { "最近对话" } else { "Recent" },
+            crate::ui::tr(cx).chat().sidebar_recent(),
             recent.len(),
             None,
             cx,
         ));
         for s in recent {
-            list = list.child(render_session_row(view, s, now_ms, false, zh, cx));
+            list = list.child(render_session_row(view, s, now_ms, false, cx));
         }
     }
     if view.sessions.is_empty() {
         list = list.child(empty_inline(
-            if zh {
-                "还没有对话"
-            } else {
-                "No conversations yet"
-            },
-            Some(SharedString::from(if zh {
-                "点击上方「新建」开始协作对话。"
-            } else {
-                "Click New above to start a conversation."
-            })),
+            crate::ui::tr(cx).chat().sidebar_no_conversations_yet(),
+            Some(SharedString::from(
+                crate::ui::tr(cx).chat().sidebar_click_new_above_to_start(),
+            )),
             None,
             cx,
         ));
@@ -242,18 +222,17 @@ fn render_session_row(
     s: &AgentSessionSummary,
     now_ms: i64,
     needs_approval: bool,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
     let id = s.id.clone();
     let sel = view.thread.session_id == s.id;
     let title = if s.title.trim().is_empty() {
-        if zh { "新对话" } else { "New chat" }.to_owned()
+        crate::ui::tr(cx).chat().header_new_chat().to_owned()
     } else {
         s.title.clone()
     };
-    let rel = format_relative_time(s.updated_at_ms, now_ms, zh);
+    let rel = format_relative_time(s.updated_at_ms, now_ms, crate::ui::active_language(cx));
     let chat_ent = cx.entity().clone();
     let sid_m = s.id.clone();
     let title_m = title.clone();
@@ -288,7 +267,7 @@ fn render_session_row(
                 .child(menu_item(
                     "chat-rm-ren",
                     UiIcon::Pencil,
-                    if zh { "重命名…" } else { "Rename…" },
+                    crate::ui::tr(pop_cx).chat().sidebar_rename(),
                     false,
                     pop_cx,
                     move |_, w, cx| {
@@ -311,11 +290,9 @@ fn render_session_row(
                         UiIcon::Pin
                     },
                     if is_pinned {
-                        if zh { "取消置顶" } else { "Unpin" }
-                    } else if zh {
-                        "置顶"
+                        crate::ui::tr(pop_cx).chat().sidebar_unpin()
                     } else {
-                        "Pin"
+                        crate::ui::tr(pop_cx).chat().sidebar_pin()
                     },
                     false,
                     pop_cx,
@@ -337,11 +314,9 @@ fn render_session_row(
                     "chat-rm-arch",
                     UiIcon::Archive,
                     if is_archived {
-                        if zh { "取消归档" } else { "Unarchive" }
-                    } else if zh {
-                        "归档"
+                        crate::ui::tr(pop_cx).chat().pane_menu_unarchive()
                     } else {
-                        "Archive"
+                        crate::ui::tr(pop_cx).chat().pane_menu_archive()
                     },
                     false,
                     pop_cx,
@@ -362,7 +337,7 @@ fn render_session_row(
                 .child(menu_item(
                     "chat-rm-del",
                     UiIcon::Trash,
-                    if zh { "删除" } else { "Delete" },
+                    crate::ui::tr(pop_cx).common().delete(),
                     true,
                     pop_cx,
                     move |_, w, cx| {
@@ -426,7 +401,7 @@ fn render_session_row(
     )
     .children(
         s.archived
-            .then(|| badge(if zh { "归档" } else { "Arch" }, Tone::Neutral, cx)),
+            .then(|| badge(crate::ui::tr(cx).chat().sidebar_arch(), Tone::Neutral, cx)),
     )
     .child(
         div()
@@ -438,30 +413,22 @@ fn render_session_row(
     .child(menu)
 }
 
-fn format_relative_time(ts_ms: i64, now_ms: i64, zh: bool) -> String {
+fn format_relative_time(
+    ts_ms: i64,
+    now_ms: i64,
+    lang: pingdeck_desktop::core::model::settings::Language,
+) -> String {
     let diff_s = ((now_ms - ts_ms).max(0)) / 1000;
     if diff_s < 60 {
-        if zh { "刚刚".into() } else { "now".into() }
+        crate::ui::Tr(lang).chat().sidebar_now().into()
     } else if diff_s < 3600 {
         let m = diff_s / 60;
-        if zh {
-            format!("{m}分")
-        } else {
-            format!("{m}m")
-        }
+        crate::ui::Tr(lang).chat().sidebar_m(m)
     } else if diff_s < 86_400 {
         let h = diff_s / 3600;
-        if zh {
-            format!("{h}时")
-        } else {
-            format!("{h}h")
-        }
+        crate::ui::Tr(lang).chat().sidebar_h(h)
     } else {
         let d = diff_s / 86_400;
-        if zh {
-            format!("{d}天")
-        } else {
-            format!("{d}d")
-        }
+        crate::ui::Tr(lang).chat().sidebar_d(d)
     }
 }

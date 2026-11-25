@@ -19,6 +19,7 @@ pub fn render_resolved_tab(
     view: &EnvironmentsView,
     cx: &mut Context<EnvironmentsView>,
 ) -> AnyElement {
+    let ev = crate::ui::Tr(view.lang).environments();
     let p = palette(cx);
 
     // Section 1: Resolved variable precedence
@@ -26,12 +27,9 @@ pub fn render_resolved_tab(
         .p(px(14.0))
         .gap(px(6.0))
         .child(section_header(
-            view.t(
-                "变量最终解析顺序（环境 > 集合 > 全局）",
-                "Effective Variable Precedence",
-            ),
+            ev.tab_analysis_effective_variable_precedence(),
             Some(
-                btn_secondary("env-res-refresh", view.t("重新扫描", "Rescan"))
+                btn_secondary("env-res-refresh", ev.tab_analysis_rescan())
                     .icon(icon_xs(UiIcon::Refresh))
                     .on_click(cx.listener(|this, _, _, cx| this.refresh_env_analysis(cx)))
                     .into_any_element(),
@@ -40,20 +38,17 @@ pub fn render_resolved_tab(
         ))
         .child(table_header(
             &[
-                (view.t("变量名", "Name"), Some(170.0)),
-                (view.t("胜出层级", "Winner"), Some(110.0)),
-                (view.t("最终值", "Resolved Value"), None),
-                (view.t("层级覆盖", "Overridden Layers"), Some(180.0)),
+                (ev.tab_analysis_name(), Some(170.0)),
+                (ev.tab_analysis_winner(), Some(110.0)),
+                (ev.tab_analysis_resolved_value(), None),
+                (ev.tab_analysis_overridden_layers(), Some(180.0)),
             ],
             cx,
         ));
 
     if view.resolved_vars.is_empty() {
         res_card = res_card.child(empty_inline(
-            view.t(
-                "当前环境与全局均未定义变量",
-                "No variables defined in environment or globals",
-            ),
+            ev.tab_analysis_no_variables_defined_in_environment(),
             None,
             None,
             cx,
@@ -130,10 +125,7 @@ pub fn render_resolved_tab(
 
     // Section 2: Unresolved {{var}} scan across saved workspace requests
     let mut unres_card = card(cx).p(px(14.0)).gap(px(6.0)).child(section_header(
-        view.t(
-            "工作区未解析变量扫描（缺失的 {{var}}）",
-            "Unresolved {{var}} Scan",
-        ),
+        ev.tab_analysis_unresolved_scan(),
         Some(
             badge(
                 view.unresolved_vars.len().to_string(),
@@ -152,10 +144,7 @@ pub fn render_resolved_tab(
     if view.unresolved_vars.is_empty() {
         unres_card = unres_card.child(alert_banner(
             Tone::Success,
-            view.t(
-                "工作区所有已保存请求的 {{变量}} 在此环境下均可正常解析。",
-                "All {{variables}} across saved requests resolve cleanly in this environment.",
-            ),
+            ev.tab_analysis_all_across_saved_requests_resolve(),
             None,
             cx,
         ));
@@ -184,7 +173,7 @@ pub fn render_resolved_tab(
                     .child(
                         btn_secondary(
                             SharedString::from(format!("env-def-{}", u.name)),
-                            view.t("+ 定义变量", "+ Define"),
+                            ev.tab_analysis_define(),
                         )
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
@@ -219,6 +208,7 @@ pub fn render_compare_tab(
     view: &EnvironmentsView,
     cx: &mut Context<EnvironmentsView>,
 ) -> AnyElement {
+    let ev = crate::ui::Tr(view.lang).environments();
     let p = palette(cx);
     let current_id = view.selected_env_id.as_deref().unwrap_or_default();
     let others: Vec<_> = view
@@ -231,10 +221,7 @@ pub fn render_compare_tab(
         return div()
             .p(px(16.0))
             .child(empty_inline(
-                view.t(
-                    "需要至少两个环境才能进行对比",
-                    "Create a second environment to compare",
-                ),
+                ev.tab_analysis_create_a_second_environment_to(),
                 None,
                 None,
                 cx,
@@ -246,7 +233,7 @@ pub fn render_compare_tab(
         div()
             .text_xs()
             .text_color(to_hsla(p.muted))
-            .child(view.t("对比目标:", "Compare with:")),
+            .child(ev.tab_analysis_compare_with()),
     );
     for other in &others {
         let oid = other.id.clone();
@@ -268,7 +255,7 @@ pub fn render_compare_tab(
 
     let include_glob_btn = choice_chip(
         "env-cmp-glob",
-        view.t("包含全局变量回退", "Include Globals Fallback"),
+        ev.tab_analysis_include_globals_fallback(),
         view.compare_include_globals,
         cx,
     )
@@ -282,27 +269,24 @@ pub fn render_compare_tab(
         .p(px(14.0))
         .gap(px(6.0))
         .child(section_header(
-            view.t(
-                "环境差异对比（机密在核心内恒定时间比对，不泄露明文）",
-                "Environment Diff (Secrets compared constant-time in core)",
-            ),
+            ev.tab_analysis_environment_diff_secrets_compared_constant(),
             Some(include_glob_btn.into_any_element()),
             cx,
         ))
         .child(picker)
         .child(table_header(
             &[
-                (view.t("状态", "State"), Some(92.0)),
-                (view.t("变量名", "Key"), Some(160.0)),
-                (view.t("当前环境", "Current"), None),
-                (view.t("对比目标", "Target"), None),
+                (ev.cmp_state(), Some(92.0)),
+                (ev.tab_analysis_key(), Some(160.0)),
+                (ev.tab_analysis_current(), None),
+                (ev.tab_analysis_target(), None),
             ],
             cx,
         ));
 
     if view.compare_rows.is_empty() {
         tbl = tbl.child(empty_inline(
-            view.t("无变量可比对", "No enabled variables to compare"),
+            ev.tab_analysis_no_enabled_variables_to_compare(),
             None,
             None,
             cx,
@@ -310,10 +294,10 @@ pub fn render_compare_tab(
     } else {
         for row in &view.compare_rows {
             let (lbl, tone) = match row.state {
-                CompareState::Same => (view.t("一致", "Same"), Tone::Success),
-                CompareState::Differs => (view.t("不同", "Differs"), Tone::Warning),
-                CompareState::OnlyLeft => (view.t("仅左侧", "Left Only"), Tone::Accent),
-                CompareState::OnlyRight => (view.t("仅右侧", "Right Only"), Tone::Danger),
+                CompareState::Same => (ev.tab_analysis_same(), Tone::Success),
+                CompareState::Differs => (ev.tab_analysis_differs(), Tone::Warning),
+                CompareState::OnlyLeft => (ev.tab_analysis_left_only(), Tone::Accent),
+                CompareState::OnlyRight => (ev.tab_analysis_right_only(), Tone::Danger),
             };
             let fmt_side = |val: &Option<String>, sec: bool, glob: bool| {
                 let base = if sec {
@@ -378,25 +362,22 @@ pub fn render_protection_tab(
     view: &EnvironmentsView,
     cx: &mut Context<EnvironmentsView>,
 ) -> AnyElement {
+    let ev = crate::ui::Tr(view.lang).environments();
     let p = palette(cx);
 
     let guard_card = card(cx)
         .p(px(14.0))
         .child(section_header(
-            view.t("生产环境发送保护", "Production Send Guard"),
+            ev.tab_analysis_production_send_guard(),
             None,
             cx,
         ))
         .child(setting_row(
-            view.t(
-                "发送写请求前弹出二次确认",
-                "Confirm before sending mutating requests",
-            ),
+            ev.tab_analysis_confirm_before_sending_mutating_requests(),
             None,
-            Some(SharedString::from(view.t(
-                "对 POST / PUT / PATCH / DELETE 等写操作在发送或流程执行前强制要求确认。",
-                "Requires confirmation before sending POST/PUT/PATCH/DELETE or running flows.",
-            ))),
+            Some(SharedString::from(
+                ev.tab_analysis_requires_confirmation_before_sending_post(),
+            )),
             toggle_switch("env-guard-send", view.env_draft_confirm).on_click(cx.listener(
                 |this, _, _, cx| {
                     this.env_draft_confirm = !this.env_draft_confirm;
@@ -407,15 +388,11 @@ pub fn render_protection_tab(
             cx,
         ))
         .child(setting_row(
-            view.t(
-                "同时拦截只读方法（GET / HEAD / OPTIONS）",
-                "Also guard safe methods (GET / HEAD / OPTIONS)",
-            ),
+            ev.tab_analysis_also_guard_safe_methods_get(),
             None,
-            Some(SharedString::from(view.t(
-                "仅当上方发送前确认开启时生效，保护高敏感生产查询。",
-                "Applies when confirmation guard above is enabled.",
-            ))),
+            Some(SharedString::from(
+                ev.tab_analysis_applies_when_confirmation_guard_above(),
+            )),
             toggle_switch("env-guard-safe", view.env_draft_confirm_safe).on_click(cx.listener(
                 |this, _, _, cx| {
                     this.env_draft_confirm_safe = !this.env_draft_confirm_safe;
@@ -430,7 +407,7 @@ pub fn render_protection_tab(
                 div()
                     .text_xs()
                     .text_color(to_hsla(p.muted))
-                    .child(view.t("受保护方法:", "Guarded methods:")),
+                    .child(ev.tab_analysis_guarded_methods()),
             );
             for m in ["POST", "PUT", "PATCH", "DELETE"] {
                 pills = pills.child(badge(m, Tone::Warning, cx));
@@ -447,16 +424,13 @@ pub fn render_protection_tab(
         .p(px(14.0))
         .gap(px(8.0))
         .child(section_header(
-            view.t("机密允许发送主机白名单（Declared Hosts）", "Declared Secret Hosts"),
+            ev.tab_analysis_declared_secret_hosts(),
             Some(meta_pill(format!("{} hosts", view.declared_hosts.len()), cx).into_any_element()),
             cx,
         ))
         .child(alert_banner(
             Tone::Neutral,
-            view.t(
-                "AI 智能体构建的请求携带机密变量时，仅允许发往此处声明的主机；用户手动发送请求不受限制。",
-                "Agent-authored requests carrying secrets may only target declared hosts below; manual sends are unrestricted.",
-            ),
+            ev.tab_analysis_agent_authored_requests_carrying_secrets(),
             None,
             cx,
         ));
@@ -511,7 +485,7 @@ pub fn render_protection_tab(
                             .text_color(to_hsla(p.ink))
                             .child(manual.clone()),
                     )
-                    .child(badge(view.t("待保存", "Pending"), Tone::Warning, cx))
+                    .child(badge(ev.tab_analysis_pending(), Tone::Warning, cx))
                     .child(
                         btn_icon(
                             SharedString::from(format!("env-hrm-p-{manual}")),
@@ -533,8 +507,8 @@ pub fn render_protection_tab(
             .gap(px(6.0))
             .child(div().flex_1().min_w_0().child(text_input(&view.host_input)))
             .child(
-                btn_secondary("env-host-add", view.t("+ 添加主机", "+ Add Host")).on_click(
-                    cx.listener(|this, _, window, cx| {
+                btn_secondary("env-host-add", ev.tab_analysis_add_host()).on_click(cx.listener(
+                    |this, _, window, cx| {
                         let h = this.host_input.read(cx).value().trim().to_ascii_lowercase();
                         if h.is_empty() {
                             return;
@@ -546,8 +520,8 @@ pub fn render_protection_tab(
                         this.host_input
                             .update(cx, |s, cx| s.set_value("", window, cx));
                         cx.notify();
-                    }),
-                ),
+                    },
+                )),
             ),
     );
 

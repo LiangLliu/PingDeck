@@ -16,7 +16,6 @@ use super::state::MockView;
 
 pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let Some(srv) = &view.draft else {
         return div().into_any_element();
     };
@@ -25,11 +24,12 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
     let mut list = v_col().w_full().p(px(8.0)).gap(px(4.0));
     if srv.data_buckets.is_empty() {
         list = list.child(empty_inline(
-            view.t("暂无数据桶", "No data buckets"),
-            Some(SharedString::from(view.t(
-                "在 CRUD 路由或模板 {{data 'name'}} 中引用 JSON 数据桶。",
-                "Use JSON buckets in CRUD routes or {{data 'name'}} templates.",
-            ))),
+            crate::ui::Tr(view.lang).mock().tab_extra_no_data_buckets(),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_extra_use_json_buckets_in_crud(),
+            )),
             None,
             cx,
         ));
@@ -63,11 +63,13 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
                         .truncate()
                         .child(b.name.clone()),
                 )
-                .children(
-                    live_b
-                        .filter(|lb| lb.changed)
-                        .map(|_| badge(view.t("已变更", "Modified"), Tone::Warning, cx)),
-                )
+                .children(live_b.filter(|lb| lb.changed).map(|_| {
+                    badge(
+                        crate::ui::Tr(view.lang).mock().tab_extra_modified(),
+                        Tone::Warning,
+                        cx,
+                    )
+                }))
                 .child(
                     btn_icon(
                         SharedString::from(format!("mock-bkt-del-{}", b.id)),
@@ -108,11 +110,14 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(view.t("数据桶", "Buckets")),
+                        .child(crate::ui::Tr(view.lang).mock().tab_extra_buckets()),
                 )
                 .child(
-                    btn_secondary("mock-add-bucket", view.t("+ 新建", "+ Add"))
-                        .on_click(cx.listener(|this, _, _, cx| this.add_bucket(cx))),
+                    btn_secondary(
+                        "mock-add-bucket",
+                        crate::ui::Tr(view.lang).mock().tab_extra_add(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.add_bucket(cx))),
                 ),
         )
         .child(
@@ -135,7 +140,7 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
                 .p(px(14.0))
                 .gap(px(10.0))
                 .child(section_header(
-                    view.t("初始 JSON 数据", "Saved Seed JSON"),
+                    crate::ui::Tr(view.lang).mock().tab_extra_saved_seed_json(),
                     None,
                     cx,
                 ))
@@ -164,19 +169,24 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
         );
         if running {
             let mut live_card = card(cx).p(px(14.0)).gap(px(8.0)).child(section_header(
-                view.t("运行时内存数据（CRUD 实时状态）", "Live Runtime Data"),
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_extra_live_runtime_data(),
                 Some(
                     h_row()
                         .gap(px(6.0))
                         .child(
-                            btn_ghost("mock-live-refresh", view.t("刷新", "Refresh"))
-                                .icon(icon_xs(UiIcon::Refresh))
-                                .on_click(cx.listener(|this, _, _, cx| this.refresh_live_data(cx))),
+                            btn_ghost(
+                                "mock-live-refresh",
+                                crate::ui::Tr(view.lang).common().refresh(),
+                            )
+                            .icon(icon_xs(UiIcon::Refresh))
+                            .on_click(cx.listener(|this, _, _, cx| this.refresh_live_data(cx))),
                         )
                         .child(
                             btn_secondary(
                                 "mock-live-reset-one",
-                                view.t("重置此桶", "Reset Bucket"),
+                                crate::ui::Tr(view.lang).mock().tab_extra_reset_bucket(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
@@ -185,38 +195,27 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
                             )),
                         )
                         .child(
-                            btn_ghost("mock-live-reset-all", view.t("重置全部", "Reset All"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.reset_live_data(None, cx);
-                                })),
+                            btn_ghost(
+                                "mock-live-reset-all",
+                                crate::ui::Tr(view.lang).mock().tab_extra_reset_all(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.reset_live_data(None, cx);
+                            })),
                         )
                         .into_any_element(),
                 ),
                 cx,
             ));
             if let Some(lb) = live_b {
-                let meta = if zh {
-                    format!(
-                        "{}{}",
-                        lb.items
-                            .map_or("对象".to_owned(), |n| format!("{n} 条记录")),
-                        if lb.changed {
-                            " · 与初始数据不同"
-                        } else {
-                            " · 未变更"
-                        }
-                    )
+                let m_tr = crate::ui::Tr(view.lang).mock();
+                let head = lb
+                    .items
+                    .map_or_else(|| m_tr.bucket_object().to_owned(), |n| m_tr.bucket_items(n));
+                let meta = if lb.changed {
+                    m_tr.bucket_meta_modified(&head)
                 } else {
-                    format!(
-                        "{}{}",
-                        lb.items
-                            .map_or("Object".to_owned(), |n| format!("{n} items")),
-                        if lb.changed {
-                            " · Modified"
-                        } else {
-                            " · Unchanged"
-                        }
-                    )
+                    m_tr.bucket_meta_unchanged(&head)
                 };
                 live_card = live_card.child(meta_pill(meta, cx)).child(
                     div()
@@ -240,11 +239,12 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
     } else {
         empty_state(
             UiIcon::Layers,
-            view.t("选择或新建数据桶", "Select or create a data bucket"),
-            view.t(
-                "数据桶为 CRUD 路由和模板提供内存态 JSON 数据集。",
-                "Buckets back CRUD routes and template helpers.",
-            ),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_extra_select_or_create_a_data(),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_extra_buckets_back_crud_routes_and(),
             cx,
         )
         .into_any_element()
@@ -267,25 +267,32 @@ pub fn render_headers_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
         .w_full()
         .p(px(18.0))
         .gap(px(14.0))
-        .child(card(cx).p(px(14.0)).child(setting_row(
-            view.t("自动添加 CORS 响应头", "Enable CORS automatically"),
-            None,
-            Some(SharedString::from(view.t(
-                "响应 OPTIONS 预检请求并附带 Access-Control-Allow-* 头。",
-                "Answers OPTIONS preflight requests and injects Access-Control-Allow-* headers.",
-            ))),
-            toggle_switch("mock-hdr-cors", cors).on_click(cx.listener(|this, _, _, cx| {
-                if let Some(s) = this.draft.as_mut() {
-                    s.cors_enabled = !s.cors_enabled;
-                    this.dirty = true;
-                    cx.notify();
-                }
-            })),
-            cx,
-        )))
+        .child(
+            card(cx).p(px(14.0)).child(setting_row(
+                crate::ui::Tr(view.lang)
+                    .mock()
+                    .tab_extra_enable_cors_automatically(),
+                None,
+                Some(SharedString::from(
+                    crate::ui::Tr(view.lang)
+                        .mock()
+                        .tab_extra_answers_options_preflight_requests_and(),
+                )),
+                toggle_switch("mock-hdr-cors", cors).on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.draft.as_mut() {
+                        s.cors_enabled = !s.cors_enabled;
+                        this.dirty = true;
+                        cx.notify();
+                    }
+                })),
+                cx,
+            )),
+        )
         .child(render_kv_card(
             view,
-            view.t("全局默认响应头", "Global Default Response Headers"),
+            crate::ui::Tr(view.lang)
+                .mock()
+                .tab_extra_global_default_response_headers(),
             &srv.headers,
             KvListTarget::Global,
             cx,
@@ -393,7 +400,7 @@ pub(super) fn render_kv_card(
             .child(
                 btn_secondary(
                     SharedString::from(format!("mock-{prefix}-add")),
-                    view.t("+ 添加", "+ Add"),
+                    crate::ui::Tr(view.lang).mock().tab_extra_add_2(),
                 )
                 .on_click(cx.listener(move |this, _, window, cx| {
                     let (k_ent, v_ent) = match target {

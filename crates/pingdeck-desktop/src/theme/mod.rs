@@ -58,30 +58,17 @@ impl PaletteId {
     }
 
     #[must_use]
-    pub const fn label_en(self) -> &'static str {
+    pub const fn label(self, lang: crate::core::model::settings::Language) -> &'static str {
+        let s = crate::i18n::tr(lang).settings();
         match self {
-            Self::Slate => "Slate",
-            Self::Ocean => "Ocean",
-            Self::Nord => "Nord",
-            Self::Sage => "Sage",
-            Self::Emerald => "Emerald",
-            Self::Amber => "Amber",
-            Self::Violet => "Violet",
-            Self::Graphite => "Graphite",
-        }
-    }
-
-    #[must_use]
-    pub const fn label_zh(self) -> &'static str {
-        match self {
-            Self::Slate => "青灰",
-            Self::Ocean => "深海",
-            Self::Nord => "北欧",
-            Self::Sage => "鼠尾草",
-            Self::Emerald => "翡翠",
-            Self::Amber => "琥珀",
-            Self::Violet => "紫罗兰",
-            Self::Graphite => "石墨",
+            Self::Slate => s.palette_slate_name(),
+            Self::Ocean => s.palette_ocean_name(),
+            Self::Nord => s.palette_nord_name(),
+            Self::Sage => s.palette_sage_name(),
+            Self::Emerald => s.palette_emerald_name(),
+            Self::Amber => s.palette_amber_name(),
+            Self::Violet => s.palette_violet_name(),
+            Self::Graphite => s.palette_graphite_name(),
         }
     }
 }

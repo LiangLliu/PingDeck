@@ -51,16 +51,13 @@ impl EnvResourceTab {
     }
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
-        match (self, zh) {
-            (Self::Environments, true) => "环境",
-            (Self::Environments, false) => "Environments",
-            (Self::Globals, true) => "全局变量",
-            (Self::Globals, false) => "Globals",
-            (Self::Cookies, true) => "Cookies",
-            (Self::Cookies, false) => "Cookies",
-            (Self::Certificates, true) => "TLS 证书",
-            (Self::Certificates, false) => "Certificates",
+    pub const fn label(self, lang: Language) -> &'static str {
+        let e = crate::ui::Tr(lang).environments();
+        match self {
+            Self::Environments => e.resource_environments(),
+            Self::Globals => e.resource_globals(),
+            Self::Cookies => e.resource_cookies(),
+            Self::Certificates => e.resource_certificates(),
         }
     }
 }
@@ -103,16 +100,13 @@ impl EnvDetailTab {
     }
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
-        match (self, zh) {
-            (Self::Variables, true) => "变量",
-            (Self::Variables, false) => "Variables",
-            (Self::Resolved, true) => "解析顺序与扫描",
-            (Self::Resolved, false) => "Resolved & Scan",
-            (Self::Compare, true) => "环境对比",
-            (Self::Compare, false) => "Compare",
-            (Self::Protection, true) => "安全保护与主机",
-            (Self::Protection, false) => "Guard & Hosts",
+    pub const fn label(self, lang: Language) -> &'static str {
+        let e = crate::ui::Tr(lang).environments();
+        match self {
+            Self::Variables => e.detail_variables(),
+            Self::Resolved => e.detail_resolved(),
+            Self::Compare => e.detail_compare(),
+            Self::Protection => e.detail_protection(),
         }
     }
 }
@@ -256,16 +250,6 @@ pub struct EnvironmentsView {
 }
 
 impl EnvironmentsView {
-    #[must_use]
-    pub fn is_zh(&self) -> bool {
-        self.lang == Language::ZhCn
-    }
-
-    #[must_use]
-    pub fn t(&self, zh: &'static str, en: &'static str) -> &'static str {
-        if self.is_zh() { zh } else { en }
-    }
-
     pub fn load_env_into_draft(&mut self, env: &EnvironmentDto) {
         self.selected_env_id = Some(env.id.clone());
         self.env_draft_name = env.name.clone();

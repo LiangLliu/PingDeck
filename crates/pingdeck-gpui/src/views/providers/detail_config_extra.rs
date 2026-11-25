@@ -20,26 +20,25 @@ pub(super) fn render_extra_cards(
     cx: &mut Context<ProviderConfigForm>,
 ) -> Div {
     let p = palette(cx);
-    let zh = form.zh;
     let prov = &form.view.provider;
     let ent = cx.entity().clone();
 
     // 3. Extra Headers card.
     let mut hdr_col = v_col().gap(px(8.0)).child(section_heading(
-        if zh {
-            "附加请求头（写只读，凭据类脱敏）"
-        } else {
-            "Extra Headers"
-        },
+        crate::ui::tr(cx)
+            .providers()
+            .prov_detail_config_extra_extra_headers(),
         cx,
     ));
     let hdr_keys: Vec<String> = prov.quirks.extra_headers.keys().cloned().collect();
     if hdr_keys.is_empty() {
-        hdr_col = hdr_col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "没有额外的请求头。"
-        } else {
-            "No extra headers configured."
-        }));
+        hdr_col = hdr_col.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_no_extra_headers_configured(),
+            ),
+        );
     } else {
         for (i, hk) in hdr_keys.into_iter().enumerate() {
             let hint = form
@@ -86,10 +85,13 @@ pub(super) fn render_extra_cards(
             .child(div().w(px(180.0)).child(text_input(&form.new_hdr_name)))
             .child(div().flex_1().child(text_input(&form.new_hdr_val)))
             .child(
-                btn_secondary("cfg-hdr-add", if zh { "添加请求头" } else { "Add header" })
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.add_extra_header(window, cx);
-                    })),
+                btn_secondary(
+                    "cfg-hdr-add",
+                    crate::ui::tr(cx).providers().sniff_adv_header_add(),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.add_extra_header(window, cx);
+                })),
             ),
     );
     let headers_card = card(cx).p(px(16.0)).child(hdr_col);
@@ -99,13 +101,11 @@ pub(super) fn render_extra_cards(
     let ent_rs = ent.clone();
     let rs_lbl = cur_rs.map_or_else(
         || {
-            if zh {
-                "自动（跟随预设）"
-            } else {
-                "Auto (preset)"
-            }
+            crate::ui::tr(cx)
+                .providers()
+                .prov_detail_config_extra_auto_preset()
         },
-        |s| format_reasoning_style(s, zh),
+        |s| format_reasoning_style(s, crate::ui::active_language(cx)),
     );
     let rs_picker = popover("cfg-rs-pop")
         .anchor(Anchor::TopRight)
@@ -122,7 +122,11 @@ pub(super) fn render_extra_cards(
                     });
                     pop0.update(cx, |s, cx| s.dismiss(window, cx));
                 })
-                .child(div().text_xs().child(if zh { "自动" } else { "Auto" })),
+                .child(
+                    div()
+                        .text_xs()
+                        .child(crate::ui::tr(cx).providers().sniff_adv_protocol_auto()),
+                ),
             );
             for (i, s) in [
                 ReasoningStyle::ReasoningEffort,
@@ -152,7 +156,11 @@ pub(super) fn render_extra_cards(
                             pop_h.update(cx, |st, cx| st.dismiss(window, cx));
                         },
                     )
-                    .child(div().text_xs().child(format_reasoning_style(s, zh))),
+                    .child(
+                        div()
+                            .text_xs()
+                            .child(format_reasoning_style(s, crate::ui::active_language(cx))),
+                    ),
                 );
             }
             col
@@ -166,7 +174,9 @@ pub(super) fn render_extra_cards(
     let ent_mt = ent.clone();
     let mt_seg = tab_bar_segmented("cfg-mt-seg")
         .selected_index(mt_idx)
-        .child(tab_item(if zh { "自动" } else { "Auto" }))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().sniff_adv_protocol_auto(),
+        ))
         .child(tab_item("max_tokens"))
         .child(tab_item("max_completion_tokens"))
         .on_click(move |idx, _, cx| {
@@ -185,39 +195,31 @@ pub(super) fn render_extra_cards(
         v_col()
             .gap(px(10.0))
             .child(section_heading(
-                if zh {
-                    "兼容性（Quirks）"
-                } else {
-                    "Compatibility"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_compatibility(),
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "思考 / 推理参数格式"
-                } else {
-                    "Reasoning request format"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_reasoning_request_format(),
                 None,
                 rs_picker,
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "最大输出 token 字段"
-                } else {
-                    "Max tokens field"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_max_tokens_field(),
                 None,
                 mt_seg,
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "推理响应字段名"
-                } else {
-                    "Reasoning response field"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_reasoning_response_field(),
                 None,
                 div()
                     .w(px(220.0))
@@ -225,11 +227,9 @@ pub(super) fn render_extra_cards(
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "Anthropic-Version 头"
-                } else {
-                    "Anthropic version"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_anthropic_version(),
                 None,
                 div()
                     .w(px(180.0))
@@ -238,65 +238,50 @@ pub(super) fn render_extra_cards(
             ))
             .child(tri_row(
                 "cfg-tri-drop",
-                if zh {
-                    "丢弃采样参数 (temperature/top_p)"
-                } else {
-                    "Drop sampling params"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_drop_sampling_params(),
                 prov.quirks.drop_sampling_params,
-                zh,
                 ent.clone(),
                 |this, v| this.view.provider.quirks.drop_sampling_params = v,
                 cx,
             ))
             .child(tri_row(
                 "cfg-tri-echo",
-                if zh {
-                    "随工具结果回传推理内容"
-                } else {
-                    "Echo reasoning in tool turns"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_echo_reasoning_in_tool_turns(),
                 prov.quirks.echo_reasoning_in_tool_turns,
-                zh,
                 ent.clone(),
                 |this, v| this.view.provider.quirks.echo_reasoning_in_tool_turns = v,
                 cx,
             ))
             .child(tri_row(
                 "cfg-tri-dev",
-                if zh {
-                    "将 developer 角色作为 system 发送"
-                } else {
-                    "Send developer role as system"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .cfg_opt_flag_developer_role_as_system(),
                 prov.quirks.developer_role_as_system,
-                zh,
                 ent.clone(),
                 |this, v| this.view.provider.quirks.developer_role_as_system = v,
                 cx,
             ))
             .child(tri_row(
                 "cfg-tri-usage",
-                if zh {
-                    "流式请求附带 token 用量"
-                } else {
-                    "Include stream usage"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_include_stream_usage(),
                 prov.quirks.stream_usage,
-                zh,
                 ent.clone(),
                 |this, v| this.view.provider.quirks.stream_usage = v,
                 cx,
             ))
             .child(tri_row(
                 "cfg-tri-resp",
-                if zh {
-                    "带工具请求走 Responses 协议"
-                } else {
-                    "Route tools via Responses"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_route_tools_via_responses(),
                 prov.quirks.tools_via_responses,
-                zh,
                 ent,
                 |this, v| this.view.provider.quirks.tools_via_responses = v,
                 cx,
@@ -307,28 +292,27 @@ pub(super) fn render_extra_cards(
     let adv_card = card(cx).p(px(16.0)).child(
         v_col()
             .gap(px(10.0))
-            .child(section_heading(if zh { "高级" } else { "Advanced" }, cx))
+            .child(section_heading(
+                crate::ui::tr(cx).providers().sniff_adv_title(),
+                cx,
+            ))
             .child(field_row(
-                if zh {
-                    "模型列表地址"
-                } else {
-                    "Models list path"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_models_list_path(),
                 None,
                 div().w(px(280.0)).child(text_input(&form.models_url_input)),
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "中转价格倍率与币种"
-                } else {
-                    "Relay pricing multiplier"
-                },
-                Some(SharedString::from(if zh {
-                    "按官方价倍率计费的中转站（例如 1 USD = 1 CNY 填倍率 1、币种 CNY）。"
-                } else {
-                    "Multiply official prices by a factor and optional billing currency."
-                })),
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_relay_pricing_multiplier(),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_config_extra_multiply_official_prices_by_a(),
+                )),
                 h_row()
                     .gap(px(6.0))
                     .child(div().w(px(110.0)).child(text_input(&form.relay_mult_input)))
@@ -336,25 +320,21 @@ pub(super) fn render_extra_cards(
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "独立代理地址"
-                } else {
-                    "Provider proxy"
-                },
-                Some(SharedString::from(if zh {
-                    "留空跟随「设置 › 网络」；填 direct 表示直连不走代理。"
-                } else {
-                    "Empty follows Settings › Network; enter direct to bypass proxy."
-                })),
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_provider_proxy(),
+                Some(SharedString::from(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_config_extra_empty_follows_settings_network_enter(),
+                )),
                 div().w(px(280.0)).child(text_input(&form.proxy_input)),
                 cx,
             ))
             .child(field_row(
-                if zh {
-                    "关闭余额自动查询"
-                } else {
-                    "Disable balance checks"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_config_extra_disable_balance_checks(),
                 None,
                 toggle_switch("cfg-bal-off", prov.balance_off).on_click(cx.listener(
                     |this, _, _, cx| {
@@ -378,11 +358,9 @@ pub(super) fn render_extra_cards(
                 .children(form.needs_host_confirm.then(|| {
                     btn_danger(
                         "cfg-confirm-host",
-                        if zh {
-                            "确认改到新主机（并停用旧密钥）"
-                        } else {
-                            "Confirm host change (disable keys)"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_config_extra_confirm_host_change_disable_keys(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.save(true, cx)))
                 }))
@@ -390,11 +368,13 @@ pub(super) fn render_extra_cards(
                     btn_primary(
                         "cfg-save-btn",
                         if form.saving {
-                            if zh { "保存中…" } else { "Saving…" }
-                        } else if zh {
-                            "保存配置"
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_config_extra_saving()
                         } else {
-                            "Save configuration"
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_config_extra_save_configuration()
                         },
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -407,31 +387,20 @@ pub(super) fn render_extra_cards(
 
     let impact_summary = form.impact.as_ref().map_or_else(
         || {
-            if zh {
-                "会一并删除该服务商下的密钥、模型和探测记录（保留历史调用日志与用量）。".into()
-            } else {
-                "Removes keys, models, and probes for this provider (historical logs are kept)."
-                    .into()
-            }
+            crate::ui::tr(cx)
+                .providers()
+                .prov_detail_config_extra_removes_keys_models_and_probes()
+                .into()
         },
         |imp| {
-            if zh {
-                format!(
-                    "将删除 {} 把密钥、{} 个模型；受影响：{} 个客户端、{} 条网关备用规则。",
+            crate::ui::tr(cx)
+                .providers()
+                .prov_detail_config_extra_deletes_key_s_model_s(
                     imp.keys,
                     imp.models,
                     imp.clients.len(),
-                    imp.gateway_rules.len()
+                    imp.gateway_rules.len(),
                 )
-            } else {
-                format!(
-                    "Deletes {} key(s), {} model(s); affects {} client(s), {} gateway rule(s).",
-                    imp.keys,
-                    imp.models,
-                    imp.clients.len(),
-                    imp.gateway_rules.len()
-                )
-            }
         },
     );
 
@@ -442,7 +411,9 @@ pub(super) fn render_extra_cards(
             v_col()
                 .gap(px(8.0))
                 .child(section_heading(
-                    if zh { "删除服务商" } else { "Danger Zone" },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_detail_config_extra_danger_zone(),
                     cx,
                 ))
                 .child(
@@ -461,20 +432,23 @@ pub(super) fn render_extra_cards(
                             h_row()
                                 .gap(px(6.0))
                                 .child(
-                                    btn_ghost("cfg-del-cancel", if zh { "取消" } else { "Cancel" })
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    btn_ghost(
+                                        "cfg-del-cancel",
+                                        crate::ui::tr(cx).common().cancel(),
+                                    )
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.confirm_delete_open = false;
                                             cx.notify();
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .child(
                                     btn_danger(
                                         "cfg-del-confirm",
-                                        if zh {
-                                            "确认永久删除"
-                                        } else {
-                                            "Confirm delete"
-                                        },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_detail_config_extra_confirm_delete(),
                                     )
                                     .on_click(cx.listener(|this, _, _, cx| this.delete_now(cx))),
                                 )
@@ -482,11 +456,9 @@ pub(super) fn render_extra_cards(
                         } else {
                             btn_danger(
                                 "cfg-del-open",
-                                if zh {
-                                    "删除服务商…"
-                                } else {
-                                    "Delete provider…"
-                                },
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_detail_config_extra_delete_provider(),
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.confirm_delete_open = true;
@@ -510,7 +482,6 @@ fn tri_row(
     id: &'static str,
     label: &'static str,
     val: Option<bool>,
-    zh: bool,
     ent: Entity<ProviderConfigForm>,
     setter: fn(&mut ProviderConfigForm, Option<bool>),
     cx: &gpui_kit::App,
@@ -522,9 +493,11 @@ fn tri_row(
     };
     let seg = tab_bar_segmented(id)
         .selected_index(idx)
-        .child(tab_item(if zh { "自动" } else { "Auto" }))
-        .child(tab_item(if zh { "开" } else { "On" }))
-        .child(tab_item(if zh { "关" } else { "Off" }))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().sniff_adv_protocol_auto(),
+        ))
+        .child(tab_item(crate::ui::tr(cx).providers().cfg_opt_tri_on()))
+        .child(tab_item(crate::ui::tr(cx).providers().cfg_opt_tri_off()))
         .on_click(move |i, _, cx| {
             let next = match *i {
                 1 => Some(true),

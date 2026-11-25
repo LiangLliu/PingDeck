@@ -96,14 +96,13 @@ fn format_tooltip_value(metric: ChartMetric, value: f64, currency: &str) -> Shar
 
 pub fn render_trend_chart(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let cur = view.active_currency();
     let mut metric_bar = h_row().gap(px(4.0)).flex_wrap();
     for m in ChartMetric::ALL {
         metric_bar = metric_bar.child(
             choice_chip(
                 SharedString::from(format!("u-cm-{m:?}")),
-                m.label(zh),
+                m.label(view.lang),
                 view.chart_metric == m,
                 cx,
             )
@@ -214,41 +213,42 @@ pub fn render_trend_chart(view: &UsageView, cx: &mut Context<UsageView>) -> AnyE
         let (glyph, title, sub) = if total_reqs > 0 && view.chart_metric == ChartMetric::FailRate {
             (
                 UiIcon::CircleCheck,
-                view.t(
-                    "该时间范围内 0 次失败（0.0%）",
-                    "0 failures (0.0%) in range",
-                ),
-                view.t(
-                    "所有已路由至服务商的调用均未发生失败。",
-                    "All routed provider calls completed without failures.",
-                ),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_0_failures_0_0_in(),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_all_routed_provider_calls_completed(),
             )
         } else if total_reqs > 0 && view.chart_metric == ChartMetric::Cost {
             (
                 UiIcon::Usage,
-                view.t("该时间范围内估算费用为 $0", "$0 estimated cost in range"),
-                view.t(
-                    "命中免费模型，或本地模型目录尚未设置对应单价。",
-                    "Calls used free models or models without configured local pricing.",
-                ),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_0_estimated_cost_in_range(),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_calls_used_free_models_or(),
             )
         } else if total_reqs > 0 && view.chart_metric == ChartMetric::Latency {
             (
                 UiIcon::Usage,
-                view.t("该时间范围内暂无耗时样本", "No latency samples in range"),
-                view.t(
-                    "仅含有效耗时记录的调用会计入延迟趋势。",
-                    "Only calls with recorded latency measurements appear here.",
-                ),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_no_latency_samples_in_range(),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_only_calls_with_recorded_latency(),
             )
         } else {
             (
                 UiIcon::Usage,
-                view.t("该时间范围内暂无趋势数据", "No trend data in range"),
-                view.t(
-                    "通过本地网关、对话或 AI 请求发送调用后，这里将按本地时区实时聚合。",
-                    "Send AI calls via Gateway, Chat, or Requests to populate this chart.",
-                ),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_no_trend_data_in_range(),
+                crate::ui::Tr(view.lang)
+                    .usage()
+                    .usage_chart_send_ai_calls_via_gateway(),
             )
         };
         empty_state(glyph, title, sub, cx).into_any_element()
@@ -278,7 +278,7 @@ pub fn render_trend_chart(view: &UsageView, cx: &mut Context<UsageView>) -> AnyE
                 bottom_right: px(2.0),
             })
             .fill(move |_, _, _, _| bar_fill)
-            .name(metric.label(zh))
+            .name(metric.label(view.lang))
             .tooltip_title(|d: &ChartPoint| d.full_day.clone())
             .tooltip_value(move |_, v| format_tooltip_value(metric, v, &cur_tip))
             .interactive(true);
@@ -293,10 +293,9 @@ pub fn render_trend_chart(view: &UsageView, cx: &mut Context<UsageView>) -> AnyE
         .p(px(14.0))
         .gap(px(10.0))
         .child(section_header(
-            view.t(
-                "趋势图表（仅计已路由至服务商的调用）",
-                "Usage Trend (routed calls)",
-            ),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_chart_usage_trend_routed_calls(),
             Some(metric_bar.into_any_element()),
             cx,
         ))

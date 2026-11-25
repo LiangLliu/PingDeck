@@ -41,11 +41,10 @@ impl MockView {
         if !self.is_running(&srv.id) {
             self.status_msg = Some((
                 Tone::Warning,
-                self.t(
-                    "请先启动该 Mock 服务后再试运行路由",
-                    "Start the mock server before trying a route",
-                )
-                .to_owned(),
+                crate::ui::Tr(self.lang)
+                    .mock()
+                    .actions_try_start_the_mock_server_before()
+                    .to_owned(),
             ));
             cx.notify();
             return;
@@ -102,7 +101,9 @@ impl MockView {
         if cb.url.trim().is_empty() {
             self.status_msg = Some((
                 Tone::Warning,
-                self.t("请先填写回调目标 URL", "Enter a callback URL first")
+                crate::ui::Tr(self.lang)
+                    .mock()
+                    .actions_try_enter_a_callback_url_first()
                     .to_owned(),
             ));
             cx.notify();
@@ -141,17 +142,13 @@ impl MockView {
                         };
                         this.status_msg = Some((
                             tone,
-                            if this.is_zh() {
-                                format!(
-                                    "回调测试返回 {} {} ({} ms)",
-                                    exec.status_code, exec.status_text, exec.elapsed_ms
-                                )
-                            } else {
-                                format!(
-                                    "Callback returned {} {} ({} ms)",
-                                    exec.status_code, exec.status_text, exec.elapsed_ms
-                                )
-                            },
+                            crate::ui::Tr(this.lang)
+                                .mock()
+                                .actions_try_callback_returned_ms(
+                                    exec.status_code,
+                                    exec.status_text,
+                                    exec.elapsed_ms,
+                                ),
                         ));
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),

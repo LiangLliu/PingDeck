@@ -25,7 +25,6 @@ use super::format::format_probe_status;
 
 pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div {
     let p = palette(cx);
-    let zh = view.zh;
     let ent = cx.entity().clone();
 
     let cur_prov_name = view
@@ -34,11 +33,10 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         .and_then(|id| view.providers.iter().find(|pr| &pr.id == id))
         .map(|pr| pr.name.clone())
         .unwrap_or_else(|| {
-            if zh {
-                "选择服务商".into()
-            } else {
-                "Pick provider".into()
-            }
+            crate::ui::tr(cx)
+                .providers()
+                .prov_bench_table_pick_provider()
+                .into()
         });
 
     let provs_clone = view.providers.clone();
@@ -86,9 +84,13 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
     let ent_seg = ent.clone();
     let set_seg = tab_bar_segmented("bench-check-set")
         .selected_index(set_idx)
-        .child(tab_item(if zh { "快速" } else { "Quick" }))
-        .child(tab_item(if zh { "标准" } else { "Standard" }))
-        .child(tab_item(if zh { "完整" } else { "Full" }))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().prov_bench_table_quick(),
+        ))
+        .child(tab_item(crate::ui::tr(cx).providers().bench_set_standard()))
+        .child(tab_item(
+            crate::ui::tr(cx).providers().prov_bench_table_full(),
+        ))
         .on_click(move |idx, _, cx| {
             let next = match *idx {
                 1 => CheckSet::Standard,
@@ -103,15 +105,14 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         });
 
     let run_label = if view.selected_models.is_empty() {
-        if zh {
-            "运行全部".to_owned()
-        } else {
-            "Run all".to_owned()
-        }
-    } else if zh {
-        format!("运行所选 ({})", view.selected_models.len())
+        crate::ui::tr(cx)
+            .providers()
+            .prov_bench_table_run_all()
+            .to_owned()
     } else {
-        format!("Run selected ({})", view.selected_models.len())
+        crate::ui::tr(cx)
+            .providers()
+            .prov_bench_table_run_selected(view.selected_models.len())
     };
 
     let pid_hdr = view.selected_provider_id.as_deref().unwrap_or("");
@@ -141,11 +142,11 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                         .text_sm()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh {
-                            "模型测试台"
-                        } else {
-                            "Model Test Bench"
-                        }),
+                        .child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_bench_table_model_test_bench(),
+                        ),
                 )
                 .child(prov_picker)
                 .children((enabled_keys.len() > 1).then_some(key_picker))
@@ -157,41 +158,53 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .flex_shrink_0()
                 .gap(px(6.0))
                 .child(if view.running {
-                    btn_secondary("bench-stop", if zh { "停止运行" } else { "Stop" })
-                        .icon(icon_xs(UiIcon::Stop))
-                        .on_click(cx.listener(|this, _, _, cx| this.stop_run(cx)))
+                    btn_secondary(
+                        "bench-stop",
+                        crate::ui::tr(cx).providers().prov_bench_table_stop(),
+                    )
+                    .icon(icon_xs(UiIcon::Stop))
+                    .on_click(cx.listener(|this, _, _, cx| this.stop_run(cx)))
                 } else {
                     btn_primary("bench-run", run_label)
                         .icon(icon_xs(UiIcon::Play))
                         .on_click(cx.listener(|this, _, _, cx| this.request_start_run(None, cx)))
                 })
                 .children(view.run_id.clone().filter(|_| !view.running).map(|rid| {
-                    btn_secondary("bench-retry", if zh { "重试失败" } else { "Retry failed" })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.request_start_run(Some(rid.clone()), cx);
-                        }))
+                    btn_secondary(
+                        "bench-retry",
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_bench_table_retry_failed(),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.request_start_run(Some(rid.clone()), cx);
+                    }))
                 }))
                 .children((view.run_id.is_some() && !view.running).then(|| {
                     btn_secondary(
                         "bench-apply",
-                        if zh {
-                            "应用实测结果"
-                        } else {
-                            "Apply results"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_bench_table_apply_results(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.open_apply_preview(cx)))
                 }))
                 .children((view.run_id.is_some() && !view.running).then(|| {
-                    btn_ghost("bench-exp-csv", if zh { "导出 CSV" } else { "Export CSV" })
-                        .icon(icon_xs(UiIcon::Download))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.export_probe_results(ProbeExportFormat::Csv, cx);
-                        }))
+                    btn_ghost(
+                        "bench-exp-csv",
+                        crate::ui::tr(cx).providers().prov_bench_table_export_csv(),
+                    )
+                    .icon(icon_xs(UiIcon::Download))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.export_probe_results(ProbeExportFormat::Csv, cx);
+                    }))
                 }))
                 .children(view.last_apply_id.is_some().then(|| {
-                    btn_ghost("bench-undo", if zh { "撤销应用" } else { "Undo apply" })
-                        .on_click(cx.listener(|this, _, _, cx| this.undo_apply(cx)))
+                    btn_ghost(
+                        "bench-undo",
+                        crate::ui::tr(cx).providers().prov_bench_table_undo_apply(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.undo_apply(cx)))
                 })),
         );
 
@@ -248,7 +261,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .child(
                     filter_chip(
                         "bf-all",
-                        if zh { "全部" } else { "All" },
+                        crate::ui::tr(cx).providers().models_filter_all(),
                         None,
                         view.filter == BenchFilter::All,
                         cx,
@@ -262,7 +275,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .child(
                     filter_chip(
                         "bf-fail",
-                        if zh { "失败" } else { "Failed" },
+                        crate::ui::tr(cx).providers().models_filter_failed(),
                         None,
                         view.filter == BenchFilter::Failed,
                         cx,
@@ -276,7 +289,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .child(
                     filter_chip(
                         "bf-slow",
-                        if zh { "较慢" } else { "Slow" },
+                        crate::ui::tr(cx).providers().prov_bench_table_slow(),
                         None,
                         view.filter == BenchFilter::Slow,
                         cx,
@@ -290,11 +303,9 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .child(
                     filter_chip(
                         "bf-inc-dis",
-                        if zh {
-                            "含停用模型"
-                        } else {
-                            "Include disabled"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_bench_table_include_disabled(),
                         None,
                         view.include_disabled,
                         cx,
@@ -316,13 +327,19 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
     let confirm_banners = render_confirm_banners(view, cx);
 
     let cols: [(&str, &str); 7] = [
-        ("chat", if zh { "对话" } else { "Chat" }),
-        ("stream", if zh { "流式首字" } else { "TTFT" }),
-        ("tools", if zh { "工具" } else { "Tools" }),
+        ("chat", crate::ui::tr(cx).providers().prov_keytest_chat()),
+        (
+            "stream",
+            crate::ui::tr(cx).providers().prov_bench_table_ttft(),
+        ),
+        ("tools", crate::ui::tr(cx).common().cap_tools()),
         ("json_schema", "JSON"),
-        ("vision", if zh { "视觉" } else { "Vision" }),
-        ("reasoning", if zh { "推理" } else { "Reason" }),
-        ("cache", if zh { "缓存" } else { "Cache" }),
+        ("vision", crate::ui::tr(cx).common().cap_vision()),
+        (
+            "reasoning",
+            crate::ui::tr(cx).providers().prov_bench_table_reason(),
+        ),
+        ("cache", crate::ui::tr(cx).common().cap_cache()),
     ];
 
     let mut thead = h_row()
@@ -341,7 +358,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
             div()
                 .flex_1()
                 .min_w(px(180.0))
-                .child(if zh { "模型" } else { "Model" }),
+                .child(crate::ui::tr(cx).providers().bench_col_model()),
         );
     for (_, title) in cols {
         thead = thead.child(div().w(px(82.0)).flex().justify_center().child(title));
@@ -354,11 +371,11 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .p(px(24.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(if zh {
-                    "该服务商暂无可测试的模型。请先添加服务商并刷新或启用模型。"
-                } else {
-                    "No models to test for this provider."
-                }),
+                .child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_bench_table_no_models_to_test_for(),
+                ),
         );
     } else {
         let shown = prov_models.len().min(60);
@@ -409,7 +426,8 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 let cell_ck = (*col_key).to_owned();
                 let el: gpui_kit::AnyElement = match cell_opt {
                     Some(cell) => {
-                        let (lbl, tone) = format_probe_status(cell.status, zh);
+                        let (lbl, tone) =
+                            format_probe_status(cell.status, crate::ui::active_language(cx));
                         let txt = if cell.status == ProbeStatus::Ready {
                             if *col_key == "stream" {
                                 cell.result
@@ -460,17 +478,11 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                     .text_color(to_hsla(p.faint))
                     .border_t_1()
                     .border_color(to_hsla(p.line.composite_over(p.surface)))
-                    .child(SharedString::from(if zh {
-                        format!(
-                            "当前显示前 {shown} / 共 {} 个模型，请使用搜索框筛选定位",
-                            prov_models.len()
-                        )
-                    } else {
-                        format!(
-                            "Showing first {shown} of {} models — use search to filter",
-                            prov_models.len()
-                        )
-                    })),
+                    .child(SharedString::from(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_bench_table_showing_first_of_models_use(shown, prov_models.len()),
+                    )),
             );
         }
     }

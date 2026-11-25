@@ -18,7 +18,6 @@ pub fn render_env_sidebar(
     cx: &mut Context<EnvironmentsView>,
 ) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
     let q = view.env_search_input.read(cx).value().trim().to_lowercase();
 
     let filtered: Vec<_> = view
@@ -31,7 +30,11 @@ pub fn render_env_sidebar(
         .gap(px(4.0))
         .child(
             btn_icon("env-import-btn", UiIcon::Upload)
-                .tooltip(view.t("导入 Postman 环境 JSON", "Import Postman Environment JSON"))
+                .tooltip(
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .sidebar_import_postman_environment_json(),
+                )
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.import_editor
                         .update(cx, |s, cx| s.set_value("", window, cx));
@@ -40,16 +43,21 @@ pub fn render_env_sidebar(
                 })),
         )
         .child(
-            btn_primary("env-new-btn", view.t("新建", "New"))
-                .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_create_env_modal(window, cx);
-                })),
+            btn_primary(
+                "env-new-btn",
+                crate::ui::Tr(view.lang).environments().sidebar_new(),
+            )
+            .icon(icon_xs(UiIcon::Plus))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_create_env_modal(window, cx);
+            })),
         )
         .into_any_element();
 
     let header = pane_header(
-        view.t("环境列表", "Environments"),
+        crate::ui::Tr(view.lang)
+            .environments()
+            .sidebar_environments(),
         Some(view.environments.len()),
         Some(actions),
         Some(search_input(&view.env_search_input, cx).into_any_element()),
@@ -60,14 +68,19 @@ pub fn render_env_sidebar(
     if filtered.is_empty() {
         list = list.child(empty_inline(
             if view.environments.is_empty() {
-                view.t("暂无环境", "No environments yet")
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .sidebar_no_environments_yet()
             } else {
-                view.t("没有匹配的环境", "No matching environments")
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .sidebar_no_matching_environments()
             },
-            Some(SharedString::from(view.t(
-                "创建 dev / staging / prod 环境管理变量、机密与发送前保护。",
-                "Create dev / staging / prod environments for variables, secrets, and guards.",
-            ))),
+            Some(SharedString::from(
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .sidebar_create_dev_staging_prod_environments(),
+            )),
             None,
             cx,
         ));
@@ -78,70 +91,61 @@ pub fn render_env_sidebar(
                 && view.selected_env_id.as_deref() == Some(env.id.as_str());
             let is_workspace_active = view.active_env_id.as_deref() == Some(env.id.as_str());
             let secret_count = env.variables.iter().filter(|v| v.is_secret).count();
-            let sub = if zh {
-                format!(
-                    "{} 个变量{}",
-                    env.variables.len(),
-                    if secret_count > 0 {
-                        format!(" · {secret_count} 机密")
-                    } else {
-                        String::new()
-                    }
-                )
+            let e_tr = crate::ui::Tr(view.lang).environments();
+            let sub = if secret_count > 0 {
+                e_tr.sidebar_vars_secrets_count(env.variables.len(), secret_count)
             } else {
-                format!(
-                    "{} vars{}",
-                    env.variables.len(),
-                    if secret_count > 0 {
-                        format!(" · {secret_count} secrets")
-                    } else {
-                        String::new()
-                    }
-                )
+                e_tr.sidebar_vars_count(env.variables.len())
             };
 
-            let mut row =
-                list_row(
-                    SharedString::from(format!("env-row-{}", env.id)),
-                    active,
-                    cx,
-                    cx.listener(move |this, _, _, cx| {
-                        this.resource_tab = EnvResourceTab::Environments;
-                        this.select_env(eid.clone(), cx);
-                    }),
-                )
-                .items_start()
-                .py(px(7.0))
-                .child(
-                    v_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(3.0))
-                        .child(
-                            h_row()
-                                .w_full()
-                                .justify_between()
-                                .gap(px(6.0))
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .text_size(px(13.0))
-                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                        .text_color(to_hsla(p.ink))
-                                        .truncate()
-                                        .child(env.name.clone()),
+            let mut row = list_row(
+                SharedString::from(format!("env-row-{}", env.id)),
+                active,
+                cx,
+                cx.listener(move |this, _, _, cx| {
+                    this.resource_tab = EnvResourceTab::Environments;
+                    this.select_env(eid.clone(), cx);
+                }),
+            )
+            .items_start()
+            .py(px(7.0))
+            .child(
+                v_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(3.0))
+                    .child(
+                        h_row()
+                            .w_full()
+                            .justify_between()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_size(px(13.0))
+                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                    .text_color(to_hsla(p.ink))
+                                    .truncate()
+                                    .child(env.name.clone()),
+                            )
+                            .children(is_workspace_active.then(|| {
+                                badge(
+                                    crate::ui::Tr(view.lang).environments().sidebar_active(),
+                                    Tone::Success,
+                                    cx,
                                 )
-                                .children(is_workspace_active.then(|| {
-                                    badge(view.t("● 当前", "● Active"), Tone::Success, cx)
-                                }))
-                                .children(
-                                    env.confirm_before_send
-                                        .then(|| badge(view.t("保护", "Guard"), Tone::Warning, cx)),
-                                ),
-                        )
-                        .child(meta_pill(sub, cx)),
-                );
+                            }))
+                            .children(env.confirm_before_send.then(|| {
+                                badge(
+                                    crate::ui::Tr(view.lang).environments().sidebar_guard(),
+                                    Tone::Warning,
+                                    cx,
+                                )
+                            })),
+                    )
+                    .child(meta_pill(sub, cx)),
+            );
             if active && view.env_dirty {
                 row = row.child(
                     div()
@@ -161,7 +165,7 @@ pub fn render_env_sidebar(
         (
             EnvResourceTab::Globals,
             UiIcon::Globe,
-            view.t("全局变量", "Globals"),
+            crate::ui::Tr(view.lang).environments().globals_title(),
             view.globals_draft.len(),
         ),
         (
@@ -173,7 +177,9 @@ pub fn render_env_sidebar(
         (
             EnvResourceTab::Certificates,
             UiIcon::Shield,
-            view.t("TLS 证书", "TLS Certificates"),
+            crate::ui::Tr(view.lang)
+                .environments()
+                .sidebar_tls_certificates(),
             view.certificates.len(),
         ),
     ];
@@ -185,10 +191,14 @@ pub fn render_env_sidebar(
                 .h(px(1.0))
                 .bg(to_hsla(p.line.composite_over(p.pane))),
         )
-        .child(div().px(px(6.0)).pb(px(4.0)).child(section_heading(
-            view.t("工作区共享", "Workspace Shared"),
-            cx,
-        )));
+        .child(
+            div().px(px(6.0)).pb(px(4.0)).child(section_heading(
+                crate::ui::Tr(view.lang)
+                    .environments()
+                    .sidebar_workspace_shared(),
+                cx,
+            )),
+        );
     for (tab, ic, label, count) in shared_items {
         let selected = view.resource_tab == tab;
         list = list.child(
@@ -229,11 +239,11 @@ pub fn render_env_sidebar(
         div()
             .text_size(px(11.0))
             .text_color(to_hsla(p.muted))
-            .child(if zh {
-                format!("共 {} 个环境", view.environments.len())
-            } else {
-                format!("{} environments", view.environments.len())
-            }),
+            .child(
+                crate::ui::tr(cx)
+                    .environments()
+                    .sidebar_environments_2(view.environments.len()),
+            ),
         Some(
             btn_icon("env-refresh-btn", UiIcon::Refresh)
                 .on_click(cx.listener(|this, _, _, cx| {

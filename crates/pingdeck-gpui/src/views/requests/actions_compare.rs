@@ -204,7 +204,7 @@ impl RequestsView {
                             this.push_console(
                                 "AI",
                                 ConsoleLevel::Info,
-                                format!("多模型对比完成（{n} 个模型）"),
+                                crate::ui::tr(cx).requests().act_compare_done(n),
                                 None,
                             );
                         }

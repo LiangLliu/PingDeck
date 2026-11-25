@@ -152,9 +152,10 @@ impl RequestsView {
                             } else {
                                 ConsoleLevel::Warn
                             },
-                            format!(
-                                "集合运行完成：{} 通过 / {} 失败（共 {}）",
-                                done.passed, done.failed, done.total
+                            crate::ui::tr(cx).requests().act_runner_done(
+                                done.passed,
+                                done.failed,
+                                done.total,
                             ),
                             None,
                         );
@@ -193,7 +194,10 @@ impl RequestsView {
             && let Some(tok) = r.cancel_token.clone()
         {
             execution_cancel_impl(runtime(cx).state(), tok);
-            self.status_msg = Some((Tone::Warning, "正在停止集合运行…".into()));
+            self.status_msg = Some((
+                Tone::Warning,
+                crate::ui::tr(cx).requests().act_stopping_runner().into(),
+            ));
             cx.notify();
         }
     }
@@ -372,7 +376,10 @@ impl RequestsView {
                 }
                 match res {
                     Ok(_) => {
-                        this.status_msg = Some((Tone::Success, "已保存设置".into()));
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).requests().act_saved_settings().into(),
+                        ));
                         this.reload_workspace_no_window(ws_reload, cx);
                     }
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),

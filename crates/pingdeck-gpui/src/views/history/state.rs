@@ -55,20 +55,15 @@ impl HistoryDetailTab {
     }
 
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
-        match (self, zh) {
-            (Self::Body, true) => "响应正文",
-            (Self::Body, false) => "Body",
-            (Self::Headers, true) => "响应头",
-            (Self::Headers, false) => "Headers",
-            (Self::Sent, true) => "实发请求",
-            (Self::Sent, false) => "Sent",
-            (Self::Snapshot, true) => "请求快照",
-            (Self::Snapshot, false) => "Snapshot",
-            (Self::Trace, true) => "耗时与链路",
-            (Self::Trace, false) => "Trace",
-            (Self::Checks, true) => "校验与批次",
-            (Self::Checks, false) => "Checks",
+    pub const fn label(self, lang: Language) -> &'static str {
+        let h = crate::ui::Tr(lang).history();
+        match self {
+            Self::Body => h.tab_body(),
+            Self::Headers => h.tab_headers(),
+            Self::Sent => h.tab_sent(),
+            Self::Snapshot => h.tab_snapshot(),
+            Self::Trace => h.tab_trace(),
+            Self::Checks => h.tab_checks(),
         }
     }
 }
@@ -122,16 +117,6 @@ pub struct HistoryView {
 }
 
 impl HistoryView {
-    #[must_use]
-    pub fn is_zh(&self) -> bool {
-        self.lang == Language::ZhCn
-    }
-
-    #[must_use]
-    pub fn t(&self, zh: &'static str, en: &'static str) -> &'static str {
-        if self.is_zh() { zh } else { en }
-    }
-
     #[must_use]
     pub fn active_entry(&self) -> Option<&ExecutionHistoryEntry> {
         self.selected_entry.as_ref().or_else(|| {

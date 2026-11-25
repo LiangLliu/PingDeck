@@ -15,11 +15,7 @@ use crate::ui::{
 use super::SettingsView;
 use super::state_inputs::ProxyModeChoice;
 
-pub fn render_network(
-    view: &SettingsView,
-    zh: bool,
-    cx: &mut Context<SettingsView>,
-) -> gpui_kit::Div {
+pub fn render_network(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui_kit::Div {
     let p = palette(cx);
     let net = &view.settings.network;
     let mode_idx = match view.proxy_mode {
@@ -30,21 +26,21 @@ pub fn render_network(
     let ent_mode = cx.entity().clone();
 
     let mut proxy_rows = v_col().w_full().child(setting_row(
-        if zh { "代理模式" } else { "Proxy mode" },
+        crate::ui::tr(cx).settings().page_network_proxy_mode(),
         None,
-        Some(SharedString::from(if zh {
-            "应用于 HTTP 请求、AI 服务商调用、模型目录与内置搜索（单条请求或服务商可单独覆写）。"
-        } else {
-            "Applies to HTTP requests, AI providers, catalog sync, and web search (per-request/provider overrides win)."
-        })),
+        Some(SharedString::from(
+            crate::ui::tr(cx)
+                .settings()
+                .page_network_applies_to_http_requests_ai(),
+        )),
         h_row()
             .gap(px(8.0))
             .child(
                 tab_bar_segmented("net-proxy-mode")
                     .selected_index(mode_idx)
-                    .child(tab_item(if zh { "跟随系统" } else { "System" }))
-                    .child(tab_item(if zh { "自定义" } else { "Custom" }))
-                    .child(tab_item(if zh { "直连" } else { "Direct" }))
+                    .child(tab_item(crate::ui::tr(cx).settings().appearance_system()))
+                    .child(tab_item(crate::ui::tr(cx).settings().network_mode_custom()))
+                    .child(tab_item(crate::ui::tr(cx).settings().page_network_direct()))
                     .on_click(move |idx, _, cx| {
                         let mode = match *idx {
                             1 => ProxyModeChoice::Custom,
@@ -55,9 +51,12 @@ pub fn render_network(
                     }),
             )
             .child(
-                btn_secondary("net-test-proxy", if zh { "测试连接" } else { "Test" })
-                    .disabled(view.proxy_testing)
-                    .on_click(cx.listener(|this, _, _, cx| this.test_proxy_connection(cx))),
+                btn_secondary(
+                    "net-test-proxy",
+                    crate::ui::tr(cx).settings().page_network_test(),
+                )
+                .disabled(view.proxy_testing)
+                .on_click(cx.listener(|this, _, _, cx| this.test_proxy_connection(cx))),
             ),
         cx,
     ));
@@ -79,18 +78,20 @@ pub fn render_network(
                                 .child(
                                     btn_primary(
                                         "net-save-proxy",
-                                        if zh { "保存代理" } else { "Save proxy" },
+                                        crate::ui::tr(cx).settings().page_network_save_proxy(),
                                     )
                                     .on_click(
                                         cx.listener(|this, _, _, cx| this.save_custom_proxy(cx)),
                                     ),
                                 ),
                         )
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                            "支持 http://、https://、socks5://、socks5h://。若含认证密码，密码单独保存在本地 0600 明文保险库中，界面与导出文件均以 **** 掩码显示。"
-                        } else {
-                            "Supports http://, https://, socks5://, socks5h://. Passwords are stored in the local 0600 plaintext vault and masked as **** in UI & exports."
-                        })),
+                        .child(
+                            div().text_xs().text_color(to_hsla(p.muted)).child(
+                                crate::ui::tr(cx)
+                                    .settings()
+                                    .page_network_supports_http_https_socks5_socks5h(),
+                            ),
+                        ),
                 ),
         );
     }
@@ -103,72 +104,56 @@ pub fn render_network(
                 .border_b_1()
                 .border_color(to_hsla(p.line.composite_over(p.surface)))
                 .child(spinner_xs())
-                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                    "正在通过当前代理设置探测 api.openai.com…"
-                } else {
-                    "Testing connection to api.openai.com via current proxy route…"
-                })),
+                .child(
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_network_testing_connection_to_api_openai(),
+                    ),
+                ),
         );
     } else if let Some(res) = &view.proxy_test_result {
         let (tone, text) = match res.outcome {
             ProxyTestOutcome::Connected => (
                 Tone::Success,
-                if zh {
-                    format!(
-                        "连接成功：经由 {} 路由访问 {}，耗时 {} ms",
-                        res.route, res.target, res.elapsed_ms
-                    )
-                } else {
-                    format!(
-                        "Connected to {} via {} route in {} ms",
-                        res.target, res.route, res.elapsed_ms
-                    )
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_connected_to_via_route_in(
+                        &res.target,
+                        &res.route,
+                        res.elapsed_ms,
+                    ),
             ),
             ProxyTestOutcome::ProxyUnreachable => (
                 Tone::Danger,
-                if zh {
-                    format!("无法连接到代理服务器（耗时 {} ms）", res.elapsed_ms)
-                } else {
-                    format!("Proxy server unreachable ({} ms)", res.elapsed_ms)
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_proxy_server_unreachable_ms(res.elapsed_ms),
             ),
             ProxyTestOutcome::ProxyAuth => (
                 Tone::Warning,
-                if zh {
-                    "代理要求身份验证（HTTP 407），请在 URL 中补充 user:password@".to_owned()
-                } else {
-                    "Proxy requires authentication (HTTP 407); include user:password@ in URL"
-                        .to_owned()
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_proxy_requires_authentication_http_407()
+                    .to_owned(),
             ),
             ProxyTestOutcome::ProxyRefused => (
                 Tone::Danger,
-                if zh {
-                    "代理拒绝建立隧道连接".to_owned()
-                } else {
-                    "Proxy refused tunnel connection".to_owned()
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_proxy_refused_tunnel_connection()
+                    .to_owned(),
             ),
             ProxyTestOutcome::TargetNoResponse => (
                 Tone::Warning,
-                if zh {
-                    format!(
-                        "路由（{}）可达，但目标 {} 未响应（{}，{} ms）",
-                        res.route,
-                        res.target,
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_route_ok_but_did_not(
+                        &res.route,
+                        &res.target,
                         res.detail.as_deref().unwrap_or("timeout"),
-                        res.elapsed_ms
-                    )
-                } else {
-                    format!(
-                        "Route ({}) ok, but {} did not answer ({}, {} ms)",
-                        res.route,
-                        res.target,
-                        res.detail.as_deref().unwrap_or("timeout"),
-                        res.elapsed_ms
-                    )
-                },
+                        res.elapsed_ms,
+                    ),
             ),
         };
         proxy_rows = proxy_rows.child(
@@ -225,21 +210,18 @@ pub fn render_network(
                         .text_size(px(13.5))
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh {
-                            "绕过代理的主机（No Proxy）"
-                        } else {
-                            "Bypass proxy for hosts (No Proxy)"
-                        }),
+                        .child(
+                            crate::ui::tr(cx)
+                                .settings()
+                                .page_network_bypass_proxy_for_hosts_no(),
+                        ),
                 )
                 .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(if zh {
-                            "匹配的主机直接连接而不走全局代理；支持 *.suffix 通配（最多 64 项，逗号分隔可批量添加）。"
-                        } else {
-                            "Matching hosts connect directly; supports *.suffix wildcards (up to 64 entries, comma-separated)."
-                        }),
+                    div().text_xs().text_color(to_hsla(p.muted)).child(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_network_matching_hosts_connect_directly_supports(),
+                    ),
                 ),
         )
         .children((!net.no_proxy.is_empty()).then_some(chips))
@@ -249,28 +231,34 @@ pub fn render_network(
                 .gap(px(8.0))
                 .child(div().flex_1().child(text_input(&view.inputs.no_proxy_add)))
                 .child(
-                    btn_secondary("noproxy-add-btn", if zh { "添加" } else { "Add" })
-                        .icon(icon_xs(UiIcon::Plus))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.add_no_proxy_entry(window, cx);
-                        })),
+                    btn_secondary(
+                        "noproxy-add-btn",
+                        crate::ui::tr(cx).settings().page_network_add(),
+                    )
+                    .icon(icon_xs(UiIcon::Plus))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.add_no_proxy_entry(window, cx);
+                    })),
                 ),
         );
 
     let proxy_sec = settings_section(
-        if zh { "出站代理" } else { "Outbound Proxy" },
+        crate::ui::tr(cx).settings().page_network_outbound_proxy(),
         Some(
-            btn_ghost("net-reset-proxy", if zh { "恢复默认" } else { "Reset" })
-                .icon(icon_xs(UiIcon::RotateCcw))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.proxy_test_result = None;
-                    this.reset_keys(
-                        CoreSection::Network,
-                        Some(vec!["proxy_url".into(), "no_proxy".into()]),
-                        cx,
-                    );
-                }))
-                .into_any_element(),
+            btn_ghost(
+                "net-reset-proxy",
+                crate::ui::tr(cx).settings().page_defaults_reset(),
+            )
+            .icon(icon_xs(UiIcon::RotateCcw))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.proxy_test_result = None;
+                this.reset_keys(
+                    CoreSection::Network,
+                    Some(vec!["proxy_url".into(), "no_proxy".into()]),
+                    cx,
+                );
+            }))
+            .into_any_element(),
         ),
         proxy_rows.child(no_proxy_row),
         cx,
@@ -280,11 +268,13 @@ pub fn render_network(
     let mut ca_body = v_col()
         .w_full()
         .gap(px(10.0))
-        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "用于企业自签名根证书或公司内网 HTTPS 代理（PEM 格式，最大 8 MiB，需填写绝对路径）。"
-        } else {
-            "Trust extra corporate or self-signed root CAs (PEM bundle up to 8 MiB, absolute path)."
-        }))
+        .child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_trust_extra_corporate_or_self(),
+            ),
+        )
         .child(
             h_row()
                 .w_full()
@@ -295,20 +285,26 @@ pub fn render_network(
                         .child(text_input(&view.inputs.ca_bundle_path)),
                 )
                 .child(
-                    btn_secondary("net-pick-ca", if zh { "选择文件…" } else { "Browse…" })
-                        .icon(icon_xs(UiIcon::FolderOpen))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.pick_ca_bundle(window, cx);
-                        })),
+                    btn_secondary(
+                        "net-pick-ca",
+                        crate::ui::tr(cx).settings().page_network_browse(),
+                    )
+                    .icon(icon_xs(UiIcon::FolderOpen))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.pick_ca_bundle(window, cx);
+                    })),
                 )
                 .child(
-                    btn_secondary("net-save-ca", if zh { "保存" } else { "Save" })
+                    btn_secondary("net-save-ca", crate::ui::tr(cx).common().save())
                         .on_click(cx.listener(|this, _, _, cx| this.save_ca_bundle(cx))),
                 )
                 .child(
-                    btn_secondary("net-test-ca", if zh { "校验证书" } else { "Verify" })
-                        .disabled(view.ca_testing)
-                        .on_click(cx.listener(|this, _, _, cx| this.test_ca_bundle(cx))),
+                    btn_secondary(
+                        "net-test-ca",
+                        crate::ui::tr(cx).settings().page_network_verify(),
+                    )
+                    .disabled(view.ca_testing)
+                    .on_click(cx.listener(|this, _, _, cx| this.test_ca_bundle(cx))),
                 ),
         );
 
@@ -316,24 +312,18 @@ pub fn render_network(
         let (tone, msg) = if info.ok {
             (
                 Tone::Success,
-                if zh {
-                    format!("证书包有效：已识别 {} 个可用根证书", info.certificates)
-                } else {
-                    format!(
-                        "Valid CA bundle: {} usable root certificate(s)",
-                        info.certificates
-                    )
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_valid_ca_bundle_usable_root(info.certificates),
             )
         } else {
             (
                 Tone::Danger,
                 info.error.clone().unwrap_or_else(|| {
-                    if zh {
-                        "证书包无效".to_owned()
-                    } else {
-                        "Invalid CA bundle".to_owned()
-                    }
+                    crate::ui::tr(cx)
+                        .settings()
+                        .page_network_invalid_ca_bundle()
+                        .to_owned()
                 }),
             )
         };
@@ -341,16 +331,17 @@ pub fn render_network(
     }
 
     let ca_sec = settings_section_padded(
-        if zh {
-            "自定义受信任 CA 证书包"
-        } else {
-            "Extra Trusted CA Bundle"
-        },
+        crate::ui::tr(cx)
+            .settings()
+            .page_network_extra_trusted_ca_bundle(),
         Some(
-            btn_ghost("net-reset-ca", if zh { "清除" } else { "Clear" })
-                .disabled(net.ca_bundle_path.is_empty())
-                .on_click(cx.listener(|this, _, window, cx| this.clear_ca_bundle(window, cx)))
-                .into_any_element(),
+            btn_ghost(
+                "net-reset-ca",
+                crate::ui::tr(cx).settings().page_defaults_clear(),
+            )
+            .disabled(net.ca_bundle_path.is_empty())
+            .on_click(cx.listener(|this, _, window, cx| this.clear_ca_bundle(window, cx)))
+            .into_any_element(),
         ),
         ca_body,
         cx,
@@ -358,31 +349,23 @@ pub fn render_network(
 
     // mTLS client certificates cross-link card
     let mtls_card = settings_section(
-        if zh {
-            "双向认证（mTLS）"
-        } else {
-            "Mutual TLS (mTLS)"
-        },
+        crate::ui::tr(cx).settings().page_network_mutual_tls_mtls(),
         None,
         setting_row(
-            if zh {
-                "客户端证书（mTLS）按工作区管理"
-            } else {
-                "Client certificates (mTLS) are workspace-scoped"
-            },
+            crate::ui::tr(cx)
+                .settings()
+                .page_network_client_certificates_mtls_are_workspace(),
             None,
-            Some(SharedString::from(if zh {
-                "如需为特定域名配置双向 TLS 客户端证书与私钥，请前往「环境」模块管理。"
-            } else {
-                "Configure per-host client certificates and private keys inside the Environments module."
-            })),
+            Some(SharedString::from(
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_configure_per_host_client_certificates(),
+            )),
             btn_secondary(
                 "net-jump-envs",
-                if zh {
-                    "前往环境"
-                } else {
-                    "Open Environments"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .page_network_open_environments(),
             )
             .icon(icon_xs(UiIcon::ExternalLink))
             .on_click(cx.listener(|this, _, _, cx| {

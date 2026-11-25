@@ -15,7 +15,7 @@ use pingdeck_desktop::services::{
 };
 
 use crate::bridge::{runtime, spawn_blocking_into};
-use crate::ui::Tone;
+use crate::ui::{Tone, tr};
 
 use super::UtilityPanel;
 
@@ -93,6 +93,7 @@ impl UtilityPanel {
         }
         let fmt = self.io_format.clone();
         let conflict = self.io_conflict;
+        let u = tr(cx).utility();
         let task = spawn_blocking_into(
             cx,
             move |state| -> Result<String, AppError> {
@@ -124,26 +125,20 @@ impl UtilityPanel {
                             examples: Some(req.examples),
                         };
                         let saved = request_save_impl(state, input)?;
-                        Ok(format!("Imported cURL request: {}", saved.name))
+                        Ok(u.io_imported_curl(saved.name))
                     }
                     "postman" => {
                         let res = postman_import_text_impl(state, ws_id, payload, conflict)?;
-                        Ok(format!(
-                            "Imported Postman collection ({} requests)",
-                            res.request_count
-                        ))
+                        Ok(u.io_imported_postman(res.request_count))
                     }
                     "environment" => {
                         let env = environment_import_text_impl(state, ws_id, payload, conflict)?;
-                        Ok(format!("Imported environment: {}", env.name))
+                        Ok(u.io_imported_env(env.name))
                     }
                     _ => {
                         let res =
                             collection_import_text_impl(state, ws_id, fmt, payload, conflict)?;
-                        Ok(format!(
-                            "Imported collection ({} requests)",
-                            res.request_count
-                        ))
+                        Ok(u.io_imported_col(res.request_count))
                     }
                 }
             },
@@ -187,7 +182,8 @@ impl UtilityPanel {
             |this, res, cx| {
                 match res {
                     Ok(r) if r.saved => {
-                        this.status_note = Some((Tone::Success, "Collection exported".into()));
+                        this.status_note =
+                            Some((Tone::Success, tr(cx).utility().io_exported_col().to_owned()));
                     }
                     Ok(_) => {}
                     Err(e) => this.status_note = Some((Tone::Danger, e.message().to_owned())),
@@ -231,7 +227,8 @@ impl UtilityPanel {
             |this, res, cx| {
                 match res {
                     Ok(()) => {
-                        this.status_note = Some((Tone::Success, "Environment exported".into()));
+                        this.status_note =
+                            Some((Tone::Success, tr(cx).utility().io_exported_env().to_owned()));
                     }
                     Err(e) => this.status_note = Some((Tone::Danger, e.message().to_owned())),
                 }

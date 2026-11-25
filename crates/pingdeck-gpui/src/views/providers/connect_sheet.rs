@@ -29,26 +29,24 @@ pub enum ConnectToolKind {
 
 impl ConnectToolKind {
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
+    pub const fn label(
+        self,
+        lang: pingdeck_desktop::core::model::settings::Language,
+    ) -> &'static str {
         match self {
             Self::File(app) => app.display_name(),
             Self::Snippet(SnippetClient::Zed) => "Zed",
             Self::Snippet(SnippetClient::Cursor) => "Cursor",
             Self::Snippet(SnippetClient::CherryStudio) => "Cherry Studio",
-            Self::Snippet(SnippetClient::GenericEnv) => {
-                if zh {
-                    "环境变量"
-                } else {
-                    "Env vars"
-                }
-            }
+            Self::Snippet(SnippetClient::GenericEnv) => crate::ui::Tr(lang)
+                .providers()
+                .prov_connect_sheet_env_vars(),
         }
     }
 }
 
 pub struct ConnectClientSheet {
     parent: Entity<ProvidersView>,
-    pub zh: bool,
     gateway_url: String,
     pub tool: ConnectToolKind,
     /// `(canonical "provider_id/model", display "provider_name/model")`.
@@ -75,12 +73,11 @@ impl ConnectClientSheet {
         initial_tool: ConnectToolKind,
         gateway_url: String,
         available_models: Vec<(String, String)>,
-        zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let tool = initial_tool;
-        let default_name = tool.label(zh).to_owned();
+        let default_name = tool.label(crate::ui::active_language(cx)).to_owned();
         let selected_model = available_models.first().map(|(id, _)| id.clone());
         let client_name_input = cx.new(|cx| {
             let mut st = InputState::new(window, cx).placeholder("Client name…");
@@ -89,7 +86,6 @@ impl ConnectClientSheet {
         });
         let mut sheet = Self {
             parent,
-            zh,
             gateway_url,
             tool,
             available_models,
@@ -118,7 +114,7 @@ impl ConnectClientSheet {
         self.verify_result = None;
         self.revealed_token = None;
         self.flash = None;
-        let lbl = tool.label(self.zh).to_owned();
+        let lbl = tool.label(crate::ui::active_language(cx)).to_owned();
         self.client_name_input
             .update(cx, |i, cx| i.set_value(lbl, window, cx));
         self.refresh_preview(cx);
@@ -208,7 +204,6 @@ impl ConnectClientSheet {
         cx.notify();
 
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_client_connect_impl(state, input),
@@ -218,11 +213,9 @@ impl ConnectClientSheet {
                     Ok(done) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("{} 已写入配置并自动备份原文件", done.client.name)
-                            } else {
-                                format!("{} configured and backed up", done.client.name)
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_configured_and_backed_up(&done.client.name),
                         ));
                         this.connect_result = Some(done);
                         parent.update(cx, |p, cx| p.reload_all(cx));
@@ -238,14 +231,13 @@ impl ConnectClientSheet {
     pub fn mint_snippet_token(&mut self, cx: &mut Context<Self>) {
         let raw_name = self.client_name_input.read(cx).value().trim().to_owned();
         let name = if raw_name.is_empty() {
-            self.tool.label(self.zh).to_owned()
+            self.tool.label(crate::ui::active_language(cx)).to_owned()
         } else {
             raw_name
         };
         let allowed_models: Vec<String> = self.selected_model.clone().into_iter().collect();
         let allow_all = allowed_models.is_empty();
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -265,11 +257,10 @@ impl ConnectClientSheet {
                         this.revealed_token = Some(created.token);
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                "已生成客户端令牌并填充到下方片段（关闭后不可再看）".into()
-                            } else {
-                                "Token minted and spliced into snippets (shown once)".into()
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_token_minted_and_spliced_into()
+                                .into(),
                         ));
                         this.refresh_preview(cx);
                         parent.update(cx, |p, cx| p.reload_all(cx));
@@ -309,7 +300,6 @@ impl ConnectClientSheet {
             return;
         };
         let parent = self.parent.clone();
-        let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
             move |state| llm_client_restore_impl(state, app, false),
@@ -318,11 +308,9 @@ impl ConnectClientSheet {
                     Ok(r) => {
                         this.flash = Some((
                             Tone::Success,
-                            if zh {
-                                format!("已恢复 {} 个文件", r.files.len())
-                            } else {
-                                format!("Restored {} file(s)", r.files.len())
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_restored_file_s(r.files.len()),
                         ));
                         this.connect_result = None;
                         this.refresh_preview(cx);
@@ -339,10 +327,6 @@ impl ConnectClientSheet {
 
 impl Render for ConnectClientSheet {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let zh = self.zh;
-        let desc =
-            |z: &'static str, e: &'static str| Some(SharedString::from(if zh { z } else { e }));
-
         let all_tools = [
             ConnectToolKind::File(ClientApp::ClaudeCode),
             ConnectToolKind::File(ClientApp::Codex),
@@ -358,7 +342,7 @@ impl Render for ConnectClientSheet {
             tool_bar = tool_bar.child(
                 filter_chip(
                     SharedString::from(format!("conn-tool-{i}")),
-                    kind.label(zh),
+                    kind.label(crate::ui::active_language(cx)),
                     None,
                     self.tool == kind,
                     cx,
@@ -382,11 +366,10 @@ impl Render for ConnectClientSheet {
             .as_deref()
             .map(disp_for)
             .unwrap_or_else(|| {
-                if zh {
-                    "选择默认对话模型".into()
-                } else {
-                    "Pick default model".into()
-                }
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_connect_sheet_pick_default_model()
+                    .into()
             });
         let model_picker = popover("conn-model-pop")
             .anchor(Anchor::TopLeft)
@@ -400,11 +383,13 @@ impl Render for ConnectClientSheet {
                 let list_h = ((models_list.len().min(60) as f32) * 30.0 + 12.0).clamp(56.0, 300.0);
                 let mut col = v_col().w(px(300.0)).gap(px(2.0)).p(px(6.0));
                 if models_list.is_empty() {
-                    col = col.child(div().p(px(8.0)).text_xs().child(if zh {
-                        "请先添加服务商并启用至少一个对话模型"
-                    } else {
-                        "Enable at least one chat model first"
-                    }));
+                    col = col.child(
+                        div().p(px(8.0)).text_xs().child(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_enable_at_least_one_chat(),
+                        ),
+                    );
                 } else {
                     for (i, (m_id, m_disp)) in models_list.iter().take(60).enumerate() {
                         let m_val = m_id.clone();
@@ -448,9 +433,15 @@ impl Render for ConnectClientSheet {
         };
         let on_existing_seg = tab_bar_segmented("conn-on-existing")
             .selected_index(ex_idx)
-            .child(tab_item(if zh { "轮换已有" } else { "Rotate" }))
-            .child(tab_item(if zh { "另建客户端" } else { "Add 2nd" }))
-            .child(tab_item(if zh { "替换已吊销" } else { "Replace" }))
+            .child(tab_item(
+                crate::ui::tr(cx).providers().prov_connect_sheet_rotate(),
+            ))
+            .child(tab_item(
+                crate::ui::tr(cx).providers().prov_connect_sheet_add_2nd(),
+            ))
+            .child(tab_item(
+                crate::ui::tr(cx).providers().prov_connect_sheet_replace(),
+            ))
             .on_click(move |idx, _, cx| {
                 let next = match *idx {
                     1 => OnExisting::SecondClient,
@@ -470,7 +461,12 @@ impl Render for ConnectClientSheet {
             .child(
                 v_col()
                     .gap(px(6.0))
-                    .child(section_heading(if zh { "1. 选择客户端" } else { "1. Choose tool" }, cx))
+                    .child(section_heading(
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_connect_sheet_1_choose_tool(),
+                        cx,
+                    ))
                     .child(tool_bar),
             )
             .child(
@@ -478,23 +474,30 @@ impl Render for ConnectClientSheet {
                     v_col()
                         .gap(px(10.0))
                         .child(field_row(
-                            if zh { "默认模型" } else { "Default model" },
-                            desc(
-                                "新令牌允许使用该模型（若该模型配置了备用规则，网关会自动故障转移）。",
-                                "The client token will be scoped to this model and its fallback chain.",
-                            ),
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_connect_sheet_default_model(),
+                            Some(SharedString::from(
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_connect_default_model_desc(),
+                            )),
                             model_picker,
                             cx,
                         ))
                         .child(field_row(
-                            if zh { "客户端名称" } else { "Client name" },
+                            crate::ui::tr(cx).providers().connect_name(),
                             None,
-                            div().w(px(210.0)).child(text_input(&self.client_name_input)),
+                            div()
+                                .w(px(210.0))
+                                .child(text_input(&self.client_name_input)),
                             cx,
                         ))
                         .children(matches!(self.tool, ConnectToolKind::File(_)).then(|| {
                             field_row(
-                                if zh { "已有同名配置时" } else { "If already connected" },
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_connect_sheet_if_already_connected(),
                                 None,
                                 on_existing_seg,
                                 cx,
@@ -502,11 +505,14 @@ impl Render for ConnectClientSheet {
                         }))
                         .children(matches!(self.tool, ConnectToolKind::File(_)).then(|| {
                             field_row(
-                                if zh { "未知模型名回退到默认模型" } else { "Map unknown model names" },
-                                desc(
-                                    "当工具发出裸模型名（如 claude-haiku）时自动转到所选默认模型。",
-                                    "Serve unrecognized bare model names using the default model.",
-                                ),
+                                crate::ui::tr(cx)
+                                    .providers()
+                                    .prov_connect_sheet_map_unknown_model_names(),
+                                Some(SharedString::from(
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_connect_unknown_model_desc(),
+                                )),
                                 toggle_switch("conn-unknown-sw", self.unknown_to_default).on_click(
                                     cx.listener(|this, _, _, cx| {
                                         this.unknown_to_default = !this.unknown_to_default;

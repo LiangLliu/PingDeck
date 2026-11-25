@@ -46,7 +46,6 @@ pub(super) struct LiveRow {
 
 pub struct SniffProviderSheet {
     pub(super) parent: Entity<ProvidersView>,
-    pub(super) zh: bool,
     pub(super) presets: Vec<ProviderPreset>,
     pub(super) resniff_provider_id: Option<String>,
     pub(super) step: u8,
@@ -88,7 +87,6 @@ impl SniffProviderSheet {
         initial_url: Option<String>,
         initial_name: Option<String>,
         initial_preset: Option<String>,
-        zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -112,37 +110,34 @@ impl SniffProviderSheet {
         });
         let key_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder(if zh {
-                    "API 密钥（可选，仅存本机）"
-                } else {
-                    "API Key (optional)"
-                })
+                .placeholder(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_sniff_sheet_api_key_optional(),
+                )
                 .masked(true)
         });
         let name_input = cx.new(|cx| {
-            let mut st = InputState::new(window, cx).placeholder(if zh {
-                "自定义名称（如 公司中转 / 个人主力；留空自动推断）"
-            } else {
-                "Custom name (optional; auto-inferred if empty)"
-            });
+            let mut st = InputState::new(window, cx).placeholder(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_sheet_custom_name_optional_auto_inferred(),
+            );
             if !init_name.is_empty() {
                 st.set_value(init_name, window, cx);
             }
             st
         });
         let models_filter_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(if zh {
-                "筛选模型…"
-            } else {
-                "Filter models…"
-            })
+            InputState::new(window, cx)
+                .placeholder(crate::ui::tr(cx).providers().prov_providers_filter_models())
         });
         let manual_models_input = cx.new(|cx| {
-            TextareaState::new(window, cx).placeholder(if zh {
-                "每行输入一个模型 ID…"
-            } else {
-                "One model ID per line…"
-            })
+            TextareaState::new(window, cx).placeholder(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_sheet_one_model_id_per_line(),
+            )
         });
         let adv_models_url =
             cx.new(|cx| InputState::new(window, cx).placeholder("/v1/models (optional)"));
@@ -174,7 +169,6 @@ impl SniffProviderSheet {
 
         let mut sheet = Self {
             parent,
-            zh,
             presets,
             resniff_provider_id: resniff_provider_id.clone(),
             step: 1,
@@ -220,7 +214,6 @@ impl Render for SniffProviderSheet {
             window.close_sheet(cx);
         }
         let p = palette(cx);
-        let zh = self.zh;
 
         let step_pill = |n: u8, label: &'static str, cx: &gpui_kit::App| {
             let active = self.step == n;
@@ -248,31 +241,21 @@ impl Render for SniffProviderSheet {
             .gap(px(6.0))
             .child(step_pill(
                 1,
-                if zh {
-                    "地址与密钥"
-                } else {
-                    "Address & Key"
-                },
+                crate::ui::tr(cx).providers().prov_sniff_sheet_address_key(),
                 cx,
             ))
             .child(div().text_xs().text_color(to_hsla(p.faint)).child("›"))
             .child(step_pill(
                 2,
-                if zh {
-                    "协议嗅探证据"
-                } else {
-                    "Sniff Evidence"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_sheet_sniff_evidence(),
                 cx,
             ))
             .child(div().text_xs().text_color(to_hsla(p.faint)).child("›"))
             .child(step_pill(
                 3,
-                if zh {
-                    "审核模型并保存"
-                } else {
-                    "Review & Save"
-                },
+                crate::ui::tr(cx).providers().prov_sniff_sheet_review_save(),
                 cx,
             ));
 
@@ -315,7 +298,7 @@ impl Render for SniffProviderSheet {
                     .anchor(Anchor::TopLeft)
                     .trigger(select_pill(
                         "sn-more-trig",
-                        if zh { "全部预设" } else { "All presets" },
+                        crate::ui::tr(cx).providers().sniff_picker_label(),
                         false,
                         cx,
                     ))
@@ -360,7 +343,7 @@ impl Render for SniffProviderSheet {
                             div()
                                 .text_size(px(11.0))
                                 .text_color(to_hsla(p.muted))
-                                .child(if zh { "区域：" } else { "Region:" }),
+                                .child(crate::ui::tr(cx).providers().prov_sniff_sheet_region()),
                         );
                         for reg in &pr.regions {
                             let rid = reg.id.clone();
@@ -394,11 +377,9 @@ impl Render for SniffProviderSheet {
                     .gap(px(8.0))
                     .pt(px(8.0))
                     .child(field_row(
-                        if zh {
-                            "扩展扫描（更多路径变体，上限 20 请求）"
-                        } else {
-                            "Extended scan (20 req budget)"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_sniff_sheet_extended_scan_20_req_budget(),
                         None,
                         toggle_switch("sn-adv-ext", self.extended_scan).on_click(cx.listener(
                             |this, _, _, cx| {
@@ -409,11 +390,9 @@ impl Render for SniffProviderSheet {
                         cx,
                     ))
                     .child(field_row(
-                        if zh {
-                            "用真实请求验证路由（可能产生极少量费用）"
-                        } else {
-                            "Verify with real requests"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_sniff_sheet_verify_with_real_requests(),
                         None,
                         toggle_switch("sn-adv-bill", self.allow_billable).on_click(cx.listener(
                             |this, _, _, cx| {
@@ -424,17 +403,15 @@ impl Render for SniffProviderSheet {
                         cx,
                     ))
                     .child(field_row(
-                        if zh {
-                            "自定义模型列表路径"
-                        } else {
-                            "Models list path"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_sniff_sheet_models_list_path(),
                         None,
                         div().w(px(220.0)).child(text_input(&self.adv_models_url)),
                         cx,
                     ))
                     .child(field_row(
-                        if zh { "独立代理" } else { "Proxy" },
+                        crate::ui::tr(cx).providers().prov_sniff_sheet_proxy(),
                         None,
                         div().w(px(220.0)).child(text_input(&self.adv_proxy_url)),
                         cx,
@@ -443,11 +420,7 @@ impl Render for SniffProviderSheet {
                 let mut actions = h_row().gap(px(8.0)).flex_wrap().child(
                     btn_primary(
                         "sn-go",
-                        if zh {
-                            "开始嗅探探测 →"
-                        } else {
-                            "Start Sniff →"
-                        },
+                        crate::ui::tr(cx).providers().prov_sniff_sheet_start_sniff(),
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.start_sniff(window, cx))),
                 );
@@ -455,11 +428,9 @@ impl Render for SniffProviderSheet {
                     actions = actions.child(
                         btn_secondary(
                             "sn-direct-preset",
-                            if zh {
-                                "按预设直接添加"
-                            } else {
-                                "Quick add from preset"
-                            },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_sniff_sheet_quick_add_from_preset(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.create_preset_direct(cx))),
                     );
@@ -467,11 +438,7 @@ impl Render for SniffProviderSheet {
                 actions = actions.child(
                     btn_ghost(
                         "sn-unverified",
-                        if zh {
-                            "不扫描直接添加"
-                        } else {
-                            "Add without scanning"
-                        },
+                        crate::ui::tr(cx).providers().sniff_act_no_scan(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.create_unverified(cx))),
                 );
@@ -481,7 +448,7 @@ impl Render for SniffProviderSheet {
                         v_col()
                             .gap(px(6.0))
                             .child(section_heading(
-                                if zh { "快速预设" } else { "Quick Presets" },
+                                crate::ui::tr(cx).providers().prov_sniff_sheet_quick_presets(),
                                 cx,
                             ))
                             .child(quick_row)
@@ -498,22 +465,14 @@ impl Render for SniffProviderSheet {
                                             div()
                                                 .text_xs()
                                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                                .child(if zh {
-                                                    "服务商名称（自定义，可选）"
-                                                } else {
-                                                    "Provider Name (custom, optional)"
-                                                }),
+                                                .child(crate::ui::tr(cx).providers().prov_sniff_sheet_provider_name_custom_optional()),
                                         )
                                         .child(text_input(&self.name_input))
                                         .child(
                                             div()
                                                 .text_size(px(11.0))
                                                 .text_color(to_hsla(p.faint))
-                                                .child(if zh {
-                                                    "将作为 AI 对话与网关中的「服务商 / 模型」显示前缀"
-                                                } else {
-                                                    "Used as the \"Provider / Model\" prefix in Chat & Gateway"
-                                                }),
+                                                .child(crate::ui::tr(cx).providers().prov_sniff_sheet_used_as_the_provider_model()),
                                         ),
                                 )
                                 .child(
@@ -523,11 +482,7 @@ impl Render for SniffProviderSheet {
                                             div()
                                                 .text_xs()
                                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                                .child(if zh {
-                                                    "服务商地址（Base URL）"
-                                                } else {
-                                                    "Base URL"
-                                                }),
+                                                .child(crate::ui::tr(cx).providers().prov_sniff_sheet_base_url()),
                                         )
                                         .child(text_input(&self.url_input))
                                         .children(self.normalized.as_ref().map(|n| {
@@ -547,28 +502,14 @@ impl Render for SniffProviderSheet {
                                             div()
                                                 .text_xs()
                                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                                .child(if zh {
-                                                    "API 密钥（明文 0600 保险库，仅存本机）"
-                                                } else {
-                                                    "API Key (stored locally)"
-                                                }),
+                                                .child(crate::ui::tr(cx).providers().prov_sniff_sheet_api_key_stored_locally()),
                                         )
                                         .child(text_input(&self.key_input)),
                                 )
                                 .child(
                                     btn_ghost(
                                         "sn-adv-tog",
-                                        if zh {
-                                            format!(
-                                                "{} 高级选项",
-                                                if self.adv_open { "▾" } else { "▸" }
-                                            )
-                                        } else {
-                                            format!(
-                                                "{} Advanced",
-                                                if self.adv_open { "▾" } else { "▸" }
-                                            )
-                                        },
+                                        crate::ui::tr(cx).providers().prov_sniff_sheet_advanced(if self.adv_open { "▾" } else { "▸" }),
                                     )
                                     .on_click(cx.listener(
                                         |this, _, _, cx| {

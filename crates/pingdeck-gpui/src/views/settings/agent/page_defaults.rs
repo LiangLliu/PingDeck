@@ -21,10 +21,10 @@ use super::widgets::{
 pub(super) fn render_defaults(
     view: &AgentSettingsView,
     lang: Language,
-    zh: bool,
     cx: &mut Context<AgentSettingsView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
+    let s = crate::ui::tr(cx).settings();
     let ag = &view.settings.ai.agent;
     let providers = view
         .config
@@ -34,7 +34,7 @@ pub(super) fn render_defaults(
 
     // ── Section 1: New chat defaults ─────────────────────────────────────────
     let (active_ref, active_label) = match &ag.default_target {
-        None => (None, if zh { "上次使用" } else { "Last used" }.to_owned()),
+        None => (None, s.agent_target_last().to_owned()),
         Some(AgentTarget::Pinned {
             provider_id, model, ..
         }) => {
@@ -54,11 +54,9 @@ pub(super) fn render_defaults(
         "agent-default-model-btn",
         active_label,
         active_ref,
-        Some(SharedString::from(if zh {
-            "上次使用（跟随最近选择）"
-        } else {
-            "Last used (follow latest choice)"
-        })),
+        Some(SharedString::from(
+            s.page_defaults_last_used_follow_latest_choice(),
+        )),
         view.model_choices.clone(),
         lang,
         move |picked, cx| {
@@ -82,8 +80,7 @@ pub(super) fn render_defaults(
     );
 
     // Fallback chain control
-    let fallback_ctl =
-        render_fallback_chain(view, "main", &ag.fallbacks.main, providers, lang, zh, cx);
+    let fallback_ctl = render_fallback_chain(view, "main", &ag.fallbacks.main, providers, lang, cx);
 
     // Default reasoning effort segmented switch
     let effort_idx = match ag.default_effort {
@@ -95,10 +92,10 @@ pub(super) fn render_defaults(
     let ent_effort = cx.entity().clone();
     let effort_seg = tab_bar_segmented("agent-default-effort-seg")
         .selected_index(effort_idx)
-        .child(tab_item(if zh { "自动" } else { "Auto" }))
-        .child(tab_item(if zh { "低" } else { "Low" }))
-        .child(tab_item(if zh { "中" } else { "Medium" }))
-        .child(tab_item(if zh { "高" } else { "High" }))
+        .child(tab_item(s.opt_network_http_version_auto()))
+        .child(tab_item(s.opt_ai_agent_default_effort_low()))
+        .child(tab_item(s.opt_ai_agent_default_effort_medium()))
+        .child(tab_item(s.opt_ai_agent_default_effort_high()))
         .on_click(move |idx, _, cx| {
             let val = match *idx {
                 1 => "low",
@@ -119,7 +116,7 @@ pub(super) fn render_defaults(
     let ws_label = ag
         .default_workspace
         .clone()
-        .unwrap_or_else(|| if zh { "每次询问" } else { "Ask each time" }.to_owned());
+        .unwrap_or_else(|| s.agent_folder_ask().to_owned());
     let ws_ctl = h_row()
         .gap(px(6.0))
         .child(
@@ -128,15 +125,15 @@ pub(super) fn render_defaults(
                 .on_click(cx.listener(|this, _, _, cx| this.pick_default_workspace(cx))),
         )
         .children(ag.default_workspace.is_some().then(|| {
-            btn_ghost("agent-clear-default-ws", if zh { "清除" } else { "Clear" }).on_click(
-                cx.listener(|this, _, _, cx| {
+            btn_ghost("agent-clear-default-ws", s.page_defaults_clear()).on_click(cx.listener(
+                |this, _, _, cx| {
                     this.patch_ai(
                         serde_json::json!({ "agent": { "default_workspace": null } }),
                         None,
                         cx,
                     );
-                }),
-            )
+                },
+            ))
         }));
 
     // Prompt cache mode
@@ -144,8 +141,8 @@ pub(super) fn render_defaults(
     let ent_cache = cx.entity().clone();
     let cache_seg = tab_bar_segmented("agent-prompt-cache-seg")
         .selected_index(cache_idx)
-        .child(tab_item(if zh { "自动" } else { "Auto" }))
-        .child(tab_item(if zh { "关闭" } else { "Off" }))
+        .child(tab_item(s.opt_network_http_version_auto()))
+        .child(tab_item(s.notify_off()))
         .on_click(move |idx, _, cx| {
             let val = if *idx == 1 { "off" } else { "auto" };
             ent_cache.update(cx, |this, cx| {
@@ -159,11 +156,7 @@ pub(super) fn render_defaults(
 
     let reset_defaults_btn = btn_ghost(
         "agent-reset-defaults-sec",
-        if zh {
-            "恢复本区默认值"
-        } else {
-            "Restore defaults"
-        },
+        s.page_defaults_restore_defaults(),
     )
     .on_click(cx.listener(|this, _, window, cx| {
         this.reset_ai_keys(
@@ -182,62 +175,50 @@ pub(super) fn render_defaults(
     .into_any_element();
 
     let sec_defaults = section_card(
-        if zh { "新对话默认配置" } else { "New chat defaults" },
+        s.page_defaults_new_chat_defaults(),
         Some(reset_defaults_btn),
         v_col()
             .w_full()
             .child(set_row(
-                if zh { "默认模型" } else { "Default model" },
+                s.f_ai_agent_default_target(),
                 None,
-                Some(SharedString::from(if zh {
-                    "新建对话时自动选中的主模型；“上次使用”跟随最近选择。"
-                } else {
-                    "Model a new chat starts with. Last used follows your latest choice."
-                })),
+                Some(SharedString::from(
+                    s.page_defaults_model_a_new_chat_starts(),
+                )),
                 default_model_picker,
                 cx,
             ))
             .child(set_row(
-                if zh { "主备用链" } else { "Fallback chain" },
+                s.page_defaults_fallback_chain(),
                 None,
-                Some(SharedString::from(if zh {
-                    "主模型失败（限流、服务端错误、超时、模型不存在）时的自动回退顺序，最多 5 个。"
-                } else {
-                    "Ordered fallback models tried when the chat model fails (up to 5)."
-                })),
+                Some(SharedString::from(
+                    s.page_defaults_ordered_fallback_models_tried_when(),
+                )),
                 fallback_ctl,
                 cx,
             ))
             .child(set_row(
-                if zh { "默认思考力度" } else { "Default reasoning effort" },
+                s.page_defaults_default_reasoning_effort(),
                 None,
-                Some(SharedString::from(if zh {
-                    "支持推理强度的模型按此默认档位运行，自动按模型支持范围裁剪。"
-                } else {
-                    "How hard models reason by default, clamped to what each model supports."
-                })),
+                Some(SharedString::from(
+                    s.page_defaults_how_hard_models_reason_by(),
+                )),
                 effort_seg,
                 cx,
             ))
             .child(set_row(
-                if zh { "默认项目目录" } else { "Default project folder" },
-                Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
-                Some(SharedString::from(if zh {
-                    "新对话自动绑定的工作目录；未设置时仅在对话中按需绑定。"
-                } else {
-                    "Working folder bound to new chats. File and shell tools stay inside it."
-                })),
+                s.page_defaults_default_project_folder(),
+                Some(SharedString::from(s.page_defaults_local_only())),
+                Some(SharedString::from(
+                    s.page_defaults_working_folder_bound_to_new(),
+                )),
                 ws_ctl,
                 cx,
             ))
             .child(set_row(
-                if zh { "自动命名对话" } else { "Name chats automatically" },
+                s.f_ai_agent_auto_title(),
                 None,
-                Some(SharedString::from(if zh {
-                    "首轮对话结束后自动生成简短标题。"
-                } else {
-                    "Gives a new chat a short title after the first answer."
-                })),
+                Some(SharedString::from(s.page_defaults_gives_a_new_chat_a())),
                 toggle_switch("agent-auto-title", ag.auto_title).on_change(cx.listener(
                     |this, checked: &bool, _, cx| {
                         this.patch_ai(
@@ -250,13 +231,11 @@ pub(super) fn render_defaults(
                 cx,
             ))
             .child(set_row(
-                if zh { "提示缓存" } else { "Prompt cache" },
+                s.f_ai_agent_prompt_cache(),
                 None,
-                Some(SharedString::from(if zh {
-                    "“自动”在支持缓存的目标上把提示前缀标为可缓存；“关闭”不发送缓存标记。"
-                } else {
-                    "Auto marks prompt prefixes cacheable on supported targets; Off sends no cache hints."
-                })),
+                Some(SharedString::from(
+                    s.page_defaults_auto_marks_prompt_prefixes_cacheable(),
+                )),
                 cache_seg,
                 cx,
             )),
@@ -264,7 +243,7 @@ pub(super) fn render_defaults(
     );
 
     // ── Section 2: Context window ────────────────────────────────────────────
-    let reset_ctx_btn = btn_ghost("agent-reset-ctx-sec", if zh { "恢复默认" } else { "Reset" })
+    let reset_ctx_btn = btn_ghost("agent-reset-ctx-sec", s.page_defaults_reset())
         .icon(icon_xs(UiIcon::RotateCcw))
         .on_click(cx.listener(|this, _, window, cx| {
             this.reset_ai_keys(
@@ -280,26 +259,16 @@ pub(super) fn render_defaults(
         .into_any_element();
 
     let sec_context = section_card(
-        if zh {
-            "上下文窗口"
-        } else {
-            "Context window"
-        },
+        s.page_defaults_context_window(),
         Some(reset_ctx_btn),
         v_col()
             .w_full()
             .child(set_row(
-                if zh {
-                    "自动压缩上下文"
-                } else {
-                    "Automatic compaction"
-                },
+                s.page_defaults_automatic_compaction(),
                 None,
-                Some(SharedString::from(if zh {
-                    "接近模型上下文上限时自动摘要早期对话，保持长对话可继续运行。"
-                } else {
-                    "Summarises older turns when the context window fills up."
-                })),
+                Some(SharedString::from(
+                    s.page_defaults_summarises_older_turns_when_the(),
+                )),
                 toggle_switch("agent-auto-compact", ag.auto_compact).on_change(cx.listener(
                     |this, checked: &bool, _, cx| {
                         this.patch_ai(
@@ -312,38 +281,21 @@ pub(super) fn render_defaults(
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "触发压缩阈值"
-                } else {
-                    "Compact at"
-                },
+                s.page_defaults_compact_at(),
                 None,
-                Some(SharedString::from(if zh {
-                    "上下文占用超过该比例（50–95%）时启动压缩。"
-                } else {
-                    "Share of context window (50–95%) that triggers compaction."
-                })),
+                Some(SharedString::from(
+                    s.page_defaults_share_of_context_window_50(),
+                )),
                 num_box(&view.compact_pct_input, Some("%"), 84.0, cx),
                 cx,
             ))
             .child(set_row(
-                if zh {
-                    "保留最近轮数"
-                } else {
-                    "Keep last turns"
-                },
+                s.f_ai_agent_keep_recent_turns(),
                 None,
-                Some(SharedString::from(if zh {
-                    "压缩时原文保留的最近对话轮数（1–20 轮）。"
-                } else {
-                    "Recent turns kept verbatim during compaction (1–20)."
-                })),
-                num_box(
-                    &view.keep_turns_input,
-                    Some(if zh { "轮" } else { "turns" }),
-                    84.0,
-                    cx,
-                ),
+                Some(SharedString::from(
+                    s.page_defaults_recent_turns_kept_verbatim_during(),
+                )),
+                num_box(&view.keep_turns_input, Some(s.agent_unit_turns()), 84.0, cx),
                 cx,
             )),
         cx,
@@ -351,45 +303,36 @@ pub(super) fn render_defaults(
 
     // ── Section 3: Run limits & cost caps (collapsible grouped card)
     let cost_summary = match (ag.cost_cap_usd, ag.cost_cap_cny) {
-        (None, None) => if zh { "费用不限" } else { "No cost limit" }.to_owned(),
+        (None, None) => s.agent_limits_no_cap().to_owned(),
         (Some(u), None) => format!("${u:.2}"),
         (None, Some(c)) => format!("¥{c:.2}"),
         (Some(u), Some(c)) => format!("${u:.2} / ¥{c:.2}"),
     };
-    let summary_text = if zh {
-        format!(
-            "单轮 {} 步 · {} 并发 · {}",
-            ag.max_tool_iterations, ag.max_concurrent_runs, cost_summary
-        )
-    } else {
-        format!(
-            "{} steps · {} concurrent · {}",
-            ag.max_tool_iterations, ag.max_concurrent_runs, cost_summary
-        )
-    };
+    let summary_text = s.page_defaults_steps_concurrent(
+        ag.max_tool_iterations,
+        ag.max_concurrent_runs,
+        cost_summary,
+    );
 
-    let reset_limits_btn = btn_ghost(
-        "agent-reset-limits-sec",
-        if zh { "恢复默认" } else { "Reset" },
-    )
-    .icon(icon_xs(UiIcon::RotateCcw))
-    .on_click(cx.listener(|this, _, window, cx| {
-        this.reset_ai_keys(
-            &[
-                "agent.max_tool_iterations",
-                "agent.max_concurrent_runs",
-                "agent.cost_cap_usd",
-                "agent.cost_cap_cny",
-                "agent.max_run_tokens",
-                "agent.wrap_up_last_step",
-                "agent.max_image_mb",
-                "agent.max_file_mb",
-                "agent.image_max_edge_px",
-            ],
-            window,
-            cx,
-        );
-    }));
+    let reset_limits_btn = btn_ghost("agent-reset-limits-sec", s.page_defaults_reset())
+        .icon(icon_xs(UiIcon::RotateCcw))
+        .on_click(cx.listener(|this, _, window, cx| {
+            this.reset_ai_keys(
+                &[
+                    "agent.max_tool_iterations",
+                    "agent.max_concurrent_runs",
+                    "agent.cost_cap_usd",
+                    "agent.cost_cap_cny",
+                    "agent.max_run_tokens",
+                    "agent.wrap_up_last_step",
+                    "agent.max_image_mb",
+                    "agent.max_file_mb",
+                    "agent.image_max_edge_px",
+                ],
+                window,
+                cx,
+            );
+        }));
 
     let hover_bg = to_hsla(p.hover.composite_over(p.surface));
     let mut disclosure_row = h_row()
@@ -425,11 +368,7 @@ pub(super) fn render_defaults(
                         .text_size(px(13.5))
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh {
-                            "高级运行与费用护栏"
-                        } else {
-                            "Advanced run & spend guardrails"
-                        }),
+                        .child(s.page_defaults_advanced_run_spend_guardrails()),
                 )
                 .children((!view.limits_open).then(|| badge(summary_text, Tone::Neutral, cx))),
         )
@@ -438,11 +377,9 @@ pub(super) fn render_defaults(
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .child(if view.limits_open {
-                    if zh { "收起" } else { "Collapse" }
-                } else if zh {
-                    "展开配置"
+                    s.page_defaults_collapse()
                 } else {
-                    "Configure"
+                    s.page_defaults_configure()
                 }),
         );
 
@@ -460,45 +397,25 @@ pub(super) fn render_defaults(
                 .px(px(16.0))
                 .mb(px(-1.0))
                 .child(set_row(
-                    if zh { "单轮最大工具调用步数" } else { "Max tool steps per run" },
+                    s.page_defaults_max_tool_steps_per_run(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "防止无限工具循环的安全上限（1–100 次），触发后暂停并询问是否继续。"
-                    } else {
-                        "Model calls per run (1–100) before pausing to ask."
-                    })),
-                    num_box(
-                        &view.max_steps_input,
-                        Some(if zh { "次" } else { "calls" }),
-                        84.0,
-                        cx,
-                    ),
+                    Some(SharedString::from(s.page_defaults_model_calls_per_run_1())),
+                    num_box(&view.max_steps_input, Some(s.agent_unit_calls()), 84.0, cx),
                     cx,
                 ))
                 .child(set_row(
-                    if zh { "最大并发顶层运行数" } else { "Max concurrent runs" },
+                    s.page_defaults_max_concurrent_runs(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "同时在后台运行的对话上限（1–8 个），超出的运行自动排队。"
-                    } else {
-                        "Runs active at once (1–8); extra runs queue."
-                    })),
-                    num_box(
-                        &view.max_runs_input,
-                        Some(if zh { "个" } else { "runs" }),
-                        84.0,
-                        cx,
-                    ),
+                    Some(SharedString::from(s.page_defaults_runs_active_at_once_1())),
+                    num_box(&view.max_runs_input, Some(s.agent_unit_runs()), 84.0, cx),
                     cx,
                 ))
                 .child(set_row(
-                    if zh { "单次运行费用暂停上限" } else { "Stop a run above (cost cap)" },
+                    s.page_defaults_stop_a_run_above_cost(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "留空表示关闭；触发后弹出费用门禁由你决定是否继续。"
-                    } else {
-                        "Leave empty for Off. Pauses and asks when estimated spend passes the limit."
-                    })),
+                    Some(SharedString::from(
+                        s.page_defaults_leave_empty_for_off_pauses(),
+                    )),
                     h_row()
                         .gap(px(10.0))
                         .child(num_box(&view.cost_usd_input, Some("USD"), 76.0, cx))
@@ -506,24 +423,20 @@ pub(super) fn render_defaults(
                     cx,
                 ))
                 .child(set_row(
-                    if zh { "每次运行的 Token 上限" } else { "Token limit per run" },
-                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
-                    Some(SharedString::from(if zh {
-                        "输入加输出 token 达到该值时暂停并询问；留空表示关闭。"
-                    } else {
-                        "Pauses at this many input + output tokens; empty is Off."
-                    })),
+                    s.page_defaults_token_limit_per_run(),
+                    Some(SharedString::from(s.page_defaults_local_only())),
+                    Some(SharedString::from(
+                        s.page_defaults_pauses_at_this_many_input(),
+                    )),
                     num_box(&view.max_tokens_input, Some("tok"), 108.0, cx),
                     cx,
                 ))
                 .child(set_row(
-                    if zh { "最后一步写总结" } else { "Summarise on the last step" },
+                    s.f_ai_agent_wrap_up_last_step(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "允许的最后一步不调用工具，让模型总结当前进展与停在哪里。"
-                    } else {
-                        "Last allowed step calls no tools and asks the model to sum up."
-                    })),
+                    Some(SharedString::from(
+                        s.page_defaults_last_allowed_step_calls_no(),
+                    )),
                     toggle_switch("agent-wrap-up", ag.wrap_up_last_step).on_change(cx.listener(
                         |this, checked: &bool, _, cx| {
                             this.patch_ai(
@@ -536,24 +449,20 @@ pub(super) fn render_defaults(
                     cx,
                 ))
                 .child(set_row(
-                    if zh { "附件体积与图片长边上限" } else { "Attachment size & image edge" },
+                    s.page_defaults_attachment_size_image_edge(),
                     None,
-                    Some(SharedString::from(if zh {
-                        "超限图片/文件将被拒绝，大图按长边（512–2048 px）等比缩放。"
-                    } else {
-                        "Limits for images (1–20 MB), files (1–100 MB), and max image edge (512–2048 px)."
-                    })),
+                    Some(SharedString::from(s.page_defaults_limits_for_images_1_20())),
                     h_row()
                         .gap(px(8.0))
                         .child(num_box(
                             &view.max_image_input,
-                            Some(if zh { "MB 图" } else { "MB img" }),
+                            Some(s.page_defaults_mb_img()),
                             60.0,
                             cx,
                         ))
                         .child(num_box(
                             &view.max_file_input,
-                            Some(if zh { "MB 文件" } else { "MB file" }),
+                            Some(s.page_defaults_mb_file()),
                             60.0,
                             cx,
                         ))
@@ -564,11 +473,7 @@ pub(super) fn render_defaults(
     }
 
     let sec_limits = section_card_flush(
-        if zh {
-            "运行限制与费用上限"
-        } else {
-            "Run limits & cost caps"
-        },
+        s.page_defaults_run_limits_cost_caps(),
         view.limits_open
             .then(|| reset_limits_btn.into_any_element()),
         limits_inner,

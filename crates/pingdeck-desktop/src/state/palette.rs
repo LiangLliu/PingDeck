@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 use pingdeck_core::model::settings::Language;
 
+use crate::i18n::tr;
+
 use super::shell::{NavModule, SettingsSection, UtilityDialog};
 
 /// Visual category in the command palette list.
@@ -21,24 +23,17 @@ pub enum PaletteCategory {
 
 impl PaletteCategory {
     #[must_use]
-    pub const fn label(self, zh: bool) -> &'static str {
-        match (self, zh) {
-            (Self::NeedsYou, true) => "等待处理",
-            (Self::NeedsYou, false) => "Needs Attention",
-            (Self::Wizard, true) => "快速向导",
-            (Self::Wizard, false) => "Quick Wizards",
-            (Self::Navigation, true) => "页面导航",
-            (Self::Navigation, false) => "Navigation",
-            (Self::Entity, true) => "工作区与实体",
-            (Self::Entity, false) => "Workspace & Items",
-            (Self::Workspace, true) => "切换工作区",
-            (Self::Workspace, false) => "Workspaces",
-            (Self::Utility, true) => "实用工具",
-            (Self::Utility, false) => "Utilities",
-            (Self::Settings, true) => "设置",
-            (Self::Settings, false) => "Settings",
-            (Self::Command, true) => "快捷命令",
-            (Self::Command, false) => "Commands",
+    pub const fn label(self, lang: Language) -> &'static str {
+        let sh = tr(lang).shell();
+        match self {
+            Self::NeedsYou => sh.palette_cat_needs_you(),
+            Self::Wizard => sh.palette_cat_wizard(),
+            Self::Navigation => sh.palette_cat_navigation(),
+            Self::Entity => sh.palette_cat_entity(),
+            Self::Workspace => sh.palette_cat_workspace(),
+            Self::Utility => sh.palette_cat_utility(),
+            Self::Settings => sh.palette_cat_settings(),
+            Self::Command => sh.palette_cat_command(),
         }
     }
 }
@@ -114,7 +109,11 @@ impl PaletteEngine {
         attention_sessions: &[(String, String)],
         dynamic: &PaletteDynamicItems,
     ) -> Self {
-        let zh = lang == Language::ZhCn;
+        let sh = tr(lang).shell();
+        let other_lang = match lang {
+            Language::ZhCn => Language::En,
+            Language::En => Language::ZhCn,
+        };
         let mut items = Vec::with_capacity(96);
 
         for (session_id, title) in attention_sessions {
@@ -122,8 +121,8 @@ impl PaletteEngine {
                 id: format!("attn:{session_id}"),
                 category: PaletteCategory::NeedsYou,
                 title: title.clone(),
-                subtitle: Some(if zh { "等待批准" } else { "Needs approval" }.into()),
-                badge_label: Some(if zh { "待批" } else { "GATE" }.into()),
+                subtitle: Some(sh.palette_needs_approval().into()),
+                badge_label: Some(sh.palette_badge_gate().into()),
                 keywords: format!("approval gate chat {title}"),
                 shortcut: None,
                 action: PaletteAction::OpenChatSession(session_id.clone()),
@@ -134,70 +133,42 @@ impl PaletteEngine {
         items.push(PaletteItem {
             id: "wiz:sniff-provider".into(),
             category: PaletteCategory::Wizard,
-            title: if zh {
-                "智能识别添加 AI 服务商…"
-            } else {
-                "Add AI Provider (Smart Sniff)…"
-            }
-            .into(),
-            subtitle: Some(
-                if zh {
-                    "服务商向导"
-                } else {
-                    "Provider wizard"
-                }
-                .into(),
-            ),
+            title: sh.palette_wiz_sniff_title().into(),
+            subtitle: Some(sh.palette_wiz_sniff_sub().into()),
             badge_label: Some("AI".into()),
-            keywords: "add provider sniff openai anthropic deepseek ollama 添加 服务商 嗅探".into(),
+            keywords: sh.palette_wiz_sniff_kw().into(),
             shortcut: None,
             action: PaletteAction::OpenSniffWizard,
         });
         items.push(PaletteItem {
             id: "wiz:connect-client".into(),
             category: PaletteCategory::Wizard,
-            title: if zh {
-                "一键接入外部编程工具…"
-            } else {
-                "Connect Coding Client…"
-            }
-            .into(),
+            title: sh.palette_wiz_connect_title().into(),
             subtitle: Some("Claude Code / Codex / Cursor / OpenCode".into()),
             badge_label: Some("GW".into()),
-            keywords: "connect client claude code codex cursor zed gateway 接入 客户端 网关".into(),
+            keywords: sh.palette_wiz_connect_kw().into(),
             shortcut: None,
             action: PaletteAction::OpenConnectClientWizard,
         });
         items.push(PaletteItem {
             id: "wiz:gateway".into(),
             category: PaletteCategory::Wizard,
-            title: if zh {
-                "打开本地 AI 网关控制台"
-            } else {
-                "Open Local AI Gateway Cockpit"
-            }
-            .into(),
-            subtitle: Some(
-                if zh {
-                    "服务商 › 网关"
-                } else {
-                    "Providers › Gateway"
-                }
-                .into(),
-            ),
+            title: sh.palette_wiz_gateway_title().into(),
+            subtitle: Some(sh.palette_wiz_gateway_sub().into()),
             badge_label: Some("GW".into()),
-            keywords: "gateway 4141 proxy 网关 控制台".into(),
+            keywords: sh.palette_wiz_gateway_kw().into(),
             shortcut: None,
             action: PaletteAction::OpenGateway,
         });
 
         for module in NavModule::ALL {
-            let (zh_label, en_label) = module.label_pair();
+            let zh_label = module.label(Language::ZhCn);
+            let en_label = module.label(Language::En);
             items.push(PaletteItem {
                 id: format!("nav:{}", module.shortcut_digit()),
                 category: PaletteCategory::Navigation,
-                title: if zh { zh_label } else { en_label }.into(),
-                subtitle: Some(if zh { en_label } else { zh_label }.into()),
+                title: module.label(lang).into(),
+                subtitle: Some(module.label(other_lang).into()),
                 badge_label: None,
                 keywords: format!("{zh_label} {en_label}"),
                 shortcut: Some(format!("⌘{}", module.shortcut_digit())),
@@ -211,16 +182,9 @@ impl PaletteEngine {
                 id: format!("req:{req_id}"),
                 category: PaletteCategory::Entity,
                 title: name.clone(),
-                subtitle: Some(
-                    if zh {
-                        "已保存请求"
-                    } else {
-                        "Saved request"
-                    }
-                    .into(),
-                ),
+                subtitle: Some(sh.palette_entity_request().into()),
                 badge_label: Some(method.clone()),
-                keywords: format!("request 请求 {method} {name}"),
+                keywords: format!("{} {method} {name}", sh.palette_entity_request_kw()),
                 shortcut: None,
                 action: PaletteAction::OpenRequestById(req_id.clone()),
             });
@@ -230,9 +194,9 @@ impl PaletteEngine {
                 id: format!("chat:{sid}"),
                 category: PaletteCategory::Entity,
                 title: title.clone(),
-                subtitle: Some(if zh { "AI 对话" } else { "AI Chat" }.into()),
-                badge_label: Some(if zh { "对话" } else { "CHAT" }.into()),
-                keywords: format!("chat session 对话 {title}"),
+                subtitle: Some(sh.palette_entity_chat().into()),
+                badge_label: Some(sh.palette_badge_chat().into()),
+                keywords: format!("{} {title}", sh.palette_entity_chat_kw()),
                 shortcut: None,
                 action: PaletteAction::OpenChatSession(sid.clone()),
             });
@@ -244,20 +208,14 @@ impl PaletteEngine {
                 title: name.clone(),
                 subtitle: Some(
                     if *running {
-                        if zh {
-                            "Mock 服务 · 运行中"
-                        } else {
-                            "Mock · Running"
-                        }
-                    } else if zh {
-                        "Mock 服务"
+                        sh.palette_entity_mock_running()
                     } else {
-                        "Mock server"
+                        sh.palette_entity_mock()
                     }
                     .into(),
                 ),
                 badge_label: Some(if *running { "LIVE" } else { "MOCK" }.into()),
-                keywords: format!("mock server 模拟服务 {name}"),
+                keywords: format!("{} {name}", sh.palette_entity_mock_kw()),
                 shortcut: None,
                 action: PaletteAction::OpenMockServer(mid.clone()),
             });
@@ -267,9 +225,9 @@ impl PaletteEngine {
                 id: format!("flow:{fid}"),
                 category: PaletteCategory::Entity,
                 title: name.clone(),
-                subtitle: Some(if zh { "接口流程" } else { "Flow" }.into()),
-                badge_label: Some(if zh { "流程" } else { "FLOW" }.into()),
-                keywords: format!("flow 流程 {name}"),
+                subtitle: Some(sh.palette_entity_flow().into()),
+                badge_label: Some(sh.palette_badge_flow().into()),
+                keywords: format!("{} {name}", sh.palette_entity_flow_kw()),
                 shortcut: None,
                 action: PaletteAction::OpenFlow(fid.clone()),
             });
@@ -279,9 +237,9 @@ impl PaletteEngine {
                 id: format!("prov:{pid}"),
                 category: PaletteCategory::Entity,
                 title: name.clone(),
-                subtitle: Some(if zh { "AI 服务商" } else { "AI Provider" }.into()),
+                subtitle: Some(sh.palette_entity_provider().into()),
                 badge_label: Some("AI".into()),
-                keywords: format!("provider model 服务商 {name}"),
+                keywords: format!("{} {name}", sh.palette_entity_provider_kw()),
                 shortcut: None,
                 action: PaletteAction::OpenProvider(pid.clone()),
             });
@@ -292,28 +250,22 @@ impl PaletteEngine {
                 id: format!("ws:{ws_id}"),
                 category: PaletteCategory::Workspace,
                 title: ws_name.clone(),
-                subtitle: Some(
-                    if zh {
-                        "切换工作区"
-                    } else {
-                        "Switch workspace"
-                    }
-                    .into(),
-                ),
+                subtitle: Some(sh.palette_switch_workspace().into()),
                 badge_label: None,
-                keywords: format!("workspace 工作区 {ws_name}"),
+                keywords: format!("{} {ws_name}", sh.palette_workspace_kw()),
                 shortcut: None,
                 action: PaletteAction::SwitchWorkspace(ws_id.clone()),
             });
         }
 
         for utility in UtilityDialog::ALL {
-            let (zh_label, en_label) = utility.label_pair();
+            let zh_label = utility.label(Language::ZhCn);
+            let en_label = utility.label(Language::En);
             items.push(PaletteItem {
                 id: format!("util:{en_label}"),
                 category: PaletteCategory::Utility,
-                title: if zh { zh_label } else { en_label }.into(),
-                subtitle: Some(if zh { "工具" } else { "Utility" }.into()),
+                title: utility.label(lang).into(),
+                subtitle: Some(sh.palette_utility_sub().into()),
                 badge_label: None,
                 keywords: format!("{zh_label} {en_label}"),
                 shortcut: None,
@@ -322,19 +274,20 @@ impl PaletteEngine {
         }
 
         for section in SettingsSection::ALL {
-            let (zh_label, en_label) = section.label_pair();
-            let (grp_zh, grp_en) = section.group().label_pair();
+            let zh_label = section.label(Language::ZhCn);
+            let en_label = section.label(Language::En);
+            let grp_zh = section.group().label(Language::ZhCn);
+            let grp_en = section.group().label(Language::En);
             items.push(PaletteItem {
                 id: format!("settings:{en_label}"),
                 category: PaletteCategory::Settings,
-                title: if zh {
-                    format!("{grp_zh} › {zh_label}")
-                } else {
-                    format!("{grp_en} › {en_label}")
-                },
-                subtitle: Some(if zh { "设置" } else { "Settings" }.into()),
+                title: format!("{} › {}", section.group().label(lang), section.label(lang)),
+                subtitle: Some(sh.palette_cat_settings().into()),
                 badge_label: None,
-                keywords: format!("settings 设置 {grp_zh} {grp_en} {zh_label} {en_label}"),
+                keywords: format!(
+                    "{} {grp_zh} {grp_en} {zh_label} {en_label}",
+                    sh.palette_settings_kw()
+                ),
                 shortcut: None,
                 action: PaletteAction::OpenSettings(section),
             });
@@ -343,45 +296,30 @@ impl PaletteEngine {
         items.push(PaletteItem {
             id: "cmd:toggle-sidebar".into(),
             category: PaletteCategory::Command,
-            title: if zh {
-                "折叠/展开侧栏"
-            } else {
-                "Toggle Sidebar"
-            }
-            .into(),
+            title: sh.palette_cmd_toggle_sidebar().into(),
             subtitle: None,
             badge_label: None,
-            keywords: "sidebar 侧栏 toggle 折叠".into(),
+            keywords: sh.palette_cmd_toggle_sidebar_kw().into(),
             shortcut: Some("⌘B".into()),
             action: PaletteAction::ToggleSidebar,
         });
         items.push(PaletteItem {
             id: "cmd:cycle-theme".into(),
             category: PaletteCategory::Command,
-            title: if zh {
-                "切换浅色/深色外观"
-            } else {
-                "Toggle Light / Dark Theme"
-            }
-            .into(),
+            title: sh.palette_cmd_cycle_theme().into(),
             subtitle: None,
             badge_label: None,
-            keywords: "theme dark light 浅色 深色 主题 外观".into(),
+            keywords: sh.palette_cmd_cycle_theme_kw().into(),
             shortcut: None,
             action: PaletteAction::CycleThemeMode,
         });
         items.push(PaletteItem {
             id: "cmd:toggle-lang".into(),
             category: PaletteCategory::Command,
-            title: if zh {
-                "切换界面语言 (中/En)"
-            } else {
-                "Switch Language (Zh/En)"
-            }
-            .into(),
+            title: sh.palette_cmd_toggle_lang().into(),
             subtitle: None,
             badge_label: None,
-            keywords: "language chinese english 语言 中文 英文".into(),
+            keywords: sh.palette_cmd_toggle_lang_kw().into(),
             shortcut: None,
             action: PaletteAction::ToggleLanguage,
         });

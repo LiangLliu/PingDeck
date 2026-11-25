@@ -8,11 +8,11 @@ use gpui_kit::{
 use pingdeck_desktop::core::agent::mcp::McpTransportConfig;
 use pingdeck_desktop::core::agent::model::{AgentMcpServer, AgentMcpTestResult};
 use pingdeck_desktop::core::app::{
-    agent_mcp_server_save_impl, agent_mcp_server_test_impl, settings_get_impl, settings_update_impl,
+    agent_mcp_server_save_impl, agent_mcp_server_test_impl, settings_update_impl,
 };
-use pingdeck_desktop::core::model::settings::{Language, SettingsSection as CoreSection};
+use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 
-use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
+use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::{InputState, TextareaState, Tone, WindowExt as _, palette};
 
 use super::AgentSettingsView;
@@ -201,26 +201,18 @@ impl McpSheet {
     }
 
     pub fn sheet_title(&self, cx: &gpui_kit::App) -> SharedString {
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         match &self.mode {
-            SheetMode::Form { editing_id } if editing_id.is_empty() => if zh {
-                "添加 MCP 服务器"
-            } else {
-                "Add MCP server"
+            SheetMode::Form { editing_id } if editing_id.is_empty() => {
+                crate::ui::tr(cx).settings().tools_form_title_new().into()
             }
-            .into(),
-            SheetMode::Form { .. } => if zh {
-                "编辑 MCP 服务器"
-            } else {
-                "Edit MCP server"
-            }
-            .into(),
-            SheetMode::Json { .. } => if zh {
-                "编辑 MCP JSON 配置"
-            } else {
-                "Edit MCP servers JSON"
-            }
-            .into(),
+            SheetMode::Form { .. } => crate::ui::tr(cx)
+                .settings()
+                .mcp_sheet_edit_mcp_server()
+                .into(),
+            SheetMode::Json { .. } => crate::ui::tr(cx)
+                .settings()
+                .mcp_sheet_edit_mcp_servers_json()
+                .into(),
         }
     }
 
@@ -231,7 +223,7 @@ impl McpSheet {
         };
         let name = self.name_input.read(cx).value().trim().to_owned();
         if name.is_empty() {
-            return Err("请输入服务器名称 / Enter a server name".into());
+            return Err(crate::ui::tr(cx).settings().agent_mcp_err_name().to_owned());
         }
         let transport = if self.is_http {
             let url = self.url_input.read(cx).value().trim().to_owned();
@@ -319,8 +311,12 @@ impl McpSheet {
             match timeout_raw.parse::<u32>() {
                 Ok(v) if (5..=3600).contains(&v) => Some(v),
                 _ => {
-                    self.error_msg =
-                        Some("调用超时需在 5–3600 秒之间 / Timeout must be 5–3600 s".into());
+                    self.error_msg = Some(
+                        crate::ui::tr(cx)
+                            .settings()
+                            .agent_mcp_err_timeout()
+                            .to_owned(),
+                    );
                     cx.notify();
                     return;
                 }
@@ -354,11 +350,9 @@ impl McpSheet {
                         this.needs_stdio_confirm = false;
                         this.pending_close = true;
                         parent.update(cx, |p, cx| {
-                            let msg = if p.zh() {
-                                format!("已保存 MCP 服务器 {}", saved.name)
-                            } else {
-                                format!("Saved MCP server {}", saved.name)
-                            };
+                            let msg = crate::ui::Tr(p.settings.general.language)
+                                .settings()
+                                .mcp_sheet_saved_mcp_server(saved.name);
                             p.flash = Some((Tone::Success, msg));
                             p.reload_all(cx);
                         });
@@ -387,7 +381,7 @@ impl McpSheet {
             SheetMode::Json { existing } => existing.clone(),
             SheetMode::Form { .. } => return,
         };
-        let parsed = match parse_mcp_servers_json(&raw, &existing) {
+        let parsed = match parse_mcp_servers_json(&raw, &existing, crate::ui::active_language(cx)) {
             Ok(list) => list,
             Err(msg) => {
                 self.error_msg = Some(msg);
@@ -396,7 +390,12 @@ impl McpSheet {
             }
         };
         if parsed.is_empty() {
-            self.error_msg = Some("mcpServers 中没有可导入的条目 / No entries to import".into());
+            self.error_msg = Some(
+                crate::ui::tr(cx)
+                    .settings()
+                    .agent_mcp_err_no_entries()
+                    .to_owned(),
+            );
             cx.notify();
             return;
         }
@@ -420,11 +419,9 @@ impl McpSheet {
                     Ok(count) => {
                         this.pending_close = true;
                         parent.update(cx, |p, cx| {
-                            let msg = if p.zh() {
-                                format!("已导入 {count} 个 MCP 服务器（默认停用且未受信任）")
-                            } else {
-                                format!("Imported {count} MCP server(s), disabled and untrusted")
-                            };
+                            let msg = crate::ui::Tr(p.settings.general.language)
+                                .settings()
+                                .mcp_sheet_imported_mcp_server_s_disabled(count);
                             p.flash = Some((Tone::Success, msg));
                             p.reload_all(cx);
                         });
@@ -471,11 +468,10 @@ impl Render for McpSheet {
             window.close_sheet(cx);
         }
         let p = palette(cx);
-        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
 
         match &self.mode {
-            SheetMode::Json { .. } => render_json_mode(self, zh, &p, cx).into_any_element(),
-            SheetMode::Form { .. } => render_form_mode(self, zh, &p, cx).into_any_element(),
+            SheetMode::Json { .. } => render_json_mode(self, &p, cx).into_any_element(),
+            SheetMode::Form { .. } => render_form_mode(self, &p, cx).into_any_element(),
         }
     }
 }

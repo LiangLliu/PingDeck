@@ -138,34 +138,24 @@ pub fn render_reasoning_header_chip(
     msg_id: &str,
     info: &MessageReasoningInfo,
     open: bool,
-    zh: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
     let r_key = format!("reason-{msg_id}");
+    let ch = crate::ui::tr(cx).chat();
     let label = match info.kind {
         ReasoningKind::Plaintext => {
             let chars = info.text.chars().count();
             match info.duration_ms {
-                Some(ms) if zh => format!("思考了 {} · {chars} 字", format_duration_ms(ms)),
-                Some(ms) => format!("Thought {} · {chars} chars", format_duration_ms(ms)),
-                None if zh => format!("思考过程 · {chars} 字"),
-                None => format!("Thinking · {chars} chars"),
+                Some(ms) => ch.reason_chip_thought_ms(format_duration_ms(ms), chars),
+                None => ch.reason_chip_thinking(chars),
             }
         }
         ReasoningKind::Sealed => match info.reasoning_tokens {
-            Some(tok) if zh => format!("已思考 · {} tok", format_tokens_int(tok)),
-            Some(tok) => format!("Reasoned · {} tok", format_tokens_int(tok)),
-            None if zh => "已思考 · 摘要隐藏".to_owned(),
-            None => "Reasoned (hidden)".to_owned(),
+            Some(tok) => ch.reason_chip_sealed_tok(format_tokens_int(tok)),
+            None => ch.reason_chip_sealed_hidden().to_owned(),
         },
-        ReasoningKind::NoneReturned => {
-            if zh {
-                "无思考过程".to_owned()
-            } else {
-                "No thinking".to_owned()
-            }
-        }
+        ReasoningKind::NoneReturned => ch.reasoning_no_thinking().to_owned(),
     };
 
     let is_present = info.kind != ReasoningKind::NoneReturned;
@@ -230,7 +220,6 @@ pub fn render_reasoning_block(
     text: String,
     duration_ms: Option<u64>,
     reasoning_tokens: Option<u64>,
-    zh: bool,
     on_toggle: impl Fn(&gpui_kit::ClickEvent, &mut gpui_kit::Window, &mut gpui_kit::App) + 'static,
     cx: &gpui_kit::App,
 ) -> impl IntoElement {
@@ -238,44 +227,19 @@ pub fn render_reasoning_block(
     let char_count = text.chars().count();
     let tok_suffix =
         reasoning_tokens.map_or_else(String::new, |t| format!(" · {} tok", format_tokens_int(t)));
+    let ch = crate::ui::tr(cx).chat();
     let label = match (is_live, duration_ms) {
-        (true, Some(ms)) if zh => {
-            format!(
-                "正在深度思考 · {} · {char_count} 字{tok_suffix}",
-                format_duration_ms(ms)
-            )
-        }
-        (true, Some(ms)) => {
-            format!(
-                "Thinking · {} · {char_count} chars{tok_suffix}",
-                format_duration_ms(ms)
-            )
-        }
-        (true, None) if zh => format!("正在深度思考 · {char_count} 字{tok_suffix}"),
-        (true, None) => format!("Thinking · {char_count} chars{tok_suffix}"),
-        (false, Some(ms)) if zh => {
-            format!(
-                "思考了 {} · {char_count} 字{tok_suffix}",
-                format_duration_ms(ms)
-            )
-        }
-        (false, Some(ms)) => {
-            format!(
-                "Thought for {} · {char_count} chars{tok_suffix}",
-                format_duration_ms(ms)
-            )
-        }
-        (false, None) if zh => format!("思考过程 · {char_count} 字{tok_suffix}"),
-        (false, None) => format!("Reasoning · {char_count} chars{tok_suffix}"),
+        (true, Some(ms)) => ch.reason_live_ms(format_duration_ms(ms), char_count, &tok_suffix),
+        (true, None) => ch.reason_live(char_count, &tok_suffix),
+        (false, Some(ms)) => ch.reason_done_ms(format_duration_ms(ms), char_count, &tok_suffix),
+        (false, None) => ch.reason_done(char_count, &tok_suffix),
     };
 
     let preview = (!open).then(|| collapse_preview(&text, 96));
     let toggle_hint = if open {
-        if zh { "收起" } else { "Hide" }
-    } else if zh {
-        "展开"
+        crate::ui::tr(cx).chat().reasoning_hide()
     } else {
-        "View"
+        crate::ui::tr(cx).chat().reasoning_view()
     };
 
     let header = div()

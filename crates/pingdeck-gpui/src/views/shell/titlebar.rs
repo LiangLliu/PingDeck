@@ -11,14 +11,13 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::app::ProxyTestOutcome;
-use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::state::{SettingsSection, UtilityDialog};
 
 use crate::ui::{
     Anchor, Disableable as _, Popover, StatusShape, Tone, UiIcon, app_title_bar, badge,
     btn_primary, btn_secondary, h_row, icon_xs, list_row, palette, popover, popover_header,
-    spinner_xs, status_indicator, text_input, titlebar_icon_btn, to_hsla, v_col,
+    spinner_xs, status_indicator, text_input, titlebar_icon_btn, to_hsla, tr, v_col,
 };
 
 use super::AppShell;
@@ -65,20 +64,14 @@ fn compact_proxy_host(raw: &str) -> String {
 
 pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl IntoElement {
     let p = palette(cx);
-    let zh = shell.language() == Language::ZhCn;
+    let sh = tr(cx).shell();
     let collapsed = shell.state.sidebar_collapsed;
 
     let toggle_btn = titlebar_icon_btn("tb-sidebar-toggle", UiIcon::PanelLeft, None, cx)
         .tooltip(if collapsed {
-            if zh {
-                "展开侧栏 (⌘B)"
-            } else {
-                "Expand sidebar (⌘B)"
-            }
-        } else if zh {
-            "收起侧栏 (⌘B)"
+            sh.titlebar_expand_sidebar()
         } else {
-            "Collapse sidebar (⌘B)"
+            sh.titlebar_collapse_sidebar()
         })
         .on_click(cx.listener(|this, _, _, cx| {
             cx.stop_propagation();
@@ -113,10 +106,10 @@ pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl In
             cx.stop_propagation();
         })
         .on_click(|_, _, cx| cx.stop_propagation())
-        .child(render_proxy_popover(shell, zh, cx))
+        .child(render_proxy_popover(shell, cx))
         .child(
             titlebar_icon_btn("tb-console", UiIcon::Terminal, None, cx)
-                .tooltip(if zh { "诊断控制台" } else { "Console" })
+                .tooltip(sh.util_console())
                 .on_click(cx.listener(|this, _, window, cx| {
                     cx.stop_propagation();
                     this.open_utility(UtilityDialog::Console, window, cx);
@@ -129,11 +122,7 @@ pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl In
                 None,
                 cx,
             )
-            .tooltip(if zh {
-                "切换浅/深色"
-            } else {
-                "Toggle Light / Dark"
-            })
+            .tooltip(sh.titlebar_toggle_theme())
             .on_click(cx.listener(|this, _, _, cx| {
                 cx.stop_propagation();
                 this.toggle_theme_mode(cx);
@@ -154,8 +143,9 @@ pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl In
     app_title_bar(cx).child(left_cluster).child(right_cluster)
 }
 
-fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) -> Popover {
+fn render_proxy_popover(shell: &AppShell, cx: &mut Context<AppShell>) -> Popover {
     let p = palette(cx);
+    let sh = tr(cx).shell();
     let raw_proxy = shell.state.settings.network.proxy_url.clone();
     let no_proxy_count = shell.state.settings.network.no_proxy.len();
     let mode = GlobalProxyMode::from_url(&raw_proxy);
@@ -166,32 +156,20 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
 
     let (tooltip_label, status_dot_color, dot_shape) = match mode {
         GlobalProxyMode::System => (
-            if zh {
-                "全局代理：系统代理（HTTP · 流程 · AI）".to_owned()
-            } else {
-                "Global proxy: System proxy (HTTP · Flows · AI)".to_owned()
-            },
+            sh.proxy_tooltip_system().to_owned(),
             Some(to_hsla(p.ok)),
             StatusShape::Ok,
         ),
         GlobalProxyMode::Custom => {
             let host = compact_proxy_host(&raw_proxy);
             (
-                if zh {
-                    format!("全局代理：{host}（HTTP · 流程 · AI）")
-                } else {
-                    format!("Global proxy: {host} (HTTP · Flows · AI)")
-                },
+                sh.proxy_tooltip_custom(host),
                 Some(to_hsla(p.accent)),
                 StatusShape::Live,
             )
         }
         GlobalProxyMode::Direct => (
-            if zh {
-                "全局代理：直连（无代理）".to_owned()
-            } else {
-                "Global proxy: Direct (no proxy)".to_owned()
-            },
+            sh.proxy_tooltip_direct().to_owned(),
             Some(to_hsla(p.faint)),
             StatusShape::Idle,
         ),
@@ -205,6 +183,9 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
         .trigger(trigger_el)
         .content(move |_, _, pop_cx| {
             let pp = palette(pop_cx);
+            let t = tr(pop_cx);
+            let sh = t.shell();
+            let c = t.common();
             let e_set = shell_ent.clone();
             let e_sys = shell_ent.clone();
             let e_dir = shell_ent.clone();
@@ -216,19 +197,10 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
 
             let mut menu = v_col().w(px(316.0)).gap(px(6.0));
             menu = menu.child(popover_header(
-                if zh {
-                    "全局出站代理"
-                } else {
-                    "Global Outbound Proxy"
-                },
+                sh.proxy_title(),
                 Some((
                     "tb-proxy-open-settings".into(),
-                    if zh {
-                        "网络设置 ↗"
-                    } else {
-                        "Network settings ↗"
-                    }
-                    .into(),
+                    sh.proxy_network_settings().into(),
                     Box::new(move |_, window, cx| {
                         e_set.update(cx, |this, cx| {
                             this.open_settings_section(SettingsSection::Network, cx);
@@ -244,11 +216,7 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
                     .px(px(8.0))
                     .text_size(px(11.0))
                     .text_color(to_hsla(pp.muted))
-                    .child(if zh {
-                        "应用于所有 HTTP 请求、流程与 AI 调用；单条请求或单个服务商仍可单独覆盖。"
-                    } else {
-                        "Applies to all HTTP requests, flows, and AI calls; per-request or per-provider overrides still win."
-                    }),
+                    .child(sh.proxy_desc()),
             );
 
             // 1. System proxy option
@@ -278,17 +246,13 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
                                     div()
                                         .text_xs()
                                         .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                        .child(if zh { "跟随系统代理" } else { "System proxy" }),
+                                        .child(sh.proxy_mode_system_title()),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(10.5))
                                         .text_color(to_hsla(pp.muted))
-                                        .child(if zh {
-                                            "自动使用操作系统或环境变量代理"
-                                        } else {
-                                            "Inherit OS / environment proxy settings"
-                                        }),
+                                        .child(sh.proxy_mode_system_desc()),
                                 ),
                         ),
                 )
@@ -326,21 +290,13 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
                                     div()
                                         .text_xs()
                                         .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                        .child(if zh {
-                                            "直连（不使用代理）"
-                                        } else {
-                                            "Direct (no proxy)"
-                                        }),
+                                        .child(sh.proxy_mode_direct_title()),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(10.5))
                                         .text_color(to_hsla(pp.muted))
-                                        .child(if zh {
-                                            "绕过系统代理，直接访问目标主机"
-                                        } else {
-                                            "Bypass system proxy and connect directly"
-                                        }),
+                                        .child(sh.proxy_mode_direct_desc()),
                                 ),
                         ),
                 )
@@ -384,26 +340,26 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
                                             .text_xs()
                                             .font_weight(gpui_kit::FontWeight::MEDIUM)
                                             .text_color(to_hsla(pp.ink))
-                                            .child(if zh { "自定义代理" } else { "Custom proxy" }),
+                                            .child(sh.proxy_mode_custom_title()),
                                     ),
                             )
-                            .children((mode == GlobalProxyMode::Custom).then(|| {
-                                badge(if zh { "已启用" } else { "Active" }, Tone::Accent, pop_cx)
-                            })),
+                            .children(
+                                (mode == GlobalProxyMode::Custom)
+                                    .then(|| badge(c.active(), Tone::Accent, pop_cx)),
+                            ),
                     )
                     .child(
                         h_row()
                             .w_full()
                             .gap(px(6.0))
                             .child(div().flex_1().min_w_0().child(text_input(&proxy_input)))
-                            .child(
-                                btn_primary("tb-proxy-apply", if zh { "应用" } else { "Apply" })
-                                    .on_click(move |_, _, cx| {
-                                        e_cus.update(cx, |this, cx| {
-                                            this.apply_custom_global_proxy(cx);
-                                        });
-                                    }),
-                            ),
+                            .child(btn_primary("tb-proxy-apply", c.apply()).on_click(
+                                move |_, _, cx| {
+                                    e_cus.update(cx, |this, cx| {
+                                        this.apply_custom_global_proxy(cx);
+                                    });
+                                },
+                            )),
                     )
                     .child(
                         h_row()
@@ -414,75 +370,40 @@ fn render_proxy_popover(shell: &AppShell, zh: bool, cx: &mut Context<AppShell>) 
                                     .text_size(px(10.5))
                                     .text_color(to_hsla(pp.muted))
                                     .child(if no_proxy_count > 0 {
-                                        if zh {
-                                            format!("已配置 {no_proxy_count} 条绕过规则")
-                                        } else {
-                                            format!("{no_proxy_count} bypass rule(s)")
-                                        }
-                                    } else if zh {
-                                        "支持 http / https / socks5".to_owned()
+                                        sh.proxy_bypass_count(no_proxy_count)
                                     } else {
-                                        "Supports http / https / socks5".to_owned()
+                                        sh.proxy_supported_schemes().to_owned()
                                     }),
                             )
                             .child(
-                                btn_secondary(
-                                    "tb-proxy-test",
-                                    if zh { "测试连通" } else { "Test" },
-                                )
-                                .disabled(testing)
-                                .on_click(move |_, _, cx| {
-                                    e_tst.update(cx, |this, cx| {
-                                        this.test_global_proxy(cx);
-                                    });
-                                }),
+                                btn_secondary("tb-proxy-test", sh.proxy_test_btn())
+                                    .disabled(testing)
+                                    .on_click(move |_, _, cx| {
+                                        e_tst.update(cx, |this, cx| {
+                                            this.test_global_proxy(cx);
+                                        });
+                                    }),
                             ),
                     ),
             );
 
             if testing {
                 menu = menu.child(
-                    h_row()
-                        .gap(px(6.0))
-                        .px(px(8.0))
-                        .child(spinner_xs())
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(to_hsla(pp.muted))
-                                .child(if zh {
-                                    "正在测试当前代理连通性…"
-                                } else {
-                                    "Testing active proxy route…"
-                                }),
-                        ),
+                    h_row().gap(px(6.0)).px(px(8.0)).child(spinner_xs()).child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(to_hsla(pp.muted))
+                            .child(sh.proxy_testing()),
+                    ),
                 );
             } else if let Some(res) = &test_result {
                 let (tone, msg) = match res.outcome {
                     ProxyTestOutcome::Connected => (
                         Tone::Success,
-                        if zh {
-                            format!("连通正常 · {} ({} ms)", res.route, res.elapsed_ms)
-                        } else {
-                            format!("Connected via {} ({} ms)", res.route, res.elapsed_ms)
-                        },
+                        sh.proxy_test_connected(&res.route, res.elapsed_ms),
                     ),
-                    ProxyTestOutcome::ProxyAuth => (
-                        Tone::Warning,
-                        if zh {
-                            "代理需要身份认证 (HTTP 407)".to_owned()
-                        } else {
-                            "Proxy auth required (HTTP 407)".to_owned()
-                        },
-                    ),
-                    _ => (
-                        Tone::Danger,
-                        if zh {
-                            format!("连接失败 ({} ms)", res.elapsed_ms)
-                        } else {
-                            format!("Connection failed ({} ms)", res.elapsed_ms)
-                        },
-                    ),
+                    ProxyTestOutcome::ProxyAuth => (Tone::Warning, sh.proxy_test_auth().to_owned()),
+                    _ => (Tone::Danger, sh.proxy_test_failed(res.elapsed_ms)),
                 };
                 menu = menu.child(div().px(px(4.0)).child(badge(msg, tone, pop_cx)));
             }

@@ -15,11 +15,7 @@ use crate::ui::{
 use super::ProvidersView;
 use super::format::{format_client_status, format_relative_time};
 
-pub fn render_clients_tab(
-    view: &ProvidersView,
-    zh: bool,
-    cx: &mut Context<ProvidersView>,
-) -> gpui_kit::Div {
+pub fn render_clients_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
     let p = palette(cx);
 
     let mut root = v_col().gap(px(16.0));
@@ -43,20 +39,20 @@ pub fn render_clients_tab(
                                         .text_xs()
                                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                         .text_color(to_hsla(p.ok))
-                                        .child(SharedString::from(if zh {
-                                            format!("已签发客户端「{name}」令牌（仅显示一次，请立即复制）")
-                                        } else {
-                                            format!("Token minted for \"{name}\" (shown once — copy now)")
-                                        })),
+                                        .child(SharedString::from(
+                                            crate::ui::tr(cx)
+                                                .providers()
+                                                .prov_gateway_clients_token_minted_for_shown_once(
+                                                    name,
+                                                ),
+                                        )),
                                 )
-                                .child(
-                                    btn_icon("gw-hide-new-tok", UiIcon::Close).on_click(
-                                        cx.listener(|this, _, _, cx| {
-                                            this.revealed_client_token = None;
-                                            cx.notify();
-                                        }),
-                                    ),
-                                ),
+                                .child(btn_icon("gw-hide-new-tok", UiIcon::Close).on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.revealed_client_token = None;
+                                        cx.notify();
+                                    }),
+                                )),
                         )
                         .child(
                             h_row()
@@ -69,27 +65,35 @@ pub fn render_clients_tab(
                                         .rounded(px(6.0))
                                         .bg(to_hsla(p.surface))
                                         .border_1()
-                                        .border_color(to_hsla(p.line_strong.composite_over(p.surface)))
+                                        .border_color(to_hsla(
+                                            p.line_strong.composite_over(p.surface),
+                                        ))
                                         .text_xs()
                                         .text_color(to_hsla(p.ink))
                                         .truncate()
                                         .child(SharedString::from(token.clone())),
                                 )
                                 .child(
-                                    btn_primary("gw-copy-new-tok", if zh { "复制令牌" } else { "Copy token" })
-                                        .icon(icon_xs(UiIcon::Copy))
-                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                    btn_primary(
+                                        "gw-copy-new-tok",
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_gateway_clients_copy_token(),
+                                    )
+                                    .icon(icon_xs(UiIcon::Copy))
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
                                             let _ = clipboard::set_text(&copy_tok);
                                             this.status_msg = Some((
                                                 Tone::Success,
-                                                if zh {
-                                                    "令牌已复制到剪贴板".into()
-                                                } else {
-                                                    "Token copied".into()
-                                                },
+                                                crate::ui::tr(cx)
+                                                    .providers()
+                                                    .prov_gateway_clients_token_copied()
+                                                    .into(),
                                             ));
                                             cx.notify();
-                                        })),
+                                        },
+                                    )),
                                 ),
                         ),
                 ),
@@ -101,21 +105,17 @@ pub fn render_clients_tab(
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh {
-                    "本机 AI 编码助手（自动写入配置与备份）"
-                } else {
-                    "Local AI Coding Tools (Managed Configs)"
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_clients_local_ai_coding_tools_managed(),
                 cx,
             ))
             .child(
                 btn_primary(
                     "gw-clients-connect",
-                    if zh {
-                        "+ 接入编码工具…"
-                    } else {
-                        "+ Connect tool…"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_clients_connect_tool(),
                 )
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_connect_sheet(None, window, cx);
@@ -129,12 +129,28 @@ pub fn render_clients_tab(
         let (st_lbl, st_tone) = inspect.map_or_else(
             || {
                 if det.installed {
-                    (if zh { "已安装" } else { "Installed" }, Tone::Neutral)
+                    (
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_clients_installed(),
+                        Tone::Neutral,
+                    )
                 } else {
-                    (if zh { "未安装" } else { "Not installed" }, Tone::Neutral)
+                    (
+                        crate::ui::tr(cx)
+                            .providers()
+                            .gwa_gateway_writer_not_installed(),
+                        Tone::Neutral,
+                    )
                 }
             },
-            |ins| format_client_status(&ins.status, &ins.inspection.drift, zh),
+            |ins| {
+                format_client_status(
+                    &ins.status,
+                    &ins.inspection.drift,
+                    crate::ui::active_language(cx),
+                )
+            },
         );
         let shape = match inspect.map(|i| &i.status) {
             Some(ClientStatus::Configured | ClientStatus::Verified { .. }) => StatusShape::Ok,
@@ -169,11 +185,9 @@ pub fn render_clients_tab(
                             | ClientStatus::WaitingForFirstRequest
                     )
                 ) {
-                    if zh { "更新配置…" } else { "Update…" }
-                } else if zh {
-                    "连接…"
+                    crate::ui::tr(cx).providers().prov_gateway_clients_update()
                 } else {
-                    "Connect…"
+                    crate::ui::tr(cx).providers().prov_gateway_clients_connect()
                 },
             )
             .on_click(cx.listener(move |this, _, window, cx| {
@@ -184,10 +198,10 @@ pub fn render_clients_tab(
             row_actions = row_actions.child(
                 btn_ghost(
                     SharedString::from(format!("tool-verify-{}", app.as_str())),
-                    if zh { "测试请求" } else { "Test" },
+                    crate::ui::tr(cx).providers().prov_gateway_clients_test(),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.verify_client_tool(cid.clone(), app, zh, cx);
+                    this.verify_client_tool(cid.clone(), app, cx);
                 })),
             );
         }
@@ -195,10 +209,10 @@ pub fn render_clients_tab(
             row_actions = row_actions.child(
                 btn_ghost(
                     SharedString::from(format!("tool-restore-{}", app.as_str())),
-                    if zh { "还原" } else { "Restore" },
+                    crate::ui::tr(cx).providers().prov_gateway_clients_restore(),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.restore_client_tool(app, false, zh, cx);
+                    this.restore_client_tool(app, false, cx);
                 })),
             );
         }
@@ -251,7 +265,9 @@ pub fn render_clients_tab(
                     Tone::Success,
                     format!(
                         "{} · {} · {} ms",
-                        if zh { "测试通过" } else { "Test passed" },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_clients_test_passed(),
                         vr.target.as_deref().unwrap_or(&vr.alias),
                         vr.ttft_ms.unwrap_or(vr.latency_ms)
                     ),
@@ -281,7 +297,7 @@ pub fn render_clients_tab(
                     SharedString::from(format!("snip-cl-{:?}", sc.client)),
                     format!(
                         "{}{}",
-                        tool_kind.label(zh),
+                        tool_kind.label(crate::ui::active_language(cx)),
                         if sc.installed { " ✓" } else { "" }
                     ),
                 )
@@ -295,11 +311,9 @@ pub fn render_clients_tab(
                 v_col()
                     .gap(px(6.0))
                     .child(section_heading(
-                        if zh {
-                            "手动片段客户端（Zed / Cursor / Cherry Studio / 环境变量）"
-                        } else {
-                            "Snippet Clients (Zed / Cursor / Cherry Studio / Env)"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_clients_snippet_clients_zed_cursor_cherry(),
                         cx,
                     ))
                     .child(sn_row),
@@ -316,11 +330,9 @@ pub fn render_clients_tab(
             .flex_wrap()
             .gap(px(8.0))
             .child(section_heading(
-                if zh {
-                    format!("网关客户端令牌（{}）", view.gateway_clients.len())
-                } else {
-                    format!("Gateway Client Tokens ({})", view.gateway_clients.len())
-                },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_clients_gateway_client_tokens(view.gateway_clients.len()),
                 cx,
             ))
             .child(
@@ -334,11 +346,13 @@ pub fn render_clients_tab(
                     .child(
                         btn_secondary(
                             "gw-create-client",
-                            if zh { "+ 创建令牌" } else { "+ Mint token" },
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_gateway_clients_mint_token(),
                         )
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
-                                this.create_gateway_client(zh, window, cx);
+                                this.create_gateway_client(window, cx);
                             },
                         )),
                     ),
@@ -346,13 +360,15 @@ pub fn render_clients_tab(
     );
 
     if view.gateway_clients.is_empty() {
-        tokens_box = tokens_box.child(card(cx).p(px(14.0)).child(
-            div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "还没有客户端令牌。接入编码工具或输入名称创建令牌后，外部请求才能通过网关鉴权。"
-            } else {
-                "No client tokens yet. Connect a tool or mint a token above."
-            }),
-        ));
+        tokens_box = tokens_box.child(
+            card(cx).p(px(14.0)).child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_clients_no_client_tokens_yet_connect(),
+                ),
+            ),
+        );
     } else {
         for client in &view.gateway_clients {
             let cid = client.id.clone();
@@ -395,27 +411,23 @@ pub fn render_clients_tab(
                                     .child(badge(SharedString::from(hint), Tone::Neutral, cx))
                                     .child(badge(
                                         if active {
-                                            if zh { "有效" } else { "Active" }
-                                        } else if zh {
-                                            "已吊销"
+                                            crate::ui::tr(cx).providers().gw_clients_active()
                                         } else {
-                                            "Revoked"
+                                            crate::ui::tr(cx).providers().gw_clients_revoked()
                                         },
                                         if active { Tone::Success } else { Tone::Danger },
                                         cx,
                                     ))
                                     .child(badge(
                                         if client.allow_all {
-                                            if zh {
-                                                "全部模型".into()
-                                            } else {
-                                                "All models".into()
-                                            }
+                                            crate::ui::tr(cx).providers().gw_clients_all().into()
                                         } else {
                                             format!(
                                                 "{} {}",
                                                 client.allowed_models.len(),
-                                                if zh { "个允许模型" } else { "models" }
+                                                crate::ui::tr(cx)
+                                                    .providers()
+                                                    .prov_gateway_clients_models_2()
                                             )
                                         },
                                         Tone::Accent,
@@ -426,7 +438,7 @@ pub fn render_clients_tab(
                                 h_row()
                                     .gap(px(8.0))
                                     .child(kv_chip(
-                                        if zh { "今日" } else { "today" },
+                                        crate::ui::tr(cx).providers().prov_gateway_clients_today(),
                                         today_reqs.to_string(),
                                         cx,
                                     ))
@@ -437,24 +449,18 @@ pub fn render_clients_tab(
                                             .child(SharedString::from(
                                                 client.last_used_ms.map_or_else(
                                                     || {
-                                                        if zh {
-                                                            "上次使用：从未".into()
-                                                        } else {
-                                                            "Last used: never".into()
-                                                        }
+                                                        crate::ui::tr(cx)
+                                                            .providers()
+                                                            .prov_gateway_clients_last_used_never()
+                                                            .into()
                                                     },
                                                     |ms| {
-                                                        if zh {
-                                                            format!(
-                                                                "上次使用：{}",
-                                                                format_relative_time(ms, true)
+                                                        let lang = crate::ui::active_language(cx);
+                                                        crate::ui::tr(cx)
+                                                            .providers()
+                                                            .prov_gw_last_used_at(
+                                                                format_relative_time(ms, lang),
                                                             )
-                                                        } else {
-                                                            format!(
-                                                                "Last used: {}",
-                                                                format_relative_time(ms, false)
-                                                            )
-                                                        }
                                                     },
                                                 ),
                                             )),
@@ -472,18 +478,18 @@ pub fn render_clients_tab(
                             .children(active.then(|| {
                                 btn_secondary(
                                     SharedString::from(format!("cl-rot-{cid}")),
-                                    if zh { "轮换令牌" } else { "Rotate" },
+                                    crate::ui::tr(cx).providers().prov_gateway_clients_rotate(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.rotate_gateway_client(cid_rot.clone(), zh, cx);
+                                        this.rotate_gateway_client(cid_rot.clone(), cx);
                                     },
                                 ))
                             }))
                             .children(active.then(|| {
                                 btn_ghost(
                                     SharedString::from(format!("cl-pol-{cid}")),
-                                    if zh { "策略" } else { "Policy" },
+                                    crate::ui::tr(cx).providers().prov_gateway_clients_policy(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, window, cx| {
@@ -497,18 +503,20 @@ pub fn render_clients_tab(
                                 if confirming {
                                     btn_danger(
                                         SharedString::from(format!("cl-rev-ok-{cid}")),
-                                        if zh { "确认吊销" } else { "Confirm revoke" },
+                                        crate::ui::tr(cx)
+                                            .providers()
+                                            .prov_gateway_clients_confirm_revoke(),
                                     )
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.confirm_revoke_client = None;
-                                        this.revoke_gateway_client(cid_rev.clone(), zh, cx);
+                                        this.revoke_gateway_client(cid_rev.clone(), cx);
                                     }))
                                     .into_any_element()
                                 } else {
                                     let cid_arm = cid.clone();
                                     btn_ghost(
                                         SharedString::from(format!("cl-rev-{cid}")),
-                                        if zh { "吊销" } else { "Revoke" },
+                                        crate::ui::tr(cx).providers().gwa_gateway_revoke_action(),
                                     )
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.confirm_revoke_client = Some(cid_arm.clone());
@@ -520,11 +528,11 @@ pub fn render_clients_tab(
                             .children((!active).then(|| {
                                 btn_danger(
                                     SharedString::from(format!("cl-del-{cid}")),
-                                    if zh { "删除" } else { "Delete" },
+                                    crate::ui::tr(cx).common().delete(),
                                 )
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.delete_gateway_client(cid_del.clone(), zh, cx);
+                                        this.delete_gateway_client(cid_del.clone(), cx);
                                     },
                                 ))
                             })),
@@ -533,7 +541,7 @@ pub fn render_clients_tab(
 
             if editing_policy {
                 client_card = client_card.child(
-                    super::gateway_backups::render_client_policy_editor(view, client, zh, cx),
+                    super::gateway_backups::render_client_policy_editor(view, client, cx),
                 );
             }
 
@@ -542,7 +550,7 @@ pub fn render_clients_tab(
     }
 
     root = root.child(tokens_box);
-    if let Some(ledger) = super::gateway_backups::render_managed_backups(view, zh, cx) {
+    if let Some(ledger) = super::gateway_backups::render_managed_backups(view, cx) {
         root = root.child(ledger);
     }
     root

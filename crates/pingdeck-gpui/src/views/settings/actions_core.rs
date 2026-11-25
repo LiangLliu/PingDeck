@@ -6,7 +6,7 @@ use pingdeck_desktop::core::app::{
     network_ca_test_impl, network_proxy_test_impl, settings_reset_all_impl,
     settings_reset_section_impl, settings_undo_last_reset_impl, settings_update_impl,
 };
-use pingdeck_desktop::core::model::settings::{Language, Settings, SettingsSection as CoreSection};
+use pingdeck_desktop::core::model::settings::{Settings, SettingsSection as CoreSection};
 use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::services::{FileFilter, FilePickerSpec, HostDialog as _, RfdDialog};
 
@@ -21,10 +21,6 @@ const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 
 impl SettingsView {
-    pub(crate) fn is_zh(&self) -> bool {
-        self.settings.general.language == Language::ZhCn
-    }
-
     pub fn set_flash(&mut self, tone: Tone, message: impl Into<String>, cx: &mut Context<Self>) {
         self.last_save_error = matches!(tone, Tone::Danger);
         self.flash = Some((tone, message.into()));
@@ -56,7 +52,6 @@ impl SettingsView {
         patch: serde_json::Value,
         cx: &mut Context<Self>,
     ) {
-        let zh = self.is_zh();
         let task = spawn_blocking_into(
             cx,
             move |state| settings_update_impl(state, section, &patch),
@@ -71,11 +66,9 @@ impl SettingsView {
                         this.pending_sync_inputs = true;
                         this.set_flash(
                             Tone::Danger,
-                            if zh {
-                                format!("保存失败：{}", err.message())
-                            } else {
-                                format!("Save failed: {}", err.message())
-                            },
+                            crate::ui::tr(cx)
+                                .settings()
+                                .actions_core_save_failed(err.message()),
                             cx,
                         );
                     }
@@ -96,7 +89,6 @@ impl SettingsView {
         keys: Option<Vec<String>>,
         cx: &mut Context<Self>,
     ) {
-        let zh = self.is_zh();
         let task = spawn_blocking_into(
             cx,
             move |state| settings_reset_section_impl(state, section, keys),
@@ -106,11 +98,9 @@ impl SettingsView {
                     this.apply_updated_settings(next, cx);
                     this.set_flash(
                         Tone::Success,
-                        if zh {
-                            "已恢复该分区默认值"
-                        } else {
-                            "Restored defaults for this section"
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_core_restored_defaults_for_this_section(),
                         cx,
                     );
                 }
@@ -123,7 +113,6 @@ impl SettingsView {
     }
 
     pub fn reset_all(&mut self, cx: &mut Context<Self>) {
-        let zh = self.is_zh();
         let task = spawn_blocking_into(
             cx,
             settings_reset_all_impl,
@@ -133,11 +122,9 @@ impl SettingsView {
                     this.apply_updated_settings(next, cx);
                     this.set_flash(
                         Tone::Success,
-                        if zh {
-                            "已恢复全部默认设置（60 秒内可撤销）"
-                        } else {
-                            "All settings restored to defaults (undo available for 60s)"
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_core_all_settings_restored_to_defaults(),
                         cx,
                     );
                 }
@@ -150,7 +137,6 @@ impl SettingsView {
     }
 
     pub fn undo_last_reset(&mut self, cx: &mut Context<Self>) {
-        let zh = self.is_zh();
         let task = spawn_blocking_into(cx, settings_undo_last_reset_impl, move |this, res, cx| {
             this.can_undo_reset_all = false;
             match res {
@@ -158,11 +144,9 @@ impl SettingsView {
                     this.apply_updated_settings(next, cx);
                     this.set_flash(
                         Tone::Success,
-                        if zh {
-                            "已撤销上次全部重置"
-                        } else {
-                            "Undid last reset-all"
-                        },
+                        crate::ui::tr(cx)
+                            .settings()
+                            .actions_core_undid_last_reset_all(),
                         cx,
                     );
                 }
@@ -185,15 +169,12 @@ impl SettingsView {
         patch_fn: impl FnOnce(u64) -> serde_json::Value,
         cx: &mut Context<Self>,
     ) {
-        let zh = self.is_zh();
         let Ok(val) = raw.trim().parse::<u64>() else {
             self.set_flash(
                 Tone::Danger,
-                if zh {
-                    format!("请输入有效整数（范围 {min}–{max}）")
-                } else {
-                    format!("Enter a valid integer ({min}–{max})")
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_core_enter_a_valid_integer(min, max),
                 cx,
             );
             return;
@@ -201,11 +182,9 @@ impl SettingsView {
         if val < min || val > max {
             self.set_flash(
                 Tone::Danger,
-                if zh {
-                    format!("数值超出允许范围：{min}–{max}")
-                } else {
-                    format!("Value out of range: must be between {min} and {max}")
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_core_value_out_of_range_must(min, max),
                 cx,
             );
             return;
@@ -280,14 +259,11 @@ impl SettingsView {
     pub fn save_custom_proxy(&mut self, cx: &mut Context<Self>) {
         let raw = self.inputs.proxy_url.read(cx).value().trim().to_owned();
         if raw.is_empty() {
-            let zh = self.is_zh();
             self.set_flash(
                 Tone::Warning,
-                if zh {
-                    "请输入代理地址（如 http://127.0.0.1:7890），或切换到「跟随系统 / 直连」"
-                } else {
-                    "Enter a proxy URL (e.g. http://127.0.0.1:7890), or switch to System / Direct"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_core_enter_a_proxy_url_e(),
                 cx,
             );
             return;
@@ -310,14 +286,11 @@ impl SettingsView {
             ProxyModeChoice::Custom => self.inputs.proxy_url.read(cx).value().trim().to_owned(),
         };
         if self.proxy_mode == ProxyModeChoice::Custom && target_url.is_empty() {
-            let zh = self.is_zh();
             self.set_flash(
                 Tone::Warning,
-                if zh {
-                    "请先输入自定义代理地址再测试连接"
-                } else {
-                    "Enter a custom proxy URL before testing"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_core_enter_a_custom_proxy_url(),
                 cx,
             );
             return;
@@ -374,13 +347,13 @@ impl SettingsView {
     }
 
     pub fn pick_ca_bundle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let zh = self.is_zh();
         let spec = FilePickerSpec {
-            title: Some(if zh {
-                "选择 PEM 根证书包".to_owned()
-            } else {
-                "Choose PEM CA bundle".to_owned()
-            }),
+            title: Some(
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_core_choose_pem_ca_bundle()
+                    .to_owned(),
+            ),
             filters: vec![FileFilter {
                 name: "PEM / CRT".to_owned(),
                 extensions: vec!["pem".into(), "crt".into(), "cer".into()],
@@ -440,14 +413,11 @@ impl SettingsView {
             .trim()
             .to_owned();
         if path.is_empty() {
-            let zh = self.is_zh();
             self.set_flash(
                 Tone::Warning,
-                if zh {
-                    "请先输入或选择 CA 证书文件路径"
-                } else {
-                    "Enter or choose a CA bundle path first"
-                },
+                crate::ui::tr(cx)
+                    .settings()
+                    .actions_core_enter_or_choose_a_ca(),
                 cx,
             );
             return;
@@ -534,9 +504,9 @@ impl SettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let zh = self.is_zh();
+        let lang = self.settings.general.language;
         let raw = self.inputs.shortcut_key.read(cx).value().to_string();
-        let normalized = match normalize_keystroke(&raw, zh, cx) {
+        let normalized = match normalize_keystroke(&raw, lang, cx) {
             Ok(k) => k,
             Err(msg) => {
                 self.set_flash(Tone::Danger, msg, cx);
@@ -551,14 +521,11 @@ impl SettingsView {
             .filter(|s| s.id != spec_id)
             .find(|s| effective_key(s, overrides).eq_ignore_ascii_case(&normalized))
         {
-            let name = if zh { clash.title_zh } else { clash.title_en };
+            let name = clash.title(lang);
+            let s = pingdeck_desktop::i18n::tr(lang).settings();
             self.set_flash(
                 Tone::Warning,
-                if zh {
-                    format!("快捷键「{normalized}」与「{name}」冲突，请更换其他组合")
-                } else {
-                    format!("Shortcut \"{normalized}\" conflicts with \"{name}\"")
-                },
+                s.shortcut_err_conflict(&normalized, name),
                 cx,
             );
             return;

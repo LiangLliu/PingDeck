@@ -42,14 +42,15 @@ use state::{EnvDetailTab, EnvModal, EnvResourceTab};
 impl EnvironmentsView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
+        let e_tr = crate::ui::tr(cx).environments();
         let env_search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选环境 / Filter…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(e_tr.ph_filter_env()));
         let new_env_name_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("e.g. staging / prod"));
         let env_name_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Environment name"));
         let var_filter_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选变量 / Filter variables…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(e_tr.ph_filter_vars()));
         let new_var_key =
             cx.new(|cx| InputState::new(window, cx).placeholder("Key (e.g. baseUrl)"));
         let new_var_val = cx.new(|cx| InputState::new(window, cx).placeholder("Value / Secret"));
@@ -67,7 +68,7 @@ impl EnvironmentsView {
             ed
         });
         let cookie_search_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("筛选域名或名称…"));
+            cx.new(|cx| InputState::new(window, cx).placeholder(e_tr.ph_filter_cookies()));
         let cookie_edit_val = cx.new(|cx| InputState::new(window, cx).placeholder("Cookie value"));
         let ck_domain_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("api.example.com"));
@@ -227,11 +228,11 @@ impl EnvironmentsView {
 
 impl Render for EnvironmentsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.lang = crate::ui::active_language(cx);
         if self.pending_sync {
             self.sync_inputs(window, cx);
         }
         let p = palette(cx);
-        let zh = self.is_zh();
 
         let left = sidebar::render_env_sidebar(self, cx);
 
@@ -240,16 +241,17 @@ impl Render for EnvironmentsView {
             banners = banners.child(
                 div().px(px(12.0)).pt(px(8.0)).child(alert_banner(
                     Tone::Warning,
-                    if zh {
-                        format!("已删除环境「{deleted_name}」（60 秒内可撤销恢复，含机密）")
-                    } else {
-                        format!("Deleted environment \"{deleted_name}\" (undo available for 60s)")
-                    },
+                    crate::ui::tr(cx)
+                        .environments()
+                        .environments_deleted_environment_undo_available_for(deleted_name),
                     Some(
-                        btn_secondary("env-undo-del", self.t("撤销删除", "Undo"))
-                            .icon(icon_xs(UiIcon::RotateCcw))
-                            .on_click(cx.listener(|this, _, _, cx| this.undo_delete_env(cx)))
-                            .into_any_element(),
+                        btn_secondary(
+                            "env-undo-del",
+                            crate::ui::Tr(self.lang).environments().environments_undo(),
+                        )
+                        .icon(icon_xs(UiIcon::RotateCcw))
+                        .on_click(cx.listener(|this, _, _, cx| this.undo_delete_env(cx)))
+                        .into_any_element(),
                     ),
                     cx,
                 )),
@@ -301,7 +303,6 @@ impl Render for EnvironmentsView {
 
 impl EnvironmentsView {
     fn render_environment_detail(&self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
-        let zh = self.is_zh();
         let right = if let Some(env_id) = self.selected_env_id.clone() {
             let env_name = self.env_draft_name.clone();
             let env_id_exp = env_id.clone();
@@ -317,34 +318,57 @@ impl EnvironmentsView {
                         .gap(px(6.0))
                         .flex_shrink_0()
                         .child(if is_active_env {
-                            btn_secondary("env-active-btn", self.t("● 当前生效", "● Active"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.activate_env(None, cx);
-                                }))
+                            btn_secondary(
+                                "env-active-btn",
+                                crate::ui::Tr(self.lang)
+                                    .environments()
+                                    .environments_active(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.activate_env(None, cx);
+                            }))
                         } else {
-                            btn_secondary("env-active-btn", self.t("设为当前生效", "Set Active"))
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                            btn_secondary(
+                                "env-active-btn",
+                                crate::ui::Tr(self.lang)
+                                    .environments()
+                                    .environments_set_active(),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
                                     this.activate_env(Some(env_id_act.clone()), cx);
-                                }))
+                                },
+                            ))
                         })
                         .child(if self.env_dirty {
-                            btn_primary("env-save-btn", self.t("保存", "Save"))
+                            btn_primary("env-save-btn", crate::ui::Tr(self.lang).common().save())
                                 .icon(icon_xs(UiIcon::Check))
                                 .on_click(cx.listener(|this, _, _, cx| this.save_env(cx)))
                         } else {
-                            btn_secondary("env-save-btn", self.t("已保存", "Saved"))
-                                .on_click(cx.listener(|this, _, _, cx| this.save_env(cx)))
+                            btn_secondary(
+                                "env-save-btn",
+                                crate::ui::Tr(self.lang).common().save_saved(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.save_env(cx)))
                         })
                         .child(
                             btn_icon("env-dup-btn", UiIcon::Copy)
-                                .tooltip(self.t("复制环境", "Duplicate environment"))
+                                .tooltip(
+                                    crate::ui::Tr(self.lang)
+                                        .environments()
+                                        .environments_duplicate_environment(),
+                                )
                                 .on_click(
                                     cx.listener(|this, _, _, cx| this.duplicate_selected_env(cx)),
                                 ),
                         )
                         .child(
                             btn_icon("env-exp-btn", UiIcon::Download)
-                                .tooltip(self.t("导出环境 JSON", "Export environment JSON"))
+                                .tooltip(
+                                    crate::ui::Tr(self.lang)
+                                        .environments()
+                                        .environments_export_environment_json(),
+                                )
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.active_modal = Some(EnvModal::ExportEnv {
                                         id: env_id_exp.clone(),
@@ -357,7 +381,11 @@ impl EnvironmentsView {
                         )
                         .child(
                             btn_icon("env-del-btn", UiIcon::Trash)
-                                .tooltip(self.t("删除环境", "Delete environment"))
+                                .tooltip(
+                                    crate::ui::Tr(self.lang)
+                                        .environments()
+                                        .environments_delete_environment(),
+                                )
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.active_modal = Some(EnvModal::DeleteEnv {
                                         id: env_id.clone(),
@@ -379,9 +407,13 @@ impl EnvironmentsView {
                 }));
             for t in EnvDetailTab::ALL {
                 let lbl = if t == EnvDetailTab::Resolved && !self.unresolved_vars.is_empty() {
-                    SharedString::from(format!("{} ({})", t.label(zh), self.unresolved_vars.len()))
+                    SharedString::from(format!(
+                        "{} ({})",
+                        t.label(self.lang),
+                        self.unresolved_vars.len()
+                    ))
                 } else {
-                    SharedString::from(t.label(zh))
+                    SharedString::from(t.label(self.lang))
                 };
                 dtabs = dtabs.child(tab_item(lbl));
             }
@@ -402,18 +434,24 @@ impl EnvironmentsView {
         } else {
             v_col().size_full().child(empty_state_with_actions(
                 UiIcon::Layers,
-                self.t("还没有环境配置", "No Environment Selected"),
-                self.t(
-                    "创建环境以隔离不同部署目标的 Base URL、机密凭据、允许主机与发送前确认护栏。",
-                    "Create environments to isolate base URLs, secrets, host allowlists, and send guards.",
-                ),
+                crate::ui::Tr(self.lang)
+                    .environments()
+                    .environments_no_environment_selected(),
+                crate::ui::Tr(self.lang)
+                    .environments()
+                    .environments_create_environments_to_isolate_base(),
                 Some(
-                    btn_primary("env-empty-new", self.t("新建环境", "New Environment"))
-                        .icon(icon_xs(UiIcon::Plus))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_create_env_modal(window, cx);
-                        }))
-                        .into_any_element(),
+                    btn_primary(
+                        "env-empty-new",
+                        crate::ui::Tr(self.lang)
+                            .environments()
+                            .environments_new_environment(),
+                    )
+                    .icon(icon_xs(UiIcon::Plus))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_create_env_modal(window, cx);
+                    }))
+                    .into_any_element(),
                 ),
                 cx,
             ))

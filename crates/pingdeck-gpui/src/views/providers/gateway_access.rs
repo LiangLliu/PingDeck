@@ -11,11 +11,7 @@ use crate::ui::{
 
 use super::ProvidersView;
 
-pub fn render_access_tab(
-    view: &ProvidersView,
-    zh: bool,
-    cx: &mut Context<ProvidersView>,
-) -> gpui_kit::Div {
+pub fn render_access_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
     let p = palette(cx);
     let gw = &view.gateway_settings;
     let ent = cx.entity().clone();
@@ -27,9 +23,13 @@ pub fn render_access_tab(
     };
     let capture_seg = tab_bar_segmented("gw-capture-mode")
         .selected_index(cap_idx)
-        .child(tab_item(if zh { "关闭" } else { "Off" }))
-        .child(tab_item(if zh { "仅出错时" } else { "Errors only" }))
-        .child(tab_item(if zh { "全部" } else { "All" }))
+        .child(tab_item(crate::ui::tr(cx).providers().bench_compare_off()))
+        .child(tab_item(
+            crate::ui::tr(cx)
+                .providers()
+                .gwa_opt_ai_gateway_capture_mode_errors_only(),
+        ))
+        .child(tab_item(crate::ui::tr(cx).providers().models_filter_all()))
         .on_click(move |idx, _, cx| {
             let mode = match *idx {
                 1 => "errors_only",
@@ -41,7 +41,8 @@ pub fn render_access_tab(
             });
         });
 
-    let desc = |z: &'static str, e: &'static str| Some(SharedString::from(if zh { z } else { e }));
+    let pr = crate::ui::tr(cx).providers();
+    let desc = |s: &'static str| Some(SharedString::from(s));
 
     let server_card = card(cx).p(px(16.0)).child(
         v_col()
@@ -50,27 +51,26 @@ pub fn render_access_tab(
                 h_row()
                     .justify_between()
                     .child(section_heading(
-                        if zh { "服务与安全边界" } else { "Server & Security Boundary" },
+                        pr.prov_gateway_access_server_security_boundary(),
                         cx,
                     ))
                     .child(badge(
                         if gw.serve_lan {
-                            if zh { "局域网模式" } else { "LAN mode" }
-                        } else if zh {
-                            "严格本机模式"
+                            pr.prov_gateway_access_lan_mode()
                         } else {
-                            "Loopback only"
+                            pr.prov_gateway_access_loopback_only()
                         },
-                        if gw.serve_lan { Tone::Warning } else { Tone::Success },
+                        if gw.serve_lan {
+                            Tone::Warning
+                        } else {
+                            Tone::Success
+                        },
                         cx,
                     )),
             )
             .child(field_row(
-                if zh { "启动时自动开启网关" } else { "Start on app launch" },
-                desc(
-                    "PingDeck 打开时自动启动网关，客户端无需先切到服务商页即可使用。",
-                    "Start the gateway automatically when PingDeck launches.",
-                ),
+                pr.prov_gateway_access_start_on_app_launch(),
+                desc(pr.prov_gwa_desc_autostart()),
                 toggle_switch("gw-opt-autostart", gw.enabled_on_start).on_click(cx.listener(
                     |this, _, _, cx| {
                         let next = !this.gateway_settings.enabled_on_start;
@@ -84,16 +84,13 @@ pub fn render_access_tab(
                 cx,
             ))
             .child(field_row(
-                if zh { "监听端口" } else { "Listen port" },
-                desc(
-                    "修改端口后会重启网关；可用右侧按钮同步更新已接入客户端的配置文件。",
-                    "Changing port restarts the gateway; rewrite client configs afterwards.",
-                ),
+                pr.prov_gateway_access_listen_port(),
+                desc(pr.prov_gwa_desc_port()),
                 h_row()
                     .gap(px(6.0))
                     .child(div().w(px(90.0)).child(text_input(&view.gw_port_input)))
                     .child(
-                        btn_secondary("gw-save-port", if zh { "保存并重启" } else { "Save & restart" })
+                        btn_secondary("gw-save-port", pr.prov_gateway_access_save_restart())
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 let raw = this.gw_port_input.read(cx).value().trim().to_owned();
                                 match raw.parse::<u16>() {
@@ -107,11 +104,10 @@ pub fn render_access_tab(
                                     _ => {
                                         this.status_msg = Some((
                                             Tone::Danger,
-                                            if zh {
-                                                "请输入 1024–65535 之间的端口".into()
-                                            } else {
-                                                "Enter a port between 1024 and 65535".into()
-                                            },
+                                            crate::ui::tr(cx)
+                                                .providers()
+                                                .prov_gateway_access_enter_a_port_between_1024()
+                                                .into(),
                                         ));
                                         cx.notify();
                                     }
@@ -119,22 +115,16 @@ pub fn render_access_tab(
                             })),
                     )
                     .child(
-                        btn_ghost(
-                            "gw-rewrite-addrs",
-                            if zh { "同步客户端地址" } else { "Rewrite URLs" },
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.rewrite_all_client_addresses(zh, cx);
-                        })),
+                        btn_ghost("gw-rewrite-addrs", pr.prov_gateway_access_rewrite_urls())
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.rewrite_all_client_addresses(cx);
+                            })),
                     ),
                 cx,
             ))
             .child(field_row(
-                if zh { "要求客户端令牌鉴权" } else { "Require client token" },
-                desc(
-                    "每次请求都必须携带有效客户端令牌；未知或已吊销令牌一律返回 401。",
-                    "Every call requires a valid client token; invalid tokens always receive 401.",
-                ),
+                pr.prov_gateway_access_require_client_token(),
+                desc(pr.prov_gwa_desc_require_token()),
                 toggle_switch("gw-opt-req-token", gw.require_token).on_click(cx.listener(
                     |this, _, _, cx| {
                         let next = !this.gateway_settings.require_token;
@@ -148,11 +138,8 @@ pub fn render_access_tab(
                 cx,
             ))
             .child(field_row(
-                if zh { "在局域网提供服务 (0.0.0.0)" } else { "Serve on local network (LAN)" },
-                desc(
-                    "允许同局域网设备以明文 HTTP 访问网关（需要至少一个有效客户端令牌）。",
-                    "Bind 0.0.0.0 for LAN devices (requires token auth and an active client).",
-                ),
+                pr.prov_gateway_access_serve_on_local_network_lan(),
+                desc(pr.prov_gwa_desc_serve_lan()),
                 toggle_switch("gw-opt-lan", gw.serve_lan).on_click(cx.listener(
                     |this, _, _, cx| {
                         if !this.gateway_settings.serve_lan {
@@ -186,31 +173,36 @@ pub fn render_access_tab(
                     .unwrap_or_else(|| "0.0.0.0".to_owned());
                 crate::ui::alert_banner(
                     Tone::Warning,
-                    if zh {
-                        format!("确认在局域网 ({cands}) 以明文 HTTP 暴露网关？仅限受信任局域网。")
-                    } else {
-                        format!("Expose gateway over plaintext HTTP on LAN ({cands})?")
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_access_expose_gateway_over_plaintext_http(cands),
                     Some(
                         h_row()
                             .gap(px(6.0))
                             .child(
-                                btn_ghost("gw-lan-cancel", if zh { "取消" } else { "Cancel" })
+                                btn_ghost("gw-lan-cancel", crate::ui::tr(cx).common().cancel())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.confirm_lan_open = false;
                                         cx.notify();
                                     })),
                             )
                             .child(
-                                btn_danger("gw-lan-confirm", if zh { "确认开启" } else { "Enable LAN" })
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                btn_danger(
+                                    "gw-lan-confirm",
+                                    crate::ui::tr(cx)
+                                        .providers()
+                                        .prov_gateway_access_enable_lan(),
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.confirm_lan_open = false;
                                         this.patch_gateway_setting(
                                             serde_json::json!({ "serve_lan": true }),
                                             true,
                                             cx,
                                         );
-                                    })),
+                                    },
+                                )),
                             )
                             .into_any_element(),
                     ),
@@ -218,16 +210,17 @@ pub fn render_access_tab(
                 )
             }))
             .child(field_row(
-                if zh { "额外允许的 Host 名" } else { "Extra allowed Host names" },
-                desc(
-                    "逗号分隔，用于 Docker / devcontainer 或隧道（如 host.docker.internal），仍需令牌。",
-                    "Comma-separated hostnames for Docker/tunnels (e.g. host.docker.internal).",
-                ),
+                pr.prov_gateway_access_extra_allowed_host_names(),
+                desc(pr.prov_gwa_desc_extra_hosts()),
                 h_row()
                     .gap(px(6.0))
-                    .child(div().w(px(230.0)).child(text_input(&view.gw_extra_hosts_input)))
                     .child(
-                        btn_secondary("gw-save-hosts", if zh { "保存" } else { "Save" }).on_click(
+                        div()
+                            .w(px(230.0))
+                            .child(text_input(&view.gw_extra_hosts_input)),
+                    )
+                    .child(
+                        btn_secondary("gw-save-hosts", crate::ui::tr(cx).common().save()).on_click(
                             cx.listener(|this, _, _, cx| {
                                 let raw = this.gw_extra_hosts_input.read(cx).value().to_string();
                                 let hosts: Vec<String> = raw
@@ -247,29 +240,26 @@ pub fn render_access_tab(
                 cx,
             ))
             .child(field_row(
-                if zh { "请求体调试捕获" } else { "Request body capture" },
-                desc(
-                    "决定哪些网关交互保留请求与响应体供日志排障。",
-                    "Which gateway calls retain request/response bodies for debugging.",
-                ),
+                pr.prov_gateway_access_request_body_capture(),
+                desc(pr.prov_gwa_desc_capture_mode()),
                 capture_seg,
                 cx,
             )),
     );
 
     let mut hosts_col = v_col().gap(px(8.0)).child(section_heading(
-        if zh {
-            "当前接受的 Host 名称与运行控制"
-        } else {
-            "Accepted Host Names & Runtime"
-        },
+        crate::ui::tr(cx)
+            .providers()
+            .prov_gateway_access_accepted_host_names_runtime(),
         cx,
     ));
     if let Some(ov) = &view.overview {
         let lan_hosts: Vec<&str> = ov.hosts.lan.iter().map(|a| a.host.as_str()).collect();
         hosts_col = hosts_col
             .child(field_row(
-                if zh { "本机回环（始终接受）" } else { "Loopback (always accepted)" },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_access_loopback_always_accepted(),
                 None,
                 div()
                     .text_xs()
@@ -278,42 +268,50 @@ pub fn render_access_tab(
                 cx,
             ))
             .child(field_row(
-                if zh { "局域网地址" } else { "LAN addresses" },
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_gateway_access_lan_addresses(),
                 None,
-                div().text_xs().text_color(to_hsla(p.muted)).child(
-                    SharedString::from(if lan_hosts.is_empty() {
-                        if zh { "未开启".into() } else { "Disabled".into() }
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(SharedString::from(if lan_hosts.is_empty() {
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_gateway_access_disabled()
+                            .into()
                     } else {
                         lan_hosts.join(", ")
-                    }),
-                ),
+                    })),
                 cx,
             ))
-            .child(div().text_xs().text_color(to_hsla(p.faint)).child(if zh {
-                "防重绑定策略：不发送 CORS 头，所有携带 Origin 头的浏览器请求或未知 Host 一律返回 403。"
-            } else {
-                "Anti-rebinding guard: no CORS headers; requests with Origin or unknown Host always receive 403."
-            }));
+            .child(
+                div().text_xs().text_color(to_hsla(p.faint)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_access_anti_rebinding_guard_no_cors(),
+                ),
+            );
     }
     hosts_col = hosts_col.child(
         h_row()
             .pt(px(6.0))
             .justify_between()
-            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "当上游故障恢复后，可手动清空所有服务商与模型的熔断器状态。"
-            } else {
-                "Manually clear all open circuit breakers after upstream recovery."
-            }))
+            .child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_access_manually_clear_all_open_circuit(),
+                ),
+            )
             .child(
                 btn_danger(
                     "gw-reset-circuits",
-                    if zh {
-                        "重置全部熔断器"
-                    } else {
-                        "Reset all circuits"
-                    },
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_access_reset_all_circuits(),
                 )
-                .on_click(cx.listener(move |this, _, _, cx| this.reset_all_circuits(zh, cx))),
+                .on_click(cx.listener(move |this, _, _, cx| this.reset_all_circuits(cx))),
             ),
     );
 

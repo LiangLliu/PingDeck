@@ -16,7 +16,6 @@ use super::{ModelFilterKind, ProvidersView};
 pub fn render_models_tab(
     view: &ProvidersView,
     pv: &ProviderView,
-    zh: bool,
     cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
@@ -109,29 +108,27 @@ pub fn render_models_tab(
                     btn_secondary(
                         "pm-refresh",
                         if view.refreshing_models {
-                            if zh { "刷新中…" } else { "Refreshing…" }
-                        } else if zh {
-                            "刷新模型"
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_models_refreshing()
                         } else {
-                            "Refresh models"
+                            crate::ui::tr(cx).providers().models_refresh()
                         },
                     )
                     .h(px(30.0))
                     .icon(icon_xs(UiIcon::Refresh))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.refreshing_models {
-                            this.refresh_provider_models(pid_ref.clone(), None, zh, cx);
+                            this.refresh_provider_models(pid_ref.clone(), None, cx);
                         }
                     })),
                 )
                 .child(
                     btn_secondary(
                         "pm-bench-all",
-                        if zh {
-                            "基准测试全部…"
-                        } else {
-                            "Test Bench…"
-                        },
+                        crate::ui::tr(cx)
+                            .providers()
+                            .prov_detail_models_test_bench(),
                     )
                     .h(px(30.0))
                     .icon(icon_xs(UiIcon::Activity))
@@ -145,7 +142,7 @@ pub fn render_models_tab(
                 .child(
                     btn_secondary(
                         "pm-add-toggle",
-                        if zh { "+ 添加模型" } else { "+ Add model" },
+                        crate::ui::tr(cx).providers().prov_detail_models_add_model(),
                     )
                     .h(px(30.0))
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -157,18 +154,33 @@ pub fn render_models_tab(
 
     // Filter chips strip.
     let filter_defs = [
-        (ModelFilterKind::All, if zh { "全部" } else { "All" }),
-        (ModelFilterKind::Chat, if zh { "对话" } else { "Chat" }),
+        (
+            ModelFilterKind::All,
+            crate::ui::tr(cx).providers().models_filter_all(),
+        ),
+        (
+            ModelFilterKind::Chat,
+            crate::ui::tr(cx).providers().prov_keytest_chat(),
+        ),
         (
             ModelFilterKind::Embedding,
-            if zh { "嵌入" } else { "Embed" },
+            crate::ui::tr(cx).providers().prov_detail_models_embed(),
         ),
-        (ModelFilterKind::Image, if zh { "图像" } else { "Image" }),
-        (ModelFilterKind::Failed, if zh { "失败" } else { "Failed" }),
-        (ModelFilterKind::New, if zh { "新增" } else { "New" }),
+        (
+            ModelFilterKind::Image,
+            crate::ui::tr(cx).providers().models_filter_image(),
+        ),
+        (
+            ModelFilterKind::Failed,
+            crate::ui::tr(cx).providers().models_filter_failed(),
+        ),
+        (
+            ModelFilterKind::New,
+            crate::ui::tr(cx).providers().models_filter_new(),
+        ),
         (
             ModelFilterKind::Removed,
-            if zh { "已移除" } else { "Removed" },
+            crate::ui::tr(cx).providers().prov_detail_models_removed(),
         ),
     ];
     let mut chips = h_row().gap(px(5.0)).flex_wrap();
@@ -193,11 +205,11 @@ pub fn render_models_tab(
             .flex_shrink_0()
             .text_xs()
             .text_color(to_hsla(p.faint))
-            .child(SharedString::from(if zh {
-                format!("已启用 {enabled_cnt} / 共 {total_cnt} 个（当前显示 {visible_cnt}）")
-            } else {
-                format!("{enabled_cnt} enabled of {total_cnt} (showing {visible_cnt})")
-            })),
+            .child(SharedString::from(
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_detail_models_enabled_of_showing(enabled_cnt, total_cnt, visible_cnt),
+            )),
     );
 
     let mut top_controls = v_col()
@@ -228,10 +240,17 @@ pub fn render_models_tab(
                             .child(text_input(&view.new_model_ctx_input)),
                     )
                     .child(
-                        btn_primary("pm-add-save", if zh { "添加并启用" } else { "Add model" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.add_manual_model(pid_add.clone(), zh, window, cx);
-                            })),
+                        btn_primary(
+                            "pm-add-save",
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_models_add_model_2(),
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                this.add_manual_model(pid_add.clone(), window, cx);
+                            },
+                        )),
                     )
                     .child(
                         btn_icon("pm-add-close", UiIcon::Close).on_click(cx.listener(
@@ -257,7 +276,6 @@ pub fn render_models_tab(
             &latest_probe,
             total_cnt,
             shown_limit,
-            zh,
             cx,
         ));
 
@@ -285,11 +303,11 @@ pub fn render_models_tab(
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.accent_ink))
-                        .child(SharedString::from(if zh {
-                            format!("已选择 {sel_n} 个模型")
-                        } else {
-                            format!("{sel_n} model(s) selected")
-                        })),
+                        .child(SharedString::from(
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_detail_models_model_s_selected(sel_n),
+                        )),
                 )
                 .child(
                     h_row()
@@ -298,7 +316,7 @@ pub fn render_models_tab(
                         .child(
                             btn_primary(
                                 "pm-bulk-test",
-                                if zh { "测试所选" } else { "Test selected" },
+                                crate::ui::tr(cx).providers().models_sel_test(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
@@ -309,29 +327,36 @@ pub fn render_models_tab(
                             )),
                         )
                         .child(
-                            btn_secondary("pm-bulk-en", if zh { "启用所选" } else { "Enable" })
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.bulk_toggle_selected_models(pid_en.clone(), true, zh, cx);
-                                })),
+                            btn_secondary(
+                                "pm-bulk-en",
+                                crate::ui::tr(cx).providers().prov_detail_models_enable(),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.bulk_toggle_selected_models(pid_en.clone(), true, cx);
+                                },
+                            )),
                         )
                         .child(
-                            btn_secondary("pm-bulk-dis", if zh { "停用所选" } else { "Disable" })
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.bulk_toggle_selected_models(
-                                        pid_dis.clone(),
-                                        false,
-                                        zh,
-                                        cx,
-                                    );
-                                })),
+                            btn_secondary(
+                                "pm-bulk-dis",
+                                crate::ui::tr(cx).providers().prov_detail_models_disable(),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.bulk_toggle_selected_models(pid_dis.clone(), false, cx);
+                                },
+                            )),
                         )
                         .child(
-                            btn_ghost("pm-bulk-clear", if zh { "清除" } else { "Clear" }).on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.selected_models.clear();
-                                    cx.notify();
-                                }),
-                            ),
+                            btn_ghost(
+                                "pm-bulk-clear",
+                                crate::ui::tr(cx).providers().models_sel_clear(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.selected_models.clear();
+                                cx.notify();
+                            })),
                         ),
                 ),
         );
@@ -361,9 +386,9 @@ pub fn render_models_tab(
                         .flex_shrink_0()
                         .gap(px(5.0))
                         .child(
-                            btn_secondary("pm-undo-bulk", if zh { "撤销" } else { "Undo" })
+                            btn_secondary("pm-undo-bulk", crate::ui::tr(cx).common().undo())
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.undo_bulk_models(oid.clone(), zh, cx);
+                                    this.undo_bulk_models(oid.clone(), cx);
                                 })),
                         )
                         .child(

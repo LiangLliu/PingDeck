@@ -58,43 +58,20 @@ impl DrawerTab {
         }
     }
 
-    const fn label(self, zh: bool) -> &'static str {
+    const fn label(self, lang: Language) -> &'static str {
+        let u = crate::ui::Tr(lang).usage();
         match self {
-            Self::Overview => {
-                if zh {
-                    "概览与耗时"
-                } else {
-                    "Overview"
-                }
-            }
-            Self::Reply => {
-                if zh {
-                    "合并回复"
-                } else {
-                    "Merged Reply"
-                }
-            }
-            Self::Payloads => {
-                if zh {
-                    "请求与响应"
-                } else {
-                    "Payloads"
-                }
-            }
-            Self::Frames => {
-                if zh {
-                    "SSE 帧"
-                } else {
-                    "SSE Frames"
-                }
-            }
+            Self::Overview => u.usage_call_drawer_overview(),
+            Self::Reply => u.usage_call_drawer_merged_reply(),
+            Self::Payloads => u.usage_call_drawer_payloads(),
+            Self::Frames => u.usage_call_drawer_sse_frames(),
         }
     }
 }
 
 pub struct CallDetailSheet {
     parent: Entity<UsageView>,
-    lang: Language,
+    pub lang: Language,
     pub detail: LogDetailDto,
     tab: DrawerTab,
     replay_id: Option<String>,
@@ -127,14 +104,6 @@ impl CallDetailSheet {
         }
     }
 
-    pub fn zh(&self) -> bool {
-        self.lang == Language::ZhCn
-    }
-
-    pub fn t<'a>(&self, zh: &'a str, en: &'a str) -> &'a str {
-        if self.zh() { zh } else { en }
-    }
-
     fn start_replay(&mut self, mode: ReplayMode, confirm_redacted: bool, cx: &mut Context<Self>) {
         if self.detail.replay.needs_confirmation && !confirm_redacted {
             self.confirm_redacted_replay = Some(mode);
@@ -154,22 +123,12 @@ impl CallDetailSheet {
                             ReplayEvent::Frames { text } => this.replay_output.push_str(&text),
                             ReplayEvent::Done { new_log_id } => {
                                 this.replay_id = None;
+                                let u = crate::ui::Tr(this.lang).usage();
                                 this.status_note = Some((
                                     Tone::Success,
-                                    if this.zh() {
-                                        format!(
-                                            "重放完成{}",
-                                            new_log_id
-                                                .map(|id| format!("（新日志 #{id}）"))
-                                                .unwrap_or_default()
-                                        )
-                                    } else {
-                                        format!(
-                                            "Replay completed{}",
-                                            new_log_id
-                                                .map(|id| format!(" (log #{id})"))
-                                                .unwrap_or_default()
-                                        )
+                                    match new_log_id {
+                                        Some(id) => u.usage_drawer_replay_done_log(id),
+                                        None => u.usage_drawer_replay_done().to_owned(),
                                     },
                                 ));
                                 this.parent.update(cx, |p, cx| p.reload_all(cx));
@@ -193,7 +152,9 @@ impl CallDetailSheet {
                 let _ = clipboard::set_text(&out.text);
                 self.status_note = Some((
                     Tone::Success,
-                    self.t("已复制 cURL 命令（凭据已脱敏）", "Copied redacted cURL")
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_copied_redacted_curl()
                         .to_owned(),
                 ));
             }
@@ -212,7 +173,9 @@ impl CallDetailSheet {
                 let _ = clipboard::set_text(&bundle);
                 self.status_note = Some((
                     Tone::Success,
-                    self.t("已复制脱敏诊断包 JSON", "Copied diagnostics bundle")
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_copied_diagnostics_bundle()
                         .to_owned(),
                 ));
             }
@@ -235,7 +198,9 @@ impl CallDetailSheet {
                         this.detail = updated;
                         this.status_note = Some((
                             Tone::Success,
-                            this.t("已删除此条捕获正文", "Deleted capture for this call")
+                            crate::ui::Tr(this.lang)
+                                .usage()
+                                .usage_call_drawer_deleted_capture_for_this_call()
                                 .to_owned(),
                         ));
                         this.parent.update(cx, |p, cx| p.reload_all(cx));
@@ -274,28 +239,31 @@ impl CallDetailSheet {
             .as_ref()
             .map(|r| r.text.chars().take(1200).collect::<String>())
             .unwrap_or_default();
-        let md = format!(
-            "请帮我排查这条 AI 网关/模型调用日志：\n\n- **日志 ID**: `#{}`\n- **模型**: `{}` (上游 `{}`)\n- **服务商**: `{}`\n- **状态**: `{} ({})` · 耗时 `{} ms` (TTFT `{:?} ms`)\n- **Token**: in `{}` / out `{}` / cached `{}`\n{}\n{}\n",
+        let u = crate::ui::Tr(self.lang).usage();
+        let error_line = e
+            .error
+            .as_deref()
+            .map(|err| u.usage_drawer_ask_agent_error_line(err))
+            .unwrap_or_default();
+        let reply_block = if reply_preview.is_empty() {
+            String::new()
+        } else {
+            format!("\n```text\n{reply_preview}\n```")
+        };
+        let md = u.usage_drawer_ask_agent_prompt(
             e.id,
-            e.requested_model,
+            &e.requested_model,
             e.upstream_model.as_deref().unwrap_or("—"),
             e.provider_name.as_deref().unwrap_or("—"),
             e.status,
-            e.outcome,
+            &e.outcome,
             e.latency_ms,
-            e.ttft_ms,
+            format!("{:?}", e.ttft_ms),
             e.input_tokens.unwrap_or(0),
             e.output_tokens.unwrap_or(0),
             e.cached_tokens.unwrap_or(0),
-            e.error
-                .as_deref()
-                .map(|err| format!("- **错误**: {err}"))
-                .unwrap_or_default(),
-            if reply_preview.is_empty() {
-                String::new()
-            } else {
-                format!("\n```text\n{reply_preview}\n```")
-            }
+            error_line,
+            reply_block,
         );
         self.parent.update(cx, |p, cx| {
             p.pending_handoff.set(Some(UsageHandoff::AskAgent {
@@ -311,12 +279,12 @@ impl CallDetailSheet {
 
 impl Render for CallDetailSheet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.lang = crate::ui::active_language(cx);
         if self.pending_close {
             self.pending_close = false;
             window.close_sheet(cx);
         }
         let p = palette(cx);
-        let zh = self.zh();
         let e = &self.detail.entry;
         let status_tone = if e.outcome == "canceled" {
             Tone::Neutral
@@ -347,7 +315,7 @@ impl Render for CallDetailSheet {
                             .truncate()
                             .child(format!("#{} · {}", e.id, e.requested_model)),
                     )
-                    .child(meta_pill(source_label(&e.source, zh), cx)),
+                    .child(meta_pill(source_label(&e.source, self.lang), cx)),
             )
             .child(
                 btn_icon("u-drawer-close", UiIcon::Close).on_click(cx.listener(
@@ -369,47 +337,79 @@ impl Render for CallDetailSheet {
             .child(
                 btn_primary(
                     "u-dr-open-req",
-                    self.t("在 AI 请求中打开", "Open in Requests"),
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_open_in_requests(),
                 )
                 .icon(icon_xs(UiIcon::Send))
                 .on_click(cx.listener(|this, _, _, cx| this.open_in_requests(cx))),
             )
             .child(
-                btn_secondary("u-dr-ask-ai", self.t("交给智能体排查", "Ask Agent"))
-                    .icon(icon_xs(UiIcon::Chat))
-                    .on_click(cx.listener(|this, _, _, cx| this.ask_agent(cx))),
+                btn_secondary(
+                    "u-dr-ask-ai",
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_ask_agent(),
+                )
+                .icon(icon_xs(UiIcon::Chat))
+                .on_click(cx.listener(|this, _, _, cx| this.ask_agent(cx))),
             )
             .child(if let Some(rid) = self.replay_id.clone() {
-                btn_danger("u-dr-stop-replay", self.t("停止重放", "Stop Replay")).on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        llm_log_replay_cancel_impl(runtime(cx).state(), &rid);
-                        this.replay_id = None;
-                        cx.notify();
-                    }),
+                btn_danger(
+                    "u-dr-stop-replay",
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_stop_replay(),
                 )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    llm_log_replay_cancel_impl(runtime(cx).state(), &rid);
+                    this.replay_id = None;
+                    cx.notify();
+                }))
             } else {
-                btn_secondary("u-dr-replay", self.t("重放", "Replay"))
-                    .icon(icon_xs(UiIcon::Play))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.start_replay(ReplayMode::Replay, false, cx);
-                    }))
+                btn_secondary(
+                    "u-dr-replay",
+                    crate::ui::Tr(self.lang).usage().drawer_replay(),
+                )
+                .icon(icon_xs(UiIcon::Play))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.start_replay(ReplayMode::Replay, false, cx);
+                }))
             })
             .children(self.detail.curl_gateway.available.then(|| {
-                btn_ghost("u-dr-curl-gw", self.t("复制网关 cURL", "cURL (GW)"))
-                    .on_click(cx.listener(|this, _, _, cx| this.copy_curl(CurlKind::Gateway, cx)))
+                btn_ghost(
+                    "u-dr-curl-gw",
+                    crate::ui::Tr(self.lang).usage().usage_call_drawer_curl_gw(),
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.copy_curl(CurlKind::Gateway, cx)))
             }))
             .children(self.detail.curl_upstream.available.then(|| {
-                btn_ghost("u-dr-curl-up", self.t("复制上游 cURL", "cURL (Upstream)"))
-                    .on_click(cx.listener(|this, _, _, cx| this.copy_curl(CurlKind::Upstream, cx)))
+                btn_ghost(
+                    "u-dr-curl-up",
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_curl_upstream(),
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.copy_curl(CurlKind::Upstream, cx)))
             }))
             .child(
-                btn_ghost("u-dr-diag", self.t("复制诊断包", "Diagnostics"))
-                    .icon(icon_xs(UiIcon::Copy))
-                    .on_click(cx.listener(|this, _, _, cx| this.copy_diagnostics(cx))),
+                btn_ghost(
+                    "u-dr-diag",
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_diagnostics(),
+                )
+                .icon(icon_xs(UiIcon::Copy))
+                .on_click(cx.listener(|this, _, _, cx| this.copy_diagnostics(cx))),
             )
             .children(self.detail.capture.is_some().then(|| {
-                btn_ghost("u-dr-del-cap", self.t("删除此捕获", "Delete Capture"))
-                    .on_click(cx.listener(|this, _, _, cx| this.delete_capture(cx)))
+                btn_ghost(
+                    "u-dr-del-cap",
+                    crate::ui::Tr(self.lang)
+                        .usage()
+                        .usage_call_drawer_delete_capture(),
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.delete_capture(cx)))
             }));
 
         let mut tabs = tab_bar_underline("u-drawer-tabs")
@@ -419,7 +419,7 @@ impl Render for CallDetailSheet {
                 cx.notify();
             }));
         for t in DrawerTab::ALL {
-            tabs = tabs.child(tab_item(t.label(zh)));
+            tabs = tabs.child(tab_item(t.label(self.lang)));
         }
 
         let mut col = v_col().w_full().p(px(16.0)).gap(px(12.0));
@@ -429,27 +429,29 @@ impl Render for CallDetailSheet {
         if let Some(mode) = self.confirm_redacted_replay {
             col = col.child(alert_banner(
                 Tone::Warning,
-                self.t(
-                    "捕获正文含已脱敏占位符，重放将原样发送脱敏文本。是否继续？",
-                    "Captured body holds redacted placeholders. Replay anyway?",
-                ),
+                crate::ui::Tr(self.lang)
+                    .usage()
+                    .usage_call_drawer_captured_body_holds_redacted_placeholders(),
                 Some(
                     h_row()
                         .gap(px(6.0))
                         .child(
-                            btn_primary("u-dr-confirm-rp", self.t("确认重放", "Confirm")).on_click(
-                                cx.listener(move |this, _, _, cx| {
+                            btn_primary(
+                                "u-dr-confirm-rp",
+                                crate::ui::Tr(self.lang).usage().usage_call_drawer_confirm(),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
                                     this.start_replay(mode, true, cx);
-                                }),
-                            ),
+                                },
+                            )),
                         )
                         .child(
-                            btn_ghost("u-dr-cancel-rp", self.t("取消", "Cancel")).on_click(
-                                cx.listener(|this, _, _, cx| {
+                            btn_ghost("u-dr-cancel-rp", crate::ui::Tr(self.lang).common().cancel())
+                                .on_click(cx.listener(|this, _, _, cx| {
                                     this.confirm_redacted_replay = None;
                                     cx.notify();
-                                }),
-                            ),
+                                })),
                         )
                         .into_any_element(),
                 ),
@@ -462,7 +464,9 @@ impl Render for CallDetailSheet {
                     .p(px(12.0))
                     .gap(px(6.0))
                     .child(section_header(
-                        self.t("重放输出", "Replay Output"),
+                        crate::ui::Tr(self.lang)
+                            .usage()
+                            .usage_call_drawer_replay_output(),
                         None,
                         cx,
                     ))

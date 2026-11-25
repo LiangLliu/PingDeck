@@ -18,7 +18,7 @@ use crate::ui::{
 use super::inspector_tabs::{render_context_tab, render_options_tab};
 use super::{ChatView, DetailsTab};
 
-pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
+pub fn render_inspector(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let chat_entity = cx.entity().clone();
     let changes_count = if view.persisted_changes.is_empty() {
@@ -27,23 +27,17 @@ pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
         view.persisted_changes.len()
     };
     let changes_lbl = if changes_count > 0 {
-        if zh {
-            format!("变更 ({changes_count})")
-        } else {
-            format!("Changes ({changes_count})")
-        }
-    } else if zh {
-        "变更".to_owned()
+        crate::ui::tr(cx).chat().inspector_changes(changes_count)
     } else {
-        "Changes".to_owned()
+        crate::ui::tr(cx).chat().inspector_changes_2().to_owned()
     };
 
     let tabs = tab_bar_underline("chat-details-tabs")
         .selected_index(view.details_tab.index())
-        .child(tab_item(if zh { "进度" } else { "Progress" }))
+        .child(tab_item(crate::ui::tr(cx).chat().inspector_progress()))
         .child(tab_item(changes_lbl))
-        .child(tab_item(if zh { "上下文" } else { "Context" }))
-        .child(tab_item(if zh { "选项" } else { "Options" }))
+        .child(tab_item(crate::ui::tr(cx).chat().header_ctx_menu()))
+        .child(tab_item(crate::ui::tr(cx).chat().inspector_options()))
         .on_click(move |idx, _, cx| {
             let next = DetailsTab::from_index(*idx);
             chat_entity.update(cx, |this, cx| {
@@ -53,10 +47,10 @@ pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
         });
 
     let body = match view.details_tab {
-        DetailsTab::Progress => render_progress_tab(view, zh, cx).into_any_element(),
-        DetailsTab::Changes => render_changes_tab(view, zh, cx).into_any_element(),
-        DetailsTab::Context => render_context_tab(view, zh, cx).into_any_element(),
-        DetailsTab::Options => render_options_tab(view, zh, cx).into_any_element(),
+        DetailsTab::Progress => render_progress_tab(view, cx).into_any_element(),
+        DetailsTab::Changes => render_changes_tab(view, cx).into_any_element(),
+        DetailsTab::Context => render_context_tab(view, cx).into_any_element(),
+        DetailsTab::Options => render_options_tab(view, cx).into_any_element(),
     };
 
     v_col()
@@ -74,7 +68,7 @@ pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh { "对话检视器" } else { "Inspector" }),
+                        .child(crate::ui::tr(cx).chat().inspector_inspector()),
                 )
                 .child(
                     btn_icon("chat-insp-close", UiIcon::Close).on_click(cx.listener(
@@ -104,7 +98,7 @@ pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
         )
 }
 
-fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> gpui_kit::Div {
+fn render_progress_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
     let todos = &view.thread.todos;
     let total = todos.len();
@@ -125,7 +119,7 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
                             h_row()
                                 .justify_between()
                                 .child(section_heading(
-                                    if zh { "当前运行" } else { "Active run" },
+                                    crate::ui::tr(cx).chat().inspector_active_run(),
                                     cx,
                                 ))
                                 .child(badge(format!("{:?}", run.status), Tone::Accent, cx)),
@@ -144,7 +138,10 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
     col = col.child(
         h_row()
             .justify_between()
-            .child(section_heading(if zh { "任务清单" } else { "Tasks" }, cx))
+            .child(section_heading(
+                crate::ui::tr(cx).chat().inspector_tasks(),
+                cx,
+            ))
             .children((total > 0).then(|| badge(format!("{done}/{total}"), Tone::Neutral, cx))),
     );
 
@@ -177,16 +174,18 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
             );
         }
     } else {
-        col = col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "智能体制定多步计划后，任务进度会显示在这里。"
-        } else {
-            "Multi-step task progress appears here once the agent creates a plan."
-        }));
+        col = col.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .chat()
+                    .inspector_multi_step_task_progress_appears(),
+            ),
+        );
     }
 
     if !view.thread.subagents.is_empty() {
         col = col.child(div().pt(px(4.0)).child(section_heading(
-            if zh { "子智能体" } else { "Sub-agents" },
+            crate::ui::tr(cx).chat().tasks_subagents(),
             cx,
         )));
         for sub in view.thread.subagents.values() {
@@ -223,11 +222,7 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
 
     if !view.processes.is_empty() {
         col = col.child(div().pt(px(4.0)).child(section_heading(
-            if zh {
-                "后台进程"
-            } else {
-                "Background Processes"
-            },
+            crate::ui::tr(cx).chat().inspector_background_processes(),
             cx,
         )));
         for proc_item in &view.processes {
@@ -263,7 +258,7 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
                         .children(running.then(|| {
                             btn_danger(
                                 SharedString::from(format!("chat-pk-{}", proc_item.id)),
-                                if zh { "终止" } else { "Kill" },
+                                crate::ui::tr(cx).chat().inspector_kill(),
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
@@ -279,7 +274,7 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
     col
 }
 
-fn render_changes_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> gpui_kit::Div {
+fn render_changes_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
     let pending_ids: Vec<String> = view
         .persisted_changes
@@ -297,41 +292,33 @@ fn render_changes_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
         h_row()
             .justify_between()
             .child(section_heading(
-                if zh { "文件改动" } else { "Modified files" },
+                crate::ui::tr(cx).chat().inspector_modified_files(),
                 cx,
             ))
             .children((!pending_ids.is_empty()).then(|| {
                 let ids_all = pending_ids.clone();
-                btn_ghost("chat-ch-keep-all", if zh { "全部保留" } else { "Keep all" }).on_click(
-                    cx.listener(move |this, _, _, cx| this.keep_changes(ids_all.clone(), cx)),
+                btn_ghost(
+                    "chat-ch-keep-all",
+                    crate::ui::tr(cx).chat().changes_keep_all(),
                 )
+                .on_click(cx.listener(move |this, _, _, cx| this.keep_changes(ids_all.clone(), cx)))
             })),
     );
 
     if view.persisted_changes.is_empty() && view.thread.file_changes.is_empty() {
-        return col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "本对话暂无文件改动。"
-        } else {
-            "No file edits recorded in this chat."
-        }));
+        return col.child(
+            div().text_xs().text_color(to_hsla(p.muted)).child(
+                crate::ui::tr(cx)
+                    .chat()
+                    .inspector_no_file_edits_recorded_in(),
+            ),
+        );
     }
 
     for ch in &view.persisted_changes {
         let kind_lbl = match ch.kind {
-            FileChangeKind::Create => {
-                if zh {
-                    "新建"
-                } else {
-                    "New"
-                }
-            }
-            FileChangeKind::Edit => {
-                if zh {
-                    "修改"
-                } else {
-                    "Edit"
-                }
-            }
+            FileChangeKind::Create => crate::ui::tr(cx).chat().inspector_new(),
+            FileChangeKind::Edit => crate::ui::tr(cx).common().edit(),
         };
         let status_tone = match ch.status {
             FileChangeStatus::Pending => Tone::Warning,
@@ -415,7 +402,7 @@ fn render_changes_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
                                     .children(actionable.then(|| {
                                         btn_ghost(
                                             SharedString::from(format!("ch-kp-{}", ch.id)),
-                                            if zh { "保留" } else { "Keep" },
+                                            crate::ui::tr(cx).chat().changes_keep(),
                                         )
                                         .on_click(
                                             cx.listener(move |this, _, _, cx| {
@@ -426,7 +413,7 @@ fn render_changes_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> 
                                     .children(actionable.then(|| {
                                         btn_ghost(
                                             SharedString::from(format!("ch-ud-{}", ch.id)),
-                                            if zh { "撤回" } else { "Undo" },
+                                            crate::ui::tr(cx).chat().inspector_undo(),
                                         )
                                         .on_click(
                                             cx.listener(move |this, _, _, cx| {

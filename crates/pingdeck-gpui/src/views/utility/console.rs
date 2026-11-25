@@ -13,7 +13,7 @@ use pingdeck_desktop::services::clipboard;
 use crate::bridge::runtime;
 use crate::ui::{
     ScrollableElement as _, Tone, UiIcon, badge, btn_secondary, card, empty_inline, h_row, icon_xs,
-    kpi_card, palette, section_heading, tab_bar_segmented, tab_item, to_hsla, v_col,
+    kpi_card, palette, section_heading, tab_bar_segmented, tab_item, to_hsla, tr, v_col,
 };
 
 use super::UtilityPanel;
@@ -26,23 +26,12 @@ pub enum ConsoleMode {
     GpuBench,
 }
 
-pub fn render_console(
-    panel: &UtilityPanel,
-    zh: bool,
-    cx: &mut Context<UtilityPanel>,
-) -> AnyElement {
+pub fn render_console(panel: &UtilityPanel, cx: &mut Context<UtilityPanel>) -> AnyElement {
+    let u = tr(cx).utility();
     let tabs = tab_bar_segmented("util-con-tabs")
         .selected_index(usize::from(panel.console_mode == ConsoleMode::GpuBench))
-        .child(tab_item(if zh {
-            "诊断日志与运行态"
-        } else {
-            "Diagnostics & Activity"
-        }))
-        .child(tab_item(if zh {
-            "GPU 性能基准"
-        } else {
-            "Native GPU Bench"
-        }))
+        .child(tab_item(u.con_tab_diagnostics()))
+        .child(tab_item(u.con_tab_gpu_bench()))
         .on_click(cx.listener(|this, idx: &usize, _, cx| {
             this.console_mode = if *idx == 1 {
                 ConsoleMode::GpuBench
@@ -56,7 +45,7 @@ pub fn render_console(
         }));
 
     let body: AnyElement = match panel.console_mode {
-        ConsoleMode::Diagnostics => render_diagnostics_body(panel, zh, cx),
+        ConsoleMode::Diagnostics => render_diagnostics_body(panel, cx),
         ConsoleMode::GpuBench => panel
             .bench
             .render(
@@ -85,12 +74,11 @@ pub fn render_console(
         .into_any_element()
 }
 
-fn render_diagnostics_body(
-    panel: &UtilityPanel,
-    zh: bool,
-    cx: &mut Context<UtilityPanel>,
-) -> AnyElement {
+fn render_diagnostics_body(panel: &UtilityPanel, cx: &mut Context<UtilityPanel>) -> AnyElement {
     let p = palette(cx);
+    let t = tr(cx);
+    let u = t.utility();
+    let c = t.common();
     let rt = runtime(cx);
     let state = rt.state();
     let work = app_running_work_impl(state);
@@ -101,35 +89,29 @@ fn render_diagnostics_body(
         .w_full()
         .gap(px(8.0))
         .child(kpi_card(
-            if zh { "本地 AI 网关" } else { "AI Gateway" },
+            u.con_kpi_gateway(),
             if gw.running {
                 format!(":{}", gw.port)
-            } else if zh {
-                "已停止".into()
             } else {
-                "Off".into()
+                c.stopped().to_owned()
             },
             None,
             cx,
         ))
         .child(kpi_card(
-            if zh { "Mock 服务" } else { "Mock Servers" },
+            u.con_kpi_mock(),
             work.mock_servers.to_string(),
             None,
             cx,
         ))
         .child(kpi_card(
-            if zh { "智能体运行" } else { "Agent Runs" },
+            u.con_kpi_agents(),
             format!("{} (+{} sub)", work.agent_runs, work.subagents),
             None,
             cx,
         ))
         .child(kpi_card(
-            if zh {
-                "流程 / Runner"
-            } else {
-                "Flows / Runs"
-            },
+            u.con_kpi_flows_runs(),
             format!("{} / {}", work.flow_runs, work.collection_runs),
             None,
             cx,
@@ -139,31 +121,24 @@ fn render_diagnostics_body(
         h_row()
             .w_full()
             .justify_between()
-            .child(section_heading(
-                if zh {
-                    format!("近期告警与错误（已自动脱敏 · {} 条）", problems.len())
-                } else {
-                    format!("Recent Warnings & Errors (Redacted · {})", problems.len())
-                },
-                cx,
-            ))
+            .child(section_heading(u.con_problems_heading(problems.len()), cx))
             .child(
                 h_row()
                     .gap(px(6.0))
                     .child(
-                        btn_secondary("util-diag-refresh", if zh { "刷新" } else { "Refresh" })
+                        btn_secondary("util-diag-refresh", c.refresh())
                             .icon(icon_xs(UiIcon::Refresh))
                             .on_click(cx.listener(|this, _, _, cx| this.reload_diagnostics(cx))),
                     )
                     .child(
-                        btn_secondary("util-diag-copy", if zh { "复制日志" } else { "Copy Logs" })
+                        btn_secondary("util-diag-copy", u.con_copy_logs())
                             .icon(icon_xs(UiIcon::Copy))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 let text = this.diag_log_tail.join("\n");
                                 let _ = clipboard::set_text(&text);
                                 this.status_note = Some((
                                     Tone::Success,
-                                    "Copied redacted diagnostic log tail".into(),
+                                    tr(cx).utility().con_copied_logs().to_owned(),
                                 ));
                                 cx.notify();
                             })),
@@ -171,16 +146,7 @@ fn render_diagnostics_body(
             ),
     );
     if problems.is_empty() {
-        prob_card = prob_card.child(empty_inline(
-            if zh {
-                "本进程运行至今未记录任何警告或错误"
-            } else {
-                "No warnings or errors recorded in this session"
-            },
-            None,
-            None,
-            cx,
-        ));
+        prob_card = prob_card.child(empty_inline(u.con_problems_empty(), None, None, cx));
     } else {
         for line in problems.iter().rev().take(12) {
             let tone = if line.contains(" ERROR ") {
@@ -209,25 +175,12 @@ fn render_diagnostics_body(
         }
     }
 
-    let mut log_card = card(cx).p(px(12.0)).gap(px(6.0)).child(section_heading(
-        if zh {
-            format!("诊断日志尾部 ({LOG_FILE_NAME})")
-        } else {
-            format!("Diagnostic Log Tail ({LOG_FILE_NAME})")
-        },
-        cx,
-    ));
+    let mut log_card = card(cx)
+        .p(px(12.0))
+        .gap(px(6.0))
+        .child(section_heading(u.con_log_tail_heading(LOG_FILE_NAME), cx));
     if panel.diag_log_tail.is_empty() {
-        log_card = log_card.child(empty_inline(
-            if zh {
-                "日志文件为空或尚未创建"
-            } else {
-                "Log file is empty or not yet created"
-            },
-            None,
-            None,
-            cx,
-        ));
+        log_card = log_card.child(empty_inline(u.con_log_empty(), None, None, cx));
     } else {
         log_card = log_card.child(
             div()

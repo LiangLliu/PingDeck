@@ -38,24 +38,19 @@ pub fn render_overview(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElem
 
 fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let zh = view.is_zh();
+    let lang = view.lang;
     let entity = cx.entity().clone();
     let now = current_time_ms();
     let (from_ms, to_ms, _) = view.range.bounds(now);
     let date_span = if view.range == RangePreset::All {
-        view.t("全部历史时间", "All recorded time").to_owned()
-    } else if zh {
-        format!(
-            "{} 至 {}",
-            format_local_date(from_ms),
-            format_local_date(to_ms)
-        )
+        crate::ui::Tr(lang)
+            .usage()
+            .usage_overview_all_recorded_time()
+            .to_owned()
     } else {
-        format!(
-            "{} to {}",
-            format_local_date(from_ms),
-            format_local_date(to_ms)
-        )
+        crate::ui::Tr(lang)
+            .usage()
+            .usage_overview_date_range(format_local_date(from_ms), format_local_date(to_ms))
     };
 
     let range_ent = entity.clone();
@@ -66,19 +61,15 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
             "usage-range-trigger",
             format!(
                 "{} {}",
-                view.t("时间范围", "Range"),
-                view.range.short_label(zh)
+                crate::ui::Tr(lang).usage().usage_overview_range(),
+                view.range.short_label(lang)
             ),
             view.range != RangePreset::Day7,
             cx,
         ))
         .content(move |_, _w, pop_cx| {
             let mut m = v_col().w(px(176.0)).gap(px(2.0)).child(popover_header(
-                if zh {
-                    "选择时间范围"
-                } else {
-                    "Time Range"
-                },
+                crate::ui::tr(pop_cx).usage().usage_overview_time_range(),
                 None,
                 pop_cx,
             ));
@@ -87,7 +78,7 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
                 let pop_h = pop_cx.entity().clone();
                 m = m.child(pick_row(
                     SharedString::from(format!("u-rng-{preset:?}")),
-                    preset.short_label(zh),
+                    preset.short_label(lang),
                     active_range == preset,
                     pop_cx,
                     move |_, w, cx| {
@@ -107,10 +98,13 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
     let src_lbl = match view.filter_source {
         Some(s) => format!(
             "{} {}",
-            view.t("来源", "Source"),
-            source_label(s.as_str(), zh)
+            crate::ui::Tr(lang).usage().usage_dim_source(),
+            source_label(s.as_str(), lang)
         ),
-        None => view.t("来源 全部", "Source All").to_owned(),
+        None => crate::ui::Tr(lang)
+            .usage()
+            .usage_overview_source_all()
+            .to_owned(),
     };
     let src_pop = popover("usage-src-pop")
         .anchor(Anchor::TopLeft)
@@ -122,11 +116,7 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
         ))
         .content(move |_, _w, pop_cx| {
             let mut m = v_col().w(px(186.0)).gap(px(2.0)).child(popover_header(
-                if zh {
-                    "按调用来源筛选"
-                } else {
-                    "Filter Source"
-                },
+                crate::ui::tr(pop_cx).usage().usage_overview_filter_source(),
                 None,
                 pop_cx,
             ));
@@ -134,11 +124,9 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
             let pop0 = pop_cx.entity().clone();
             m = m.child(pick_row(
                 "u-src-all",
-                if zh {
-                    "默认（不含探针）"
-                } else {
-                    "Default (no probes)"
-                },
+                crate::ui::tr(pop_cx)
+                    .usage()
+                    .usage_overview_default_no_probes(),
                 active_src.is_none(),
                 pop_cx,
                 move |_, w, cx| {
@@ -154,7 +142,7 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
                 let pop_h = pop_cx.entity().clone();
                 m = m.child(pick_row(
                     SharedString::from(format!("u-src-{}", s.as_str())),
-                    source_label(s.as_str(), zh),
+                    source_label(s.as_str(), lang),
                     active_src == Some(s),
                     pop_cx,
                     move |_, w, cx| {
@@ -178,8 +166,19 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
     let active_cid = view.filter_client_id.clone();
     let client_lbl = active_cid
         .as_deref()
-        .map(|id| format!("{} {}", view.t("客户端", "Client"), view.client_name(id)))
-        .unwrap_or_else(|| view.t("客户端 全部", "Client All").to_owned());
+        .map(|id| {
+            format!(
+                "{} {}",
+                crate::ui::Tr(view.lang).usage().usage_dim_client(),
+                view.client_name(id)
+            )
+        })
+        .unwrap_or_else(|| {
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_overview_client_all()
+                .to_owned()
+        });
     let client_pop = popover("usage-client-pop")
         .anchor(Anchor::TopLeft)
         .trigger(select_pill(
@@ -190,11 +189,9 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
         ))
         .content(move |_, _w, pop_cx| {
             let mut m = v_col().w(px(196.0)).gap(px(2.0)).child(popover_header(
-                if zh {
-                    "按网关客户端"
-                } else {
-                    "Gateway Client"
-                },
+                crate::ui::tr(pop_cx)
+                    .usage()
+                    .usage_overview_gateway_client(),
                 None,
                 pop_cx,
             ));
@@ -202,7 +199,7 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
             let pop0 = pop_cx.entity().clone();
             m = m.child(pick_row(
                 "u-cli-all",
-                if zh { "全部客户端" } else { "All clients" },
+                crate::ui::tr(pop_cx).usage().usage_overview_all_clients(),
                 active_cid.is_none(),
                 pop_cx,
                 move |_, w, cx| {
@@ -248,8 +245,19 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
     let active_kid = view.filter_key_id.clone();
     let key_lbl = active_kid
         .as_deref()
-        .map(|id| format!("{} {}", view.t("密钥", "Key"), view.key_name(id)))
-        .unwrap_or_else(|| view.t("密钥 全部", "Key All").to_owned());
+        .map(|id| {
+            format!(
+                "{} {}",
+                crate::ui::Tr(view.lang).usage().usage_dim_key(),
+                view.key_name(id)
+            )
+        })
+        .unwrap_or_else(|| {
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_overview_key_all()
+                .to_owned()
+        });
     let key_pop = popover("usage-key-pop")
         .anchor(Anchor::TopLeft)
         .trigger(select_pill(
@@ -260,11 +268,7 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
         ))
         .content(move |_, _w, pop_cx| {
             let mut m = v_col().w(px(196.0)).gap(px(2.0)).child(popover_header(
-                if zh {
-                    "按服务商密钥"
-                } else {
-                    "Provider Key"
-                },
+                crate::ui::tr(pop_cx).usage().usage_overview_provider_key(),
                 None,
                 pop_cx,
             ));
@@ -272,7 +276,7 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
             let pop0 = pop_cx.entity().clone();
             m = m.child(pick_row(
                 "u-key-all",
-                if zh { "全部密钥" } else { "All keys" },
+                crate::ui::tr(pop_cx).usage().usage_overview_all_keys(),
                 active_kid.is_none(),
                 pop_cx,
                 move |_, w, cx| {
@@ -318,11 +322,13 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
         .child(key_pop)
         .child(client_pop)
         .children(has_filter.then(|| {
-            btn_ghost("usage-reset-flt", view.t("清除筛选", "Reset")).on_click(cx.listener(
-                |this, _, window, cx| {
-                    this.clear_filters(window, cx);
-                },
-            ))
+            btn_ghost(
+                "usage-reset-flt",
+                crate::ui::Tr(view.lang).usage().usage_overview_reset(),
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.clear_filters(window, cx);
+            }))
         }))
         .child(div().flex_1())
         .child(
@@ -335,7 +341,6 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
 }
 
 fn render_kpi_grid(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
-    let zh = view.is_zh();
     let totals = view
         .summary
         .as_ref()
@@ -348,17 +353,11 @@ fn render_kpi_grid(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement 
     } else {
         0.0
     };
-    let calls_sub = if zh {
-        format!(
-            "失败 {} · {:.1}% · 已取消 {}",
-            totals.failed, fail_pct, totals.canceled
-        )
-    } else {
-        format!(
-            "Failed {} ({:.1}%) · Canceled {}",
-            totals.failed, fail_pct, totals.canceled
-        )
-    };
+    let calls_sub = crate::ui::tr(cx).usage().usage_overview_failed_canceled(
+        totals.failed,
+        format!("{:.1}", fail_pct),
+        totals.canceled,
+    );
 
     let cost_val = fmt_cost_map(&totals.cost_micro);
     let unpriced = view
@@ -366,31 +365,21 @@ fn render_kpi_grid(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement 
         .as_ref()
         .map_or(0, |s| s.models_without_price.len());
     let cost_sub = if unpriced > 0 {
-        if zh {
-            format!("{unpriced} 个模型未设置单价")
-        } else {
-            format!("{unpriced} model(s) unpriced")
-        }
+        crate::ui::tr(cx)
+            .usage()
+            .usage_overview_model_s_unpriced(unpriced)
     } else {
-        view.t("按本地目录单价估算", "Estimated from local catalog")
+        crate::ui::Tr(view.lang)
+            .usage()
+            .usage_overview_estimated_from_local_catalog()
             .to_owned()
     };
 
-    let tok_sub = if zh {
-        format!(
-            "输入 {} · 输出 {} · 缓存 {}",
-            fmt_compact(totals.input_tokens),
-            fmt_compact(totals.output_tokens),
-            fmt_compact(totals.cached_tokens)
-        )
-    } else {
-        format!(
-            "In {} · Out {} · Cache {}",
-            fmt_compact(totals.input_tokens),
-            fmt_compact(totals.output_tokens),
-            fmt_compact(totals.cached_tokens)
-        )
-    };
+    let tok_sub = crate::ui::tr(cx).usage().usage_overview_in_out_cache(
+        fmt_compact(totals.input_tokens),
+        fmt_compact(totals.output_tokens),
+        fmt_compact(totals.cached_tokens),
+    );
 
     let (mut ttft_sum, mut ttft_cnt, mut lat_sum, mut lat_cnt) = (0u64, 0u64, 0u64, 0u64);
     for lm in &view.latency_modes {
@@ -405,28 +394,32 @@ fn render_kpi_grid(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement 
         .or(avg_e2e)
         .map_or_else(|| "—".to_owned(), fmt_latency);
     let lat_sub = match (avg_ttft, avg_e2e) {
-        (Some(_), Some(e2e)) => {
-            if zh {
-                format!("流式平均首字 · 端到端 {}", fmt_latency(e2e))
-            } else {
-                format!("Avg TTFT · E2E {}", fmt_latency(e2e))
-            }
-        }
-        (None, Some(_)) => view.t("端到端平均耗时", "Avg end-to-end").to_owned(),
-        _ => view.t("暂无耗时样本", "No latency samples").to_owned(),
+        (Some(_), Some(e2e)) => crate::ui::tr(cx)
+            .usage()
+            .usage_overview_avg_ttft_e2e(fmt_latency(e2e)),
+        (None, Some(_)) => crate::ui::Tr(view.lang)
+            .usage()
+            .usage_overview_avg_end_to_end()
+            .to_owned(),
+        _ => crate::ui::Tr(view.lang)
+            .usage()
+            .usage_overview_no_latency_samples()
+            .to_owned(),
     };
 
     h_row()
         .w_full()
         .gap(px(10.0))
         .child(kpi_card(
-            view.t("调用", "Calls"),
+            crate::ui::Tr(view.lang).usage().usage_kpi_calls(),
             fmt_compact(totals.requests),
             Some(SharedString::from(calls_sub)),
             cx,
         ))
         .child(kpi_card(
-            view.t("费用", "Estimated Cost"),
+            crate::ui::Tr(view.lang)
+                .usage()
+                .usage_overview_estimated_cost(),
             cost_val,
             Some(SharedString::from(cost_sub)),
             cx,
@@ -438,7 +431,7 @@ fn render_kpi_grid(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement 
             cx,
         ))
         .child(kpi_card(
-            view.t("延迟", "Latency"),
+            crate::ui::Tr(view.lang).usage().usage_kpi_latency(),
             lat_val,
             Some(SharedString::from(lat_sub)),
             cx,

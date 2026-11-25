@@ -14,7 +14,6 @@ use super::{RequestsView, default_auth_for_kind};
 
 pub fn render_container_settings_tab(
     view: &RequestsView,
-    zh: bool,
     cx: &mut Context<RequestsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
@@ -27,16 +26,20 @@ pub fn render_container_settings_tab(
 
     let mut tabs = tab_bar_underline("container-set-tabs")
         .selected_index(section.index())
-        .child(tab_item(if zh { "常规" } else { "General" }))
-        .child(tab_item(if zh { "继承认证" } else { "Auth" }));
+        .child(tab_item(
+            crate::ui::tr(cx).requests().container_settings_general(),
+        ))
+        .child(tab_item(
+            crate::ui::tr(cx).requests().container_settings_auth(),
+        ));
     if is_col {
-        tabs = tabs.child(tab_item(if zh {
-            format!("集合变量 ({})", c.variables.len())
-        } else {
-            format!("Variables ({})", c.variables.len())
-        }));
+        tabs = tabs.child(tab_item(
+            crate::ui::tr(cx)
+                .requests()
+                .container_settings_variables(c.variables.len()),
+        ));
     }
-    tabs = tabs.child(tab_item(if zh { "脚本" } else { "Scripts" }));
+    tabs = tabs.child(tab_item(crate::ui::tr(cx).requests().coll_tab_scripts()));
     let tabs = tabs.on_click(move |idx, _, cx| {
         ent.update(cx, |this, cx| {
             this.snapshot_active_tab(cx);
@@ -56,7 +59,7 @@ pub fn render_container_settings_tab(
             .gap(px(10.0))
             .p(px(14.0))
             .child(field_row(
-                if zh { "名称" } else { "Name" },
+                crate::ui::tr(cx).requests().tree_name_label(),
                 None,
                 div()
                     .w(px(320.0))
@@ -64,11 +67,9 @@ pub fn render_container_settings_tab(
                 cx,
             ))
             .child(section_heading(
-                if zh {
-                    "说明（Markdown）"
-                } else {
-                    "Description"
-                },
+                crate::ui::tr(cx)
+                    .requests()
+                    .container_settings_description(),
                 cx,
             ))
             .child(
@@ -84,18 +85,20 @@ pub fn render_container_settings_tab(
                 .gap(px(10.0))
                 .p(px(14.0))
                 .child(section_heading(
-                    if zh {
-                        "此集合/文件夹下所有「继承」认证的请求将使用这里的配置"
-                    } else {
-                        "Shared authentication inherited by child requests"
-                    },
+                    crate::ui::tr(cx)
+                        .requests()
+                        .container_settings_shared_authentication_inherited_by_child(),
                     cx,
                 ))
                 .child(
                     tab_bar_segmented("container-auth-seg")
                         .selected_index(auth_kind.index())
-                        .child(tab_item(if zh { "继承" } else { "Inherit" }))
-                        .child(tab_item(if zh { "无" } else { "None" }))
+                        .child(tab_item(
+                            crate::ui::tr(cx).requests().container_settings_inherit(),
+                        ))
+                        .child(tab_item(
+                            crate::ui::tr(cx).requests().editor_auth_token_no_scope(),
+                        ))
                         .child(tab_item("Bearer"))
                         .child(tab_item("Basic"))
                         .child(tab_item("API Key"))
@@ -117,7 +120,11 @@ pub fn render_container_settings_tab(
                     div()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(SharedString::from(format!("当前配置: {:?}", c.auth))),
+                        .child(SharedString::from(
+                            crate::ui::tr(cx)
+                                .requests()
+                                .container_current_auth(format!("{:?}", c.auth)),
+                        )),
                 )
                 .into_any_element()
         }
@@ -137,15 +144,19 @@ pub fn render_container_settings_tab(
                         .child(div().flex_1().child(text_input(&view.container_var_val)))
                         .child(
                             checkbox("col-var-secret", view.container_var_secret)
-                                .label(if zh { "机密" } else { "Secret" })
+                                .label(crate::ui::tr(cx).requests().coll_var_secret())
                                 .on_click(cx.listener(|this, ch: &bool, _, cx| {
                                     this.container_var_secret = *ch;
                                     cx.notify();
                                 })),
                         )
                         .child(
-                            btn_secondary("col-var-add", if zh { "添加" } else { "Add" }).on_click(
-                                cx.listener(|this, _, window, cx| {
+                            btn_secondary(
+                                "col-var-add",
+                                crate::ui::tr(cx).requests().container_settings_add(),
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     let k =
                                         this.container_var_key.read(cx).value().trim().to_owned();
                                     let v = this.container_var_val.read(cx).value().to_string();
@@ -175,8 +186,8 @@ pub fn render_container_settings_tab(
                                     this.container_var_val
                                         .update(cx, |i, cx| i.set_value("", window, cx));
                                     cx.notify();
-                                }),
-                            ),
+                                },
+                            )),
                         ),
                 );
             for (i, var) in c.variables.iter().enumerate() {
@@ -187,59 +198,62 @@ pub fn render_container_settings_tab(
                 } else {
                     var.value.clone().unwrap_or_default()
                 };
-                vlist =
-                    vlist.child(
-                        h_row()
-                            .gap(px(8.0))
-                            .px(px(8.0))
-                            .py(px(4.0))
-                            .rounded(px(5.0))
-                            .bg(to_hsla(p.pane))
-                            .child(
-                                checkbox(SharedString::from(format!("cv-chk-{i}")), var.enabled)
-                                    .on_click(cx.listener(move |this, ch: &bool, _, cx| {
-                                        if let Some(OpenTab::Container(st)) = this.active_tab_mut()
-                                            && let Some(row) = st.variables.get_mut(i)
-                                        {
-                                            row.enabled = *ch;
-                                            st.dirty = true;
+                vlist = vlist.child(
+                    h_row()
+                        .gap(px(8.0))
+                        .px(px(8.0))
+                        .py(px(4.0))
+                        .rounded(px(5.0))
+                        .bg(to_hsla(p.pane))
+                        .child(
+                            checkbox(SharedString::from(format!("cv-chk-{i}")), var.enabled)
+                                .on_click(cx.listener(move |this, ch: &bool, _, cx| {
+                                    if let Some(OpenTab::Container(st)) = this.active_tab_mut()
+                                        && let Some(row) = st.variables.get_mut(i)
+                                    {
+                                        row.enabled = *ch;
+                                        st.dirty = true;
+                                    }
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            div()
+                                .w(px(180.0))
+                                .text_xs()
+                                .child(SharedString::from(var.key.clone())),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .truncate()
+                                .child(SharedString::from(disp)),
+                        )
+                        .children(var.is_secret.then(|| {
+                            badge(
+                                crate::ui::tr(cx).requests().coll_var_secret(),
+                                Tone::Warning,
+                                cx,
+                            )
+                        }))
+                        .child(
+                            btn_icon(SharedString::from(format!("cv-del-{i}")), UiIcon::Trash)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if let Some(OpenTab::Container(st)) = this.active_tab_mut()
+                                        && i < st.variables.len()
+                                    {
+                                        st.variables.remove(i);
+                                        if i < st.pending_var_values.len() {
+                                            st.pending_var_values.remove(i);
                                         }
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .w(px(180.0))
-                                    .text_xs()
-                                    .child(SharedString::from(var.key.clone())),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_xs()
-                                    .text_color(to_hsla(p.muted))
-                                    .truncate()
-                                    .child(SharedString::from(disp)),
-                            )
-                            .children(var.is_secret.then(|| {
-                                badge(if zh { "机密" } else { "Secret" }, Tone::Warning, cx)
-                            }))
-                            .child(
-                                btn_icon(SharedString::from(format!("cv-del-{i}")), UiIcon::Trash)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        if let Some(OpenTab::Container(st)) = this.active_tab_mut()
-                                            && i < st.variables.len()
-                                        {
-                                            st.variables.remove(i);
-                                            if i < st.pending_var_values.len() {
-                                                st.pending_var_values.remove(i);
-                                            }
-                                            st.dirty = true;
-                                        }
-                                        cx.notify();
-                                    })),
-                            ),
-                    );
+                                        st.dirty = true;
+                                    }
+                                    cx.notify();
+                                })),
+                        ),
+                );
             }
             vlist.into_any_element()
         }
@@ -253,16 +267,16 @@ pub fn render_container_settings_tab(
                 .child(
                     tab_bar_segmented("container-script-seg")
                         .selected_index(usize::from(sub == ScriptSubTab::Post))
-                        .child(tab_item(if zh {
-                            "前置脚本 (Pre)"
-                        } else {
-                            "Pre-request"
-                        }))
-                        .child(tab_item(if zh {
-                            "后置脚本 (Post)"
-                        } else {
-                            "Post-response"
-                        }))
+                        .child(tab_item(
+                            crate::ui::tr(cx)
+                                .requests()
+                                .container_settings_pre_request(),
+                        ))
+                        .child(tab_item(
+                            crate::ui::tr(cx)
+                                .requests()
+                                .container_settings_post_response(),
+                        ))
                         .on_click(move |idx, _, cx| {
                             ent_s.update(cx, |this, cx| {
                                 if let Some(OpenTab::Container(st)) = this.active_tab_mut() {
@@ -310,19 +324,27 @@ pub fn render_container_settings_tab(
                                 .text_sm()
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                 .child(SharedString::from(if is_col {
-                                    format!("集合设置 · {}", c.name)
+                                    crate::ui::tr(cx)
+                                        .requests()
+                                        .container_title_collection(&c.name)
                                 } else {
-                                    format!("文件夹设置 · {}", c.name)
+                                    crate::ui::tr(cx).requests().container_title_folder(&c.name)
                                 })),
                         )
                         .children(c.dirty.then(|| {
-                            badge(if zh { "未保存" } else { "Unsaved" }, Tone::Warning, cx)
+                            badge(
+                                crate::ui::tr(cx).requests().tabs_unsaved_hint(),
+                                Tone::Warning,
+                                cx,
+                            )
                         })),
                 )
                 .child(
                     btn_primary(
                         "container-save",
-                        if zh { "保存设置" } else { "Save settings" },
+                        crate::ui::tr(cx)
+                            .requests()
+                            .container_settings_save_settings(),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.save_container_settings_tab(cx);

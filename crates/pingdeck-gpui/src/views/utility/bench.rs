@@ -10,11 +10,14 @@ use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, SharedString,
     Styled as _, Window, div, px,
 };
+use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::i18n::tr as tr_lang;
 
 use crate::ui::{
-    Column, EditorState, InputState, TableDelegate, TableState, TextareaState, Tone, badge,
-    btn_primary, btn_secondary, code_editor, h_row, multiline_input, palette, section_heading,
-    streaming_markdown_view, table_column, text_input, to_hsla, v_col, virtual_table,
+    Column, EditorState, InputState, TableDelegate, TableState, TextareaState, Tone,
+    active_language, badge, btn_primary, btn_secondary, code_editor, h_row, multiline_input,
+    palette, section_heading, streaming_markdown_view, table_column, text_input, to_hsla, tr,
+    v_col, virtual_table,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +116,7 @@ impl TableDelegate for BenchTableDelegate {
 /// Stateful holder for the 4 native widget benchmark workloads.
 pub struct NativeBenchState {
     pub tab: BenchTab,
+    lang: Language,
     pub ime_input: Entity<InputState>,
     pub ime_textarea: Entity<TextareaState>,
     pub ime_editor: Entity<EditorState>,
@@ -126,17 +130,18 @@ pub struct NativeBenchState {
 
 impl NativeBenchState {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
-        let ime_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("测试单行中文拼音 IME / 中英混排输入…")
-        });
+        let lang = active_language(cx);
+        let u = tr(cx).utility();
+        let ime_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(u.bench_ime_input_ph()));
         let ime_textarea = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("测试多行 Composer 中文拼音 IME、换行、选区与退格…")
+                .placeholder(u.bench_ime_textarea_ph())
                 .rows(4)
         });
         let ime_editor = cx.new(|cx| {
             let mut ed = EditorState::new(window, cx).default_value(
-                "{\n  \"greeting\": \"你好 PingDeck GPUI\",\n  \"engine\": \"gpui-kit 0.11\"\n}",
+                "{\n  \"greeting\": \"Hello PingDeck GPUI\",\n  \"engine\": \"gpui-kit 0.11\"\n}",
             );
             ed.set_highlighter("json", cx);
             ed
@@ -151,13 +156,14 @@ impl NativeBenchState {
 
         Self {
             tab: BenchTab::Ime,
+            lang,
             ime_input,
             ime_textarea,
             ime_editor,
             large_json_editor,
             large_json_stats: "Ready (0 B)".into(),
             last_json_load_ms: None,
-            stream_md: "# 流式 Markdown 划选复制测试\n\n点击 **+200 Tokens** 持续追加，验证 GPU 渲染与鼠标划选 `⌘C` 复制。\n\n```json\n{\"status\": \"ok\", \"renderer\": \"GPUI Metal/Vulkan\"}\n```\n".into(),
+            stream_md: u.bench_stream_sample().to_owned(),
             stream_tokens: 0,
             table_state,
         }
@@ -188,12 +194,11 @@ impl NativeBenchState {
     }
 
     pub fn append_stream_burst(&mut self) {
+        let u = tr_lang(self.lang).utility();
         for _ in 0..20 {
             self.stream_tokens += 10;
-            self.stream_md.push_str(&format!(
-                "\n- **Token #{}**: `pingdeck-desktop` 零 IPC 推流合帧验证 — *GPU 120fps selectable text*.",
-                self.stream_tokens
-            ));
+            self.stream_md
+                .push_str(&u.bench_stream_burst_line(self.stream_tokens));
         }
     }
 
@@ -205,6 +210,7 @@ impl NativeBenchState {
         on_load_10mb: impl Fn(&mut V, &mut Window, &mut Context<V>) + Copy + 'static,
     ) -> impl IntoElement {
         let p = palette(cx);
+        let u = tr(cx).utility();
         let tab_btn =
             |id: &'static str, label: &'static str, tab: BenchTab, cx: &mut Context<V>| {
                 if self.tab == tab {
@@ -218,22 +224,22 @@ impl NativeBenchState {
         let tabs = h_row()
             .gap(px(6.0))
             .pb(px(10.0))
-            .child(tab_btn("bench-ime", "1. IME 输入", BenchTab::Ime, cx))
+            .child(tab_btn("bench-ime", u.bench_tab_ime(), BenchTab::Ime, cx))
             .child(tab_btn(
                 "bench-md",
-                "2. 流式 Markdown",
+                u.bench_tab_md(),
                 BenchTab::StreamingMarkdown,
                 cx,
             ))
             .child(tab_btn(
                 "bench-tbl",
-                "3. 10,000 行虚拟表",
+                u.bench_tab_table(),
                 BenchTab::VirtualTable10k,
                 cx,
             ))
             .child(tab_btn(
                 "bench-json",
-                "4. 10 MiB JSON 编辑器",
+                u.bench_tab_json(),
                 BenchTab::LargeJson10Mb,
                 cx,
             ));
@@ -242,20 +248,11 @@ impl NativeBenchState {
             BenchTab::Ime => v_col()
                 .flex_1()
                 .gap(px(10.0))
-                .child(section_heading(
-                    "单行 InputState（中文拼音 IME / 候选框跟随）",
-                    cx,
-                ))
+                .child(section_heading(u.bench_sec_input(), cx))
                 .child(text_input(&self.ime_input))
-                .child(section_heading(
-                    "多行 TextareaState（Chat Composer 选区与换行）",
-                    cx,
-                ))
+                .child(section_heading(u.bench_sec_textarea(), cx))
                 .child(multiline_input(&self.ime_textarea))
-                .child(section_heading(
-                    "Tree-sitter Code EditorState（JSON 语法高亮）",
-                    cx,
-                ))
+                .child(section_heading(u.bench_sec_editor(), cx))
                 .child(
                     div()
                         .flex_1()
