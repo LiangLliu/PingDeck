@@ -114,7 +114,7 @@ serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
 # CryptoJS.SHA1 / HmacSHA1 in scripts; already in the graph through p12-keystore.
 sha1 = "0.10"
-sha2 = "0.10"
+sha2 = "0.11"
 similar = "2"
 thiserror = "2.0"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "time", "macros", "net", "sync", "io-util", "process"] }
