@@ -9,12 +9,12 @@ use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
     Anchor, Disableable as _, Popover, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary,
-    card, h_row, icon_xs, list_row, palette, popover, select_pill, text_input, to_hsla,
-    toggle_switch, v_col,
+    h_row, icon_xs, list_row, palette, popover, select_pill, text_input, to_hsla, toggle_switch,
+    v_col,
 };
 
 use super::AgentSettingsView;
-use super::widgets::{section_head, set_row};
+use super::widgets::{section_card, section_card_flush, set_row};
 
 pub(super) fn render_tools(
     view: &AgentSettingsView,
@@ -146,25 +146,28 @@ pub(super) fn render_tools(
     }
 
     let mut sec_tools = v_col()
-        .gap(px(10.0))
-        .child(section_head(
+        .w_full()
+        .gap(px(8.0))
+        .child(section_card_flush(
             if zh {
                 "内置工具审批策略"
             } else {
                 "Built-in tool approval policies"
             },
             None,
+            table_rows,
             cx,
         ))
         .child(
             div()
+                .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .child(t(lang, "set.sec.tools.tools.d").to_owned()),
         )
-        .child(card(cx).overflow_hidden().child(table_rows))
         .child(
             div()
+                .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.faint))
                 .child(t(lang, "set.tools.group.changes.noAllow").to_owned()),
@@ -173,19 +176,27 @@ pub(super) fn render_tools(
     if !internal_names.is_empty() {
         let sep = t(lang, "set.tools.internal.sep");
         let joined = internal_names.join(sep);
-        sec_tools = sec_tools.child(div().text_xs().text_color(to_hsla(p.faint)).child(
-            SharedString::from(t_args(
-                lang,
-                "set.tools.internal",
-                &[("tools", joined.as_str())],
-            )),
-        ));
+        sec_tools = sec_tools.child(
+            div()
+                .px(px(4.0))
+                .text_xs()
+                .text_color(to_hsla(p.faint))
+                .child(SharedString::from(t_args(
+                    lang,
+                    "set.tools.internal",
+                    &[("tools", joined.as_str())],
+                ))),
+        );
     }
 
     // ── Section 2: Web search (`ai.search.*`) ────────────────────────────────
     let sec_search = render_search_section(view, lang, zh, cx);
 
-    v_col().gap(px(22.0)).child(sec_tools).child(sec_search)
+    v_col()
+        .w_full()
+        .gap(px(20.0))
+        .child(sec_tools)
+        .child(sec_search)
 }
 
 fn render_policy_picker(
@@ -360,21 +371,16 @@ fn render_search_section(
     }))
     .into_any_element();
 
-    let mut sec = v_col()
-        .child(section_head(
-            if zh { "联网搜索" } else { "Web search" },
-            Some(reset_search_btn),
-            cx,
-        ))
-        .child(set_row(
-            t(lang, "set.f.ai.search.backend").to_owned(),
-            None,
-            Some(SharedString::from(
-                t(lang, "set.f.ai.search.backend.d").to_owned(),
-            )),
-            h_row().gap(px(8.0)).child(backend_picker).child(test_btn),
-            cx,
-        ));
+    let p = palette(cx);
+    let mut rows = v_col().w_full().child(set_row(
+        t(lang, "set.f.ai.search.backend").to_owned(),
+        None,
+        Some(SharedString::from(
+            t(lang, "set.f.ai.search.backend.d").to_owned(),
+        )),
+        h_row().gap(px(8.0)).child(backend_picker).child(test_btn),
+        cx,
+    ));
 
     if let Some(res) = &view.search_test_result {
         let (tone, text) = if res.ok {
@@ -396,10 +402,16 @@ fn render_search_section(
                     .unwrap_or_else(|| t(lang, "set.agent.search.noReason").to_owned()),
             )
         };
-        sec = sec.child(div().pt(px(8.0)).child(alert_banner(tone, text, None, cx)));
+        rows = rows.child(
+            div()
+                .py(px(10.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
+                .child(alert_banner(tone, text, None, cx)),
+        );
     }
 
-    sec = sec
+    rows = rows
         .child(render_search_key_row(
             view,
             "Tavily",
@@ -447,7 +459,12 @@ fn render_search_section(
             cx,
         ));
 
-    sec
+    section_card(
+        if zh { "联网搜索" } else { "Web search" },
+        Some(reset_search_btn),
+        rows,
+        cx,
+    )
 }
 
 fn render_search_key_row(

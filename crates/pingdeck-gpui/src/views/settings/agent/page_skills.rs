@@ -1,16 +1,16 @@
 //! Settings › 智能体 › 技能 (`SettingsSection::Skills`, prototype `ai/skills`).
 
-use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, btn_secondary, card, empty_state,
-    h_row, icon_xs, palette, to_hsla, toggle_switch, v_col,
+    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, btn_secondary, empty_state, h_row,
+    icon_xs, palette, settings_sub_well, to_hsla, toggle_switch, v_col,
 };
 
 use super::AgentSettingsView;
-use super::widgets::section_head;
+use super::widgets::{section_card_flush, section_card_padded};
 
 pub(super) fn render_skills(
     view: &AgentSettingsView,
@@ -134,35 +134,48 @@ pub(super) fn render_skills(
     }
 
     let sec_folders = v_col()
-        .gap(px(10.0))
-        .child(section_head(
-            if zh {
-                "技能目录与扫描"
-            } else {
-                "Skill folders"
-            },
-            None,
-            cx,
-        ))
-        .child(
+        .w_full()
+        .gap(px(8.0))
+        .child(if folders.is_empty() {
+            section_card_padded(
+                if zh {
+                    "技能目录与扫描"
+                } else {
+                    "Skill folders"
+                },
+                Some(toolbar.into_any_element()),
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(t(lang, "set.sec.skills.folders.d").to_owned()),
+                cx,
+            )
+        } else {
+            section_card_flush(
+                if zh {
+                    "技能目录与扫描"
+                } else {
+                    "Skill folders"
+                },
+                Some(toolbar.into_any_element()),
+                folder_rows,
+                cx,
+            )
+        })
+        .children((!folders.is_empty()).then(|| {
             div()
+                .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
-                .child(t(lang, "set.sec.skills.folders.d").to_owned()),
-        )
-        .child(toolbar)
-        .children((!folders.is_empty()).then(|| card(cx).overflow_hidden().child(folder_rows)));
+                .child(t(lang, "set.sec.skills.folders.d").to_owned())
+        }));
 
     // ── Section 2: Discovered & imported skills table ────────────────────────
     let table_section = if view.skill_entries.is_empty() {
-        v_col()
-            .gap(px(8.0))
-            .child(section_head(
-                if zh { "已发现技能" } else { "Discovered skills" },
-                None,
-                cx,
-            ))
-            .child(card(cx).h(px(170.0)).child(empty_state(
+        section_card_padded(
+            if zh { "已发现技能" } else { "Discovered skills" },
+            None,
+            settings_sub_well(cx).h(px(168.0)).child(empty_state(
                 UiIcon::Sparkles,
                 t(lang, "set.skills.empty.title").to_owned(),
                 if zh {
@@ -171,7 +184,9 @@ pub(super) fn render_skills(
                     "Put a folder holding SKILL.md in one of the skill folders above, or click Import skill…"
                 },
                 cx,
-            )))
+            )),
+            cx,
+        )
     } else {
         let head = h_row()
             .px(px(12.0))
@@ -307,19 +322,21 @@ pub(super) fn render_skills(
         }
 
         v_col()
-            .gap(px(10.0))
-            .child(section_head(
+            .w_full()
+            .gap(px(8.0))
+            .child(section_card_flush(
                 if zh {
                     format!("已发现技能（{}）", total)
                 } else {
                     format!("Discovered skills ({total})")
                 },
                 None,
+                rows,
                 cx,
             ))
-            .child(card(cx).overflow_hidden().child(rows))
             .child(
                 div()
+                    .px(px(4.0))
                     .text_xs()
                     .text_color(to_hsla(p.faint))
                     .child(t(lang, "set.skills.toggleHint").to_owned()),
@@ -327,7 +344,8 @@ pub(super) fn render_skills(
     };
 
     v_col()
-        .gap(px(22.0))
+        .w_full()
+        .gap(px(20.0))
         .child(sec_folders)
         .child(table_section)
 }

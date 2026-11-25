@@ -8,8 +8,8 @@ use pingdeck_desktop::i18n::{t, t_args};
 use pingdeck_desktop::theme::ResolvedPalette;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, card, h_row, icon_xs,
-    palette, section_header, status_indicator, to_hsla, v_col,
+    StatusShape, Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, h_row, icon_xs, palette,
+    settings_section_flush, status_indicator, to_hsla, v_col,
 };
 
 use super::{AboutSettingsView, AboutSnapshot};
@@ -21,19 +21,13 @@ pub(super) fn render_environment_section(
     cx: &mut Context<AboutSettingsView>,
 ) -> impl IntoElement {
     let p = palette(cx);
-    let header = section_header(
-        t(lang, "set.sec.about.build").to_owned(),
-        Some(
-            btn_ghost(
-                "about-env-recheck",
-                t(lang, "set.agent.sandbox.test").to_owned(),
-            )
-            .icon(icon_xs(UiIcon::Refresh))
-            .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
-            .into_any_element(),
-        ),
-        cx,
-    );
+    let recheck = btn_ghost(
+        "about-env-recheck",
+        t(lang, "set.agent.sandbox.test").to_owned(),
+    )
+    .icon(icon_xs(UiIcon::Refresh))
+    .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
+    .into_any_element();
 
     let body = if view.loading && view.snapshot.is_none() {
         h_row()
@@ -54,7 +48,7 @@ pub(super) fn render_environment_section(
         h_row()
             .justify_between()
             .gap(px(12.0))
-            .p(px(14.0))
+            .p(px(16.0))
             .child(
                 h_row()
                     .flex_1()
@@ -79,10 +73,12 @@ pub(super) fn render_environment_section(
         v_col()
     };
 
-    v_col()
-        .gap(px(8.0))
-        .child(header)
-        .child(card(cx).child(body))
+    settings_section_flush(
+        t(lang, "set.sec.about.build").to_owned(),
+        Some(recheck),
+        body,
+        cx,
+    )
 }
 
 fn render_environment_rows(
@@ -349,11 +345,11 @@ fn info_row(
     cx: &gpui_kit::App,
 ) -> gpui_kit::Div {
     let p = palette(cx);
-    let mut left = v_col().flex_1().min_w_0().gap(px(2.0)).child(
+    let mut left = v_col().flex_1().min_w_0().gap(px(2.5)).child(
         div()
-            .text_xs()
+            .text_size(px(13.0))
             .font_weight(gpui_kit::FontWeight::MEDIUM)
-            .text_color(to_hsla(p.ink_2))
+            .text_color(to_hsla(p.ink))
             .child(SharedString::from(label.to_owned())),
     );
     if let Some(sub) = subtitle
@@ -362,7 +358,7 @@ fn info_row(
         left = left.child(
             div()
                 .text_xs()
-                .text_color(to_hsla(p.faint))
+                .text_color(to_hsla(p.muted))
                 .child(SharedString::from(sub.to_owned())),
         );
     }
@@ -370,8 +366,8 @@ fn info_row(
         .justify_between()
         .items_center()
         .gap(px(16.0))
-        .px(px(14.0))
-        .py(px(10.0))
+        .px(px(16.0))
+        .py(px(11.5))
         .child(left)
         .child(div().flex_shrink_0().child(value));
     if bottom_border {

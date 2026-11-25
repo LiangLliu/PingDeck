@@ -12,12 +12,12 @@ use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
     Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger,
-    btn_ghost, btn_icon, btn_primary, btn_secondary, card, empty_state, h_row, icon_xs,
-    markdown_view, palette, status_indicator, to_hsla, toggle_switch, v_col,
+    btn_ghost, btn_icon, btn_primary, btn_secondary, empty_state, h_row, icon_xs, markdown_view,
+    palette, settings_sub_well, status_indicator, to_hsla, toggle_switch, v_col,
 };
 
 use super::AgentSettingsView;
-use super::widgets::{format_mcp_status, section_head};
+use super::widgets::{format_mcp_status, section_card_flush, section_card_padded};
 
 pub(super) fn render_mcp(
     view: &AgentSettingsView,
@@ -58,32 +58,33 @@ pub(super) fn render_mcp(
                 .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx))),
         );
 
-    let header = section_head(
-        if zh {
-            "外部工具服务器"
-        } else {
-            "External tool servers"
-        },
-        None,
-        cx,
-    );
+    let title = if zh {
+        "外部工具服务器"
+    } else {
+        "External tool servers"
+    };
     let desc = div()
+        .px(px(4.0))
         .text_xs()
         .text_color(to_hsla(p.muted))
         .child(t(lang, "set.sec.mcp.mcp.d").to_owned());
 
     if servers.is_empty() {
         return v_col()
-            .gap(px(12.0))
-            .child(header)
-            .child(desc)
-            .child(toolbar)
-            .child(card(cx).h(px(190.0)).child(empty_state(
-                UiIcon::Server,
-                t(lang, "set.tools.mcp.empty").to_owned(),
-                t(lang, "set.tools.mcp.empty.d").to_owned(),
+            .w_full()
+            .gap(px(8.0))
+            .child(section_card_padded(
+                title,
+                Some(toolbar.into_any_element()),
+                settings_sub_well(cx).h(px(186.0)).child(empty_state(
+                    UiIcon::Server,
+                    t(lang, "set.tools.mcp.empty").to_owned(),
+                    t(lang, "set.tools.mcp.empty.d").to_owned(),
+                    cx,
+                )),
                 cx,
-            )));
+            ))
+            .child(desc);
     }
 
     let table_head = h_row()
@@ -141,11 +142,15 @@ pub(super) fn render_mcp(
     }
 
     v_col()
-        .gap(px(12.0))
-        .child(header)
+        .w_full()
+        .gap(px(8.0))
+        .child(section_card_flush(
+            title,
+            Some(toolbar.into_any_element()),
+            rows,
+            cx,
+        ))
         .child(desc)
-        .child(toolbar)
-        .child(card(cx).overflow_hidden().child(rows))
 }
 
 fn render_mcp_row(

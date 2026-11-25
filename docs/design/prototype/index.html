@@ -1629,13 +1629,17 @@ currency=USD</div>
               <div class="set-body">
                 <!-- Appearance Page -->
                 <div id="set-page-appearance" class="set-col">
-                  <p class="set-lede">没有标注的设置立即生效，并随同步文件夹同步。只有例外才标出来。</p>
+                  <div class="set-page-hero">
+                    <h2 class="set-page-title">外观</h2>
+                    <p class="set-page-sub">配置明暗模式、8 套护眼 OKLCH 色系、字号密度与界面动效偏好。</p>
+                  </div>
 
-                  <div>
+                  <div class="set-section">
                     <div class="set-section-head">
                       <span class="set-section-title">主题与外观</span>
                       <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>
                     </div>
+                    <div class="set-card">
                     <div class="set-row">
                       <div class="set-row-info">
                         <span class="set-row-label">主题</span>
@@ -1648,7 +1652,7 @@ currency=USD</div>
                       </div>
                     </div>
 
-                    <div style="padding:14px 0;border-bottom:1px solid var(--border-subtle)">
+                    <div class="set-row-block">
                       <div class="set-row-info">
                         <span class="set-row-label">色彩主题 <span class="set-meta-pill">仅这台电脑</span></span>
                         <span class="set-row-desc">全局统一切换浅色与深色模式下的低眩光护眼底色、文字层级与主题强调色。</span>
@@ -1756,13 +1760,15 @@ currency=USD</div>
                         <button data-action="seg-pick">关闭</button>
                       </div>
                     </div>
+                    </div>
                   </div>
 
-                  <div>
+                  <div class="set-section">
                     <div class="set-section-head">
                       <span class="set-section-title">文字与密度</span>
                       <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>
                     </div>
+                    <div class="set-card">
                     <div class="set-row">
                       <div class="set-row-info">
                         <span class="set-row-label">密度</span>
@@ -1794,7 +1800,7 @@ currency=USD</div>
                       </div>
                     </div>
 
-                    <div class="card-panel" style="margin-top:12px">
+                    <div class="set-sub-well">
                       <div class="row-center" id="sample-ui-row">
                         <span class="m-get">GET</span>
                         <span class="mono flex-1">/invoices?status=open</span>
@@ -1808,7 +1814,8 @@ currency=USD</div>
                         <i style="width:58%;background:var(--ph-wait)"></i>
                         <i style="width:19%;background:var(--ph-recv)"></i>
                       </div>
-                      <div id="sample-code-box" class="code-box" style="background:var(--bg-sunken)">{ <span class="tk-key">"id"</span>: <span class="tk-str">"inv_2f9"</span>, <span class="tk-key">"total"</span>: <span class="tk-num">12400</span> }</div>
+                      <div id="sample-code-box" class="code-box" style="background:var(--bg-surface)">{ <span class="tk-key">"id"</span>: <span class="tk-str">"inv_2f9"</span>, <span class="tk-key">"total"</span>: <span class="tk-num">12400</span> }</div>
+                    </div>
                     </div>
                   </div>
                 </div>

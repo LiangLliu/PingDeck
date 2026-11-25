@@ -6,7 +6,8 @@ use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 
 use crate::ui::{
     Tone, UiIcon, alert_banner, btn_ghost, btn_icon, btn_secondary, h_row, icon_xs, number_field,
-    palette, section_header, setting_row, text_input, to_hsla, toggle_switch, v_col,
+    palette, setting_row, settings_section, settings_section_padded, text_input, to_hsla,
+    toggle_switch, v_col,
 };
 
 use super::SettingsView;
@@ -16,20 +17,8 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
     let mock = &view.settings.mock;
     let gw_port = view.settings.ai.gateway.port;
 
-    let mut defaults_sec = v_col()
+    let defaults_rows = v_col()
         .w_full()
-        .child(section_header(
-            if zh { "Mock 服务默认值" } else { "Mock Server Defaults" },
-            Some(
-                btn_ghost("mock-reset-all", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_section(CoreSection::Mock, cx);
-                    }))
-                    .into_any_element(),
-            ),
-            cx,
-        ))
         .child(setting_row(
             if zh { "默认起始端口" } else { "Default starting port" },
             Some(SharedString::from(if zh {
@@ -143,19 +132,35 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
             cx,
         ));
 
+    let mut defaults_sec = v_col().w_full().gap(px(10.0)).child(settings_section(
+        if zh {
+            "Mock 服务默认值"
+        } else {
+            "Mock Server Defaults"
+        },
+        Some(
+            btn_ghost("mock-reset-all", if zh { "恢复默认" } else { "Reset" })
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_section(CoreSection::Mock, cx);
+                }))
+                .into_any_element(),
+        ),
+        defaults_rows,
+        cx,
+    ));
+
     if mock.first_port == gw_port {
-        defaults_sec = defaults_sec.child(
-            div().pt(px(8.0)).child(alert_banner(
-                Tone::Warning,
-                if zh {
-                    format!("Mock 起始端口与 AI 网关端口（{gw_port}）相同，请修改其中一项。")
-                } else {
-                    format!("Mock starting port matches the AI gateway port ({gw_port}); change one of them.")
-                },
-                None,
-                cx,
-            )),
-        );
+        defaults_sec = defaults_sec.child(alert_banner(
+            Tone::Warning,
+            if zh {
+                format!("Mock 起始端口与 AI 网关端口（{gw_port}）相同，请修改其中一项。")
+            } else {
+                format!("Mock starting port matches the AI gateway port ({gw_port}); change one of them.")
+            },
+            None,
+            cx,
+        ));
     }
 
     let mut chips = h_row().flex_wrap().gap(px(6.0));
@@ -188,42 +193,37 @@ pub fn render_mock(view: &SettingsView, zh: bool, cx: &mut Context<SettingsView>
         );
     }
 
-    let hosts_sec = v_col()
-        .w_full()
-        .gap(px(8.0))
-        .child(section_header(
-            if zh { "额外允许的 Host 头" } else { "Extra Allowed Host Headers" },
-            None,
-            cx,
-        ))
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(if zh {
-                    "Mock 监听器始终仅绑定本机回环地址（127.0.0.1），此列表用于放行 Docker 容器（host.docker.internal）或 Android 模拟器（10.0.2.2）转发来的 Host 头（格式 host 或 host:port，最多 16 项）。"
-                } else {
-                    "Mock listeners always bind loopback only (127.0.0.1). Add host or host:port entries such as host.docker.internal or 10.0.2.2 for containers/emulators (up to 16 entries)."
-                }),
-        )
-        .children((!mock.extra_allowed_hosts.is_empty()).then_some(chips))
-        .child(
-            h_row()
-                .w_full()
-                .gap(px(8.0))
-                .child(div().flex_1().child(text_input(&view.inputs.mock_host_add)))
-                .child(
-                    btn_secondary("mock-host-add-btn", if zh { "添加主机" } else { "Add host" })
-                        .icon(icon_xs(UiIcon::Plus))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.add_mock_host(window, cx);
-                        })),
-                ),
-        );
+    let hosts_sec = settings_section_padded(
+        if zh { "额外允许的 Host 头" } else { "Extra Allowed Host Headers" },
+        None,
+        v_col()
+            .w_full()
+            .gap(px(10.0))
+            .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
+                "Mock 监听器始终仅绑定本机回环地址（127.0.0.1），此列表用于放行 Docker 容器（host.docker.internal）或 Android 模拟器（10.0.2.2）转发来的 Host 头（格式 host 或 host:port，最多 16 项）。"
+            } else {
+                "Mock listeners always bind loopback only (127.0.0.1). Add host or host:port entries such as host.docker.internal or 10.0.2.2 for containers/emulators (up to 16 entries)."
+            }))
+            .children((!mock.extra_allowed_hosts.is_empty()).then_some(chips))
+            .child(
+                h_row()
+                    .w_full()
+                    .gap(px(8.0))
+                    .child(div().flex_1().child(text_input(&view.inputs.mock_host_add)))
+                    .child(
+                        btn_secondary("mock-host-add-btn", if zh { "添加主机" } else { "Add host" })
+                            .icon(icon_xs(UiIcon::Plus))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.add_mock_host(window, cx);
+                            })),
+                    ),
+            ),
+        cx,
+    );
 
     v_col()
         .w_full()
-        .gap(px(22.0))
+        .gap(px(20.0))
         .child(defaults_sec)
         .child(hosts_sec)
 }

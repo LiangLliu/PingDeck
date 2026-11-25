@@ -7,12 +7,12 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
-    Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, card, h_row, icon_xs, palette,
-    to_hsla, v_col,
+    Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, h_row, icon_xs, palette,
+    settings_sub_well, to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
-use super::widgets::{model_picker_popover, num_box, render_fallback_chain, section_head, set_row};
+use super::widgets::{model_picker_popover, num_box, render_fallback_chain, section_card, set_row};
 
 pub(super) fn render_subagents(
     view: &AgentSettingsView,
@@ -48,88 +48,82 @@ pub(super) fn render_subagents(
         .find(|r| r.role == SubagentRole::Fast)
         .and_then(|r| r.model_label.clone());
 
-    let sec_kinds = v_col()
-        .child(section_head(
-            if zh {
-                "并发与内置类型"
-            } else {
-                "Concurrency & built-in kinds"
-            },
-            Some(reset_btn),
-            cx,
-        ))
-        .child(
-            div()
-                .pt(px(8.0))
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(t(lang, "set.sec.subagents.subagents.d").to_owned()),
-        )
-        .child(set_row(
-            if zh {
-                "单次运行最大子智能体数"
-            } else {
-                "Max sub-agents per run"
-            },
-            None,
-            Some(SharedString::from(if zh {
-                "限制主智能体一次可派生的并发子任务数量（1–8 个），所有角色共用。"
-            } else {
-                "Concurrent sub-agents one run may spawn (1–8), shared by all roles."
-            })),
-            num_box(
-                &view.max_subagents_input,
-                Some(if zh { "个" } else { "agents" }),
-                84.0,
-                cx,
-            ),
-            cx,
-        ))
-        .child(set_row(
-            if zh {
-                "Explore（只读探索）"
-            } else {
-                "Explore (read-only)"
-            },
-            Some(SharedString::from(if zh { "内置" } else { "Built-in" })),
-            Some(SharedString::from(
-                t(lang, "set.sub.kind.explore.d").to_owned(),
-            )),
-            badge(
-                fast_label.unwrap_or_else(|| {
-                    if zh {
-                        "跟随主模型"
-                    } else {
-                        "Follows chat model"
-                    }
-                    .to_owned()
-                }),
-                Tone::Neutral,
-                cx,
-            ),
-            cx,
-        ))
-        .child(set_row(
-            if zh {
-                "General（通用执行）"
-            } else {
-                "General"
-            },
-            Some(SharedString::from(if zh { "内置" } else { "Built-in" })),
-            Some(SharedString::from(
-                t(lang, "set.sub.kind.general.d").to_owned(),
-            )),
-            badge(
+    let sec_kinds = section_card(
+        if zh {
+            "并发与内置类型"
+        } else {
+            "Concurrency & built-in kinds"
+        },
+        Some(reset_btn),
+        v_col()
+            .w_full()
+            .child(set_row(
                 if zh {
-                    "跟随主模型或指定角色"
+                    "单次运行最大子智能体数"
                 } else {
-                    "Chat model or role"
+                    "Max sub-agents per run"
                 },
-                Tone::Neutral,
+                None,
+                Some(SharedString::from(if zh {
+                    "限制主智能体一次可派生的并发子任务数量（1–8 个），所有角色共用。"
+                } else {
+                    "Concurrent sub-agents one run may spawn (1–8), shared by all roles."
+                })),
+                num_box(
+                    &view.max_subagents_input,
+                    Some(if zh { "个" } else { "agents" }),
+                    84.0,
+                    cx,
+                ),
                 cx,
-            ),
-            cx,
-        ));
+            ))
+            .child(set_row(
+                if zh {
+                    "Explore（只读探索）"
+                } else {
+                    "Explore (read-only)"
+                },
+                Some(SharedString::from(if zh { "内置" } else { "Built-in" })),
+                Some(SharedString::from(
+                    t(lang, "set.sub.kind.explore.d").to_owned(),
+                )),
+                badge(
+                    fast_label.unwrap_or_else(|| {
+                        if zh {
+                            "跟随主模型"
+                        } else {
+                            "Follows chat model"
+                        }
+                        .to_owned()
+                    }),
+                    Tone::Neutral,
+                    cx,
+                ),
+                cx,
+            ))
+            .child(set_row(
+                if zh {
+                    "General（通用执行）"
+                } else {
+                    "General"
+                },
+                Some(SharedString::from(if zh { "内置" } else { "Built-in" })),
+                Some(SharedString::from(
+                    t(lang, "set.sub.kind.general.d").to_owned(),
+                )),
+                badge(
+                    if zh {
+                        "跟随主模型或指定角色"
+                    } else {
+                        "Chat model or role"
+                    },
+                    Tone::Neutral,
+                    cx,
+                ),
+                cx,
+            )),
+        cx,
+    );
 
     // ── Section 2: Model roles (Fast, Deep, Vision) + per-role fallbacks ─────
     let suggest_btn = btn_secondary(
@@ -140,7 +134,7 @@ pub(super) fn render_subagents(
     .on_click(cx.listener(|this, _, _, cx| this.apply_role_suggestions(cx)))
     .into_any_element();
 
-    let mut roles_col = v_col().gap(px(10.0));
+    let mut roles_rows = v_col().w_full();
     for role in SubagentRole::ALL {
         let status = view.roles.iter().find(|r| r.role == role);
         let (title_key, desc_key, fb_site) = match role {
@@ -184,56 +178,62 @@ pub(super) fn render_subagents(
             cx,
         );
 
-        let mut role_card = v_col().gap(px(8.0)).child(
-            h_row()
-                .justify_between()
-                .gap(px(14.0))
-                .child(
-                    v_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(2.0))
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                        .text_color(to_hsla(p.ink))
-                                        .child(t(lang, title_key).to_owned()),
-                                )
-                                .children(status.and_then(|s| {
-                                    if s.model.is_none() {
-                                        s.suggestion_label.as_ref().map(|lbl| {
-                                            badge(
-                                                if zh {
-                                                    format!("建议：{lbl}")
-                                                } else {
-                                                    format!("Suggested: {lbl}")
-                                                },
-                                                Tone::Accent,
-                                                cx,
-                                            )
-                                        })
-                                    } else {
-                                        None
-                                    }
-                                })),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.muted))
-                                .child(t(lang, desc_key).to_owned()),
-                        ),
-                )
-                .child(div().flex_shrink_0().child(picker)),
-        );
+        let mut role_row = v_col()
+            .w_full()
+            .py(px(14.0))
+            .gap(px(10.0))
+            .border_b_1()
+            .border_color(to_hsla(p.line.composite_over(p.surface)))
+            .child(
+                h_row()
+                    .justify_between()
+                    .gap(px(14.0))
+                    .child(
+                        v_col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(2.5))
+                            .child(
+                                h_row()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.5))
+                                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                            .text_color(to_hsla(p.ink))
+                                            .child(t(lang, title_key).to_owned()),
+                                    )
+                                    .children(status.and_then(|s| {
+                                        if s.model.is_none() {
+                                            s.suggestion_label.as_ref().map(|lbl| {
+                                                badge(
+                                                    if zh {
+                                                        format!("建议：{lbl}")
+                                                    } else {
+                                                        format!("Suggested: {lbl}")
+                                                    },
+                                                    Tone::Accent,
+                                                    cx,
+                                                )
+                                            })
+                                        } else {
+                                            None
+                                        }
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(to_hsla(p.muted))
+                                    .child(t(lang, desc_key).to_owned()),
+                            ),
+                    )
+                    .child(div().flex_shrink_0().child(picker)),
+            );
 
         if let Some(st) = status {
             if let Some(unavail) = &st.unavailable {
-                role_card = role_card.child(alert_banner(Tone::Danger, unavail.clone(), None, cx));
+                role_row = role_row.child(alert_banner(Tone::Danger, unavail.clone(), None, cx));
             }
             if !st.warnings.is_empty() {
                 let mut warn_row = h_row().gap(px(6.0)).flex_wrap();
@@ -246,47 +246,43 @@ pub(super) fn render_subagents(
                     };
                     warn_row = warn_row.child(badge(t(lang, w_key).to_owned(), Tone::Warning, cx));
                 }
-                role_card = role_card.child(warn_row);
+                role_row = role_row.child(warn_row);
             }
         }
 
         let fb_chain = ag.fallbacks.for_role(Some(role));
         if active_ref.is_some() || !fb_chain.is_empty() {
-            role_card = role_card.child(
-                h_row()
-                    .pt(px(8.0))
-                    .border_t_1()
-                    .border_color(to_hsla(p.line.composite_over(p.surface)))
-                    .justify_between()
-                    .gap(px(10.0))
-                    .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                        "失败时备用"
-                    } else {
-                        "Fallbacks"
-                    }))
-                    .child(render_fallback_chain(
-                        view, fb_site, fb_chain, providers, lang, zh, cx,
-                    )),
+            role_row = role_row.child(
+                settings_sub_well(cx).py(px(8.0)).px(px(12.0)).child(
+                    h_row()
+                        .w_full()
+                        .justify_between()
+                        .gap(px(10.0))
+                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
+                            "失败时备用"
+                        } else {
+                            "Fallbacks"
+                        }))
+                        .child(render_fallback_chain(
+                            view, fb_site, fb_chain, providers, lang, zh, cx,
+                        )),
+                ),
             );
         }
 
-        roles_col = roles_col.child(card(cx).p(px(14.0)).child(role_card));
+        roles_rows = roles_rows.child(role_row);
     }
 
-    let sec_roles = v_col()
-        .gap(px(10.0))
-        .child(section_head(
-            t(lang, "set.sec.subagents.roles").to_owned(),
-            Some(suggest_btn),
-            cx,
-        ))
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(t(lang, "set.sec.subagents.roles.d").to_owned()),
-        )
-        .child(roles_col);
+    let sec_roles = section_card(
+        t(lang, "set.sec.subagents.roles").to_owned(),
+        Some(suggest_btn),
+        roles_rows,
+        cx,
+    );
 
-    v_col().gap(px(22.0)).child(sec_kinds).child(sec_roles)
+    v_col()
+        .w_full()
+        .gap(px(20.0))
+        .child(sec_kinds)
+        .child(sec_roles)
 }

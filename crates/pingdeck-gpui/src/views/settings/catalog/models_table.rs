@@ -8,7 +8,7 @@ use pingdeck_desktop::core::model::model_catalog::{CatalogSource, ModelCatalogRo
 
 use crate::ui::{
     Disableable as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary,
-    card, filter_chip, h_row, palette, search_input, section_header, status_indicator, to_hsla,
+    filter_chip, h_row, palette, search_input, settings_section_flush, status_indicator, to_hsla,
     v_col,
 };
 
@@ -17,6 +17,29 @@ use super::filters::{
     render_kind_filter, render_mode_filter, render_publisher_filter, render_source_filter,
 };
 use super::format::{format_effective_price, format_row_prices, format_tokens};
+
+fn th_bar(cx: &gpui_kit::App) -> gpui_kit::Div {
+    let p = palette(cx);
+    h_row()
+        .px(px(14.0))
+        .py(px(8.0))
+        .gap(px(10.0))
+        .bg(to_hsla(p.pane))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .text_xs()
+        .font_weight(gpui_kit::FontWeight::MEDIUM)
+        .text_color(to_hsla(p.muted))
+}
+
+fn th_col(width: f32, right: bool, zh: bool, z: &'static str, e: &'static str) -> gpui_kit::Div {
+    let label = if zh { z } else { e };
+    if right {
+        div().w(px(width)).flex().justify_end().child(label)
+    } else {
+        div().w(px(width)).child(label)
+    }
+}
 
 pub fn render_models_section(
     view: &CatalogSettingsView,
@@ -120,48 +143,18 @@ pub fn render_models_section(
                 .child(SharedString::from(count_text)),
         );
 
-    let thead =
-        h_row()
-            .px(px(14.0))
-            .py(px(8.0))
-            .gap(px(10.0))
-            .bg(to_hsla(p.pane))
-            .border_b_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .text_xs()
-            .font_weight(gpui_kit::FontWeight::MEDIUM)
-            .text_color(to_hsla(p.muted))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(210.0))
-                    .child(if zh { "模型" } else { "Model" }),
-            )
-            .child(div().w(px(108.0)).child(if zh {
-                "上下文 / 输出"
-            } else {
-                "Context / Out"
-            }))
-            .child(div().w(px(82.0)).flex().justify_end().child(if zh {
-                "输入 / 1M"
-            } else {
-                "Input / 1M"
-            }))
-            .child(div().w(px(82.0)).flex().justify_end().child(if zh {
-                "输出 / 1M"
-            } else {
-                "Output / 1M"
-            }))
-            .child(div().w(px(110.0)).flex().justify_end().child(if zh {
-                "缓存 读 / 写"
-            } else {
-                "Cache R / W"
-            }))
-            .child(div().w(px(88.0)).flex().justify_end().child(if zh {
-                "计价"
-            } else {
-                "Pricing"
-            }));
+    let thead = th_bar(cx)
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(210.0))
+                .child(if zh { "模型" } else { "Model" }),
+        )
+        .child(th_col(108.0, false, zh, "上下文 / 输出", "Context / Out"))
+        .child(th_col(82.0, true, zh, "输入 / 1M", "Input / 1M"))
+        .child(th_col(82.0, true, zh, "输出 / 1M", "Output / 1M"))
+        .child(th_col(110.0, true, zh, "缓存 读 / 写", "Cache R / W"))
+        .child(th_col(88.0, true, zh, "计价", "Pricing"));
 
     let mut tbody = v_col();
     if view.loading_page && shown == 0 {
@@ -229,12 +222,25 @@ pub fn render_models_section(
         }
     }
 
-    let mut table_card = card(cx).overflow_hidden().child(thead).child(tbody);
+    let mut table_body = v_col()
+        .w_full()
+        .child(
+            v_col()
+                .w_full()
+                .p(px(14.0))
+                .gap(px(10.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
+                .child(toolbar_top)
+                .child(toolbar_filters),
+        )
+        .child(thead)
+        .child(tbody);
 
     if total > shown {
         let remaining = total - shown;
         let step = remaining.min(80);
-        table_card = table_card.child(
+        table_body = table_body.child(
             h_row()
                 .justify_center()
                 .py(px(10.0))
@@ -266,12 +272,15 @@ pub fn render_models_section(
     }
 
     v_col()
+        .w_full()
         .gap(px(8.0))
-        .child(section_header(if zh { "模型" } else { "Models" }, None, cx))
-        .child(toolbar_top)
-        .child(toolbar_filters)
-        .child(table_card)
-        .child(div().text_xs().text_color(to_hsla(p.faint)).child(if zh {
+        .child(settings_section_flush(
+            if zh { "模型目录" } else { "Models" },
+            None,
+            table_body,
+            cx,
+        ))
+        .child(div().px(px(4.0)).text_xs().text_color(to_hsla(p.faint)).child(if zh {
             "价格按每百万 token 计，币种见各行；固定价格按每次成功请求计。不同币种的金额不会相加或换算。点击任意行可编辑价格、查看各分发商报价与配置服务商覆盖。"
         } else {
             "Prices are per 1M tokens in each row's currency; fixed prices apply per successful request. Currencies are never mixed or converted. Click any row to edit pricing or provider overrides."
@@ -452,37 +461,15 @@ pub fn render_unlisted_section(
     let p = palette(cx);
     let count = view.unlisted.len();
 
-    let thead =
-        h_row()
-            .px(px(14.0))
-            .py(px(8.0))
-            .gap(px(10.0))
-            .bg(to_hsla(p.pane))
-            .border_b_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .text_xs()
-            .font_weight(gpui_kit::FontWeight::MEDIUM)
-            .text_color(to_hsla(p.muted))
-            .child(
-                div()
-                    .w(px(180.0))
-                    .child(if zh { "你的服务商" } else { "Provider" }),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .child(if zh { "模型 ID" } else { "Model ID" }),
-            )
-            .child(
-                div()
-                    .w(px(150.0))
-                    .child(if zh { "当前价格" } else { "Price" }),
-            )
-            .child(div().w(px(120.0)).flex().justify_end().child(if zh {
-                "操作"
-            } else {
-                "Action"
-            }));
+    let thead = th_bar(cx)
+        .child(th_col(180.0, false, zh, "你的服务商", "Provider"))
+        .child(
+            div()
+                .flex_1()
+                .child(if zh { "模型 ID" } else { "Model ID" }),
+        )
+        .child(th_col(150.0, false, zh, "当前价格", "Price"))
+        .child(th_col(120.0, true, zh, "操作", "Action"));
 
     let mut tbody = v_col();
     for (idx, item) in view.unlisted.iter().enumerate() {
@@ -575,20 +562,21 @@ pub fn render_unlisted_section(
     }
 
     v_col()
+        .w_full()
         .gap(px(8.0))
-        .child(section_header(
+        .child(settings_section_flush(
             if zh {
                 format!("未收录的模型（{count}）")
             } else {
                 format!("Unlisted models ({count})")
             },
             None,
+            v_col().w_full().child(thead).child(tbody),
             cx,
         ))
-        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
+        .child(div().px(px(4.0)).text_xs().text_color(to_hsla(p.muted)).child(if zh {
             "你的服务商提供、目录里还没有的模型；点击行可关联到目录模型或单独定价。"
         } else {
             "Models your providers serve that are not in the catalog; click a row to match to a catalog model or set a price."
         }))
-        .child(card(cx).overflow_hidden().child(thead).child(tbody))
 }

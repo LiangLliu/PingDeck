@@ -174,14 +174,15 @@ pub fn pane_box(cx: &App) -> Div {
         .border_color(to_hsla(p.line.composite_over(p.pane)))
 }
 
-/// Section header label (12px semibold muted).
+/// Quiet structural group / section heading label (11px medium faint) clearly subordinate to
+/// interactive 13px nav/list items beneath it across all 16 OKLCH palettes.
 #[must_use]
 pub fn section_heading(text: impl Into<SharedString>, cx: &App) -> Div {
     let p = palette(cx);
     div()
-        .text_xs()
-        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-        .text_color(to_hsla(p.muted))
+        .text_size(px(11.0))
+        .font_weight(gpui_kit::FontWeight::MEDIUM)
+        .text_color(to_hsla(p.faint))
         .child(text.into())
 }
 
@@ -281,7 +282,7 @@ pub fn field_row(
     let p = palette(cx);
     let mut left = v_col().flex_1().min_w_0().gap(px(2.0)).child(
         div()
-            .text_sm()
+            .text_size(px(13.0))
             .font_weight(gpui_kit::FontWeight::MEDIUM)
             .text_color(to_hsla(p.ink))
             .child(label.into()),
@@ -340,7 +341,7 @@ pub fn list_row(
         row = row
             .bg(active_bg)
             .text_color(to_hsla(p.ink))
-            .font_weight(gpui_kit::FontWeight::MEDIUM)
+            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
             .child(
                 div()
                     .absolute()

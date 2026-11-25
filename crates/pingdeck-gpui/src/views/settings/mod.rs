@@ -11,6 +11,7 @@ pub mod appearance;
 pub mod catalog;
 mod dispatch;
 pub mod modals;
+mod nav;
 pub mod page_advanced;
 pub mod page_data;
 pub mod page_general;
@@ -25,8 +26,8 @@ pub mod state_inputs;
 use std::cell::Cell;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Subscription, Task, Window, div, px,
+    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+    Subscription, Task, Window, div, px,
 };
 use pingdeck_desktop::core::agent::mcp::AgentMcpServerView;
 use pingdeck_desktop::core::app::{
@@ -45,12 +46,11 @@ use pingdeck_desktop::theme::PaletteId;
 
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::{
-    InputEvent, InputState, ScrollableElement as _, SliderEvent, StatusShape, Tone, UiIcon, badge,
-    btn_secondary, dismissible_banner, empty_inline, h_row, icon_xs, list_row, palette,
-    search_input, status_indicator, to_hsla, v_col,
+    InputEvent, InputState, ScrollableElement as _, SliderEvent, StatusShape, Tone, UiIcon,
+    btn_secondary, dismissible_banner, h_row, icon_xs, palette, status_indicator, to_hsla, v_col,
 };
 
-use state_inputs::{ProxyModeChoice, SettingsInputs, SettingsModal, section_matches_query};
+use state_inputs::{ProxyModeChoice, SettingsInputs, SettingsModal};
 
 pub struct SettingsView {
     pub active: SettingsSection,
@@ -83,9 +83,9 @@ pub struct SettingsView {
     pub(crate) about_view: Option<Entity<about::AboutSettingsView>>,
     pub(crate) agent_view: Option<Entity<agent::AgentSettingsView>>,
     pub(crate) catalog_view: Option<Entity<catalog::CatalogSettingsView>>,
-    search_input: Entity<InputState>,
+    pub(super) search_input: Entity<InputState>,
     pending_palette: Cell<Option<PaletteId>>,
-    pending_back: Cell<bool>,
+    pub(super) pending_back: Cell<bool>,
     pending_navigate: Cell<Option<NavModule>>,
     _subscriptions: Vec<Subscription>,
     _tasks: Vec<Task<()>>,
@@ -295,170 +295,32 @@ impl Render for SettingsView {
 
         let p = palette(cx);
         let zh = self.settings.general.language == Language::ZhCn;
-        let query = self.search_input.read(cx).value().trim().to_lowercase();
-
-        let mcp_attn = self
-            .agent_view
-            .as_ref()
-            .map(|v| v.read(cx).mcp_attention_count())
-            .unwrap_or_else(|| agent::count_mcp_attention(&self.mcp_servers));
-
-        let mut nav = v_col()
-            .flex_1()
-            .gap(px(2.0))
-            .p(px(10.0))
-            .overflow_y_scrollbar();
-
-        let mut nav_hits = 0usize;
-        for group in SettingsGroup::ALL {
-            let matching: Vec<SettingsSection> = SettingsSection::ALL
-                .into_iter()
-                .filter(|s| s.group() == group && section_matches_query(*s, &query))
-                .collect();
-            if matching.is_empty() {
-                continue;
-            }
-            nav_hits += matching.len();
-            let (gz, ge) = group.label_pair();
-            nav = nav.child(
-                h_row()
-                    .justify_between()
-                    .px(px(10.0))
-                    .pt(px(12.0))
-                    .pb(px(3.0))
-                    .text_size(px(11.0))
-                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                    .text_color(to_hsla(p.faint))
-                    .child(if zh { gz } else { ge })
-                    .child(SharedString::from(matching.len().to_string())),
-            );
-            for sec in matching {
-                let (zl, el) = sec.label_pair();
-                let show_mcp_warn = sec == SettingsSection::Mcp && mcp_attn > 0;
-                nav = nav.child(
-                    list_row(
-                        SharedString::from(format!("set-nav-{el}")),
-                        self.active == sec,
-                        cx,
-                        cx.listener(move |this, _, _, cx| {
-                            this.set_section(sec, cx);
-                        }),
-                    )
-                    .justify_between()
-                    .child(div().text_xs().child(if zh { zl } else { el }))
-                    .children(show_mcp_warn.then(|| {
-                        h_row()
-                            .gap(px(4.0))
-                            .text_size(px(10.5))
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .text_color(to_hsla(p.warn))
-                            .child(status_indicator(StatusShape::Warn, cx))
-                            .child(if zh { "需要处理" } else { "Attention" })
-                    })),
-                );
-            }
-        }
-
-        if nav_hits == 0 {
-            nav = nav.child(empty_inline(
-                if zh {
-                    "没有匹配的设置项"
-                } else {
-                    "No matching settings"
-                },
-                Some(SharedString::from(if zh {
-                    "尝试搜索：代理、超时、备份、快捷键、MCP"
-                } else {
-                    "Try: proxy, timeout, backup, shortcuts, MCP"
-                })),
-                Some(
-                    btn_secondary("set-nav-clear", if zh { "清除搜索" } else { "Clear" })
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.search_input
-                                .update(cx, |i, cx| i.set_value("", window, cx));
-                            cx.notify();
-                        }))
-                        .into_any_element(),
-                ),
-                cx,
-            ));
-        }
-
-        let left = v_col()
-            .w(px(230.0))
-            .h_full()
-            .bg(to_hsla(p.pane))
-            .border_r_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)))
-            .child(
-                h_row()
-                    .w_full()
-                    .h(px(44.0))
-                    .flex_shrink_0()
-                    .px(px(10.0))
-                    .border_b_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .child(
-                        list_row(
-                            "settings-back",
-                            false,
-                            cx,
-                            cx.listener(|this, _, _, cx| {
-                                this.pending_back.set(true);
-                                cx.notify();
-                            }),
-                        )
-                        .w_full()
-                        .justify_between()
-                        .gap(px(6.0))
-                        .text_color(to_hsla(p.ink_2))
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(icon_xs(UiIcon::ArrowLeft))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                        .child(if zh { "返回工作区" } else { "Back" }),
-                                ),
-                        )
-                        .child(badge(
-                            if zh {
-                                format!("{} 页", SettingsSection::ALL.len())
-                            } else {
-                                format!("{} pages", SettingsSection::ALL.len())
-                            },
-                            Tone::Neutral,
-                            cx,
-                        )),
-                    ),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .px(px(10.0))
-                    .pt(px(8.0))
-                    .pb(px(6.0))
-                    .border_b_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .child(search_input(&self.search_input, cx)),
-            )
-            .child(nav);
+        let left = nav::render_settings_sidebar(self, zh, cx);
 
         let (gz, ge) = self.active.group().label_pair();
         let (sz, se) = self.active.label_pair();
-        let breadcrumb = if zh {
-            if gz == sz {
-                sz.to_owned()
-            } else {
-                format!("{gz}  ›  {sz}")
-            }
-        } else if ge == se {
-            se.to_owned()
-        } else {
-            format!("{ge}  ›  {se}")
-        };
+        let group_lbl = if zh { gz } else { ge };
+        let page_lbl = if zh { sz } else { se };
+        let show_group_crumb = group_lbl != page_lbl;
+        let page_sub = dispatch::page_subtitle(self.active, zh);
+
+        let breadcrumb_row = h_row()
+            .gap(px(6.0))
+            .children(show_group_crumb.then(|| {
+                h_row()
+                    .gap(px(6.0))
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(group_lbl)
+                    .child("›")
+            }))
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .text_color(to_hsla(p.ink))
+                    .child(page_lbl),
+            );
 
         let status_pill = (self.active != SettingsSection::About).then(|| {
             let (bg, border, fg, icon_el, text) = if self.last_save_error {
@@ -522,25 +384,42 @@ impl Render for SettingsView {
                 }))
         });
 
+        let page_hero = (self.active != SettingsSection::About).then(|| {
+            v_col()
+                .w_full()
+                .gap(px(3.0))
+                .px(px(2.0))
+                .pb(px(16.0))
+                .child(
+                    div()
+                        .text_size(px(18.0))
+                        .font_weight(gpui_kit::FontWeight::BOLD)
+                        .text_color(to_hsla(p.ink))
+                        .child(page_lbl),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(to_hsla(p.muted))
+                        .child(page_sub),
+                )
+        });
+
         let right = v_col()
             .flex_1()
             .h_full()
             .min_w_0()
-            .bg(to_hsla(p.surface))
+            .bg(to_hsla(p.pane))
             .child(
                 h_row()
                     .h(px(44.0))
                     .flex_shrink_0()
                     .justify_between()
-                    .px(px(20.0))
+                    .px(px(24.0))
+                    .bg(to_hsla(p.surface))
                     .border_b_1()
                     .border_color(to_hsla(p.line.composite_over(p.surface)))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .child(SharedString::from(breadcrumb)),
-                    )
+                    .child(breadcrumb_row)
                     .children(status_pill),
             )
             .child(
@@ -549,12 +428,14 @@ impl Render for SettingsView {
                     .min_h_0()
                     .w_full()
                     .px(px(24.0))
-                    .py(px(18.0))
+                    .pt(px(18.0))
+                    .pb(px(36.0))
                     .overflow_y_scrollbar()
                     .child(
                         v_col()
                             .w_full()
                             .children(flash_banner)
+                            .children(page_hero)
                             .child(div().w_full().child(page_body)),
                     ),
             );

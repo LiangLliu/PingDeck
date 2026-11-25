@@ -7,10 +7,10 @@ use pingdeck_desktop::core::app::{RuleInactive, SandboxSelftest, current_time_ms
 use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::{t, t_args};
 
-use crate::ui::{StatusShape, Tone, badge, btn_danger, card, h_row, palette, to_hsla, v_col};
+use crate::ui::{StatusShape, Tone, badge, btn_danger, h_row, palette, to_hsla, v_col};
 
 use super::AgentSettingsView;
-use super::widgets::{format_ago_short, section_head};
+use super::widgets::{format_ago_short, section_card_flush, section_card_padded};
 
 pub(super) fn render_remembered_rules(
     view: &AgentSettingsView,
@@ -20,21 +20,27 @@ pub(super) fn render_remembered_rules(
 ) -> gpui_kit::Div {
     let p = palette(cx);
     let now_ms = current_time_ms();
-    let header = section_head(t(lang, "set.sec.permissions.rules").to_owned(), None, cx);
+    let title = t(lang, "set.sec.permissions.rules").to_owned();
     let desc = div()
+        .px(px(4.0))
         .text_xs()
         .text_color(to_hsla(p.muted))
         .child(t(lang, "set.sec.permissions.rules.d").to_owned());
 
     if view.permission_rules.is_empty() {
-        return v_col().gap(px(8.0)).child(header).child(desc).child(
-            card(cx).p(px(14.0)).child(
+        return v_col()
+            .w_full()
+            .gap(px(7.0))
+            .child(section_card_padded(
+                title,
+                None,
                 div()
                     .text_xs()
                     .text_color(to_hsla(p.muted))
                     .child(t(lang, "set.tools.rules.none").to_owned()),
-            ),
-        );
+                cx,
+            ))
+            .child(desc);
     }
 
     let mut list = v_col();
@@ -126,10 +132,10 @@ pub(super) fn render_remembered_rules(
     }
 
     v_col()
-        .gap(px(8.0))
-        .child(header)
+        .w_full()
+        .gap(px(7.0))
+        .child(section_card_flush(title, None, list, cx))
         .child(desc)
-        .child(card(cx).overflow_hidden().child(list))
 }
 
 pub(super) fn format_sandbox_row(

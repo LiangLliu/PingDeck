@@ -6,7 +6,7 @@ use pingdeck_desktop::core::model::settings::{
 };
 
 use crate::ui::{
-    Disableable as _, UiIcon, btn_ghost, icon_xs, section_header, setting_row, tab_bar_segmented,
+    Disableable as _, UiIcon, btn_ghost, icon_xs, setting_row, settings_section, tab_bar_segmented,
     tab_item, toggle_switch, v_col,
 };
 
@@ -31,24 +31,18 @@ pub fn render_general(
     v_col()
         .w_full()
         .gap(px(20.0))
-        .child(
+        .child(settings_section(
+            if zh { "语言与启动" } else { "Language & Startup" },
+            Some(
+                btn_ghost("gen-reset-sec", if zh { "恢复默认" } else { "Reset" })
+                    .icon(icon_xs(UiIcon::RotateCcw))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.reset_section(CoreSection::General, cx);
+                    }))
+                    .into_any_element(),
+            ),
             v_col()
                 .w_full()
-                .child(section_header(
-                    if zh { "语言与启动" } else { "Language & Startup" },
-                    Some(
-                        btn_ghost(
-                            "gen-reset-sec",
-                            if zh { "恢复默认" } else { "Reset" },
-                        )
-                        .icon(icon_xs(UiIcon::RotateCcw))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.reset_section(CoreSection::General, cx);
-                        }))
-                        .into_any_element(),
-                    ),
-                    cx,
-                ))
                 .child(setting_row(
                     if zh { "界面语言" } else { "Interface language" },
                     None,
@@ -111,15 +105,13 @@ pub fn render_general(
                     ),
                     cx,
                 )),
-        )
-        .child(
+            cx,
+        ))
+        .child(settings_section(
+            if zh { "后台提醒" } else { "Background Notifications" },
+            None,
             v_col()
                 .w_full()
-                .child(section_header(
-                    if zh { "后台提醒" } else { "Background Notifications" },
-                    None,
-                    cx,
-                ))
                 .child(setting_row(
                     if zh { "失焦时发送系统通知" } else { "Notify when window is unfocused" },
                     None,
@@ -176,5 +168,6 @@ pub fn render_general(
                     ),
                     cx,
                 )),
-        )
+            cx,
+        ))
 }

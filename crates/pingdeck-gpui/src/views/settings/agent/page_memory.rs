@@ -6,12 +6,12 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, card, empty_state, h_row, icon_xs,
-    palette, to_hsla, v_col,
+    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, empty_state, h_row, icon_xs, palette,
+    settings_sub_well, to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
-use super::widgets::{format_ago_short, section_head};
+use super::widgets::{format_ago_short, section_card_flush, section_card_padded};
 
 pub(super) fn render_memory(
     view: &AgentSettingsView,
@@ -33,15 +33,11 @@ pub(super) fn render_memory(
     .on_click(cx.listener(|this, _, _, cx| this.pick_and_trust_folder(cx)))
     .into_any_element();
 
-    let header = section_head(
-        if zh {
-            "已信任的项目目录"
-        } else {
-            "Trusted project folders"
-        },
-        Some(add_btn),
-        cx,
-    );
+    let title = if zh {
+        "已信任的项目目录"
+    } else {
+        "Trusted project folders"
+    };
 
     let intro = div()
         .text_xs()
@@ -49,17 +45,22 @@ pub(super) fn render_memory(
         .child(t(lang, "set.sec.memory.trusted.d").to_owned());
 
     if view.trusted_folders.is_empty() {
-        return v_col().gap(px(12.0)).child(header).child(intro).child(
-            card(cx).h(px(180.0)).child(empty_state(
-                UiIcon::ShieldCheck,
-                if zh {
-                    "还没有信任的项目目录"
-                } else {
-                    "No trusted folders yet"
-                },
-                t(lang, "set.agent.trusted.empty").to_owned(),
-                cx,
-            )),
+        return section_card_padded(
+            title,
+            Some(add_btn),
+            v_col().w_full().gap(px(12.0)).child(intro).child(
+                settings_sub_well(cx).h(px(176.0)).child(empty_state(
+                    UiIcon::ShieldCheck,
+                    if zh {
+                        "还没有信任的项目目录"
+                    } else {
+                        "No trusted folders yet"
+                    },
+                    t(lang, "set.agent.trusted.empty").to_owned(),
+                    cx,
+                )),
+            ),
+            cx,
         );
     }
 
@@ -243,8 +244,8 @@ pub(super) fn render_memory(
     }
 
     v_col()
-        .gap(px(12.0))
-        .child(header)
-        .child(intro)
-        .child(card(cx).overflow_hidden().child(rows))
+        .w_full()
+        .gap(px(8.0))
+        .child(section_card_flush(title, Some(add_btn), rows, cx))
+        .child(div().px(px(4.0)).child(intro))
 }

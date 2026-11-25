@@ -11,8 +11,9 @@ use pingdeck_desktop::core::model::settings::{
 use pingdeck_desktop::theme::{PaletteId, resolve_palette};
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_ghost, card, h_row, icon_xs, palette, section_header, setting_row,
-    slider, tab_bar_segmented, tab_item, to_hsla, v_col,
+    Tone, UiIcon, badge, btn_ghost, h_row, icon_xs, palette, setting_row, settings_section,
+    settings_section_padded, settings_sub_well, slider, tab_bar_segmented, tab_item, to_hsla,
+    v_col,
 };
 
 use super::SettingsView;
@@ -57,24 +58,18 @@ pub fn render_appearance(
     v_col()
         .w_full()
         .gap(px(20.0))
-        .child(
+        .child(settings_section(
+            if zh { "外观与排版" } else { "Theme & Typography" },
+            Some(
+                btn_ghost("app-reset-sec", if zh { "恢复默认" } else { "Reset" })
+                    .icon(icon_xs(UiIcon::RotateCcw))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.reset_section(CoreSection::Appearance, cx);
+                    }))
+                    .into_any_element(),
+            ),
             v_col()
                 .w_full()
-                .child(section_header(
-                    if zh { "外观与排版" } else { "Theme & Typography" },
-                    Some(
-                        btn_ghost(
-                            "app-reset-sec",
-                            if zh { "恢复默认" } else { "Reset" },
-                        )
-                        .icon(icon_xs(UiIcon::RotateCcw))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.reset_section(CoreSection::Appearance, cx);
-                        }))
-                        .into_any_element(),
-                    ),
-                    cx,
-                ))
                 .child(setting_row(
                     if zh { "色彩模式" } else { "Color mode" },
                     Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
@@ -229,22 +224,18 @@ pub fn render_appearance(
                         }),
                     cx,
                 )),
-        )
-        .child(
-            v_col()
-                .w_full()
-                .gap(px(10.0))
-                .child(section_header(
-                    if zh {
-                        "8 套护眼 OKLCH 色系（单帧零闪烁切换）"
-                    } else {
-                        "8 Eye-Care OKLCH Palettes (Instant Single-Frame Switch)"
-                    },
-                    None,
-                    cx,
-                ))
-                .child(render_palette_grid(view, is_dark, zh, cx)),
-        )
+            cx,
+        ))
+        .child(settings_section_padded(
+            if zh {
+                "8 套护眼 OKLCH 色系（单帧零闪烁切换）"
+            } else {
+                "8 Eye-Care OKLCH Palettes (Instant Single-Frame Switch)"
+            },
+            None,
+            render_palette_grid(view, is_dark, zh, cx),
+            cx,
+        ))
 }
 
 fn render_palette_grid(
@@ -389,7 +380,7 @@ fn render_palette_grid(
                     .min_w(px(140.0))
                     .p(px(8.0))
                     .rounded(px(10.0))
-                    .bg(to_hsla(p.surface))
+                    .bg(to_hsla(if selected { p.accent_soft } else { p.pane }))
                     .border_2()
                     .border_color(border)
                     .cursor_pointer()
@@ -453,71 +444,77 @@ fn render_live_preview(
     } else {
         13.0
     };
-    div().py(px(8.0)).child(
-        card(cx).p(px(pad)).bg(to_hsla(p.pane)).child(
-            v_col()
-                .gap(px(if density == Density::Compact {
-                    6.0
-                } else {
-                    9.0
-                }))
-                .child(
-                    h_row()
-                        .justify_between()
-                        .gap(px(8.0))
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(badge("GET", Tone::Success, cx))
-                                .child(
-                                    div()
-                                        .text_size(px(f32::from(ui_px)))
-                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                        .text_color(to_hsla(p.ink))
-                                        .child("/v1/invoices?status=open"),
-                                ),
-                        )
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(badge("200 OK", Tone::Success, cx))
-                                .child(
-                                    div()
-                                        .text_size(px(11.0))
-                                        .text_color(to_hsla(p.muted))
-                                        .child(if zh {
-                                            "148 ms · 实时预览"
-                                        } else {
-                                            "148 ms · Live preview"
-                                        }),
-                                ),
-                        ),
-                )
-                .child(
-                    h_row()
-                        .w_full()
-                        .h(px(6.0))
-                        .rounded(px(3.0))
-                        .overflow_hidden()
-                        .bg(to_hsla(p.sunken))
-                        .child(div().w(px(38.0)).h_full().bg(to_hsla(p.accent)))
-                        .child(div().w(px(64.0)).h_full().bg(to_hsla(p.ok)))
-                        .child(div().w(px(96.0)).h_full().bg(to_hsla(p.warn))),
-                )
-                .child(
-                    div()
-                        .px(px(10.0))
-                        .py(px(7.0))
-                        .rounded(px(6.0))
-                        .bg(to_hsla(p.surface))
-                        .border_1()
-                        .border_color(to_hsla(p.line.composite_over(p.surface)))
-                        .text_size(px(f32::from(mono_px)))
-                        .text_color(to_hsla(p.ink_2))
-                        .child("{\"id\":\"inv_9f2a\",\"status\":\"open\",\"total_cents\":4200}"),
-                ),
-        ),
-    )
+    div()
+        .py(px(12.0))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(
+            settings_sub_well(cx).p(px(pad)).child(
+                v_col()
+                    .gap(px(if density == Density::Compact {
+                        6.0
+                    } else {
+                        9.0
+                    }))
+                    .child(
+                        h_row()
+                            .justify_between()
+                            .gap(px(8.0))
+                            .child(
+                                h_row()
+                                    .gap(px(6.0))
+                                    .child(badge("GET", Tone::Success, cx))
+                                    .child(
+                                        div()
+                                            .text_size(px(f32::from(ui_px)))
+                                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                            .text_color(to_hsla(p.ink))
+                                            .child("/v1/invoices?status=open"),
+                                    ),
+                            )
+                            .child(
+                                h_row()
+                                    .gap(px(6.0))
+                                    .child(badge("200 OK", Tone::Success, cx))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(to_hsla(p.muted))
+                                            .child(if zh {
+                                                "148 ms · 实时预览"
+                                            } else {
+                                                "148 ms · Live preview"
+                                            }),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        h_row()
+                            .w_full()
+                            .h(px(6.0))
+                            .rounded(px(3.0))
+                            .overflow_hidden()
+                            .bg(to_hsla(p.surface))
+                            .child(div().w(px(38.0)).h_full().bg(to_hsla(p.accent)))
+                            .child(div().w(px(64.0)).h_full().bg(to_hsla(p.ok)))
+                            .child(div().w(px(96.0)).h_full().bg(to_hsla(p.warn))),
+                    )
+                    .child(
+                        div()
+                            .px(px(10.0))
+                            .py(px(7.0))
+                            .rounded(px(6.0))
+                            .bg(to_hsla(p.surface))
+                            .border_1()
+                            .border_color(to_hsla(p.line.composite_over(p.surface)))
+                            .text_size(px(f32::from(mono_px)))
+                            .text_color(to_hsla(p.ink_2))
+                            .child(
+                                "{\"id\":\"inv_9f2a\",\"status\":\"open\",\"total_cents\":4200}",
+                            ),
+                    ),
+            ),
+        )
 }
 
 const fn palette_subtitle(pid: PaletteId, zh: bool) -> &'static str {

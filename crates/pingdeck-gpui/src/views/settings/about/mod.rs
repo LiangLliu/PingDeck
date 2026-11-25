@@ -28,8 +28,7 @@ use pingdeck_desktop::services::clipboard;
 
 use crate::bridge::{runtime, spawn_blocking_into};
 use crate::ui::{
-    Tone, UiIcon, alert_banner, app_icon, badge, btn_ghost, card, h_row, icon_xs, palette, to_hsla,
-    v_col,
+    Tone, UiIcon, alert_banner, app_icon, badge, btn_ghost, h_row, icon_xs, palette, to_hsla, v_col,
 };
 
 pub(super) const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -444,7 +443,14 @@ impl AboutSettingsView {
             )));
         }
 
-        card(cx).p(px(20.0)).child(body)
+        div()
+            .w_full()
+            .p(px(20.0))
+            .rounded(px(10.0))
+            .bg(to_hsla(p.surface))
+            .border_1()
+            .border_color(to_hsla(p.line_strong.composite_over(p.pane)))
+            .child(body)
     }
 }
 

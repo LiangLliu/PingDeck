@@ -13,8 +13,8 @@ use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
     Anchor, InputState, Popover, ScrollableElement as _, StatusShape, Tone, UiIcon,
-    dismissible_banner, h_row, icon_xs, list_row, number_field, palette, popover, section_header,
-    select_pill, setting_row, to_hsla, v_col,
+    dismissible_banner, h_row, icon_xs, list_row, number_field, palette, popover, select_pill,
+    setting_row, settings_section, settings_section_flush, settings_section_padded, to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
@@ -81,13 +81,34 @@ pub fn display_model_ref(raw: &str, providers: &[ProviderView]) -> String {
     raw.to_owned()
 }
 
-/// Prototype `.set-section-head`: delegates to unified `crate::ui::section_header`.
-pub fn section_head(
+/// Grouped inset Settings card with outside eyebrow header: delegates to `crate::ui::settings_section`.
+pub fn section_card(
     title: impl Into<SharedString>,
     right: Option<gpui_kit::AnyElement>,
+    body: impl IntoElement,
     cx: &App,
 ) -> gpui_kit::Div {
-    section_header(title, right, cx)
+    settings_section(title, right, body, cx)
+}
+
+/// Padded grouped Settings card for rich non-row bodies: delegates to `crate::ui::settings_section_padded`.
+pub fn section_card_padded(
+    title: impl Into<SharedString>,
+    right: Option<gpui_kit::AnyElement>,
+    body: impl IntoElement,
+    cx: &App,
+) -> gpui_kit::Div {
+    settings_section_padded(title, right, body, cx)
+}
+
+/// Edge-to-edge grouped Settings card for tables & list panels: delegates to `crate::ui::settings_section_flush`.
+pub fn section_card_flush(
+    title: impl Into<SharedString>,
+    right: Option<gpui_kit::AnyElement>,
+    body: impl IntoElement,
+    cx: &App,
+) -> gpui_kit::Div {
+    settings_section_flush(title, right, body, cx)
 }
 
 /// Prototype `.set-row`: delegates to unified `crate::ui::setting_row`.

@@ -6,7 +6,7 @@ window.PD = window.PD || {};
   const seg = (opts, idx = 0) => `<div class="seg">${opts.map((o, i) => `<button type="button" class="${i === idx ? "active" : ""}" data-action="seg-pick">${o}</button>`).join("")}</div>`;
   const num = (v, unit = "") => `<div class="input-box" style="width:128px"><input value="${v}" class="text-right" />${unit ? `<span class="text-muted fs-2xs">${unit}</span>` : ""}</div>`;
   const row = (label, desc, ctl, meta = "") => `<div class="set-row"><div class="set-row-info"><span class="set-row-label">${label}${meta ? `<span class="set-meta-pill">${meta}</span>` : ""}</span>${desc ? `<span class="set-row-desc">${desc}</span>` : ""}</div><div>${ctl}</div></div>`;
-  const sec = (title, body, reset = true) => `<div><div class="set-section-head"><span class="set-section-title">${title}</span>${reset ? `<button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>` : ""}</div>${body}</div>`;
+  const sec = (title, body, reset = true, padded = false) => `<div class="set-section"><div class="set-section-head"><span class="set-section-title">${title}</span>${reset ? `<button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>` : ""}</div><div class="set-card${padded ? " set-card-pad" : ""}">${body}</div></div>`;
 
   window.PD.ui = { sw, seg, num, row, sec };
 
@@ -127,21 +127,21 @@ window.PD = window.PD || {};
     "ai/personalization": {
       group: "智能体", title: "个性化", changed: 0,
       html: () => sec("我的说明（全局指令）", `
-        <p class="set-row-desc" style="margin:10px 0 8px">所有对话共用的一段固定偏好说明（上限 4,000 字符），会作为用户偏好附加在系统提示之后。</p>
+        <p class="set-row-desc">所有对话共用的一段固定偏好说明（上限 4,000 字符），会作为用户偏好附加在系统提示之后。</p>
         <textarea class="code-box w-full" style="height:140px;resize:vertical;outline:none">回答优先使用简洁中文；涉及接口排错时先给出根因定位，再给出最小复现步骤与修改建议。</textarea>
-        <div class="row-between fs-2xs text-muted" style="margin-top:6px"><span>46 / 4000 字符</span><button class="btn btn-sm" data-toast="已保存全局个性化指令">立即保存</button></div>`, false),
+        <div class="row-between fs-2xs text-muted"><span>46 / 4000 字符</span><button class="btn btn-sm" data-toast="已保存全局个性化指令">立即保存</button></div>`, false, true),
     },
     "ai/memory": {
       group: "智能体", title: "项目指令与信任", changed: 0,
       html: () => sec("已信任的项目目录", `
-        <p class="set-row-desc" style="margin:10px 0">PingDeck 仅从已明确信任的目录读取项目指令（AGENTS.md / CLAUDE.md）与项目内技能，不做静默跨项目记忆。</p>
+        <p class="set-row-desc">PingDeck 仅从已明确信任的目录读取项目指令（AGENTS.md / CLAUDE.md）与项目内技能，不做静默跨项目记忆。</p>
         <table class="kv-table">
           <thead><tr><th>目录路径</th><th>读取内容</th><th>授权时间</th><th style="width:92px">操作</th></tr></thead>
           <tbody>
             <tr><td class="mono">~/me/PingDeck</td><td><span class="tag">AGENTS.md</span> <span class="tag">2 项技能</span></td><td class="text-muted">今天 09:10</td><td><button class="btn btn-sm btn-danger" data-toast="已撤销 ~/me/PingDeck 的信任授权" data-toast-tone="warn">撤销信任</button></td></tr>
             <tr><td class="mono">~/work/billing-api</td><td><span class="tag">AGENTS.md</span></td><td class="text-muted">3 天前</td><td><button class="btn btn-sm btn-danger" data-toast="已撤销 ~/work/billing-api 的信任授权" data-toast-tone="warn">撤销信任</button></td></tr>
           </tbody>
-        </table>`, false),
+        </table>`, false, true),
     },
     "ai/subagents": {
       group: "智能体", title: "子智能体", changed: 0,
@@ -157,7 +157,7 @@ window.PD = window.PD || {};
       group: "智能体", title: "工具", changed: 0,
       html: () => [
         sec("内置工具审批策略", `
-          <table class="kv-table" style="margin-top:10px">
+          <table class="kv-table">
             <thead><tr><th>工具</th><th>用途说明</th><th style="width:150px">默认策略</th></tr></thead>
             <tbody>
               <tr><td class="mono">read_file / grep</td><td>读取与搜索工作区文件</td><td><button class="select-pill" data-toast="策略可选：跟随模式 / 总是允许 / 总是询问 / 禁止">跟随模式 ▾</button></td></tr>
@@ -165,7 +165,7 @@ window.PD = window.PD || {};
               <tr><td class="mono">shell</td><td>在 OS 沙箱内执行终端命令</td><td><button class="select-pill" data-toast="shell 默认策略：总是询问">总是询问 ▾</button></td></tr>
               <tr><td class="mono">send_request</td><td>执行工作区 HTTP 请求（受生产环境确认约束）</td><td><button class="select-pill" data-toast="send_request 默认策略：跟随模式">跟随模式 ▾</button></td></tr>
             </tbody>
-          </table>`, false),
+          </table>`, false, true),
         sec("联网搜索", row("搜索后端", "配置 web_search 工具的检索提供方。", `<button class="select-pill" data-toast="当前搜索后端：DuckDuckGo / 本地配置">DuckDuckGo / 本地配置 ▾</button>`)),
       ].join(""),
     },
@@ -173,7 +173,7 @@ window.PD = window.PD || {};
       group: "智能体", title: "权限", changed: 0,
       html: () => [
         sec("固定权限评估顺序（从上到下，命中即止）", `
-          <div class="perm-order">
+          <div class="perm-order" style="margin-top:0">
             <div class="perm-step"><span class="perm-ix">1</span><b>硬阻止</b><span class="text-muted">敏感系统路径、越界写入等不可覆盖的安全底线</span><span class="tag">内置</span></div>
             <div class="perm-step"><span class="perm-ix">2</span><b>工具禁止</b><span class="text-muted">在「工具」页显式设为禁止的内置或 MCP 工具</span><span class="tag">0 条</span></div>
             <div class="perm-step"><span class="perm-ix">3</span><b>强制询问</b><span class="text-muted">跨工作区操作、危险命令模式与越权请求</span><span class="tag">内置</span></div>
@@ -181,7 +181,7 @@ window.PD = window.PD || {};
             <div class="perm-step"><span class="perm-ix">5</span><b>单工具允许</b><span class="text-muted">在「工具」页显式设为总是允许的工具</span><span class="tag">1 条</span></div>
             <div class="perm-step"><span class="perm-ix">6</span><b>模式默认</b><span class="text-muted">按对话当前权限模式决定（当前默认：自动批准只读）</span><span class="text-faint">—</span></div>
           </div>
-          <p class="set-row-desc" style="margin-top:6px">完全权限（Full access）不降低前 3 层防护，也不会关闭 OS 沙箱。</p>`, false),
+          <p class="set-row-desc">完全权限（Full access）不降低前 3 层防护，也不会关闭 OS 沙箱。</p>`, false, true),
         sec("默认权限与沙箱", [
           row("新对话默认权限模式", "可在单个对话底部模式芯片临时切换。", seg(["每次询问", "自动批准只读"], 1)),
           row("无人应答审批超时", "超时后自动标记为超时未运行（不记作拒绝）。", num("600", "秒")),
@@ -192,7 +192,7 @@ window.PD = window.PD || {};
     "ai/mcp": {
       group: "智能体", title: "MCP 服务器", changed: 0,
       html: () => sec("外部工具服务器", `
-        <div class="row-center" style="margin:10px 0"><button class="btn btn-sm btn-primary" data-modal="add-mcp">+ 添加 MCP 服务器</button><button class="btn btn-sm" data-modal="mcp-json">编辑 JSON…</button></div>
+        <div class="row-center"><button class="btn btn-sm btn-primary" data-modal="add-mcp">+ 添加 MCP 服务器</button><button class="btn btn-sm" data-modal="mcp-json">编辑 JSON…</button></div>
         <table class="kv-table">
           <thead><tr><th>服务器</th><th>传输</th><th>状态</th><th style="width:90px">启用</th></tr></thead>
           <tbody>
@@ -200,12 +200,12 @@ window.PD = window.PD || {};
             <tr><td><b>filesystem</b></td><td class="mono">stdio</td><td><span class="tag tag-ok">● 已连接 · 8 个工具</span></td><td>${sw(true)}</td></tr>
             <tr><td><b>linear</b></td><td class="mono">HTTP</td><td><span class="tag">已停用</span></td><td>${sw(false)}</td></tr>
           </tbody>
-        </table>`, false),
+        </table>`, false, true),
     },
     "ai/skills": {
       group: "智能体", title: "技能", changed: 0,
       html: () => sec("技能目录与已发现技能", `
-        <div class="row-center" style="margin:10px 0">
+        <div class="row-center">
           <button class="btn btn-sm" data-toast="重新扫描完成：发现 2 项有效技能">重新扫描</button>
           <button class="btn btn-sm btn-primary" data-toast="已打开目录选择器以添加技能目录">+ 添加目录</button>
           <button class="btn btn-sm" data-modal="import-export">导入技能…</button>
@@ -216,7 +216,7 @@ window.PD = window.PD || {};
             <tr><td><b>api-contract-audit</b></td><td class="mono">~/.pingdeck/skills</td><td><span class="tag mono">/api-contract-audit</span></td></tr>
             <tr><td><b>sql-migration-review</b></td><td class="mono">~/me/PingDeck/.skills</td><td><span class="tag">项目信任目录</span></td></tr>
           </tbody>
-        </table>`, false),
+        </table>`, false, true),
     },
     "ai/routing": {
       group: "模型", title: "重试与故障转移", changed: 0,
@@ -231,7 +231,7 @@ window.PD = window.PD || {};
       html: () => [
         sec("同步", row("models.dev · 内置快照", "524个模型、937条报价，自建0个（离线时继续使用本地缓存）。", `<div class="row-center"><span class="fs-xs text-muted">自动同步</span>${sw(false)}<button class="btn btn-sm" data-toast="已从 models.dev 同步完成">立即同步</button></div>`), false),
         sec("模型", `
-          <div class="row-between" style="margin:10px 0"><div class="input-box sunken" style="width:260px"><input data-filter-rows="#catalog-rows tr" placeholder="按名称、ID、厂商或分发商搜索…" /></div><button class="btn btn-sm btn-primary" data-drawer="catalog-model">+ 新增自定义模型</button></div>
+          <div class="row-between"><div class="input-box sunken" style="width:260px"><input data-filter-rows="#catalog-rows tr" placeholder="按名称、ID、厂商或分发商搜索…" /></div><button class="btn btn-sm btn-primary" data-drawer="catalog-model">+ 新增自定义模型</button></div>
           <table class="kv-table">
             <thead><tr><th>模型</th><th>上下文</th><th class="text-right">输入 / 1M</th><th class="text-right">输出 / 1M</th></tr></thead>
             <tbody id="catalog-rows">
@@ -240,16 +240,16 @@ window.PD = window.PD || {};
               <tr class="clickable" data-drawer="catalog-model"><td class="mono text-accent">deepseek-v4-flash</td><td class="mono">128K</td><td class="mono text-right">¥0.50</td><td class="mono text-right">¥2.00</td></tr>
               <tr class="clickable" data-drawer="catalog-model"><td class="mono text-accent">kimi-k2.6</td><td class="mono">256K</td><td class="mono text-right">¥4.00</td><td class="mono text-right">¥16.00</td></tr>
             </tbody>
-          </table>`, false),
+          </table>`, false, true),
         sec("未收录的模型", `
-          <p class="set-row-desc" style="margin:6px 0 8px">你的服务商提供、但目录里还没有的 2 个模型；点击行可关联到目录模型或单独定价。</p>
+          <p class="set-row-desc">你的服务商提供、但目录里还没有的 2 个模型；点击行可关联到目录模型或单独定价。</p>
           <table class="kv-table">
             <thead><tr><th>服务商</th><th>模型 ID</th><th>价格</th><th style="width:68px">操作</th></tr></thead>
             <tbody>
               <tr class="clickable" data-drawer="catalog-unlisted"><td>relay.acme.dev</td><td class="mono text-accent">gemini-4-neon</td><td class="text-muted">无价格</td><td><button class="btn btn-sm" data-drawer="catalog-unlisted">关联…</button></td></tr>
               <tr class="clickable" data-drawer="catalog-unlisted"><td>relay.acme.dev</td><td class="mono text-accent">deepseek-v4-exp</td><td class="text-muted">无价格</td><td><button class="btn btn-sm" data-drawer="catalog-unlisted">关联…</button></td></tr>
             </tbody>
-          </table>`, false),
+          </table>`, false, true),
       ].join(""),
     },
     "ai/usage": {
@@ -278,16 +278,18 @@ window.PD = window.PD || {};
     about: {
       group: "系统", title: "关于", changed: 0,
       html: () => `
-        <div class="row-center" style="gap:14px;padding:6px 0 12px">
-          <div style="width:52px;height:52px;border-radius:14px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:20px">P</div>
-          <div>
-            <div style="font-size:16px;font-weight:600">PingDeck <span class="tag">Desktop</span></div>
-            <div class="fs-xs text-muted">版本 0.1.0 · 本地优先桌面 API 工作台与 AI 网关</div>
-            <div class="fs-2xs text-faint">无账号 · 无云同步 · 无遥测</div>
+        <div class="set-card set-card-pad">
+          <div class="row-center" style="gap:14px">
+            <div style="width:48px;height:48px;border-radius:12px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:19px">P</div>
+            <div>
+              <div style="font-size:16px;font-weight:600">PingDeck <span class="tag">Desktop</span></div>
+              <div class="fs-xs text-muted">版本 0.1.0 · 本地优先桌面 API 工作台与 AI 网关</div>
+              <div class="fs-2xs text-faint">无账号 · 无云同步 · 无遥测</div>
+            </div>
           </div>
         </div>
         ${sec("构建与系统", [
-          row("运行环境", "", `<span class="mono fs-xs">macOS · Tauri 2 + React 19 + Rust 2024</span>`),
+          row("运行环境", "", `<span class="mono fs-xs">macOS · GPUI + Rust 2024</span>`),
           row("诊断信息", "复制脱敏后的系统、版本与数据库健康摘要，用于问题排查。", `<button class="btn btn-sm" data-toast="已复制脱敏诊断摘要到剪贴板">复制诊断信息</button>`),
         ].join(""), false)}`,
     },

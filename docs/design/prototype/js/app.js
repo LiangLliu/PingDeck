@@ -99,7 +99,8 @@
     if (dynEl) {
       dynEl.hidden = def === "appearance";
       if (def !== "appearance") {
-        dynEl.innerHTML = `<p class="set-lede">没有标注的设置立即生效，并随同步文件夹同步。只有例外才标出来。</p>${info.html()}`;
+        const hero = def === "about" ? "" : `<div class="set-page-hero"><h2 class="set-page-title">${info.title}</h2><p class="set-page-sub">更改即时自动保存；仅标注「仅这台电脑」的项目不会随同步文件夹导出。</p></div>`;
+        dynEl.innerHTML = `${hero}${info.html()}`;
       }
     }
   }

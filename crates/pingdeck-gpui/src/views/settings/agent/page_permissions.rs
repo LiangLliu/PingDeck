@@ -9,13 +9,13 @@ use pingdeck_desktop::core::model::settings::{Language, ToolApproval};
 use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_ghost, btn_secondary, card, h_row, icon_xs, palette, status_indicator,
+    Tone, UiIcon, badge, btn_ghost, btn_secondary, h_row, icon_xs, palette, status_indicator,
     tab_bar_segmented, tab_item, text_input, to_hsla, toggle_switch, v_col,
 };
 
 use super::AgentSettingsView;
 use super::page_permissions_rules::{format_sandbox_row, render_remembered_rules};
-use super::widgets::{num_box, section_head, set_row};
+use super::widgets::{num_box, section_card, section_card_flush, set_row};
 
 pub(super) fn render_permissions(
     view: &AgentSettingsView,
@@ -180,19 +180,21 @@ pub(super) fn render_permissions(
     }
 
     let sec_order = v_col()
+        .w_full()
         .gap(px(8.0))
-        .child(section_head(
+        .child(section_card_flush(
             if zh {
                 "固定权限评估顺序（从上到下，命中即止）"
             } else {
                 "Fixed permission evaluation order (top to bottom)"
             },
             None,
+            perm_box,
             cx,
         ))
-        .child(card(cx).overflow_hidden().child(perm_box))
         .child(
             div()
+                .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .child(t(lang, "set.perm.order.full").to_owned()),
@@ -240,169 +242,165 @@ pub(super) fn render_permissions(
             .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx))),
         );
 
-    let reset_perm_btn = btn_ghost(
-        "agent-perm-reset",
-        if zh {
-            "恢复本区默认值"
-        } else {
-            "Restore defaults"
-        },
-    )
-    .on_click(cx.listener(|this, _, window, cx| {
-        this.reset_ai_keys(
-            &[
-                "agent.default_permission_mode",
-                "agent.sandbox_writes_to_workspace",
-                "agent.sandbox_auto_run",
-                "agent.approval_timeout_s",
-                "agent.shell_timeout_s",
-                "agent.blocked_commands",
-                "agent.shell_env_passthrough",
-            ],
-            window,
-            cx,
-        );
-    }))
-    .into_any_element();
+    let reset_perm_btn = btn_ghost("agent-perm-reset", if zh { "恢复默认" } else { "Reset" })
+        .icon(icon_xs(UiIcon::RotateCcw))
+        .on_click(cx.listener(|this, _, window, cx| {
+            this.reset_ai_keys(
+                &[
+                    "agent.default_permission_mode",
+                    "agent.sandbox_writes_to_workspace",
+                    "agent.sandbox_auto_run",
+                    "agent.approval_timeout_s",
+                    "agent.shell_timeout_s",
+                    "agent.blocked_commands",
+                    "agent.shell_env_passthrough",
+                ],
+                window,
+                cx,
+            );
+        }))
+        .into_any_element();
 
-    let sec_defaults = v_col()
-        .child(section_head(
-            if zh {
-                "默认权限与沙箱"
-            } else {
-                "Default permissions & sandbox"
-            },
-            Some(reset_perm_btn),
-            cx,
-        ))
-        .child(set_row(
-            if zh {
-                "新对话默认权限模式"
-            } else {
-                "Default permission mode"
-            },
-            None,
-            Some(SharedString::from(
-                t(lang, "set.f.ai.agent.default_permission_mode.d").to_owned(),
-            )),
-            mode_seg,
-            cx,
-        ))
-        .child(set_row(
-            t(lang, "set.agent.sandbox").to_owned(),
-            None,
-            Some(SharedString::from(sb_detail)),
-            sandbox_ctl,
-            cx,
-        ))
-        .child(set_row(
-            if zh {
-                "将 Shell 写入限制在工作目录内"
-            } else {
-                "Confine shell writes to workspace"
-            },
-            None,
-            Some(SharedString::from(if zh {
-                "开启后由 OS 沙箱禁止 run_shell 修改项目目录之外的文件（推荐保持开启）。"
-            } else {
-                "Uses the OS sandbox to prevent run_shell from writing outside the active workspace (recommended)."
-            })),
-            toggle_switch("agent-sandbox-writes", ag.sandbox_writes_to_workspace).on_change(
-                cx.listener(|this, checked: &bool, _, cx| {
-                    this.patch_ai(
-                        serde_json::json!({ "agent": { "sandbox_writes_to_workspace": *checked } }),
-                        None,
-                        cx,
-                    );
-                }),
-            ),
-            cx,
-        ))
-        .child(set_row(
-            t(lang, "set.f.ai.agent.sandbox_auto_run").to_owned(),
-            Some(SharedString::from(if zh {
-                "仅这台电脑"
-            } else {
-                "Local only"
-            })),
-            Some(SharedString::from(
-                t(lang, "set.f.ai.agent.sandbox_auto_run.d").to_owned(),
-            )),
-            toggle_switch("agent-sandbox-auto", ag.sandbox_auto_run).on_change(cx.listener(
-                |this, checked: &bool, _, cx| {
-                    this.patch_ai(
-                        serde_json::json!({ "agent": { "sandbox_auto_run": *checked } }),
-                        None,
-                        cx,
-                    );
+    let sec_defaults = section_card(
+        if zh {
+            "默认权限与沙箱"
+        } else {
+            "Default permissions & sandbox"
+        },
+        Some(reset_perm_btn),
+        v_col()
+            .w_full()
+            .child(set_row(
+                if zh {
+                    "新对话默认权限模式"
+                } else {
+                    "Default permission mode"
                 },
-            )),
-            cx,
-        ))
-        .child(set_row(
-            if zh {
-                "无人应答审批超时"
-            } else {
-                "Unattended approval timeout"
-            },
-            None,
-            Some(SharedString::from(
-                t(lang, "set.f.ai.agent.approval_timeout_s.d").to_owned(),
-            )),
-            num_box(
-                &view.approval_timeout_input,
-                Some(if zh { "秒" } else { "s" }),
-                84.0,
+                None,
+                Some(SharedString::from(
+                    t(lang, "set.f.ai.agent.default_permission_mode.d").to_owned(),
+                )),
+                mode_seg,
                 cx,
-            ),
-            cx,
-        ))
-        .child(set_row(
-            if zh {
-                "Shell 命令执行超时"
-            } else {
-                "Shell command timeout"
-            },
-            None,
-            Some(SharedString::from(
-                t(lang, "set.f.ai.agent.shell_timeout_s.d").to_owned(),
-            )),
-            num_box(
-                &view.shell_timeout_input,
-                Some(if zh { "秒" } else { "s" }),
-                84.0,
+            ))
+            .child(set_row(
+                t(lang, "set.agent.sandbox").to_owned(),
+                None,
+                Some(SharedString::from(sb_detail)),
+                sandbox_ctl,
                 cx,
-            ),
-            cx,
-        ))
-        .child(render_chip_list_row(
-            t(lang, "set.f.ai.agent.blocked_commands"),
-            t(lang, "set.f.ai.agent.blocked_commands.d"),
-            &ag.blocked_commands,
-            &view.blocked_cmd_input,
-            "blocked-cmd",
-            t(lang, "set.agent.rules.add"),
-            |this, window, cx| this.add_blocked_command(window, cx),
-            |this, item, cx| this.remove_blocked_command(&item, cx),
-            cx,
-        ))
-        .child(render_chip_list_row(
-            t(lang, "set.f.ai.agent.shell_env_passthrough"),
-            t(lang, "set.f.ai.agent.shell_env_passthrough.d"),
-            &ag.shell_env_passthrough,
-            &view.env_pass_input,
-            "env-pass",
-            t(lang, "set.agent.env.add"),
-            |this, window, cx| this.add_shell_env(window, cx),
-            |this, item, cx| this.remove_shell_env(&item, cx),
-            cx,
-        ));
+            ))
+            .child(set_row(
+                if zh {
+                    "将 Shell 写入限制在工作目录内"
+                } else {
+                    "Confine shell writes to workspace"
+                },
+                None,
+                Some(SharedString::from(if zh {
+                    "开启后由 OS 沙箱禁止 run_shell 修改项目目录之外的文件（推荐保持开启）。"
+                } else {
+                    "Uses the OS sandbox to prevent run_shell from writing outside the active workspace (recommended)."
+                })),
+                toggle_switch("agent-sandbox-writes", ag.sandbox_writes_to_workspace).on_change(
+                    cx.listener(|this, checked: &bool, _, cx| {
+                        this.patch_ai(
+                            serde_json::json!({ "agent": { "sandbox_writes_to_workspace": *checked } }),
+                            None,
+                            cx,
+                        );
+                    }),
+                ),
+                cx,
+            ))
+            .child(set_row(
+                t(lang, "set.f.ai.agent.sandbox_auto_run").to_owned(),
+                Some(SharedString::from(if zh {
+                    "仅这台电脑"
+                } else {
+                    "Local only"
+                })),
+                Some(SharedString::from(
+                    t(lang, "set.f.ai.agent.sandbox_auto_run.d").to_owned(),
+                )),
+                toggle_switch("agent-sandbox-auto", ag.sandbox_auto_run).on_change(cx.listener(
+                    |this, checked: &bool, _, cx| {
+                        this.patch_ai(
+                            serde_json::json!({ "agent": { "sandbox_auto_run": *checked } }),
+                            None,
+                            cx,
+                        );
+                    },
+                )),
+                cx,
+            ))
+            .child(set_row(
+                if zh {
+                    "无人应答审批超时"
+                } else {
+                    "Unattended approval timeout"
+                },
+                None,
+                Some(SharedString::from(
+                    t(lang, "set.f.ai.agent.approval_timeout_s.d").to_owned(),
+                )),
+                num_box(
+                    &view.approval_timeout_input,
+                    Some(if zh { "秒" } else { "s" }),
+                    84.0,
+                    cx,
+                ),
+                cx,
+            ))
+            .child(set_row(
+                if zh {
+                    "Shell 命令执行超时"
+                } else {
+                    "Shell command timeout"
+                },
+                None,
+                Some(SharedString::from(
+                    t(lang, "set.f.ai.agent.shell_timeout_s.d").to_owned(),
+                )),
+                num_box(
+                    &view.shell_timeout_input,
+                    Some(if zh { "秒" } else { "s" }),
+                    84.0,
+                    cx,
+                ),
+                cx,
+            ))
+            .child(render_chip_list_row(
+                t(lang, "set.f.ai.agent.blocked_commands"),
+                t(lang, "set.f.ai.agent.blocked_commands.d"),
+                &ag.blocked_commands,
+                &view.blocked_cmd_input,
+                "blocked-cmd",
+                t(lang, "set.agent.rules.add"),
+                |this, window, cx| this.add_blocked_command(window, cx),
+                |this, item, cx| this.remove_blocked_command(&item, cx),
+                cx,
+            ))
+            .child(render_chip_list_row(
+                t(lang, "set.f.ai.agent.shell_env_passthrough"),
+                t(lang, "set.f.ai.agent.shell_env_passthrough.d"),
+                &ag.shell_env_passthrough,
+                &view.env_pass_input,
+                "env-pass",
+                t(lang, "set.agent.env.add"),
+                |this, window, cx| this.add_shell_env(window, cx),
+                |this, item, cx| this.remove_shell_env(&item, cx),
+                cx,
+            )),
+        cx,
+    );
 
     // ── Section 3: Remembered rules ──────────────────────────────────────────
     let sec_rules = render_remembered_rules(view, lang, zh, cx);
 
     v_col()
-        .gap(px(22.0))
+        .w_full()
+        .gap(px(20.0))
         .child(sec_order)
         .child(sec_defaults)
         .child(sec_rules)
@@ -464,7 +462,7 @@ fn render_chip_list_row(
         );
 
     v_col()
-        .py(px(11.0))
+        .py(px(12.5))
         .border_b_1()
         .border_color(to_hsla(p.line.composite_over(p.surface)))
         .child(
@@ -475,10 +473,10 @@ fn render_chip_list_row(
                     v_col()
                         .flex_1()
                         .min_w_0()
-                        .gap(px(2.0))
+                        .gap(px(2.5))
                         .child(
                             div()
-                                .text_sm()
+                                .text_size(px(13.5))
                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
                                 .text_color(to_hsla(p.ink))
                                 .child(SharedString::from(label.to_owned())),

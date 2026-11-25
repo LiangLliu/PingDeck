@@ -413,13 +413,13 @@ fn render_session_row(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .text_xs()
+                    .text_size(px(13.0))
                     .font_weight(if sel {
                         gpui_kit::FontWeight::SEMIBOLD
                     } else {
                         gpui_kit::FontWeight::MEDIUM
                     })
-                    .text_color(to_hsla(p.ink))
+                    .text_color(to_hsla(if sel { p.ink } else { p.ink_2 }))
                     .truncate()
                     .child(SharedString::from(title)),
             ),

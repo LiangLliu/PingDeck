@@ -1,14 +1,14 @@
 //! Settings › Request Defaults page: HTTP transport defaults, editor/viewer preferences,
 //! and response size / preview thresholds — all live-validated and resettable per section.
 
-use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, px};
 use pingdeck_desktop::core::model::models::HttpVersionPreference;
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 
 use crate::ui::{
     Disableable as _, Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, choice_chip, h_row,
-    icon_xs, number_field, section_header, setting_row, tab_bar_segmented, tab_item, toggle_switch,
-    v_col,
+    icon_xs, number_field, setting_row, settings_section, tab_bar_segmented, tab_item,
+    toggle_switch, v_col,
 };
 
 use super::SettingsView;
@@ -29,36 +29,8 @@ pub fn render_requests(
     };
     let ent_http = cx.entity().clone();
 
-    let mut transport = v_col()
+    let transport_rows = v_col()
         .w_full()
-        .child(section_header(
-            if zh { "HTTP 请求默认值" } else { "HTTP Request Defaults" },
-            Some(
-                btn_ghost("req-reset-net", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_keys(
-                            CoreSection::Network,
-                            Some(
-                                [
-                                    "timeout_ms",
-                                    "retry_count",
-                                    "http_version",
-                                    "follow_redirects",
-                                    "max_redirects",
-                                    "verify_tls",
-                                ]
-                                .into_iter()
-                                .map(str::to_owned)
-                                .collect(),
-                            ),
-                            cx,
-                        );
-                    }))
-                    .into_any_element(),
-            ),
-            cx,
-        ))
         .child(setting_row(
             if zh { "默认请求超时" } else { "Default timeout" },
             None,
@@ -218,253 +190,285 @@ pub fn render_requests(
             cx,
         ));
 
-    if !net.verify_tls {
-        transport = transport.child(
-            div().pt(px(8.0)).child(alert_banner(
-                Tone::Warning,
-                if zh {
-                    "全局 TLS 证书校验当前已关闭，新请求将接受任意自签名或过期证书。"
-                } else {
-                    "Global TLS verification is disabled; new requests will accept self-signed or expired certificates."
-                },
-                None,
-                cx,
-            )),
-        );
-    }
-
-    let editor_sec = v_col()
-        .w_full()
-        .child(section_header(
-            if zh { "编辑器与高亮" } else { "Editor & Syntax Highlighting" },
-            Some(
-                btn_ghost("req-reset-editor", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_section(CoreSection::Editor, cx);
-                    }))
-                    .into_any_element(),
-            ),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "Tab 缩进宽度" } else { "Tab size" },
-            None,
-            Some(SharedString::from(if zh {
-                "请求正文、JSON 与脚本编辑器按下 Tab 插入的空格数。"
-            } else {
-                "Number of spaces inserted by Tab in body and script editors."
-            })),
-            h_row()
-                .gap(px(6.0))
-                .children([2u8, 4, 8].into_iter().map(|spaces| {
-                    choice_chip(
-                        SharedString::from(format!("ed-tab-{spaces}")),
-                        if zh {
-                            format!("{spaces} 空格")
-                        } else {
-                            format!("{spaces} spaces")
-                        },
-                        ed.tab_size == spaces,
-                        cx,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.patch_section(
-                            CoreSection::Editor,
-                            serde_json::json!({ "tab_size": spaces }),
-                            cx,
-                        );
-                    }))
-                })),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "自动换行" } else { "Word wrap" },
-            None,
-            Some(SharedString::from(if zh {
-                "在编辑器和响应查看器中自动折行显示超长文本。"
-            } else {
-                "Wrap long lines automatically inside request and response editors."
-            })),
-            toggle_switch("ed-word-wrap", ed.word_wrap).on_change(cx.listener(
-                |this, checked: &bool, _, cx| {
-                    this.patch_section(
-                        CoreSection::Editor,
-                        serde_json::json!({ "word_wrap": *checked }),
+    let mut transport = v_col().w_full().gap(px(10.0)).child(settings_section(
+        if zh {
+            "HTTP 请求默认值"
+        } else {
+            "HTTP Request Defaults"
+        },
+        Some(
+            btn_ghost("req-reset-net", if zh { "恢复默认" } else { "Reset" })
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_keys(
+                        CoreSection::Network,
+                        Some(
+                            [
+                                "timeout_ms",
+                                "retry_count",
+                                "http_version",
+                                "follow_redirects",
+                                "max_redirects",
+                                "verify_tls",
+                            ]
+                            .into_iter()
+                            .map(str::to_owned)
+                            .collect(),
+                        ),
                         cx,
                     );
-                },
-            )),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "请求编辑器语法高亮上限" } else { "Editor highlight limit" },
-            None,
-            Some(SharedString::from(if zh {
-                "超过此大小的请求正文将回退为纯文本以保证流畅编辑（1–65,536 KiB，默认 1,024 KiB）。"
+                }))
+                .into_any_element(),
+        ),
+        transport_rows,
+        cx,
+    ));
+
+    if !net.verify_tls {
+        transport = transport.child(alert_banner(
+            Tone::Warning,
+            if zh {
+                "全局 TLS 证书校验当前已关闭，新请求将接受任意自签名或过期证书。"
             } else {
-                "Request bodies above this size fall back to plain text for smooth typing (1–65,536 KiB, default 1,024 KiB)."
-            })),
-            h_row()
-                .gap(px(6.0))
-                .child(number_field(&view.inputs.editor_highlight_kib, Some("KiB"), 96.0, cx))
-                .child(
-                    btn_secondary("ed-save-hl", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.editor_highlight_kib.read(cx).value().to_string();
-                            this.commit_kib(
-                                &v,
-                                1,
-                                65_536,
-                                CoreSection::Editor,
-                                "editor_highlight_limit_bytes",
-                                cx,
-                            );
-                        }),
-                    ),
-                ),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "响应查看器语法高亮上限" } else { "Viewer highlight limit" },
+                "Global TLS verification is disabled; new requests will accept self-signed or expired certificates."
+            },
             None,
-            Some(SharedString::from(if zh {
-                "超过此大小的响应正文不执行语法着色（1–65,536 KiB，默认 512 KiB）。"
-            } else {
-                "Response bodies larger than this skip syntax coloring (1–65,536 KiB, default 512 KiB)."
-            })),
-            h_row()
-                .gap(px(6.0))
-                .child(number_field(&view.inputs.viewer_highlight_kib, Some("KiB"), 96.0, cx))
-                .child(
-                    btn_secondary("vw-save-hl", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.viewer_highlight_kib.read(cx).value().to_string();
-                            this.commit_kib(
-                                &v,
-                                1,
-                                65_536,
-                                CoreSection::Editor,
-                                "viewer_highlight_limit_bytes",
-                                cx,
-                            );
-                        }),
-                    ),
-                ),
             cx,
         ));
+    }
 
-    let response_sec = v_col()
-        .w_full()
-        .child(section_header(
-            if zh { "响应体与大报文阈值" } else { "Response & Large Body Thresholds" },
-            Some(
-                btn_ghost("req-reset-resp", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_keys(
-                            CoreSection::Data,
-                            Some(
-                                [
-                                    "response_body_cap_bytes",
-                                    "inline_threshold_bytes",
-                                    "preview_bytes",
-                                ]
-                                .into_iter()
-                                .map(str::to_owned)
-                                .collect(),
-                            ),
+    let editor_sec = settings_section(
+        if zh { "编辑器与高亮" } else { "Editor & Syntax Highlighting" },
+        Some(
+            btn_ghost("req-reset-editor", if zh { "恢复默认" } else { "Reset" })
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_section(CoreSection::Editor, cx);
+                }))
+                .into_any_element(),
+        ),
+        v_col()
+            .w_full()
+            .child(setting_row(
+                if zh { "Tab 缩进宽度" } else { "Tab size" },
+                None,
+                Some(SharedString::from(if zh {
+                    "请求正文、JSON 与脚本编辑器按下 Tab 插入的空格数。"
+                } else {
+                    "Number of spaces inserted by Tab in body and script editors."
+                })),
+                h_row()
+                    .gap(px(6.0))
+                    .children([2u8, 4, 8].into_iter().map(|spaces| {
+                        choice_chip(
+                            SharedString::from(format!("ed-tab-{spaces}")),
+                            if zh {
+                                format!("{spaces} 空格")
+                            } else {
+                                format!("{spaces} spaces")
+                            },
+                            ed.tab_size == spaces,
+                            cx,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.patch_section(
+                                CoreSection::Editor,
+                                serde_json::json!({ "tab_size": spaces }),
+                                cx,
+                            );
+                        }))
+                    })),
+                cx,
+            ))
+            .child(setting_row(
+                if zh { "自动换行" } else { "Word wrap" },
+                None,
+                Some(SharedString::from(if zh {
+                    "在编辑器和响应查看器中自动折行显示超长文本。"
+                } else {
+                    "Wrap long lines automatically inside request and response editors."
+                })),
+                toggle_switch("ed-word-wrap", ed.word_wrap).on_change(cx.listener(
+                    |this, checked: &bool, _, cx| {
+                        this.patch_section(
+                            CoreSection::Editor,
+                            serde_json::json!({ "word_wrap": *checked }),
                             cx,
                         );
-                    }))
-                    .into_any_element(),
-            ),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "单次响应读取上限" } else { "Response body cap" },
-            None,
-            Some(SharedString::from(if zh {
-                "单次响应最多读取入内存的字节数，超出部分截断（1–512 MiB，默认 10 MiB）。"
-            } else {
-                "Maximum bytes buffered for a single response; excess is truncated (1–512 MiB, default 10 MiB)."
-            })),
-            h_row()
-                .gap(px(6.0))
-                .child(number_field(&view.inputs.resp_body_cap_mib, Some("MiB"), 84.0, cx))
-                .child(
-                    btn_secondary("resp-save-cap", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.resp_body_cap_mib.read(cx).value().to_string();
-                            this.commit_mib(
-                                &v,
-                                1,
-                                512,
-                                CoreSection::Data,
+                    },
+                )),
+                cx,
+            ))
+            .child(setting_row(
+                if zh { "请求编辑器语法高亮上限" } else { "Editor highlight limit" },
+                None,
+                Some(SharedString::from(if zh {
+                    "超过此大小的请求正文将回退为纯文本以保证流畅编辑（1–65,536 KiB，默认 1,024 KiB）。"
+                } else {
+                    "Request bodies above this size fall back to plain text for smooth typing (1–65,536 KiB, default 1,024 KiB)."
+                })),
+                h_row()
+                    .gap(px(6.0))
+                    .child(number_field(&view.inputs.editor_highlight_kib, Some("KiB"), 96.0, cx))
+                    .child(
+                        btn_secondary("ed-save-hl", if zh { "应用" } else { "Apply" }).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                let v = this.inputs.editor_highlight_kib.read(cx).value().to_string();
+                                this.commit_kib(
+                                    &v,
+                                    1,
+                                    65_536,
+                                    CoreSection::Editor,
+                                    "editor_highlight_limit_bytes",
+                                    cx,
+                                );
+                            }),
+                        ),
+                    ),
+                cx,
+            ))
+            .child(setting_row(
+                if zh { "响应查看器语法高亮上限" } else { "Viewer highlight limit" },
+                None,
+                Some(SharedString::from(if zh {
+                    "超过此大小的响应正文不执行语法着色（1–65,536 KiB，默认 512 KiB）。"
+                } else {
+                    "Response bodies larger than this skip syntax coloring (1–65,536 KiB, default 512 KiB)."
+                })),
+                h_row()
+                    .gap(px(6.0))
+                    .child(number_field(&view.inputs.viewer_highlight_kib, Some("KiB"), 96.0, cx))
+                    .child(
+                        btn_secondary("vw-save-hl", if zh { "应用" } else { "Apply" }).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                let v = this.inputs.viewer_highlight_kib.read(cx).value().to_string();
+                                this.commit_kib(
+                                    &v,
+                                    1,
+                                    65_536,
+                                    CoreSection::Editor,
+                                    "viewer_highlight_limit_bytes",
+                                    cx,
+                                );
+                            }),
+                        ),
+                    ),
+                cx,
+            )),
+        cx,
+    );
+
+    let response_sec = settings_section(
+        if zh { "响应体与大报文阈值" } else { "Response & Large Body Thresholds" },
+        Some(
+            btn_ghost("req-reset-resp", if zh { "恢复默认" } else { "Reset" })
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_keys(
+                        CoreSection::Data,
+                        Some(
+                            [
                                 "response_body_cap_bytes",
-                                cx,
-                            );
-                        }),
-                    ),
-                ),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "内联传输阈值" } else { "Inline body threshold" },
-            None,
-            Some(SharedString::from(if zh {
-                "小于此大小的响应直接内联展示，更大响应按句柄分块加载（1–65,536 KiB，默认 1,024 KiB）。"
-            } else {
-                "Responses up to this size render inline; larger ones load on demand via handle (1–65,536 KiB, default 1,024 KiB)."
-            })),
-            h_row()
-                .gap(px(6.0))
-                .child(number_field(&view.inputs.resp_inline_kib, Some("KiB"), 96.0, cx))
-                .child(
-                    btn_secondary("resp-save-inline", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.resp_inline_kib.read(cx).value().to_string();
-                            this.commit_kib(
-                                &v,
-                                1,
-                                65_536,
-                                CoreSection::Data,
                                 "inline_threshold_bytes",
-                                cx,
-                            );
-                        }),
-                    ),
-                ),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "大响应初始预览大小" } else { "Large-body preview size" },
-            None,
-            Some(SharedString::from(if zh {
-                "超过内联阈值时默认首屏加载的预览字节数，不能大于上方内联阈值（默认 64 KiB）。"
-            } else {
-                "Initial preview chunk shown for oversized bodies; must not exceed inline threshold (default 64 KiB)."
-            })),
-            h_row()
-                .gap(px(6.0))
-                .child(number_field(&view.inputs.resp_preview_kib, Some("KiB"), 96.0, cx))
-                .child(
-                    btn_secondary("resp-save-preview", if zh { "应用" } else { "Apply" }).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            let v = this.inputs.resp_preview_kib.read(cx).value().to_string();
-                            this.commit_kib(
-                                &v,
-                                1,
-                                65_536,
-                                CoreSection::Data,
                                 "preview_bytes",
-                                cx,
-                            );
-                        }),
+                            ]
+                            .into_iter()
+                            .map(str::to_owned)
+                            .collect(),
+                        ),
+                        cx,
+                    );
+                }))
+                .into_any_element(),
+        ),
+        v_col()
+            .w_full()
+            .child(setting_row(
+                if zh { "单次响应读取上限" } else { "Response body cap" },
+                None,
+                Some(SharedString::from(if zh {
+                    "单次响应最多读取入内存的字节数，超出部分截断（1–512 MiB，默认 10 MiB）。"
+                } else {
+                    "Maximum bytes buffered for a single response; excess is truncated (1–512 MiB, default 10 MiB)."
+                })),
+                h_row()
+                    .gap(px(6.0))
+                    .child(number_field(&view.inputs.resp_body_cap_mib, Some("MiB"), 84.0, cx))
+                    .child(
+                        btn_secondary("resp-save-cap", if zh { "应用" } else { "Apply" }).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                let v = this.inputs.resp_body_cap_mib.read(cx).value().to_string();
+                                this.commit_mib(
+                                    &v,
+                                    1,
+                                    512,
+                                    CoreSection::Data,
+                                    "response_body_cap_bytes",
+                                    cx,
+                                );
+                            }),
+                        ),
                     ),
-                ),
-            cx,
-        ));
+                cx,
+            ))
+            .child(setting_row(
+                if zh { "内联传输阈值" } else { "Inline body threshold" },
+                None,
+                Some(SharedString::from(if zh {
+                    "小于此大小的响应直接内联展示，更大响应按句柄分块加载（1–65,536 KiB，默认 1,024 KiB）。"
+                } else {
+                    "Responses up to this size render inline; larger ones load on demand via handle (1–65,536 KiB, default 1,024 KiB)."
+                })),
+                h_row()
+                    .gap(px(6.0))
+                    .child(number_field(&view.inputs.resp_inline_kib, Some("KiB"), 96.0, cx))
+                    .child(
+                        btn_secondary("resp-save-inline", if zh { "应用" } else { "Apply" }).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                let v = this.inputs.resp_inline_kib.read(cx).value().to_string();
+                                this.commit_kib(
+                                    &v,
+                                    1,
+                                    65_536,
+                                    CoreSection::Data,
+                                    "inline_threshold_bytes",
+                                    cx,
+                                );
+                            }),
+                        ),
+                    ),
+                cx,
+            ))
+            .child(setting_row(
+                if zh { "大响应初始预览大小" } else { "Large-body preview size" },
+                None,
+                Some(SharedString::from(if zh {
+                    "超过内联阈值时默认首屏加载的预览字节数，不能大于上方内联阈值（默认 64 KiB）。"
+                } else {
+                    "Initial preview chunk shown for oversized bodies; must not exceed inline threshold (default 64 KiB)."
+                })),
+                h_row()
+                    .gap(px(6.0))
+                    .child(number_field(&view.inputs.resp_preview_kib, Some("KiB"), 96.0, cx))
+                    .child(
+                        btn_secondary("resp-save-preview", if zh { "应用" } else { "Apply" }).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                let v = this.inputs.resp_preview_kib.read(cx).value().to_string();
+                                this.commit_kib(
+                                    &v,
+                                    1,
+                                    65_536,
+                                    CoreSection::Data,
+                                    "preview_bytes",
+                                    cx,
+                                );
+                            }),
+                        ),
+                    ),
+                cx,
+            )),
+        cx,
+    );
 
     v_col()
         .w_full()

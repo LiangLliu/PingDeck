@@ -8,8 +8,8 @@ use pingdeck_desktop::state::NavModule;
 
 use crate::ui::{
     Disableable as _, Tone, UiIcon, alert_banner, btn_ghost, btn_icon, btn_primary, btn_secondary,
-    card, h_row, icon_xs, palette, section_header, setting_row, spinner_xs, tab_bar_segmented,
-    tab_item, text_input, to_hsla, v_col,
+    h_row, icon_xs, palette, setting_row, settings_section, settings_section_padded,
+    settings_sub_well, spinner_xs, tab_bar_segmented, tab_item, text_input, to_hsla, v_col,
 };
 
 use super::SettingsView;
@@ -29,99 +29,86 @@ pub fn render_network(
     };
     let ent_mode = cx.entity().clone();
 
-    let mut proxy_sec = v_col()
-        .w_full()
-        .gap(px(8.0))
-        .child(section_header(
-            if zh { "出站代理" } else { "Outbound Proxy" },
-            Some(
-                btn_ghost("net-reset-proxy", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.proxy_test_result = None;
-                        this.reset_keys(
-                            CoreSection::Network,
-                            Some(vec!["proxy_url".into(), "no_proxy".into()]),
-                            cx,
-                        );
-                    }))
-                    .into_any_element(),
-            ),
-            cx,
-        ))
-        .child(setting_row(
-            if zh { "代理模式" } else { "Proxy mode" },
-            None,
-            Some(SharedString::from(if zh {
-                "应用于 HTTP 请求、AI 服务商调用、模型目录与内置搜索（单条请求或服务商可单独覆写）。"
-            } else {
-                "Applies to HTTP requests, AI providers, catalog sync, and web search (per-request/provider overrides win)."
-            })),
-            h_row()
-                .gap(px(8.0))
-                .child(
-                    tab_bar_segmented("net-proxy-mode")
-                        .selected_index(mode_idx)
-                        .child(tab_item(if zh { "跟随系统" } else { "System" }))
-                        .child(tab_item(if zh { "自定义" } else { "Custom" }))
-                        .child(tab_item(if zh { "直连" } else { "Direct" }))
-                        .on_click(move |idx, _, cx| {
-                            let mode = match *idx {
-                                1 => ProxyModeChoice::Custom,
-                                2 => ProxyModeChoice::Direct,
-                                _ => ProxyModeChoice::System,
-                            };
-                            ent_mode.update(cx, |this, cx| this.select_proxy_mode(mode, cx));
-                        }),
-                )
-                .child(
-                    btn_secondary(
-                        "net-test-proxy",
-                        if zh { "测试连接" } else { "Test" },
-                    )
+    let mut proxy_rows = v_col().w_full().child(setting_row(
+        if zh { "代理模式" } else { "Proxy mode" },
+        None,
+        Some(SharedString::from(if zh {
+            "应用于 HTTP 请求、AI 服务商调用、模型目录与内置搜索（单条请求或服务商可单独覆写）。"
+        } else {
+            "Applies to HTTP requests, AI providers, catalog sync, and web search (per-request/provider overrides win)."
+        })),
+        h_row()
+            .gap(px(8.0))
+            .child(
+                tab_bar_segmented("net-proxy-mode")
+                    .selected_index(mode_idx)
+                    .child(tab_item(if zh { "跟随系统" } else { "System" }))
+                    .child(tab_item(if zh { "自定义" } else { "Custom" }))
+                    .child(tab_item(if zh { "直连" } else { "Direct" }))
+                    .on_click(move |idx, _, cx| {
+                        let mode = match *idx {
+                            1 => ProxyModeChoice::Custom,
+                            2 => ProxyModeChoice::Direct,
+                            _ => ProxyModeChoice::System,
+                        };
+                        ent_mode.update(cx, |this, cx| this.select_proxy_mode(mode, cx));
+                    }),
+            )
+            .child(
+                btn_secondary("net-test-proxy", if zh { "测试连接" } else { "Test" })
                     .disabled(view.proxy_testing)
                     .on_click(cx.listener(|this, _, _, cx| this.test_proxy_connection(cx))),
-                ),
-            cx,
-        ));
+            ),
+        cx,
+    ));
 
     if view.proxy_mode == ProxyModeChoice::Custom {
-        proxy_sec = proxy_sec.child(
-            v_col()
+        proxy_rows = proxy_rows.child(
+            div()
                 .w_full()
-                .gap(px(6.0))
-                .py(px(6.0))
+                .py(px(12.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
                 .child(
-                    h_row()
-                        .w_full()
-                        .gap(px(8.0))
-                        .child(div().flex_1().child(text_input(&view.inputs.proxy_url)))
+                    settings_sub_well(cx)
                         .child(
-                            btn_primary("net-save-proxy", if zh { "保存代理" } else { "Save proxy" })
-                                .on_click(cx.listener(|this, _, _, cx| this.save_custom_proxy(cx))),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(if zh {
+                            h_row()
+                                .w_full()
+                                .gap(px(8.0))
+                                .child(div().flex_1().child(text_input(&view.inputs.proxy_url)))
+                                .child(
+                                    btn_primary(
+                                        "net-save-proxy",
+                                        if zh { "保存代理" } else { "Save proxy" },
+                                    )
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.save_custom_proxy(cx)),
+                                    ),
+                                ),
+                        )
+                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
                             "支持 http://、https://、socks5://、socks5h://。若含认证密码，密码单独保存在本地 0600 明文保险库中，界面与导出文件均以 **** 掩码显示。"
                         } else {
                             "Supports http://, https://, socks5://, socks5h://. Passwords are stored in the local 0600 plaintext vault and masked as **** in UI & exports."
-                        }),
+                        })),
                 ),
         );
     }
 
     if view.proxy_testing {
-        proxy_sec = proxy_sec.child(h_row().gap(px(8.0)).py(px(4.0)).child(spinner_xs()).child(
-            div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                "正在通过当前代理设置探测 api.openai.com…"
-            } else {
-                "Testing connection to api.openai.com via current proxy route…"
-            }),
-        ));
+        proxy_rows = proxy_rows.child(
+            h_row()
+                .gap(px(8.0))
+                .py(px(10.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
+                .child(spinner_xs())
+                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
+                    "正在通过当前代理设置探测 api.openai.com…"
+                } else {
+                    "Testing connection to api.openai.com via current proxy route…"
+                })),
+        );
     } else if let Some(res) = &view.proxy_test_result {
         let (tone, text) = match res.outcome {
             ProxyTestOutcome::Connected => (
@@ -184,7 +171,13 @@ pub fn render_network(
                 },
             ),
         };
-        proxy_sec = proxy_sec.child(alert_banner(tone, text, None, cx));
+        proxy_rows = proxy_rows.child(
+            div()
+                .py(px(10.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
+                .child(alert_banner(tone, text, None, cx)),
+        );
     }
 
     // no_proxy chips + add bar
@@ -218,19 +211,25 @@ pub fn render_network(
         );
     }
 
-    let no_proxy_sec = v_col()
+    let no_proxy_row = v_col()
         .w_full()
         .gap(px(8.0))
-        .pt(px(6.0))
+        .py(px(12.5))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
         .child(
             v_col()
-                .gap(px(2.0))
+                .gap(px(2.5))
                 .child(
                     div()
-                        .text_sm()
+                        .text_size(px(13.5))
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
-                        .child(if zh { "绕过代理的主机（No Proxy）" } else { "Bypass proxy for hosts (No Proxy)" }),
+                        .child(if zh {
+                            "绕过代理的主机（No Proxy）"
+                        } else {
+                            "Bypass proxy for hosts (No Proxy)"
+                        }),
                 )
                 .child(
                     div()
@@ -258,24 +257,29 @@ pub fn render_network(
                 ),
         );
 
+    let proxy_sec = settings_section(
+        if zh { "出站代理" } else { "Outbound Proxy" },
+        Some(
+            btn_ghost("net-reset-proxy", if zh { "恢复默认" } else { "Reset" })
+                .icon(icon_xs(UiIcon::RotateCcw))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.proxy_test_result = None;
+                    this.reset_keys(
+                        CoreSection::Network,
+                        Some(vec!["proxy_url".into(), "no_proxy".into()]),
+                        cx,
+                    );
+                }))
+                .into_any_element(),
+        ),
+        proxy_rows.child(no_proxy_row),
+        cx,
+    );
+
     // Custom CA bundle
-    let mut ca_sec = v_col()
+    let mut ca_body = v_col()
         .w_full()
-        .gap(px(8.0))
-        .child(section_header(
-            if zh {
-                "自定义受信任 CA 证书包"
-            } else {
-                "Extra Trusted CA Bundle"
-            },
-            Some(
-                btn_ghost("net-reset-ca", if zh { "清除" } else { "Clear" })
-                    .disabled(net.ca_bundle_path.is_empty())
-                    .on_click(cx.listener(|this, _, window, cx| this.clear_ca_bundle(window, cx)))
-                    .into_any_element(),
-            ),
-            cx,
-        ))
+        .gap(px(10.0))
         .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
             "用于企业自签名根证书或公司内网 HTTPS 代理（PEM 格式，最大 8 MiB，需填写绝对路径）。"
         } else {
@@ -333,55 +337,66 @@ pub fn render_network(
                 }),
             )
         };
-        ca_sec = ca_sec.child(alert_banner(tone, msg, None, cx));
+        ca_body = ca_body.child(alert_banner(tone, msg, None, cx));
     }
 
+    let ca_sec = settings_section_padded(
+        if zh {
+            "自定义受信任 CA 证书包"
+        } else {
+            "Extra Trusted CA Bundle"
+        },
+        Some(
+            btn_ghost("net-reset-ca", if zh { "清除" } else { "Clear" })
+                .disabled(net.ca_bundle_path.is_empty())
+                .on_click(cx.listener(|this, _, window, cx| this.clear_ca_bundle(window, cx)))
+                .into_any_element(),
+        ),
+        ca_body,
+        cx,
+    );
+
     // mTLS client certificates cross-link card
-    let mtls_card = card(cx).p(px(14.0)).child(
-        h_row()
-            .w_full()
-            .justify_between()
-            .gap(px(12.0))
-            .child(
-                v_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(3.0))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .text_color(to_hsla(p.ink))
-                            .child(if zh {
-                                "客户端证书（mTLS）按工作区管理"
-                            } else {
-                                "Client certificates (mTLS) are workspace-scoped"
-                            }),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .child(if zh {
-                                "如需为特定域名配置双向 TLS 客户端证书与私钥，请前往「环境」模块管理。"
-                            } else {
-                                "Configure per-host client certificates and private keys inside the Environments module."
-                            }),
-                    ),
+    let mtls_card = settings_section(
+        if zh {
+            "双向认证（mTLS）"
+        } else {
+            "Mutual TLS (mTLS)"
+        },
+        None,
+        setting_row(
+            if zh {
+                "客户端证书（mTLS）按工作区管理"
+            } else {
+                "Client certificates (mTLS) are workspace-scoped"
+            },
+            None,
+            Some(SharedString::from(if zh {
+                "如需为特定域名配置双向 TLS 客户端证书与私钥，请前往「环境」模块管理。"
+            } else {
+                "Configure per-host client certificates and private keys inside the Environments module."
+            })),
+            btn_secondary(
+                "net-jump-envs",
+                if zh {
+                    "前往环境"
+                } else {
+                    "Open Environments"
+                },
             )
-            .child(
-                btn_secondary("net-jump-envs", if zh { "前往环境" } else { "Open Environments" })
-                    .icon(icon_xs(UiIcon::ExternalLink))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.jump_to_module(NavModule::Environments, cx);
-                    })),
-            ),
+            .icon(icon_xs(UiIcon::ExternalLink))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.jump_to_module(NavModule::Environments, cx);
+            })),
+            cx,
+        ),
+        cx,
     );
 
     v_col()
         .w_full()
-        .gap(px(22.0))
-        .child(proxy_sec.child(no_proxy_sec))
+        .gap(px(20.0))
+        .child(proxy_sec)
         .child(ca_sec)
         .child(mtls_card)
 }

@@ -8,7 +8,7 @@ use pingdeck_desktop::core::llm::status::ProviderStatus;
 
 use crate::ui::{
     ScrollableElement as _, StatusShape, UiIcon, empty_inline, h_row, list_row, master_pane,
-    palette, pane_footer, pane_header, status_indicator, to_hsla, v_col,
+    palette, pane_footer, pane_header, section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::state::{UsageView, fmt_compact};
@@ -52,7 +52,7 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                 .gap(px(1.0))
                 .child(
                     div()
-                        .text_xs()
+                        .text_size(px(13.0))
                         .font_weight(gpui_kit::FontWeight::MEDIUM)
                         .text_color(to_hsla(p.ink))
                         .truncate()
@@ -78,13 +78,13 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
     } else {
         body = body.child(
             div()
-                .px(px(6.0))
+                .mt(px(6.0))
                 .pt(px(8.0))
-                .pb(px(2.0))
-                .text_size(px(10.5))
-                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .text_color(to_hsla(p.muted))
-                .child(view.t("按服务商筛选", "By Provider")),
+                .pb(px(3.0))
+                .px(px(8.0))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(section_heading(view.t("按服务商筛选", "By Provider"), cx)),
         );
 
         for prov in &view.providers {

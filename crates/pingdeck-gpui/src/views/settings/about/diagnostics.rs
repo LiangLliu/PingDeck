@@ -8,7 +8,7 @@ use pingdeck_desktop::i18n::{t, t_args};
 
 use crate::ui::{
     Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, btn_ghost, btn_secondary,
-    card, dismissible_banner, h_row, icon_xs, markdown_view, palette, section_header,
+    dismissible_banner, h_row, icon_xs, markdown_view, palette, settings_section_flush,
     status_indicator, to_hsla, v_col,
 };
 
@@ -66,15 +66,15 @@ pub(super) fn render_diagnostics_section(
             .justify_between()
             .items_start()
             .gap(px(16.0))
-            .p(px(14.0))
+            .p(px(16.0))
             .child(
                 v_col()
                     .flex_1()
                     .min_w_0()
-                    .gap(px(4.0))
+                    .gap(px(3.0))
                     .child(
                         div()
-                            .text_sm()
+                            .text_size(px(13.5))
                             .font_weight(gpui_kit::FontWeight::MEDIUM)
                             .text_color(to_hsla(p.ink))
                             .child(t(lang, "set.about.diag").to_owned()),
@@ -97,7 +97,7 @@ pub(super) fn render_diagnostics_section(
 
     if let Some(err) = &view.diag_error {
         let msg = t_args(lang, "set.about.copyFailed", &[("reason", err.as_str())]);
-        card_col = card_col.child(div().px(px(14.0)).pb(px(10.0)).child(dismissible_banner(
+        card_col = card_col.child(div().px(px(16.0)).pb(px(12.0)).child(dismissible_banner(
             "about-diag-err-dismiss",
             Tone::Danger,
             msg,
@@ -113,14 +113,12 @@ pub(super) fn render_diagnostics_section(
         card_col = card_col.child(render_preview_panel(view, zh, cx));
     }
 
-    v_col()
-        .gap(px(10.0))
-        .child(section_header(
-            t(lang, "set.sec.about.diagnostics").to_owned(),
-            None,
-            cx,
-        ))
-        .child(card(cx).child(card_col))
+    settings_section_flush(
+        t(lang, "set.sec.about.diagnostics").to_owned(),
+        None,
+        card_col,
+        cx,
+    )
 }
 
 fn render_preview_panel(
@@ -188,7 +186,6 @@ fn render_preview_panel(
         .bg(to_hsla(p.sunken))
         .border_t_1()
         .border_color(to_hsla(p.line.composite_over(p.sunken)))
-        .rounded_b(px(7.0))
         .child(preview_bar)
         .child(preview_body)
 }

@@ -130,9 +130,12 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
     if !collapsed {
         nav = nav.child(
             div()
-                .px(px(10.0))
-                .pt(px(14.0))
+                .mt(px(8.0))
+                .pt(px(10.0))
                 .pb(px(4.0))
+                .px(px(10.0))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.canvas)))
                 .child(section_heading(
                     if zh {
                         "AI · 所有工作区共用"
@@ -417,8 +420,25 @@ fn render_nav_item(
     )
     .w_full()
     .justify_between()
-    .child(icon(module_icon(module)))
-    .child(div().flex_1().min_w_0().text_xs().truncate().child(label));
+    .child(
+        div()
+            .flex_shrink_0()
+            .text_color(to_hsla(if selected { p.accent_ink } else { p.muted }))
+            .child(icon(module_icon(module))),
+    )
+    .child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .text_size(px(13.0))
+            .font_weight(if selected {
+                gpui_kit::FontWeight::SEMIBOLD
+            } else {
+                gpui_kit::FontWeight::MEDIUM
+            })
+            .truncate()
+            .child(label),
+    );
 
     if waiting > 0 {
         let txt = if zh {

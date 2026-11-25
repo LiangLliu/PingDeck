@@ -7,9 +7,10 @@ use pingdeck_desktop::core::model::model_catalog::{
 };
 
 use crate::ui::{
-    Anchor, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, card,
-    dismissible_banner, h_row, icon_xs, list_row, palette, popover, section_header, select_pill,
-    status_indicator, to_hsla, toggle_switch, v_col,
+    Anchor, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary,
+    dismissible_banner, h_row, icon_xs, list_row, palette, popover, select_pill,
+    settings_section_flush, settings_section_padded, status_indicator, to_hsla, toggle_switch,
+    v_col,
 };
 
 use super::CatalogSettingsView;
@@ -266,10 +267,7 @@ pub fn render_sync_section(
         ));
     }
 
-    v_col()
-        .gap(px(10.0))
-        .child(section_header(if zh { "同步" } else { "Sync" }, None, cx))
-        .child(card(cx).p(px(14.0)).child(box_el))
+    settings_section_padded(if zh { "同步" } else { "Sync" }, None, box_el, cx)
 }
 
 pub fn render_provider_pricing_section(
@@ -383,20 +381,27 @@ pub fn render_provider_pricing_section(
     }
 
     v_col()
+        .w_full()
         .gap(px(8.0))
-        .child(section_header(
+        .child(settings_section_flush(
             if zh {
                 "服务商计价"
             } else {
                 "Provider pricing"
             },
             None,
+            rows,
             cx,
         ))
-        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "让你的服务商整体按一家分发商的目录价计费。生效顺序：单个模型的服务商设置 > 服务商计价 > 模型默认价格 > 官方价 > 参考价。"
-        } else {
-            "Make a provider follow one distributor's catalog prices. Precedence: per-provider model > provider pricing > model default > official > reference."
-        }))
-        .child(card(cx).child(rows))
+        .child(
+            div()
+                .px(px(4.0))
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(if zh {
+                    "让你的服务商整体按一家分发商的目录价计费。生效顺序：单个模型的服务商设置 > 服务商计价 > 模型默认价格 > 官方价 > 参考价。"
+                } else {
+                    "Make a provider follow one distributor's catalog prices. Precedence: per-provider model > provider pricing > model default > official > reference."
+                }),
+        )
 }

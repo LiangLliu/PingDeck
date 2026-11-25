@@ -46,7 +46,8 @@ pub use feedback::{
 pub use icons::{UiIcon, app_icon, icon, icon_sized, icon_xs, pingmark};
 pub use layout::{
     doc_tab, master_pane, meta_pill, number_field, pane_footer, pane_header, section_header,
-    setting_row, subtab_strip, toolbar_strip,
+    setting_row, settings_section, settings_section_flush, settings_section_padded,
+    settings_sub_well, subtab_strip, toolbar_strip,
 };
 pub use menus::{menu_divider, menu_item, method_color, method_pill, popover_header};
 pub use primitives::{

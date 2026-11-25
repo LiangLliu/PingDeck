@@ -108,8 +108,8 @@ pub fn master_pane(
     col
 }
 
-/// Section header with bold title on left, optional right action/link, and bottom hairline border
-/// (matching prototype `.set-section-head`).
+/// Section header with prominent 15px semibold title on left, optional right action/link, and
+/// bottom hairline border — clearly elevated above 13px [`setting_row`] item labels.
 #[must_use]
 pub fn section_header(title: impl Into<SharedString>, right: Option<AnyElement>, cx: &App) -> Div {
     let p = palette(cx);
@@ -122,7 +122,7 @@ pub fn section_header(title: impl Into<SharedString>, right: Option<AnyElement>,
         .border_color(to_hsla(p.line.composite_over(p.surface)))
         .child(
             div()
-                .text_sm()
+                .text_size(px(15.0))
                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                 .text_color(to_hsla(p.ink))
                 .child(title.into()),
@@ -148,6 +148,145 @@ pub fn meta_pill(text: impl Into<SharedString>, cx: &App) -> Div {
         .child(text.into())
 }
 
+/// Grouped inset Settings section card matching the redesigned Settings prototype:
+/// - Quiet 12px semibold `muted` eyebrow header outside the card (with optional right action),
+/// - Elevated `surface` rounded card (`r=10px`, crisp `1px` border) framing child [`setting_row`]s
+///   with 16px horizontal padding and cleanly clipped trailing hairline divider.
+#[must_use]
+pub fn settings_section(
+    title: impl Into<SharedString>,
+    right: Option<AnyElement>,
+    body: impl IntoElement,
+    cx: &App,
+) -> Div {
+    let p = palette(cx);
+    v_col()
+        .w_full()
+        .gap(px(7.0))
+        .child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .min_h(px(24.0))
+                .px(px(4.0))
+                .gap(px(10.0))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.muted))
+                        .child(title.into()),
+                )
+                .children(right),
+        )
+        .child(
+            div()
+                .w_full()
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(to_hsla(p.surface))
+                .border_1()
+                .border_color(to_hsla(p.line_strong.composite_over(p.pane)))
+                .child(v_col().w_full().px(px(16.0)).mb(px(-1.0)).child(body)),
+        )
+}
+
+/// Padded grouped Settings section card for rich non-row bodies (palette grids, tables, textareas).
+#[must_use]
+pub fn settings_section_padded(
+    title: impl Into<SharedString>,
+    right: Option<AnyElement>,
+    body: impl IntoElement,
+    cx: &App,
+) -> Div {
+    let p = palette(cx);
+    v_col()
+        .w_full()
+        .gap(px(7.0))
+        .child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .min_h(px(24.0))
+                .px(px(4.0))
+                .gap(px(10.0))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.muted))
+                        .child(title.into()),
+                )
+                .children(right),
+        )
+        .child(
+            v_col()
+                .w_full()
+                .p(px(16.0))
+                .gap(px(10.0))
+                .rounded(px(10.0))
+                .bg(to_hsla(p.surface))
+                .border_1()
+                .border_color(to_hsla(p.line_strong.composite_over(p.pane)))
+                .child(body),
+        )
+}
+
+/// Edge-to-edge grouped Settings section card for full-bleed tables, ordered lists, and
+/// expandable panels (`overflow_hidden`, `r=10px`, crisp `1px` border).
+#[must_use]
+pub fn settings_section_flush(
+    title: impl Into<SharedString>,
+    right: Option<AnyElement>,
+    body: impl IntoElement,
+    cx: &App,
+) -> Div {
+    let p = palette(cx);
+    v_col()
+        .w_full()
+        .gap(px(7.0))
+        .child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .min_h(px(24.0))
+                .px(px(4.0))
+                .gap(px(10.0))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.muted))
+                        .child(title.into()),
+                )
+                .children(right),
+        )
+        .child(
+            div()
+                .w_full()
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(to_hsla(p.surface))
+                .border_1()
+                .border_color(to_hsla(p.line_strong.composite_over(p.pane)))
+                .child(body),
+        )
+}
+
+/// Recessed inset sub-panel inside a Settings card for nested dependent fields or live previews.
+#[must_use]
+pub fn settings_sub_well(cx: &App) -> Div {
+    let p = palette(cx);
+    v_col()
+        .w_full()
+        .p(px(12.0))
+        .gap(px(8.0))
+        .rounded(px(8.0))
+        .bg(to_hsla(p.sunken))
+        .border_1()
+        .border_color(to_hsla(p.line.composite_over(p.sunken)))
+}
+
 /// Form / settings row with label, optional metadata pill, optional helper description, and
 /// right-aligned control (unified across Settings, Requests Network/Auth, and Container settings).
 #[must_use]
@@ -165,14 +304,14 @@ pub fn setting_row(
         .flex_wrap()
         .child(
             div()
-                .text_sm()
+                .text_size(px(13.5))
                 .font_weight(gpui_kit::FontWeight::MEDIUM)
                 .text_color(to_hsla(p.ink))
                 .child(label.into()),
         )
         .children(meta.map(|m| meta_pill(m, cx)));
 
-    let mut left = v_col().flex_1().min_w_0().gap(px(2.0)).child(title_row);
+    let mut left = v_col().flex_1().min_w_0().gap(px(2.5)).child(title_row);
     if let Some(d) = desc
         && !d.is_empty()
     {
@@ -183,8 +322,8 @@ pub fn setting_row(
         .w_full()
         .justify_between()
         .items_center()
-        .gap(px(18.0))
-        .py(px(if compact { 8.0 } else { 10.5 }))
+        .gap(px(20.0))
+        .py(px(if compact { 9.0 } else { 12.5 }))
         .border_b_1()
         .border_color(to_hsla(p.line.composite_over(p.surface)))
         .child(left)

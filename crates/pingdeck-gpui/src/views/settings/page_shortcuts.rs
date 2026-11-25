@@ -5,8 +5,8 @@ use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styl
 
 use crate::app::actions::{SHORTCUT_SPECS, ShortcutCategory, effective_key, format_key_display};
 use crate::ui::{
-    Disableable as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary, btn_secondary,
-    empty_inline, h_row, icon_xs, kbd_chip, palette, search_input, section_header, setting_row,
+    Disableable as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary, btn_secondary, card,
+    empty_inline, h_row, icon_xs, kbd_chip, palette, search_input, setting_row, settings_section,
     text_input, to_hsla, v_col,
 };
 
@@ -102,9 +102,7 @@ pub fn render_shortcuts(
         }
         total_visible += specs.len();
 
-        let mut sec_col = v_col()
-            .w_full()
-            .child(section_header(category.label(zh), None, cx));
+        let mut rows = v_col().w_full();
 
         for spec in specs {
             let active_key = effective_key(spec, overrides);
@@ -177,7 +175,7 @@ pub fn render_shortcuts(
                 row.into_any_element()
             };
 
-            sec_col = sec_col.child(setting_row(
+            rows = rows.child(setting_row(
                 if zh { spec.title_zh } else { spec.title_en },
                 is_custom.then(|| SharedString::from(if zh { "已自定义" } else { "Custom" })),
                 Some(SharedString::from(if zh {
@@ -189,39 +187,42 @@ pub fn render_shortcuts(
                 cx,
             ));
         }
-        root = root.child(sec_col);
+        root = root.child(settings_section(category.label(zh), None, rows, cx));
     }
 
     if total_visible == 0 {
-        root = root.child(empty_inline(
-            if zh {
-                "没有匹配的快捷键命令"
-            } else {
-                "No matching shortcut commands"
-            },
-            Some(SharedString::from(if zh {
-                "尝试搜索模块名称或键位（例如 cmd-k、保存、侧栏）。"
-            } else {
-                "Try searching by command name or key (e.g. cmd-k, save, sidebar)."
-            })),
-            Some(
-                btn_secondary(
-                    "sc-clear-filter",
-                    if zh { "清除筛选" } else { "Clear filter" },
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.inputs
-                        .shortcut_filter
-                        .update(cx, |i, cx| i.set_value("", window, cx));
-                    cx.notify();
-                }))
-                .into_any_element(),
-            ),
-            cx,
-        ));
+        root = root.child(
+            card(cx).p(px(20.0)).rounded(px(10.0)).child(empty_inline(
+                if zh {
+                    "没有匹配的快捷键命令"
+                } else {
+                    "No matching shortcut commands"
+                },
+                Some(SharedString::from(if zh {
+                    "尝试搜索模块名称或键位（例如 cmd-k、保存、侧栏）。"
+                } else {
+                    "Try searching by command name or key (e.g. cmd-k, save, sidebar)."
+                })),
+                Some(
+                    btn_secondary(
+                        "sc-clear-filter",
+                        if zh { "清除筛选" } else { "Clear filter" },
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.inputs
+                            .shortcut_filter
+                            .update(cx, |i, cx| i.set_value("", window, cx));
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+                ),
+                cx,
+            )),
+        );
     } else {
         root = root.child(
             div()
+                .px(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .child(if zh {
