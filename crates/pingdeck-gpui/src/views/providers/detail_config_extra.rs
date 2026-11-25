@@ -113,12 +113,14 @@ pub(super) fn render_extra_cards(
         .content(move |_, _, cx| {
             let mut col = v_col().w(px(230.0)).gap(px(2.0)).p(px(6.0));
             let ent0 = ent_rs.clone();
+            let pop0 = cx.entity().clone();
             col = col.child(
-                list_row("cfg-rs-auto", cur_rs.is_none(), cx, move |_, _, cx| {
+                list_row("cfg-rs-auto", cur_rs.is_none(), cx, move |_, window, cx| {
                     ent0.update(cx, |this, cx| {
                         this.view.provider.quirks.reasoning_request = None;
                         cx.notify();
                     });
+                    pop0.update(cx, |s, cx| s.dismiss(window, cx));
                 })
                 .child(div().text_xs().child(if zh { "自动" } else { "Auto" })),
             );
@@ -136,16 +138,18 @@ pub(super) fn render_extra_cards(
             .enumerate()
             {
                 let ent = ent_rs.clone();
+                let pop_h = cx.entity().clone();
                 col = col.child(
                     list_row(
                         SharedString::from(format!("cfg-rs-{i}")),
                         cur_rs == Some(s),
                         cx,
-                        move |_, _, cx| {
+                        move |_, window, cx| {
                             ent.update(cx, |this, cx| {
                                 this.view.provider.quirks.reasoning_request = Some(s);
                                 cx.notify();
                             });
+                            pop_h.update(cx, |st, cx| st.dismiss(window, cx));
                         },
                     )
                     .child(div().text_xs().child(format_reasoning_style(s, zh))),

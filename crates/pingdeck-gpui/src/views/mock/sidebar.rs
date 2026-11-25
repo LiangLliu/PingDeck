@@ -50,7 +50,9 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
         .child(
             btn_primary("mock-new-btn", view.t("新建", "New"))
                 .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, _, cx| this.create_server(cx))),
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_create_server_modal(window, cx);
+                })),
         )
         .into_any_element();
 

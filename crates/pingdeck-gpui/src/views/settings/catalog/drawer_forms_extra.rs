@@ -446,3 +446,67 @@ pub fn render_drawer_footer(
                 ),
         )
 }
+
+pub fn render_user_model_meta_editor(
+    drawer: &CatalogDrawer,
+    zh: bool,
+    cx: &mut Context<CatalogDrawer>,
+) -> gpui_kit::Div {
+    v_col()
+        .gap(px(8.0))
+        .child(section_heading(
+            if zh {
+                "自建模型参数"
+            } else {
+                "Custom model parameters"
+            },
+            cx,
+        ))
+        .child(
+            h_row()
+                .gap(px(8.0))
+                .child(labeled_input(
+                    if zh { "显示名称" } else { "Name" },
+                    &drawer.user_name,
+                    cx,
+                ))
+                .child(labeled_input(
+                    if zh { "上下文" } else { "Context" },
+                    &drawer.user_context,
+                    cx,
+                ))
+                .child(labeled_input(
+                    if zh { "最大输出" } else { "Max out" },
+                    &drawer.user_max_output,
+                    cx,
+                )),
+        )
+        .child(
+            h_row()
+                .gap(px(14.0))
+                .child(
+                    checkbox("cat-ed-reason", drawer.user_reasoning)
+                        .label(if zh { "推理" } else { "Reasoning" })
+                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                            this.user_reasoning = *checked;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    checkbox("cat-ed-vision", drawer.user_vision)
+                        .label(if zh { "视觉" } else { "Vision" })
+                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                            this.user_vision = *checked;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    checkbox("cat-ed-tools", drawer.user_tools)
+                        .label(if zh { "工具" } else { "Tools" })
+                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                            this.user_tools = *checked;
+                            cx.notify();
+                        })),
+                ),
+        )
+}

@@ -116,21 +116,25 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 .child(method_badge(&method_str, cx))
                 .children(status_pill)
                 .children((!step.extractions.is_empty()).then(|| {
-                    meta_pill(
-                        if zh {
-                            format!("提取 {}", step.extractions.len())
-                        } else {
-                            format!("{} ext", step.extractions.len())
-                        },
-                        cx,
-                    )
+                    let names: Vec<String> = step
+                        .extractions
+                        .iter()
+                        .take(2)
+                        .map(|e| format!("→ {{{{{}}}}}", e.variable_name))
+                        .collect();
+                    let suffix = if step.extractions.len() > 2 {
+                        format!(" +{}", step.extractions.len() - 2)
+                    } else {
+                        String::new()
+                    };
+                    meta_pill(format!("{}{suffix}", names.join(" ")), cx)
                 }))
                 .children((!step.assertions.is_empty()).then(|| {
                     meta_pill(
                         if zh {
-                            format!("断言 {}", step.assertions.len())
+                            format!("✓ 断言 {}", step.assertions.len())
                         } else {
-                            format!("{} assert", step.assertions.len())
+                            format!("✓ {} assert", step.assertions.len())
                         },
                         cx,
                     )

@@ -5,8 +5,8 @@ use gpui_kit::{Context, Div, ParentElement as _, SharedString, Styled as _, div,
 use pingdeck_desktop::core::llm::store::GatewayClient;
 
 use crate::ui::{
-    Tone, badge, btn_ghost, btn_primary, btn_secondary, card, h_row, palette, section_heading,
-    text_input, to_hsla, toggle_switch, v_col,
+    Tone, badge, btn_ghost, btn_primary, btn_secondary, card, choice_chip, h_row, palette,
+    section_heading, text_input, to_hsla, toggle_switch, v_col,
 };
 
 use super::ProvidersView;
@@ -22,7 +22,7 @@ pub fn render_client_policy_editor(
     let save_cid = cid.clone();
     let cur_allow_all = client.allow_all;
     let cur_unknown = client.unknown_model_to_default;
-    v_col()
+    let mut box_el = v_col()
         .gap(px(8.0))
         .p(px(10.0))
         .rounded(px(7.0))
@@ -66,7 +66,7 @@ pub fn render_client_policy_editor(
                                 cur_unknown,
                             )
                             .on_click(cx.listener({
-                                let cid2 = cid;
+                                let cid2 = cid.clone();
                                 move |this, _, _, cx| {
                                     this.toggle_client_unknown_default(
                                         cid2.clone(),
@@ -78,34 +78,77 @@ pub fn render_client_policy_editor(
                             })),
                         ),
                 ),
-        )
-        .child(
-            h_row()
-                .gap(px(8.0))
-                .flex_wrap()
-                .child(
-                    h_row()
-                        .gap(px(4.0))
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child("RPM"))
-                        .child(div().w(px(80.0)).child(text_input(&view.client_rpm_input))),
+        );
+
+    if !cur_allow_all {
+        let mut chips = h_row().gap(px(4.0)).flex_wrap();
+        for (i, mv) in view
+            .models
+            .iter()
+            .filter(|m| m.model.enabled)
+            .take(40)
+            .enumerate()
+        {
+            let mref = format!("{}/{}", mv.model.provider_id, mv.model.model_id);
+            let disp = format!(
+                "{}/{}",
+                view.provider_name(&mv.model.provider_id),
+                mv.model.model_id
+            );
+            let active = client.allowed_models.contains(&mref);
+            let cid_m = cid.clone();
+            chips = chips.child(
+                choice_chip(
+                    SharedString::from(format!("cl-am-{cid}-{i}")),
+                    disp,
+                    active,
+                    cx,
                 )
-                .child(
-                    h_row()
-                        .gap(px(4.0))
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-                            "最大并发"
-                        } else {
-                            "Max conc"
-                        }))
-                        .child(div().w(px(72.0)).child(text_input(&view.client_conc_input))),
-                )
-                .child(
-                    btn_primary("cl-save-pol", if zh { "保存限额" } else { "Save limits" })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.save_client_limits(save_cid.clone(), zh, cx);
-                        })),
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.toggle_client_allowed_model(cid_m.clone(), mref.clone(), zh, cx);
+                })),
+            );
+        }
+        box_el = box_el.child(
+            v_col()
+                .gap(px(4.0))
+                .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
+                    "勾选该客户端允许访问的模型："
+                } else {
+                    "Allowed models for this client:"
+                }))
+                .child(chips),
+        );
+    }
+
+    box_el.child(
+        h_row()
+            .gap(px(8.0))
+            .flex_wrap()
+            .child(
+                h_row()
+                    .gap(px(4.0))
+                    .child(div().text_xs().text_color(to_hsla(p.muted)).child("RPM"))
+                    .child(div().w(px(80.0)).child(text_input(&view.client_rpm_input))),
+            )
+            .child(
+                h_row()
+                    .gap(px(4.0))
+                    .child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
+                        "最大并发"
+                    } else {
+                        "Max conc"
+                    }))
+                    .child(div().w(px(72.0)).child(text_input(&view.client_conc_input))),
+            )
+            .child(
+                btn_primary("cl-save-pol", if zh { "保存限额" } else { "Save limits" }).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.save_client_limits(save_cid.clone(), zh, cx);
+                    }),
                 ),
-        )
+            ),
+    )
 }
 
 pub fn render_managed_backups(

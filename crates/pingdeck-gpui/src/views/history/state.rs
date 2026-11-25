@@ -110,6 +110,7 @@ pub struct HistoryView {
     pub selected_entry: Option<ExecutionHistoryEntry>,
     pub run_children: Vec<ExecutionHistoryEntry>,
     pub detail_tab: HistoryDetailTab,
+    pub body_pretty: bool,
 
     // Undo & overlays
     pub last_undo: Option<(UndoToken, usize)>,

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::app::factory_service::{
     mock_bucket_new, mock_callback_new, mock_response_duplicate, mock_response_new,
-    mock_route_duplicate, mock_route_test_request, mock_rule_new, mock_server_add_route,
+    mock_route_duplicate, mock_rule_new, mock_server_add_route,
 };
 use pingdeck_desktop::core::app::{
     mock_openapi_import_impl, mock_recording_routes_impl, mock_route_from_log_impl,
@@ -22,7 +22,7 @@ use pingdeck_desktop::services::{
 use crate::bridge::{runtime, spawn_blocking_into};
 use crate::ui::Tone;
 
-use super::state::{MockHandoff, MockImportFormat, MockModal, MockSubTab, MockView};
+use super::state::{MockImportFormat, MockModal, MockSubTab, MockView};
 
 impl MockView {
     pub fn save_recorded_routes(&mut self, cx: &mut Context<Self>) {
@@ -355,23 +355,6 @@ impl MockView {
         }
         self.dirty = true;
         self.pending_sync = true;
-        cx.notify();
-    }
-
-    pub fn test_route_in_requests(&mut self, route_id: &str, cx: &mut Context<Self>) {
-        self.snapshot_inputs(cx);
-        let Some(srv) = &self.draft else {
-            return;
-        };
-        let Some(route) = srv.routes.iter().find(|r| r.id == route_id) else {
-            return;
-        };
-        let req = mock_route_test_request(srv, route);
-        self.pending_handoff.set(Some(MockHandoff::OpenTestRequest {
-            name: format!("Mock {} {}", req.method, route.path),
-            method: req.method,
-            url: req.url,
-        }));
         cx.notify();
     }
 

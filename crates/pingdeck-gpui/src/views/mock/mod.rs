@@ -9,6 +9,7 @@
 
 pub mod actions;
 pub mod actions_edit;
+pub mod actions_try;
 pub mod modals;
 pub mod sidebar;
 pub mod state;
@@ -16,6 +17,7 @@ pub mod tab_extra;
 pub mod tab_ops;
 pub mod tab_route_detail;
 pub mod tab_route_rules;
+pub mod tab_route_strip;
 pub mod tab_routes;
 pub mod tab_traffic;
 
@@ -32,7 +34,7 @@ use pingdeck_desktop::services::clipboard;
 
 use crate::bridge::runtime;
 use crate::ui::{
-    EditorState, InputEvent, InputState, StatusShape, Tone, UiIcon, btn_danger, btn_icon,
+    EditorState, InputEvent, InputState, StatusShape, Tone, UiIcon, badge, btn_danger, btn_icon,
     btn_primary, btn_secondary, dismissible_banner, empty_state_with_actions, h_resizable, h_row,
     icon_xs, meta_pill, palette, resizable_panel, status_indicator, subtab_strip,
     tab_bar_underline, tab_item, to_hsla, toolbar_strip, v_col,
@@ -46,6 +48,11 @@ impl MockView {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
         let search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("筛选 Mock 服务 / Filter…"));
+        let route_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("筛选路由 / Filter routes…"));
+        let new_srv_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Payment Mock API"));
+        let new_srv_port_input = cx.new(|cx| InputState::new(window, cx).placeholder("3001"));
         let srv_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Local mock"));
         let srv_port_input = cx.new(|cx| InputState::new(window, cx).placeholder("3001"));
         let srv_prefix_input = cx.new(|cx| InputState::new(window, cx).placeholder("/api"));
@@ -70,6 +77,10 @@ impl MockView {
         let stream_ev_data_input = cx.new(|cx| InputState::new(window, cx).placeholder("data…"));
         let kv_key_input = cx.new(|cx| InputState::new(window, cx).placeholder("Header name"));
         let kv_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Header value"));
+        let proxy_res_kv_key =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Response header name"));
+        let proxy_res_kv_val =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Response header value"));
         let rule_mod_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Key / JSON path (e.g. $.role)"));
         let rule_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Expected value"));
@@ -140,7 +151,7 @@ impl MockView {
                 }
             }));
         }
-        for filter_inp in [&search_input, &traffic_search_input] {
+        for filter_inp in [&search_input, &route_search_input, &traffic_search_input] {
             subs.push(cx.subscribe(filter_inp, |_, _, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -172,6 +183,9 @@ impl MockView {
             new_rule_op: MockRuleOperator::Equals,
             new_rule_invert: false,
             search_input,
+            route_search_input,
+            new_srv_name_input,
+            new_srv_port_input,
             srv_name_input,
             srv_port_input,
             srv_prefix_input,
@@ -189,6 +203,8 @@ impl MockView {
             stream_ev_data_input,
             kv_key_input,
             kv_val_input,
+            proxy_res_kv_key,
+            proxy_res_kv_val,
             rule_mod_input,
             rule_val_input,
             bucket_name_input,
@@ -201,6 +217,8 @@ impl MockView {
             proxy_url_input,
             traffic_search_input,
             import_editor,
+            try_it_busy: false,
+            try_it_result: None,
             active_modal: None,
             status_msg: None,
             pending_sync: false,
@@ -229,6 +247,8 @@ impl MockView {
         self.dirty = false;
         self.logs.clear();
         self.live_data = None;
+        self.try_it_busy = false;
+        self.try_it_result = None;
         self.active_modal = None;
         if let Some(ws) = workspace_id {
             self.reload(ws, cx);
@@ -302,6 +322,11 @@ impl Render for MockView {
                                 .child(srv.name.clone()),
                         )
                         .child(meta_pill(url, cx))
+                        .children(srv.cors_enabled.then(|| badge("CORS", Tone::Success, cx)))
+                        .children(
+                            (srv.latency_ms > 0)
+                                .then(|| meta_pill(format!("+{}ms", srv.latency_ms), cx)),
+                        )
                         .child(
                             btn_icon("mock-copy-url", UiIcon::Copy)
                                 .tooltip(self.t("复制本地地址", "Copy local URL"))
@@ -375,10 +400,16 @@ impl Render for MockView {
                     cx.notify();
                 }));
             for tab in MockSubTab::ALL {
-                let label = if tab == MockSubTab::Traffic && !self.logs.is_empty() {
-                    SharedString::from(format!("{} ({})", tab.label(zh), self.logs.len()))
-                } else {
-                    SharedString::from(tab.label(zh))
+                let count = match tab {
+                    MockSubTab::Routes => Some(srv.routes.len()),
+                    MockSubTab::Data => Some(srv.data_buckets.len()),
+                    MockSubTab::Callbacks => Some(srv.callbacks.len()),
+                    MockSubTab::Traffic if !self.logs.is_empty() => Some(self.logs.len()),
+                    _ => None,
+                };
+                let label = match count {
+                    Some(n) => SharedString::from(format!("{} ({n})", tab.label(zh))),
+                    None => SharedString::from(tab.label(zh)),
                 };
                 tab_bar = tab_bar.child(tab_item(label));
             }
@@ -439,9 +470,14 @@ impl Render for MockView {
                     h_row()
                         .gap(px(8.0))
                         .child(
-                            btn_primary("mock-empty-new", self.t("新建 Mock 服务", "New Mock Server"))
-                                .icon(icon_xs(UiIcon::Plus))
-                                .on_click(cx.listener(|this, _, _, cx| this.create_server(cx))),
+                            btn_primary(
+                                "mock-empty-new",
+                                self.t("新建 Mock 服务", "New Mock Server"),
+                            )
+                            .icon(icon_xs(UiIcon::Plus))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_create_server_modal(window, cx);
+                            })),
                         )
                         .child(
                             btn_secondary("mock-empty-imp", self.t("导入…", "Import…"))

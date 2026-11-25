@@ -1,6 +1,6 @@
-//! Center conversation header & message stream for AI Chat:
-//! right-aligned rounded user bubbles, open editorial assistant prose, collapsible thinking
-//! blocks, structured tool trace timeline cards, and starter prompts.
+//! Center conversation message stream for AI Chat: user bubbles, assistant prose,
+//! collapsible thinking, tool trace cards with full-output modal, per-message actions
+//! (Copy / Edit / Retry / Fork / Delete), and Jump-to-latest pill.
 
 use std::collections::HashMap;
 
@@ -10,154 +10,22 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::agent::model::{AgentMessage, AgentRole, AgentToolCallRecord};
 use pingdeck_desktop::core::model::hub::HubPart;
+use pingdeck_desktop::services::clipboard;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon, h_row, icon_xs, kv_chip,
-    markdown_view, palette, status_indicator, to_hsla, v_col,
+    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary,
+    h_row, icon_xs, kv_chip, markdown_view, palette, status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
 use super::metrics::{format_duration_ms, format_effort_short, render_message_footer};
 use super::reasoning::{
-    ReasoningKind, extract_message_reasoning, message_has_reasoning, render_no_reasoning_panel,
-    render_reasoning_block, render_reasoning_header_chip, render_sealed_reasoning_card,
+    ReasoningKind, extract_message_reasoning, render_no_reasoning_panel, render_reasoning_block,
+    render_reasoning_header_chip, render_sealed_reasoning_card,
 };
 use super::trace::{render_live_turn, render_trace_step};
+use super::types::ChatModal;
 use super::welcome::render_welcome_empty;
-
-pub fn render_header(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
-    let p = palette(cx);
-    let title = if view.thread.title.trim().is_empty() {
-        if zh { "新对话" } else { "New chat" }.to_owned()
-    } else {
-        view.thread.title.clone()
-    };
-    let model_label = view
-        .session
-        .as_ref()
-        .and_then(|s| s.target.as_ref())
-        .map(|t| view.format_target_label(t));
-    let folder_name = view
-        .session
-        .as_ref()
-        .and_then(|s| s.workspace_dir.as_deref())
-        .and_then(|d| std::path::Path::new(d).file_name())
-        .and_then(|n| n.to_str())
-        .map(str::to_owned);
-    let pinned = view
-        .session
-        .as_ref()
-        .is_some_and(|s| s.pinned_at_ms.is_some());
-    let reasoning_msg_ids: Vec<String> = view
-        .thread
-        .messages
-        .iter()
-        .filter(|m| message_has_reasoning(m))
-        .map(|m| format!("reason-{}", m.id))
-        .collect();
-    let has_any_reasoning = !reasoning_msg_ids.is_empty();
-    let all_reasoning_open = has_any_reasoning
-        && reasoning_msg_ids
-            .iter()
-            .all(|k| view.expanded_reasoning.contains(k));
-
-    h_row()
-        .justify_between()
-        .gap(px(10.0))
-        .px(px(16.0))
-        .py(px(10.0))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.surface)))
-        .child(
-            h_row()
-                .flex_1()
-                .min_w_0()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .truncate()
-                        .child(SharedString::from(title)),
-                )
-                .children(model_label.map(|m| badge(m, Tone::Neutral, cx)))
-                .children(folder_name.map(|f| {
-                    h_row()
-                        .gap(px(4.0))
-                        .px(px(7.0))
-                        .py(px(2.0))
-                        .rounded(px(6.0))
-                        .bg(to_hsla(p.sunken))
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(icon_xs(UiIcon::FolderOpen))
-                        .child(SharedString::from(f))
-                })),
-        )
-        .child(
-            h_row()
-                .gap(px(4.0))
-                .children(
-                    view.status_msg
-                        .clone()
-                        .map(|(tone, msg)| badge(msg, tone, cx)),
-                )
-                .children(has_any_reasoning.then(|| {
-                    btn_icon("chat-hdr-reasoning-all", UiIcon::Brain)
-                        .tooltip(if all_reasoning_open {
-                            if zh {
-                                "收起全部思考过程"
-                            } else {
-                                "Collapse all thinking"
-                            }
-                        } else if zh {
-                            "展开全部思考过程"
-                        } else {
-                            "Expand all thinking"
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_all_reasoning(cx)))
-                }))
-                .child(
-                    btn_icon(
-                        "chat-hdr-pin",
-                        if pinned { UiIcon::PinOff } else { UiIcon::Pin },
-                    )
-                    .tooltip(if pinned {
-                        if zh { "取消置顶" } else { "Unpin" }
-                    } else if zh {
-                        "置顶对话"
-                    } else {
-                        "Pin chat"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
-                )
-                .child(
-                    btn_icon(
-                        "chat-hdr-details",
-                        if view.details_open {
-                            UiIcon::PanelRightClose
-                        } else {
-                            UiIcon::PanelRightOpen
-                        },
-                    )
-                    .tooltip(if zh {
-                        "对话详情与设置"
-                    } else {
-                        "Thread details & options"
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.details_open = !this.details_open;
-                        cx.notify();
-                    })),
-                )
-                .child(
-                    btn_icon("chat-hdr-del", UiIcon::Trash)
-                        .tooltip(if zh { "删除对话" } else { "Delete chat" })
-                        .on_click(cx.listener(|this, _, _, cx| this.delete_current_session(cx))),
-                ),
-        )
-}
 
 pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
@@ -201,7 +69,7 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         for msg in &view.thread.messages {
             match msg.role {
                 AgentRole::User => {
-                    col = col.child(render_user_message(msg, cx));
+                    col = col.child(render_user_message(view, msg, zh, cx));
                 }
                 AgentRole::Assistant => {
                     col = col.child(render_assistant_message(
@@ -220,7 +88,6 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
             }
         }
 
-        // Optimistic user bubble (0ms feedback before `AgentEvent::UserMessage` arrives).
         if let Some(pending_text) = &view.pending_user_text {
             col = col.child(render_pending_user_bubble(pending_text, cx));
         }
@@ -230,7 +97,6 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         }
     }
 
-    // Always render run/send errors prominently — even on an empty thread (e.g. NoModel / API error).
     if let Some(err) = &view.thread.last_error {
         col = col.child(
             h_row()
@@ -251,6 +117,8 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
         );
     }
 
+    let show_jump = view.thread.messages.len() >= 6;
+
     div()
         .relative()
         .flex_1()
@@ -265,6 +133,18 @@ pub fn render_messages(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) ->
                 .child(col),
         )
         .vertical_scrollbar(&view.scroll_handle)
+        .children(show_jump.then(|| {
+            div().absolute().right(px(20.0)).bottom(px(10.0)).child(
+                btn_secondary(
+                    "chat-jump-bottom",
+                    if zh { "回到底部 ↓" } else { "Latest ↓" },
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.scroll_handle.scroll_to_bottom();
+                    cx.notify();
+                })),
+            )
+        }))
 }
 
 fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElement {
@@ -282,9 +162,20 @@ fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElemen
     )
 }
 
-fn render_user_message(msg: &AgentMessage, cx: &gpui_kit::App) -> impl IntoElement {
+fn render_user_message(
+    view: &ChatView,
+    msg: &AgentMessage,
+    zh: bool,
+    cx: &mut Context<ChatView>,
+) -> impl IntoElement {
     let p = palette(cx);
     let text = extract_text_parts(&msg.parts);
+    let txt_cp = text.clone();
+    let txt_ed = text.clone();
+    let mid_ed = msg.id.clone();
+    let mid_br = msg.id.clone();
+    let mid_del = msg.id.clone();
+    let idle = !view.is_run_active();
 
     v_col()
         .w_full()
@@ -311,6 +202,60 @@ fn render_user_message(msg: &AgentMessage, cx: &gpui_kit::App) -> impl IntoEleme
             }
             row
         }))
+        .child(
+            h_row()
+                .gap(px(2.0))
+                .child(
+                    btn_icon(SharedString::from(format!("u-cp-{}", msg.id)), UiIcon::Copy)
+                        .tooltip(if zh { "复制" } else { "Copy" })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let _ = clipboard::set_text(&txt_cp);
+                            this.status_msg =
+                                Some((Tone::Success, if zh { "已复制" } else { "Copied" }.into()));
+                            cx.notify();
+                        })),
+                )
+                .children(idle.then(|| {
+                    btn_icon(
+                        SharedString::from(format!("u-ed-{}", msg.id)),
+                        UiIcon::Pencil,
+                    )
+                    .tooltip(if zh {
+                        "编辑并重发"
+                    } else {
+                        "Edit & rerun"
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.modal_textarea.update(cx, |s, cx| {
+                            s.set_value(txt_ed.clone(), window, cx);
+                        });
+                        this.active_modal = Some(ChatModal::EditMessage {
+                            message_id: mid_ed.clone(),
+                        });
+                        cx.notify();
+                    }))
+                }))
+                .child(
+                    btn_icon(
+                        SharedString::from(format!("u-br-{}", msg.id)),
+                        UiIcon::Branch,
+                    )
+                    .tooltip(if zh { "从此处分支" } else { "Branch here" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.branch_from_message(mid_br.clone(), cx);
+                    })),
+                )
+                .children(idle.then(|| {
+                    btn_icon(
+                        SharedString::from(format!("u-dl-{}", msg.id)),
+                        UiIcon::Trash,
+                    )
+                    .tooltip(if zh { "删除消息" } else { "Delete" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.delete_message(mid_del.clone(), cx);
+                    }))
+                })),
+        )
 }
 
 fn render_assistant_message(
@@ -485,6 +430,8 @@ fn render_assistant_message(
                 _ => None,
             });
             let cid_click = call_id.to_owned();
+            let cid_full = call_id.to_owned();
+            let name_full = name.to_owned();
             trace_box = trace_box.child(render_trace_step(
                 call_id,
                 name,
@@ -501,14 +448,32 @@ fn render_assistant_message(
                 cx.listener(move |this, _, _, cx| this.toggle_trace(cid_click.clone(), cx)),
                 cx,
             ));
+            if expanded {
+                trace_box = trace_box.child(
+                    h_row().justify_end().px(px(10.0)).pb(px(6.0)).child(
+                        btn_ghost(
+                            SharedString::from(format!("tout-full-{call_id}")),
+                            if zh {
+                                "查看完整输出"
+                            } else {
+                                "View full output"
+                            },
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.open_tool_output(cid_full.clone(), name_full.clone(), cx);
+                        })),
+                    ),
+                );
+            }
         }
         body = body.child(trace_box);
     }
 
-    if !text_chunks.is_empty() {
+    let joined_text = text_chunks.join("\n");
+    if !joined_text.is_empty() {
         body = body.child(div().pl(px(30.0)).child(markdown_view(
             SharedString::from(format!("chat-a-{}", msg.id)),
-            text_chunks.join("\n"),
+            joined_text.clone(),
         )));
     }
 
@@ -528,6 +493,57 @@ fn render_assistant_message(
         );
     }
 
+    let mid_retry = msg.id.clone();
+    let mid_br = msg.id.clone();
+    let mid_del = msg.id.clone();
+    let idle = !view.is_run_active();
+    let actions_row = h_row()
+        .pl(px(30.0))
+        .gap(px(4.0))
+        .child(
+            btn_icon(SharedString::from(format!("a-cp-{}", msg.id)), UiIcon::Copy)
+                .tooltip(if zh { "复制回复" } else { "Copy" })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let _ = clipboard::set_text(&joined_text);
+                    this.status_msg = Some((
+                        Tone::Success,
+                        if zh { "已复制回复" } else { "Copied" }.into(),
+                    ));
+                    cx.notify();
+                })),
+        )
+        .children(idle.then(|| {
+            btn_icon(
+                SharedString::from(format!("a-rt-{}", msg.id)),
+                UiIcon::Refresh,
+            )
+            .tooltip(if zh { "重新生成" } else { "Regenerate" })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.retry_message(mid_retry.clone(), cx);
+            }))
+        }))
+        .child(
+            btn_icon(
+                SharedString::from(format!("a-br-{}", msg.id)),
+                UiIcon::Branch,
+            )
+            .tooltip(if zh { "从此处分支" } else { "Branch" })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.branch_from_message(mid_br.clone(), cx);
+            })),
+        )
+        .children(idle.then(|| {
+            btn_icon(
+                SharedString::from(format!("a-dl-{}", msg.id)),
+                UiIcon::Trash,
+            )
+            .tooltip(if zh { "删除消息" } else { "Delete" })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.delete_message(mid_del.clone(), cx);
+            }))
+        }));
+
+    body = body.child(actions_row);
     if let Some(footer) = render_message_footer(msg, view.thread.cost_currency.as_deref(), zh, cx) {
         body = body.child(footer);
     }

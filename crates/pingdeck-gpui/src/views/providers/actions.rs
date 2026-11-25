@@ -7,17 +7,16 @@ use pingdeck_desktop::core::app::{
     llm_gateway_client_create_impl, llm_gateway_client_delete_impl, llm_gateway_client_revoke_impl,
     llm_gateway_client_rotate_impl, llm_gateway_client_set_policy_impl,
     llm_gateway_client_update_impl, llm_gateway_reset_circuits_impl, llm_gateway_restart_impl,
-    llm_gateway_start_impl, llm_gateway_stop_impl, llm_model_fallback_candidates_impl,
-    llm_model_fallbacks_set_impl, llm_route_preview_impl, settings_update_impl,
+    llm_gateway_start_impl, llm_gateway_stop_impl, settings_update_impl,
 };
 use pingdeck_desktop::core::client_config::ClientApp;
-use pingdeck_desktop::core::llm::store::{ClientInput, ClientLimits, ClientPolicyInput, ModelRef};
+use pingdeck_desktop::core::llm::store::{ClientInput, ClientLimits, ClientPolicyInput};
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
-use super::{ProvidersView, RuleEditorState};
+use super::ProvidersView;
 
 impl ProvidersView {
     pub fn gateway_action(&mut self, action: &'static str, cx: &mut Context<Self>) {
@@ -303,6 +302,49 @@ impl ProvidersView {
         self._tasks.push(task);
     }
 
+    pub fn toggle_client_allowed_model(
+        &mut self,
+        cid: String,
+        model_ref: String,
+        zh: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(cl) = self.gateway_clients.iter().find(|c| c.id == cid).cloned() else {
+            return;
+        };
+        let mut allowed = cl.allowed_models;
+        if let Some(pos) = allowed.iter().position(|m| m == &model_ref) {
+            allowed.remove(pos);
+        } else {
+            allowed.push(model_ref);
+        }
+        let input = ClientInput {
+            name: cl.name,
+            allow_all: cl.allow_all,
+            allowed_aliases: cl.allowed_aliases,
+            allowed_models: allowed,
+        };
+        let task = spawn_blocking_into(
+            cx,
+            move |state| llm_gateway_client_update_impl(state, &cid, input),
+            move |this, res, cx| match res {
+                Ok(_) => this.reload_all(cx),
+                Err(err) => {
+                    this.status_msg = Some((
+                        Tone::Danger,
+                        if zh {
+                            format!("更新允许模型失败：{}", err.message())
+                        } else {
+                            err.message().to_owned()
+                        },
+                    ));
+                    cx.notify();
+                }
+            },
+        );
+        self._tasks.push(task);
+    }
+
     pub fn toggle_client_unknown_default(
         &mut self,
         cid: String,
@@ -345,8 +387,44 @@ impl ProvidersView {
         let rpm_raw = self.client_rpm_input.read(cx).value().trim().to_owned();
         let conc_raw = self.client_conc_input.read(cx).value().trim().to_owned();
         let mut limits: ClientLimits = cl.limits;
-        limits.rpm = (!rpm_raw.is_empty()).then(|| rpm_raw.parse().unwrap_or(0));
-        limits.max_concurrent = (!conc_raw.is_empty()).then(|| conc_raw.parse().unwrap_or(0));
+        limits.rpm = if rpm_raw.is_empty() {
+            None
+        } else {
+            match rpm_raw.parse::<u32>() {
+                Ok(v) if v > 0 => Some(v),
+                _ => {
+                    self.status_msg = Some((
+                        Tone::Warning,
+                        if zh {
+                            "RPM 必须为正整数".into()
+                        } else {
+                            "RPM must be a positive integer".into()
+                        },
+                    ));
+                    cx.notify();
+                    return;
+                }
+            }
+        };
+        limits.max_concurrent = if conc_raw.is_empty() {
+            None
+        } else {
+            match conc_raw.parse::<u32>() {
+                Ok(v) if v > 0 => Some(v),
+                _ => {
+                    self.status_msg = Some((
+                        Tone::Warning,
+                        if zh {
+                            "最大并发必须为正整数".into()
+                        } else {
+                            "Max concurrency must be a positive integer".into()
+                        },
+                    ));
+                    cx.notify();
+                    return;
+                }
+            }
+        };
         let policy = ClientPolicyInput {
             limits,
             unknown_model_to_default: None,
@@ -465,116 +543,6 @@ impl ProvidersView {
                         ));
                         this.reload_all(cx);
                     }
-                    Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn start_edit_rule(
-        &mut self,
-        primary: ModelRef,
-        chain: Vec<ModelRef>,
-        cx: &mut Context<Self>,
-    ) {
-        let pid = primary.provider_id.clone();
-        let mid = primary.model.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| llm_model_fallback_candidates_impl(state, &pid, &mid).unwrap_or_default(),
-            move |this, candidates, cx| {
-                this.rule_editor = Some(RuleEditorState {
-                    primary,
-                    chain,
-                    candidates,
-                });
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn save_rule_editor(&mut self, zh: bool, cx: &mut Context<Self>) {
-        let Some(ed) = self.rule_editor.take() else {
-            return;
-        };
-        let pid = ed.primary.provider_id;
-        let mid = ed.primary.model;
-        let chain = ed.chain;
-        let task = spawn_blocking_into(
-            cx,
-            move |state| llm_model_fallbacks_set_impl(state, &pid, &mid, chain),
-            move |this, res, cx| {
-                match res {
-                    Ok(saved) => {
-                        let msg = if saved.warnings.is_empty() {
-                            if zh {
-                                "备用规则已保存".into()
-                            } else {
-                                "Fallback rule saved".into()
-                            }
-                        } else if zh {
-                            format!("已保存（{} 项能力差异提醒）", saved.warnings.len())
-                        } else {
-                            format!("Saved ({} capability warning(s))", saved.warnings.len())
-                        };
-                        this.status_msg = Some((Tone::Success, msg));
-                        this.reload_all(cx);
-                    }
-                    Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn delete_gateway_rule(&mut self, primary: ModelRef, zh: bool, cx: &mut Context<Self>) {
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                llm_model_fallbacks_set_impl(
-                    state,
-                    &primary.provider_id,
-                    &primary.model,
-                    Vec::new(),
-                )
-            },
-            move |this, res, cx| {
-                match res {
-                    Ok(_) => {
-                        this.status_msg = Some((
-                            Tone::Neutral,
-                            if zh {
-                                "备用规则已删除".into()
-                            } else {
-                                "Fallback rule deleted".into()
-                            },
-                        ));
-                        this.reload_all(cx);
-                    }
-                    Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn load_route_preview(
-        &mut self,
-        requested: String,
-        client_id: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        let task = spawn_blocking_into(
-            cx,
-            move |state| llm_route_preview_impl(state, &requested, client_id.as_deref()),
-            |this, res, cx| {
-                match res {
-                    Ok(prev) => this.route_preview = Some(prev),
                     Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
                 }
                 cx.notify();

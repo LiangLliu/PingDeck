@@ -3,10 +3,13 @@
 
 pub mod actions;
 pub mod chrome;
+pub mod handoffs;
 pub mod module_host;
 pub mod palette;
 pub mod sidebar;
+pub mod sidebar_popovers;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui_kit::{
@@ -15,15 +18,14 @@ use gpui_kit::{
     Task, Window, div, px,
 };
 use pingdeck_desktop::core::app::{
-    agent_attention_subscribe_impl, app_running_work_impl, set_window_focused, settings_get_impl,
+    agent_attention_subscribe_impl, llm_subscribe_impl, set_window_focused, settings_get_impl,
     settings_subscribe_impl, workspace_list_impl, workspace_touch_impl,
 };
+use pingdeck_desktop::core::llm::events::LlmEvent;
 use pingdeck_desktop::core::model::events::Sequenced;
 use pingdeck_desktop::core::model::settings::{Language, SidebarMode};
 use pingdeck_desktop::persistence::UiLocalState;
-use pingdeck_desktop::state::{
-    NavModule, PaletteAction, SettingsSection, ShellState, ToastKind, UtilityDialog,
-};
+use pingdeck_desktop::state::{NavModule, SettingsSection, ShellState, ToastKind, UtilityDialog};
 use pingdeck_desktop::streams::{StreamReceiver, channel_sink};
 use pingdeck_desktop::theme::PaletteId;
 
@@ -35,12 +37,9 @@ use crate::app::actions::{
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
 use crate::ui::{
-    InputState, apply_palette, palette as active_palette, resolve_is_dark, sync_window_scale,
-    to_hsla, v_col,
+    InputState, WindowExt as _, apply_palette, palette as active_palette, resolve_is_dark,
+    sync_window_scale, to_hsla, v_col,
 };
-use crate::views::history::HistoryHandoff;
-use crate::views::mock::MockHandoff;
-use crate::views::requests::RequestsHandoff;
 use crate::views::utility::UtilityPanel;
 
 use chrome::{
@@ -54,16 +53,19 @@ use sidebar::render_sidebar;
 /// Top-level PingDeck window view managing navigation, overlays, and live core subscriptions.
 pub struct AppShell {
     pub state: ShellState,
-    local_ui: UiLocalState,
+    pub(crate) local_ui: UiLocalState,
     system_is_dark: bool,
     focus_handle: FocusHandle,
-    modules: ModuleHost,
+    pub(crate) modules: ModuleHost,
     pub(crate) palette_view: Entity<CommandPaletteView>,
     pub(crate) utility_view: Entity<UtilityPanel>,
     pub(crate) workspace_menu_open: bool,
     pub(crate) new_workspace_input: Option<Entity<InputState>>,
+    pub(crate) provider_attention_count: usize,
+    pub(crate) running_mock_summary: Vec<(String, String, u16)>,
+    pub(crate) workspace_counts: HashMap<String, (usize, usize)>,
     _subscriptions: Vec<Subscription>,
-    _tasks: Vec<Task<()>>,
+    pub(crate) _tasks: Vec<Task<()>>,
 }
 
 impl AppShell {
@@ -77,12 +79,7 @@ impl AppShell {
         let settings = settings_get_impl(rt.state());
         let workspaces = workspace_list_impl(rt.state()).unwrap_or_default();
         let local_ui = rt.load_ui_state();
-        let mut state = ShellState::new(&local_ui, settings, workspaces);
-        state.running_work = app_running_work_impl(rt.state());
-        state.gateway_port = state
-            .running_work
-            .gateway_running
-            .then(|| rt.state().llm().gateway.status(rt.state().llm()).port);
+        let state = ShellState::new(&local_ui, settings, workspaces);
 
         let palette_view = cx.new(|cx| CommandPaletteView::new(window, cx));
         let utility_view = cx.new(|cx| UtilityPanel::new(window, cx));
@@ -148,7 +145,32 @@ impl AppShell {
             },
         ));
 
-        // 4. Core SettingsEvent stream.
+        // 4. Core LlmEvent stream so Gateway port, Providers health dot, and Running Work stay live.
+        let (llm_sink, llm_rx) = channel_sink::<Sequenced<LlmEvent>>();
+        let _ = llm_subscribe_impl(rt.state(), llm_sink, None);
+        tasks.push(subscribe_stream_into(
+            cx,
+            llm_rx,
+            16,
+            |this, batches, cx| {
+                let relevant = batches.iter().any(|seq| {
+                    matches!(
+                        seq.event,
+                        LlmEvent::GatewayStatus { .. }
+                            | LlmEvent::ProviderStatusChanged { .. }
+                            | LlmEvent::ProvidersChanged
+                            | LlmEvent::ClientsChanged
+                            | LlmEvent::Gap { .. }
+                    )
+                });
+                if relevant {
+                    this.refresh_running_work(cx);
+                    cx.notify();
+                }
+            },
+        ));
+
+        // 5. Core SettingsEvent stream.
         let (set_sink, set_rx) =
             channel_sink::<pingdeck_desktop::core::model::settings::SettingsEvent>();
         let _ = settings_subscribe_impl(rt.state(), set_sink);
@@ -199,7 +221,18 @@ impl AppShell {
             cx.notify();
         });
 
-        Self {
+        let pal_sub = cx.observe(&palette_view, |_, view, cx| {
+            if view.read(cx).has_pending_signal() {
+                cx.notify();
+            }
+        });
+        let util_sub = cx.observe(&utility_view, |_, view, cx| {
+            if view.read(cx).is_dismissed() {
+                cx.notify();
+            }
+        });
+
+        let mut shell = Self {
             state,
             local_ui,
             system_is_dark,
@@ -209,9 +242,14 @@ impl AppShell {
             utility_view,
             workspace_menu_open: false,
             new_workspace_input: None,
-            _subscriptions: vec![act_sub, app_sub],
+            provider_attention_count: 0,
+            running_mock_summary: Vec::new(),
+            workspace_counts: HashMap::new(),
+            _subscriptions: vec![act_sub, app_sub, pal_sub, util_sub],
             _tasks: tasks,
-        }
+        };
+        shell.refresh_running_work(cx);
+        shell
     }
 
     pub fn language(&self) -> Language {
@@ -221,16 +259,6 @@ impl AppShell {
     pub(super) fn persist_local(&mut self, cx: &App) {
         self.state.sync_to_local(&mut self.local_ui);
         runtime(cx).save_ui_state(&self.local_ui);
-    }
-
-    fn refresh_running_work(&mut self, cx: &App) {
-        let rt = runtime(cx);
-        self.state.running_work = app_running_work_impl(rt.state());
-        self.state.gateway_port = self
-            .state
-            .running_work
-            .gateway_running
-            .then(|| rt.state().llm().gateway.status(rt.state().llm()).port);
     }
 
     pub(super) fn reapply_theme(&self, cx: &mut Context<Self>) {
@@ -253,6 +281,7 @@ impl AppShell {
     pub fn navigate(&mut self, module: NavModule, cx: &mut Context<Self>) {
         self.state.navigate(module);
         self.modules.on_enter_module(module, cx);
+        self.refresh_running_work(cx);
         self.workspace_menu_open = false;
         self.persist_local(cx);
         cx.notify();
@@ -303,46 +332,20 @@ impl AppShell {
                 .iter()
                 .map(|a| (a.session_id.clone(), a.summary.clone()))
                 .collect();
+            let dynamic = self.collect_palette_dynamic_items(cx);
             let frecency = self.local_ui.palette_frecency.clone();
             self.palette_view.update(cx, |view, cx| {
-                view.open(lang, workspaces, attention, frecency, window, cx);
+                view.open(lang, workspaces, attention, dynamic, frecency, window, cx);
             });
         }
         cx.notify();
-    }
-
-    pub fn execute_palette_action(
-        &mut self,
-        item_id: String,
-        action: PaletteAction,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let entry = self
-            .local_ui
-            .palette_frecency
-            .entry(item_id)
-            .or_insert((0, 0));
-        entry.0 = entry.0.saturating_add(1);
-        entry.1 = pingdeck_desktop::core::app::current_time_ms();
-        self.state.palette_open = false;
-
-        match action {
-            PaletteAction::Navigate(m) => self.navigate(m, cx),
-            PaletteAction::OpenSettings(s) => self.open_settings_section(s, cx),
-            PaletteAction::OpenUtility(u) => self.open_utility(u, window, cx),
-            PaletteAction::SwitchWorkspace(id) => self.switch_workspace(id, cx),
-            PaletteAction::OpenChatSession(_) => self.navigate(NavModule::Chat, cx),
-            PaletteAction::ToggleSidebar => self.toggle_sidebar(cx),
-            PaletteAction::CycleThemeMode => self.toggle_theme_mode(cx),
-            PaletteAction::ToggleLanguage => self.toggle_language(cx),
-        }
     }
 
     pub fn switch_workspace(&mut self, id: String, cx: &mut Context<Self>) {
         self.state.active_workspace_id = Some(id.clone());
         self.modules.set_workspace(Some(id.clone()), cx);
         self.workspace_menu_open = false;
+        self.refresh_running_work(cx);
         self.persist_local(cx);
         let task = spawn_blocking_into(
             cx,
@@ -364,6 +367,7 @@ impl AppShell {
         self.modules.render_active(
             self.state.active_module,
             self.state.active_workspace_id.clone(),
+            self.state.active_environment_id.clone(),
             self.state.active_settings_section,
             self.state.palette,
             window,
@@ -389,76 +393,10 @@ impl Render for AppShell {
         if self.palette_view.read(cx).take_dismissed_flag() {
             self.state.palette_open = false;
         }
-        if self.utility_view.read(cx).is_dismissed() {
+        if self.utility_view.read(cx).take_dismissed_flag() {
             self.state.active_utility = None;
         }
-        let (pending_pal, pending_back, pending_nav) = self.modules.poll_settings_signals(cx);
-        if let Some(pid) = pending_pal {
-            self.set_palette(pid, cx);
-        }
-        if let Some(target_mod) = pending_nav {
-            self.navigate(target_mod, cx);
-        } else if pending_back {
-            self.state.leave_settings();
-            self.persist_local(cx);
-        }
-        if let Some(handoff) = self.modules.poll_requests_handoff(cx) {
-            match handoff {
-                RequestsHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),
-                RequestsHandoff::OpenEnvironments => self.navigate(NavModule::Environments, cx),
-                RequestsHandoff::OpenHistory => self.navigate(NavModule::History, cx),
-                RequestsHandoff::OpenUsageCall(_) => self.navigate(NavModule::Usage, cx),
-                RequestsHandoff::AskAgent {
-                    title,
-                    context_markdown,
-                } => {
-                    self.navigate(NavModule::Chat, cx);
-                    self.modules
-                        .handoff_to_chat(title, context_markdown, window, cx);
-                }
-            }
-        }
-        if let Some(MockHandoff::OpenTestRequest { name, method, url }) =
-            self.modules.poll_mock_handoff(cx)
-            && let Some(ws_id) = self.state.active_workspace_id.clone()
-            && let Ok(mut req) = pingdeck_desktop::core::model::Request::new(
-                pingdeck_desktop::core::app::factory_service::new_entity_id("req"),
-                &ws_id,
-                name,
-                url,
-            )
-        {
-            req.method = match method.as_str() {
-                "POST" => pingdeck_desktop::core::model::HttpMethod::Post,
-                "PUT" => pingdeck_desktop::core::model::HttpMethod::Put,
-                "PATCH" => pingdeck_desktop::core::model::HttpMethod::Patch,
-                "DELETE" => pingdeck_desktop::core::model::HttpMethod::Delete,
-                "HEAD" => pingdeck_desktop::core::model::HttpMethod::Head,
-                "OPTIONS" => pingdeck_desktop::core::model::HttpMethod::Options,
-                _ => pingdeck_desktop::core::model::HttpMethod::Get,
-            };
-            self.navigate(NavModule::Requests, cx);
-            self.modules
-                .open_request_in_requests(Some(ws_id), req, window, cx);
-        }
-        if let Some(handoff) = self.modules.poll_history_handoff(cx) {
-            match handoff {
-                HistoryHandoff::OpenInRequests(req) => {
-                    let ws_id = self.state.active_workspace_id.clone();
-                    self.navigate(NavModule::Requests, cx);
-                    self.modules
-                        .open_request_in_requests(ws_id, *req, window, cx);
-                }
-                HistoryHandoff::AskAgent {
-                    title,
-                    context_markdown,
-                } => {
-                    self.navigate(NavModule::Chat, cx);
-                    self.modules
-                        .handoff_to_chat(title, context_markdown, window, cx);
-                }
-            }
-        }
+        self.poll_all_handoffs(window, cx);
 
         let p = active_palette(cx);
         sync_window_scale(&self.state.settings.appearance, window);
@@ -477,16 +415,16 @@ impl Render for AppShell {
                 let list: Vec<std::path::PathBuf> = paths.paths().to_vec();
                 if !list.is_empty() {
                     runtime(cx).grants().grant("main", &list);
-                    this.state.push_toast(
+                    this.push_toast_auto(
                         ToastKind::Info,
                         if this.language() == Language::ZhCn {
-                            format!("已授权 {}个拖入文件（60秒内有效）", list.len())
+                            format!("已授权 {} 个拖入文件（60秒内有效）", list.len())
                         } else {
                             format!("Granted {} dropped file(s) for 60s", list.len())
                         },
                         None,
+                        cx,
                     );
-                    cx.notify();
                 }
             }))
             .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| this.toggle_sidebar(cx)))
@@ -496,7 +434,11 @@ impl Render for AppShell {
             .on_action(cx.listener(|this, _: &OpenSettings, _, cx| {
                 this.navigate(NavModule::Settings, cx);
             }))
-            .on_action(cx.listener(|this, _: &CloseOverlay, _, cx| {
+            .on_action(cx.listener(|this, _: &CloseOverlay, window, cx| {
+                if window.has_active_sheet(cx) {
+                    window.close_sheet(cx);
+                    return;
+                }
                 if this
                     .modules
                     .dismiss_active_modal(this.state.active_module, cx)

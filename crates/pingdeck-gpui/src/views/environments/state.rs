@@ -1,5 +1,7 @@
 //! State container, top resource tabs, environment sub-tabs, and modals for `EnvironmentsView`.
 
+use std::cell::Cell;
+
 use gpui_kit::{Context, Entity, Subscription, Task, Window};
 use pingdeck_desktop::core::app::{
     CompareRowDto, DeclaredHostDto, EnvironmentDto, EnvironmentVariableDto, GlobalsDto,
@@ -147,6 +149,7 @@ impl From<&EnvironmentVariableDto> for EditableVarRow {
 /// Modal dialogs owned by `EnvironmentsView`.
 #[derive(Debug, Clone)]
 pub enum EnvModal {
+    CreateEnv,
     DeleteEnv {
         id: String,
         name: String,
@@ -156,6 +159,7 @@ pub enum EnvModal {
         id: String,
         name: String,
         include_secrets: bool,
+        ack_secrets: bool,
     },
     EditVar {
         is_global: bool,
@@ -184,6 +188,8 @@ pub struct EnvironmentsView {
 
     // Environments
     pub environments: Vec<EnvironmentDto>,
+    pub active_env_id: Option<String>,
+    pub pending_active_env: Cell<Option<Option<String>>>,
     pub selected_env_id: Option<String>,
     pub env_draft_name: String,
     pub env_draft_vars: Vec<EditableVarRow>,
@@ -217,6 +223,7 @@ pub struct EnvironmentsView {
 
     // Shared inputs
     pub env_search_input: Entity<InputState>,
+    pub new_env_name_input: Entity<InputState>,
     pub env_name_input: Entity<InputState>,
     pub var_filter_input: Entity<InputState>,
     pub new_var_key: Entity<InputState>,

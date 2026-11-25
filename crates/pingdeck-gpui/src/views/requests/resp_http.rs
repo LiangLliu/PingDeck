@@ -1,16 +1,17 @@
 //! HTTP Response header, status/timing waterfall popover, error/warning banners, and tab dispatch.
 
 use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
-use pingdeck_desktop::core::executor::{BodyIncomplete, ExecutionResult};
-use pingdeck_desktop::core::model::phase::PhaseValue;
+use pingdeck_desktop::core::app::current_time_ms;
+use pingdeck_desktop::core::executor::BodyIncomplete;
 use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
 use pingdeck_desktop::services::clipboard;
+use pingdeck_desktop::time::format_relative_age;
 
 use crate::ui::{
-    Anchor, Popover, ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge,
-    btn_ghost, btn_icon, btn_primary, btn_secondary, empty_state_with_actions, h_row, icon_xs,
-    kbd_chip, kv_chip, list_row, palette, popover, section_heading, select_pill, status_indicator,
-    subtab_strip, tab_bar_segmented, tab_bar_underline, tab_item, to_hsla, top_accent_card, v_col,
+    Anchor, ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost,
+    btn_icon, btn_primary, btn_secondary, empty_state_with_actions, h_row, icon_xs, kbd_chip,
+    kv_chip, list_row, palette, popover, select_pill, status_indicator, subtab_strip,
+    tab_bar_segmented, tab_bar_underline, tab_item, to_hsla, top_accent_card, v_col,
 };
 
 use super::RequestsView;
@@ -19,6 +20,7 @@ use super::resp_http_tabs::{
     render_resp_body, render_resp_cookies, render_resp_headers, render_resp_tests,
     render_resp_trace,
 };
+use super::resp_http_timing::render_timing_popover;
 
 pub fn render_http_response(
     view: &RequestsView,
@@ -137,6 +139,13 @@ pub fn render_http_response(
                 .child(render_timing_popover(resp, zh, cx))
                 .child(kv_chip(if zh { "大小" } else { "Size" }, size_text, cx))
                 .child(badge(proto_text, Tone::Neutral, cx))
+                .children(tab.last_http_at_ms.map(|ts| {
+                    let age = format_relative_age(ts, current_time_ms(), zh);
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.faint))
+                        .child(SharedString::from(age))
+                }))
                 .children(has_check_fail.then(|| {
                     badge(
                         if zh {
@@ -421,131 +430,6 @@ fn render_failure_card(
         .bg(to_hsla(p.surface))
         .overflow_y_scrollbar()
         .child(top_accent_card(tone, cx).child(card_body))
-}
-
-fn render_timing_popover(
-    resp: &ExecutionResult,
-    zh: bool,
-    cx: &mut Context<RequestsView>,
-) -> Popover {
-    let p = palette(cx);
-    let t = resp.timing;
-    let total = t.total_ms.max(1) as f32;
-    let dns = t.dns_ms.ms().unwrap_or(0);
-    let conn = t.connect_ms.ms().unwrap_or(0);
-    let tls = t.tls_ms.ms().unwrap_or(0);
-    let wait = t.wait_ms.unwrap_or(t.request_ms as u64);
-    let recv = t.response_ms as u64;
-
-    let pct =
-        |v: u64| -> f32 { ((v as f32 / total) * 76.0).clamp(if v > 0 { 3.0 } else { 0.0 }, 76.0) };
-
-    let trigger = btn_ghost(
-        "resp-timing-trigger",
-        SharedString::from(format!("{} ms ▾", resp.elapsed_ms)),
-    )
-    .h(px(24.0))
-    .px(px(6.0))
-    .child(
-        h_row()
-            .w(px(60.0))
-            .h(px(5.0))
-            .rounded(px(99.0))
-            .overflow_hidden()
-            .bg(to_hsla(p.sunken))
-            .child(div().h_full().w(px(pct(dns) * 0.78)).bg(to_hsla(p.ph_dns)))
-            .child(
-                div()
-                    .h_full()
-                    .w(px(pct(conn) * 0.78))
-                    .bg(to_hsla(p.ph_connect)),
-            )
-            .child(div().h_full().w(px(pct(tls) * 0.78)).bg(to_hsla(p.ph_tls)))
-            .child(
-                div()
-                    .h_full()
-                    .w(px(pct(wait) * 0.78))
-                    .bg(to_hsla(p.ph_wait)),
-            )
-            .child(
-                div()
-                    .h_full()
-                    .w(px(pct(recv) * 0.78))
-                    .bg(to_hsla(p.ph_recv)),
-            ),
-    );
-
-    popover("resp-timing-pop")
-        .anchor(Anchor::TopLeft)
-        .trigger(trigger)
-        .content(move |_, _, pop_cx| {
-            let pp = palette(pop_cx);
-            v_col()
-                .w(px(250.0))
-                .gap(px(5.0))
-                .p(px(4.0))
-                .child(section_heading(
-                    if zh {
-                        "阶段耗时拆解"
-                    } else {
-                        "Timing Breakdown"
-                    },
-                    pop_cx,
-                ))
-                .child(timing_row("DNS", t.dns_ms, pp.ph_dns))
-                .child(timing_row(
-                    if t.connect_includes_tls {
-                        "Connect + TLS"
-                    } else {
-                        "Connect"
-                    },
-                    t.connect_ms,
-                    pp.ph_connect,
-                ))
-                .child(timing_row("TLS", t.tls_ms, pp.ph_tls))
-                .child(timing_row(
-                    if zh {
-                        "等待首包 (TTFB)"
-                    } else {
-                        "Wait (TTFB)"
-                    },
-                    PhaseValue::Ms(wait),
-                    pp.ph_wait,
-                ))
-                .child(timing_row(
-                    if zh { "接收正文" } else { "Receive" },
-                    PhaseValue::Ms(recv),
-                    pp.ph_recv,
-                ))
-        })
-}
-
-fn timing_row(
-    label: &'static str,
-    val: PhaseValue,
-    color: pingdeck_desktop::theme::RgbaColor,
-) -> gpui_kit::Div {
-    let val_str = match val {
-        PhaseValue::Ms(ms) => format!("{ms} ms"),
-        PhaseValue::Reused => "Reused".into(),
-        PhaseValue::NotNeeded => "—".into(),
-        PhaseValue::NotMeasured => "N/A".into(),
-    };
-    h_row()
-        .justify_between()
-        .gap(px(8.0))
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .child(div().size(px(7.0)).rounded(px(99.0)).bg(to_hsla(color)))
-                .child(div().text_xs().child(label)),
-        )
-        .child(
-            div()
-                .text_xs()
-                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                .child(val_str),
-        )
 }
 
 pub(super) fn warning_strip(msg: &str, cx: &Context<RequestsView>) -> gpui_kit::Div {

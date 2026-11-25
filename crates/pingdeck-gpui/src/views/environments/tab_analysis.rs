@@ -43,7 +43,7 @@ pub fn render_resolved_tab(
                 (view.t("变量名", "Name"), Some(170.0)),
                 (view.t("胜出层级", "Winner"), Some(110.0)),
                 (view.t("最终值", "Resolved Value"), None),
-                (view.t("层级覆盖", "Layers"), Some(130.0)),
+                (view.t("层级覆盖", "Overridden Layers"), Some(180.0)),
             ],
             cx,
         ));
@@ -70,6 +70,26 @@ pub fn render_resolved_tab(
                 "•••••••• (secret)".to_owned()
             } else {
                 r.value.clone().unwrap_or_else(|| "—".to_owned())
+            };
+            let layers_summary = if r.layers.len() <= 1 {
+                format!("{} layer", r.layers.len())
+            } else {
+                let parts: Vec<String> = r
+                    .layers
+                    .iter()
+                    .skip(1)
+                    .map(|l| {
+                        let v = if !l.enabled {
+                            "off".to_owned()
+                        } else if l.is_secret {
+                            "•••".to_owned()
+                        } else {
+                            l.value.clone().unwrap_or_else(|| "∅".to_owned())
+                        };
+                        format!("{:?}={v}", l.source)
+                    })
+                    .collect();
+                format!("{} · {}", r.layers.len(), parts.join(", "))
             };
             res_card = res_card.child(
                 data_row(cx)
@@ -98,8 +118,11 @@ pub fn render_resolved_tab(
                     )
                     .child(
                         div()
-                            .w(px(130.0))
-                            .child(meta_pill(format!("{} layer(s)", r.layers.len()), cx)),
+                            .w(px(180.0))
+                            .text_size(px(11.0))
+                            .text_color(to_hsla(p.muted))
+                            .truncate()
+                            .child(layers_summary),
                     ),
             );
         }
@@ -304,37 +327,41 @@ pub fn render_compare_tab(
                     base
                 }
             };
-            tbl = tbl.child(
-                data_row(cx)
-                    .child(div().w(px(92.0)).child(badge(lbl, tone, cx)))
-                    .child(
-                        div()
-                            .w(px(160.0))
-                            .text_xs()
-                            .font_weight(gpui_kit::FontWeight::MEDIUM)
-                            .text_color(to_hsla(p.ink))
-                            .truncate()
-                            .child(row.key.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_xs()
-                            .text_color(to_hsla(p.ink_2))
-                            .truncate()
-                            .child(fmt_side(&row.left, row.left_secret, row.left_global)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_xs()
-                            .text_color(to_hsla(p.ink_2))
-                            .truncate()
-                            .child(fmt_side(&row.right, row.right_secret, row.right_global)),
-                    ),
-            );
+            let mut cmp_row = data_row(cx)
+                .child(div().w(px(92.0)).child(badge(lbl, tone, cx)))
+                .child(
+                    div()
+                        .w(px(160.0))
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(to_hsla(p.ink))
+                        .truncate()
+                        .child(row.key.clone()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_xs()
+                        .text_color(to_hsla(p.ink_2))
+                        .truncate()
+                        .child(fmt_side(&row.left, row.left_secret, row.left_global)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_xs()
+                        .text_color(to_hsla(p.ink_2))
+                        .truncate()
+                        .child(fmt_side(&row.right, row.right_secret, row.right_global)),
+                );
+            if row.state == CompareState::Differs {
+                cmp_row = cmp_row.rounded(px(5.0)).bg(to_hsla(p.warn_soft));
+            } else if matches!(row.state, CompareState::OnlyLeft | CompareState::OnlyRight) {
+                cmp_row = cmp_row.rounded(px(5.0)).bg(to_hsla(p.accent_soft));
+            }
+            tbl = tbl.child(cmp_row);
         }
     }
 
@@ -397,7 +424,24 @@ pub fn render_protection_tab(
                 },
             )),
             cx,
-        ));
+        ))
+        .children(view.env_draft_confirm.then(|| {
+            let mut pills = h_row().gap(px(5.0)).flex_wrap().pt(px(6.0)).child(
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(view.t("受保护方法:", "Guarded methods:")),
+            );
+            for m in ["POST", "PUT", "PATCH", "DELETE"] {
+                pills = pills.child(badge(m, Tone::Warning, cx));
+            }
+            if view.env_draft_confirm_safe {
+                for m in ["GET", "HEAD", "OPTIONS"] {
+                    pills = pills.child(badge(m, Tone::Accent, cx));
+                }
+            }
+            pills
+        }));
 
     let mut hosts_card = card(cx)
         .p(px(14.0))

@@ -7,10 +7,11 @@ use std::collections::BTreeMap;
 
 use pingdeck_core::agent::model::{
     AgentEnvelope, AgentEvent, AgentMessage, AgentRunStatus, AgentRunSummary, AgentStopReason,
-    AgentTodoItem, ApprovalDecision, ApprovalScope, HumanGateDto, QueuedTurn, ToolCallStatus,
-    ToolSource,
+    AgentTodoItem, ApprovalDecision, ApprovalScope, HumanGateDto, LiveRunSnapshot, LiveToolState,
+    QueuedTurn, ToolCallStatus, ToolSource,
 };
 use pingdeck_core::agent::tools::FileChangeKind;
+use pingdeck_core::model::hub::HubPart;
 
 /// Maximum tail bytes retained in live streaming tool output per call to keep UI rendering O(1).
 const MAX_LIVE_TOOL_OUTPUT_BYTES: usize = 64 * 1024;
@@ -41,6 +42,11 @@ pub struct LiveApproval {
     pub full_text: Option<String>,
     pub destructive: bool,
     pub network: bool,
+    pub offered_scopes: Vec<ApprovalScope>,
+    pub rule_label: Option<String>,
+    pub scope_disabled_reason: Option<String>,
+    pub why: Option<String>,
+    pub sandbox_label: Option<String>,
 }
 
 /// Summary of one file changed during a run.
@@ -122,6 +128,108 @@ impl ChatThreadState {
         self.title = title;
         self.messages = messages;
         self.needs_reload = false;
+    }
+
+    /// Hydrates live unfinished stream parts, tool calls, pending approvals, open gates, and cost
+    /// pause from an atomic `LiveRunSnapshot` returned by `agent_session_get_impl`.
+    pub fn hydrate_live(&mut self, live: &LiveRunSnapshot) {
+        self.last_seq_by_run.insert(live.run_id.clone(), live.seq);
+        self.streaming_text.clear();
+        self.streaming_reasoning.clear();
+        self.tool_calls.clear();
+        self.pending_approvals.clear();
+
+        let mut args_by_id: BTreeMap<&str, &str> = BTreeMap::new();
+        for part in &live.parts {
+            match part {
+                HubPart::Text { text, .. } => self.streaming_text.push_str(text),
+                HubPart::Reasoning { text, .. } => self.streaming_reasoning.push_str(text),
+                HubPart::ToolCall { id, arguments, .. } => {
+                    args_by_id.insert(id.as_str(), arguments.as_str());
+                }
+                _ => {}
+            }
+        }
+        for tc in &live.tools {
+            let args = args_by_id.get(tc.call_id.as_str()).copied().unwrap_or("");
+            self.tool_calls.push(LiveToolCall {
+                call_id: tc.call_id.clone(),
+                name: tc.name.clone(),
+                source: tc.source.clone(),
+                arguments: args.to_owned(),
+                output: String::new(),
+                status: tc.result.as_ref().map(|r| r.status),
+                duration_ms: tc.result.as_ref().map(|r| r.duration_ms),
+                exit_code: None,
+            });
+            if tc.state == LiveToolState::WaitingApproval {
+                let (
+                    risk,
+                    summary,
+                    offered_scopes,
+                    rule_label,
+                    scope_disabled_reason,
+                    why,
+                    sandbox_label,
+                ) = if let Some(c) = &tc.approval {
+                    (
+                        format!("{:?}", c.risk),
+                        c.summary.clone(),
+                        c.offered_scopes.clone(),
+                        c.rule_label.clone(),
+                        c.scope_disabled_reason.clone(),
+                        c.why.clone(),
+                        Some(format!("{:?}", c.sandbox)),
+                    )
+                } else {
+                    (
+                        "medium".to_owned(),
+                        format!("{}()", tc.name),
+                        vec![ApprovalScope::Once, ApprovalScope::Session],
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                };
+                self.pending_approvals.push(LiveApproval {
+                    run_id: live.run_id.clone(),
+                    call_id: tc.call_id.clone(),
+                    name: tc.name.clone(),
+                    risk,
+                    summary,
+                    reason: why.clone().unwrap_or_default(),
+                    arguments: args.to_owned(),
+                    full_text: None,
+                    destructive: false,
+                    network: false,
+                    offered_scopes,
+                    rule_label,
+                    scope_disabled_reason,
+                    why,
+                    sandbox_label,
+                });
+            }
+        }
+        self.open_gates = live
+            .gates
+            .iter()
+            .cloned()
+            .map(|g| (live.run_id.clone(), g))
+            .collect();
+        self.cost_pause = live.cost_limit.as_ref().map(|c| LiveCostPause {
+            run_id: c.run_id.clone(),
+            cost_micro: c.cost_micro,
+            cap_micro: c.cap_micro,
+            currency: c.currency.clone(),
+            is_tokens: c.tokens.unwrap_or(false),
+        });
+        if let Some(u) = &live.usage {
+            self.cost_micro_usd = u.cost_micro_usd;
+            self.context_used_tokens = u.context_used_tokens;
+            self.context_limit_tokens = u.context_limit_tokens;
+            self.cost_currency = u.currency.clone();
+        }
     }
 
     /// Last sequence number received for a given run (for `from_seq` resumption).
@@ -225,9 +333,27 @@ impl ChatThreadState {
                 summary,
                 full_text,
                 destructive,
+                card,
                 ..
             } => {
                 self.pending_approvals.retain(|a| a.call_id != call_id);
+                let (offered_scopes, rule_label, scope_disabled_reason, why, sandbox_label) =
+                    match card {
+                        Some(c) => (
+                            c.offered_scopes,
+                            c.rule_label,
+                            c.scope_disabled_reason,
+                            c.why,
+                            Some(format!("{:?}", c.sandbox)),
+                        ),
+                        None => (
+                            vec![ApprovalScope::Once, ApprovalScope::Session],
+                            None,
+                            None,
+                            None,
+                            None,
+                        ),
+                    };
                 self.pending_approvals.push(LiveApproval {
                     run_id,
                     call_id,
@@ -239,6 +365,11 @@ impl ChatThreadState {
                     full_text,
                     destructive,
                     network,
+                    offered_scopes,
+                    rule_label,
+                    scope_disabled_reason,
+                    why,
+                    sandbox_label,
                 });
             }
             AgentEvent::ToolApprovalResolved {
@@ -337,11 +468,29 @@ impl ChatThreadState {
                     summary,
                     full_text,
                     destructive,
+                    card,
                     ..
                 } => {
                     // Surface sub-agent approval cards into the parent chat dock so the user can
                     // approve/deny instead of deadlocking while the parent chat is focused.
                     self.pending_approvals.retain(|a| a.call_id != call_id);
+                    let (offered_scopes, rule_label, scope_disabled_reason, why, sandbox_label) =
+                        match card {
+                            Some(c) => (
+                                c.offered_scopes,
+                                c.rule_label,
+                                c.scope_disabled_reason,
+                                c.why,
+                                Some(format!("{:?}", c.sandbox)),
+                            ),
+                            None => (
+                                vec![ApprovalScope::Once, ApprovalScope::Session],
+                                None,
+                                None,
+                                None,
+                                None,
+                            ),
+                        };
                     self.pending_approvals.push(LiveApproval {
                         run_id,
                         call_id,
@@ -353,6 +502,11 @@ impl ChatThreadState {
                         full_text,
                         destructive,
                         network,
+                        offered_scopes,
+                        rule_label,
+                        scope_disabled_reason,
+                        why,
+                        sandbox_label,
                     });
                 }
                 AgentEvent::ToolApprovalResolved {

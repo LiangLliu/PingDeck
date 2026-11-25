@@ -1,7 +1,10 @@
 //! Provider Overview supporting cards: Protocol Endpoints & Sniff Evidence, Balance,
 //! 24h Health & Circuits, and Recent Calls.
 
-use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{
+    Context, InteractiveElement as _, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px,
+};
 use pingdeck_desktop::core::llm::store::{Provider, ProviderKey};
 
 use crate::ui::{
@@ -271,10 +274,22 @@ pub fn render_balance_card(
         if let (Some(rem), Some(tot)) = (rep.remaining, rep.total)
             && tot > 0.0
         {
-            content = content.child(progress_bar(
-                "prov-bal-prog",
-                ((rem / tot) * 100.0).clamp(0.0, 100.0) as f32,
-            ));
+            let used = (tot - rem).max(0.0);
+            content = content
+                .child(progress_bar(
+                    "prov-bal-prog",
+                    ((rem / tot) * 100.0).clamp(0.0, 100.0) as f32,
+                ))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.muted))
+                        .child(if zh {
+                            format!("总额度 {tot:.2} · 已用 {used:.2}")
+                        } else {
+                            format!("Total {tot:.2} · Used {used:.2}")
+                        }),
+                );
         }
         if let Some(src) = &rep.source_endpoint {
             content = content.child(
@@ -444,14 +459,31 @@ pub fn render_health_card(
 
 pub fn render_recent_calls_card(
     view: &ProvidersView,
+    prov_id: &str,
     zh: bool,
-    cx: &gpui_kit::App,
+    cx: &mut Context<ProvidersView>,
 ) -> gpui_kit::Div {
     let p = palette(cx);
-    let mut col = v_col().gap(px(6.0)).child(section_heading(
-        if zh { "最近调用" } else { "Recent Calls" },
-        cx,
-    ));
+    let pid = prov_id.to_owned();
+    let mut col = v_col().gap(px(6.0)).child(
+        h_row()
+            .justify_between()
+            .child(section_heading(
+                if zh { "最近调用" } else { "Recent Calls" },
+                cx,
+            ))
+            .child(
+                btn_ghost("prov-calls-all", if zh { "全部 ↗" } else { "All ↗" }).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.pending_handoff
+                            .set(Some(super::ProvidersHandoff::OpenUsageProvider(Some(
+                                pid.clone(),
+                            ))));
+                        cx.notify();
+                    }),
+                ),
+            ),
+    );
 
     if view.recent_logs.is_empty() {
         col = col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
@@ -460,7 +492,7 @@ pub fn render_recent_calls_card(
             "No recent calls yet."
         }));
     } else {
-        for log in view.recent_logs.iter().take(6) {
+        for (i, log) in view.recent_logs.iter().take(6).enumerate() {
             let tone = if (200..300).contains(&log.status) {
                 Tone::Success
             } else if log.status == 429 {
@@ -469,10 +501,22 @@ pub fn render_recent_calls_card(
                 Tone::Danger
             };
             let ms = log.ttft_ms.unwrap_or(log.latency_ms);
+            let call_id = log.id;
             col = col.child(
                 h_row()
+                    .id(SharedString::from(format!("prov-rc-{i}")))
+                    .cursor_pointer()
                     .justify_between()
                     .gap(px(6.0))
+                    .px(px(4.0))
+                    .py(px(2.0))
+                    .rounded(px(4.0))
+                    .hover(|s| s.bg(to_hsla(p.pane)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.pending_handoff
+                            .set(Some(super::ProvidersHandoff::OpenUsageCall(call_id)));
+                        cx.notify();
+                    }))
                     .child(
                         div()
                             .flex_1()

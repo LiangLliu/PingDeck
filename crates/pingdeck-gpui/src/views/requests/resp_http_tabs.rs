@@ -24,6 +24,10 @@ pub(super) fn render_resp_body(
         .http_jsonpath_result
         .as_ref()
         .map(|(ok, _, mode)| (*ok, mode.clone()));
+    let has_filter = filter_status.is_some();
+    let cur_fmt = tab.http_format;
+    let cur_pretty = tab.http_pretty;
+    let line_count = view.response_editor.read(cx).value().lines().count();
 
     v_col()
         .size_full()
@@ -38,7 +42,7 @@ pub(super) fn render_resp_body(
                 .border_color(to_hsla(p.line.composite_over(p.pane)))
                 .child(
                     div()
-                        .w(px(280.0))
+                        .w(px(260.0))
                         .child(text_input(&view.resp_filter_input)),
                 )
                 .child(
@@ -46,10 +50,33 @@ pub(super) fn render_resp_body(
                         cx.listener(|this, _, window, cx| this.apply_jsonpath_filter(window, cx)),
                     ),
                 )
+                .children(has_filter.then(|| {
+                    btn_ghost("resp-filter-reset", if zh { "全部" } else { "Reset" }).on_click(
+                        cx.listener(move |this, _, window, cx| {
+                            this.resp_filter_input
+                                .update(cx, |i, cx| i.set_value("", window, cx));
+                            if let Some(t) = this.active_req_mut() {
+                                t.http_jsonpath_query.clear();
+                                t.http_jsonpath_result = None;
+                            }
+                            this.set_http_response_format(cur_fmt, cur_pretty, window, cx);
+                        }),
+                    )
+                }))
                 .children(filter_status.map(|(ok, mode)| {
                     badge(mode, if ok { Tone::Accent } else { Tone::Danger }, cx)
                 }))
                 .child(div().flex_1())
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.faint))
+                        .child(SharedString::from(if zh {
+                            format!("{line_count} 行 · UTF-8")
+                        } else {
+                            format!("{line_count} lines · UTF-8")
+                        })),
+                )
                 .child(
                     btn_ghost(
                         "resp-extract-env",
@@ -234,6 +261,72 @@ pub(super) fn render_resp_trace(
         .p(px(12.0))
         .gap(px(10.0))
         .overflow_y_scrollbar();
+
+    // Wire timing waterfall card
+    let t = resp.timing;
+    let tot = t.total_ms.max(1) as f32;
+    let phases: [(&str, Option<u64>, pingdeck_desktop::theme::RgbaColor); 5] = [
+        ("DNS", t.dns_ms.ms(), p.ph_dns),
+        (
+            if t.connect_includes_tls {
+                "Connect + TLS"
+            } else {
+                "Connect"
+            },
+            t.connect_ms.ms(),
+            p.ph_connect,
+        ),
+        ("TLS", t.tls_ms.ms(), p.ph_tls),
+        (
+            if zh { "等待 (TTFB)" } else { "Wait (TTFB)" },
+            Some(t.wait_ms.unwrap_or(t.request_ms as u64)),
+            p.ph_wait,
+        ),
+        (
+            if zh { "接收正文" } else { "Receive" },
+            Some(t.response_ms as u64),
+            p.ph_recv,
+        ),
+    ];
+    let mut wf = v_col().gap(px(5.0)).child(section_heading(
+        if zh {
+            format!("阶段耗时瀑布（总计 {} ms）", t.total_ms)
+        } else {
+            format!("Timing Waterfall (total {} ms)", t.total_ms)
+        },
+        cx,
+    ));
+    for (lbl, ms_opt, color) in phases {
+        let ms = ms_opt.unwrap_or(0);
+        let w = ((ms as f32 / tot) * 200.0).clamp(if ms > 0 { 4.0 } else { 0.0 }, 200.0);
+        wf = wf.child(
+            h_row()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .w(px(110.0))
+                        .text_xs()
+                        .text_color(to_hsla(p.muted))
+                        .child(lbl),
+                )
+                .child(
+                    div()
+                        .w(px(200.0))
+                        .h(px(7.0))
+                        .rounded(px(4.0))
+                        .bg(to_hsla(p.sunken))
+                        .overflow_hidden()
+                        .child(div().h_full().w(px(w)).bg(to_hsla(color))),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .child(ms_opt.map_or_else(|| "—".into(), |v| format!("{v} ms"))),
+                ),
+        );
+    }
+    col = col.child(card(cx).p(px(10.0)).child(wf));
 
     // Transport summary
     col = col.child(

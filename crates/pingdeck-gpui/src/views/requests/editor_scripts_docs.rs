@@ -242,7 +242,12 @@ pub(super) fn render_docs_tab(
         ));
     } else {
         for (i, ex) in tab.draft.examples.iter().enumerate() {
-            let preview_body: String = ex.body.chars().take(180).collect();
+            let expanded = tab.expanded_example_idx == Some(i);
+            let preview_body: String = if expanded {
+                ex.body.clone()
+            } else {
+                ex.body.chars().take(180).collect()
+            };
             let tone = if ex.status < 300 {
                 Tone::Success
             } else if ex.status < 500 {
@@ -250,51 +255,100 @@ pub(super) fn render_docs_tab(
             } else {
                 Tone::Danger
             };
-            root = root.child(
-                card(cx).p(px(10.0)).child(
-                    v_col()
-                        .gap(px(4.0))
-                        .child(
-                            h_row()
-                                .justify_between()
-                                .child(
-                                    h_row()
-                                        .gap(px(6.0))
-                                        .child(badge(ex.status.to_string(), tone, cx))
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                                .child(SharedString::from(ex.name.clone())),
-                                        ),
+            let mut ex_col = v_col().gap(px(6.0)).child(
+                h_row()
+                    .justify_between()
+                    .child(
+                        h_row()
+                            .gap(px(6.0))
+                            .child(badge(ex.status.to_string(), tone, cx))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                    .child(SharedString::from(ex.name.clone())),
+                            ),
+                    )
+                    .child(
+                        h_row()
+                            .gap(px(4.0))
+                            .child(
+                                btn_ghost(
+                                    SharedString::from(format!("ex-exp-{i}")),
+                                    if expanded {
+                                        if zh { "收起" } else { "Collapse" }
+                                    } else if zh {
+                                        "展开详情"
+                                    } else {
+                                        "Expand"
+                                    },
                                 )
-                                .child(
-                                    btn_icon(
-                                        SharedString::from(format!("ex-del-{i}")),
-                                        UiIcon::Trash,
-                                    )
-                                    .on_click(cx.listener(
-                                        move |this, _, _, cx| {
-                                            if let Some(t) = this.active_req_mut()
-                                                && i < t.draft.examples.len()
-                                            {
-                                                t.draft.examples.remove(i);
-                                                t.recompute_dirty();
-                                            }
-                                            cx.notify();
-                                        },
-                                    )),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.muted))
-                                .truncate()
-                                .child(SharedString::from(preview_body)),
-                        ),
-                ),
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        if let Some(t) = this.active_req_mut() {
+                                            t.expanded_example_idx =
+                                                if t.expanded_example_idx == Some(i) {
+                                                    None
+                                                } else {
+                                                    Some(i)
+                                                };
+                                        }
+                                        cx.notify();
+                                    },
+                                )),
+                            )
+                            .child(
+                                btn_icon(SharedString::from(format!("ex-del-{i}")), UiIcon::Trash)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(t) = this.active_req_mut()
+                                            && i < t.draft.examples.len()
+                                        {
+                                            t.draft.examples.remove(i);
+                                            t.expanded_example_idx = None;
+                                            t.recompute_dirty();
+                                        }
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
             );
+            if expanded {
+                if !ex.headers.is_empty() {
+                    let hdrs: String = ex
+                        .headers
+                        .iter()
+                        .map(|h| format!("{}: {}", h.key, h.value))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    ex_col = ex_col.child(
+                        div()
+                            .p(px(8.0))
+                            .rounded(px(6.0))
+                            .bg(to_hsla(p.pane))
+                            .text_size(px(11.0))
+                            .text_color(to_hsla(p.muted))
+                            .child(SharedString::from(hdrs)),
+                    );
+                }
+                ex_col = ex_col.child(
+                    div()
+                        .p(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(to_hsla(p.sunken))
+                        .text_xs()
+                        .text_color(to_hsla(p.ink_2))
+                        .child(SharedString::from(preview_body)),
+                );
+            } else {
+                ex_col = ex_col.child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.muted))
+                        .truncate()
+                        .child(SharedString::from(preview_body)),
+                );
+            }
+            root = root.child(card(cx).p(px(10.0)).child(ex_col));
         }
     }
 

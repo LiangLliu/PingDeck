@@ -8,10 +8,10 @@ use gpui_kit::{
 use crate::ui::{
     ScrollableElement as _, Tone, UiIcon, badge, btn_icon, btn_primary, empty_inline, h_row,
     icon_xs, list_row, master_pane, meta_pill, palette, pane_footer, pane_header, search_input,
-    to_hsla, v_col,
+    section_heading, to_hsla, v_col,
 };
 
-use super::state::{EnvModal, EnvironmentsView};
+use super::state::{EnvModal, EnvResourceTab, EnvironmentsView};
 
 pub fn render_env_sidebar(
     view: &EnvironmentsView,
@@ -42,7 +42,9 @@ pub fn render_env_sidebar(
         .child(
             btn_primary("env-new-btn", view.t("新建", "New"))
                 .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, _, cx| this.create_env(cx))),
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_create_env_modal(window, cx);
+                })),
         )
         .into_any_element();
 
@@ -72,7 +74,9 @@ pub fn render_env_sidebar(
     } else {
         for env in filtered {
             let eid = env.id.clone();
-            let active = view.selected_env_id.as_deref() == Some(env.id.as_str());
+            let active = view.resource_tab == EnvResourceTab::Environments
+                && view.selected_env_id.as_deref() == Some(env.id.as_str());
+            let is_workspace_active = view.active_env_id.as_deref() == Some(env.id.as_str());
             let secret_count = env.variables.iter().filter(|v| v.is_secret).count();
             let sub = if zh {
                 format!(
@@ -96,41 +100,48 @@ pub fn render_env_sidebar(
                 )
             };
 
-            let mut row = list_row(
-                SharedString::from(format!("env-row-{}", env.id)),
-                active,
-                cx,
-                cx.listener(move |this, _, _, cx| this.select_env(eid.clone(), cx)),
-            )
-            .items_start()
-            .py(px(7.0))
-            .child(
-                v_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(3.0))
-                    .child(
-                        h_row()
-                            .w_full()
-                            .justify_between()
-                            .gap(px(6.0))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_xs()
-                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                    .text_color(to_hsla(p.ink))
-                                    .truncate()
-                                    .child(env.name.clone()),
-                            )
-                            .children(
-                                env.confirm_before_send
-                                    .then(|| badge(view.t("保护", "Guard"), Tone::Warning, cx)),
-                            ),
-                    )
-                    .child(meta_pill(sub, cx)),
-            );
+            let mut row =
+                list_row(
+                    SharedString::from(format!("env-row-{}", env.id)),
+                    active,
+                    cx,
+                    cx.listener(move |this, _, _, cx| {
+                        this.resource_tab = EnvResourceTab::Environments;
+                        this.select_env(eid.clone(), cx);
+                    }),
+                )
+                .items_start()
+                .py(px(7.0))
+                .child(
+                    v_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(3.0))
+                        .child(
+                            h_row()
+                                .w_full()
+                                .justify_between()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_xs()
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(to_hsla(p.ink))
+                                        .truncate()
+                                        .child(env.name.clone()),
+                                )
+                                .children(is_workspace_active.then(|| {
+                                    badge(view.t("● 当前", "● Active"), Tone::Success, cx)
+                                }))
+                                .children(
+                                    env.confirm_before_send
+                                        .then(|| badge(view.t("保护", "Guard"), Tone::Warning, cx)),
+                                ),
+                        )
+                        .child(meta_pill(sub, cx)),
+                );
             if active && view.env_dirty {
                 row = row.child(
                     div()
@@ -143,6 +154,75 @@ pub fn render_env_sidebar(
             }
             list = list.child(row);
         }
+    }
+
+    // Unified Workspace Shared resources section (Globals, Cookies, TLS Certificates).
+    let shared_items = [
+        (
+            EnvResourceTab::Globals,
+            UiIcon::Globe,
+            view.t("全局变量", "Globals"),
+            view.globals_draft.len(),
+        ),
+        (
+            EnvResourceTab::Cookies,
+            UiIcon::Cookie,
+            "Cookies",
+            view.cookies.len(),
+        ),
+        (
+            EnvResourceTab::Certificates,
+            UiIcon::Shield,
+            view.t("TLS 证书", "TLS Certificates"),
+            view.certificates.len(),
+        ),
+    ];
+    list = list
+        .child(
+            div()
+                .my(px(6.0))
+                .w_full()
+                .h(px(1.0))
+                .bg(to_hsla(p.line.composite_over(p.pane))),
+        )
+        .child(div().px(px(6.0)).pb(px(4.0)).child(section_heading(
+            view.t("工作区共享", "Workspace Shared"),
+            cx,
+        )));
+    for (tab, ic, label, count) in shared_items {
+        let selected = view.resource_tab == tab;
+        list = list.child(
+            list_row(
+                SharedString::from(format!("env-shared-{}", tab.index())),
+                selected,
+                cx,
+                cx.listener(move |this, _, _, cx| {
+                    this.resource_tab = tab;
+                    if let Some(ws) = this.workspace_id.clone() {
+                        match tab {
+                            EnvResourceTab::Globals => this.reload_globals(ws, cx),
+                            EnvResourceTab::Cookies => this.reload_cookies(ws, cx),
+                            EnvResourceTab::Certificates => this.reload_certificates(ws, cx),
+                            EnvResourceTab::Environments => this.refresh_env_analysis(cx),
+                        }
+                    }
+                    cx.notify();
+                }),
+            )
+            .py(px(6.0))
+            .child(icon_xs(ic))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_xs()
+                    .font_weight(gpui_kit::FontWeight::MEDIUM)
+                    .text_color(to_hsla(p.ink))
+                    .truncate()
+                    .child(label),
+            )
+            .child(meta_pill(count.to_string(), cx)),
+        );
     }
 
     let footer = pane_footer(

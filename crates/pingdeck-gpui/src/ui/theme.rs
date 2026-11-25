@@ -45,7 +45,7 @@ pub fn is_compact(cx: &App) -> bool {
 /// Synchronizes GPUI's window root `rem` scale with `AppearanceSettings::ui_font_size`
 /// so all `rems`-based component typography and padding scale cleanly in real time.
 pub fn sync_window_scale(appearance: &AppearanceSettings, window: &mut Window) {
-    let base_px = f32::from(appearance.ui_font_size.clamp(11, 18));
+    let base_px = f32::from(appearance.ui_font_size.clamp(10, 26));
     // GPUI default rem_size is 16px for 14px UI font scale; map proportionally.
     let rem_px = (base_px / 14.0) * 16.0;
     window.set_rem_size(px(rem_px));

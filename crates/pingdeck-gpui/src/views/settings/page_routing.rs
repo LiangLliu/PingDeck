@@ -125,9 +125,8 @@ pub fn render_routing(
                                     "gateway.first_byte_timeout_s",
                                     "gateway.idle_timeout_s",
                                 ]
-                                .into_iter()
                                 .map(str::to_owned)
-                                .collect(),
+                                .to_vec(),
                             ),
                             cx,
                         );
@@ -289,25 +288,32 @@ pub fn render_routing(
         .child(section_header(
             if zh { "路由熔断保护" } else { "Circuit Breaker" },
             Some(
-                btn_ghost("route-reset-cb", if zh { "恢复默认" } else { "Reset" })
-                    .icon(icon_xs(UiIcon::RotateCcw))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_keys(
-                            CoreSection::Ai,
-                            Some(
-                                [
-                                    "gateway.circuit_failure_threshold",
-                                    "gateway.circuit_window_s",
-                                    "gateway.circuit_open_s",
-                                    "gateway.circuit_open_max_s",
-                                ]
-                                .into_iter()
-                                .map(str::to_owned)
-                                .collect(),
-                            ),
-                            cx,
-                        );
-                    }))
+                h_row()
+                    .gap(px(6.0))
+                    .child(
+                        btn_secondary("route-reset-circuits", if zh { "重置全部熔断" } else { "Reset circuits" })
+                            .on_click(cx.listener(|this, _, _, cx| this.reset_gateway_circuits(cx))),
+                    )
+                    .child(
+                        btn_ghost("route-reset-cb", if zh { "恢复默认" } else { "Reset" })
+                            .icon(icon_xs(UiIcon::RotateCcw))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.reset_keys(
+                                    CoreSection::Ai,
+                                    Some(
+                                        [
+                                            "gateway.circuit_failure_threshold",
+                                            "gateway.circuit_window_s",
+                                            "gateway.circuit_open_s",
+                                            "gateway.circuit_open_max_s",
+                                        ]
+                                        .map(str::to_owned)
+                                        .to_vec(),
+                                    ),
+                                    cx,
+                                );
+                            })),
+                    )
                     .into_any_element(),
             ),
             cx,
@@ -454,9 +460,8 @@ pub fn render_routing(
                                     "providers.probe_timeout_s",
                                     "providers.default_test_prompt",
                                 ]
-                                .into_iter()
                                 .map(str::to_owned)
-                                .collect(),
+                                .to_vec(),
                             ),
                             cx,
                         );

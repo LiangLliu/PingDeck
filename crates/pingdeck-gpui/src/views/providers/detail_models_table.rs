@@ -181,6 +181,9 @@ pub(super) fn render_models_table(
             if m.tools {
                 tags = tags.child(cap_tag(if zh { "工具" } else { "Tools" }, cx));
             }
+            if m.capabilities.reasoning.supported {
+                tags = tags.child(cap_tag(if zh { "推理" } else { "Reason" }, cx));
+            }
             if m.vision || mv.inputs.iter().any(|i| i.modality == InputModality::Image) {
                 tags = tags.child(cap_tag(if zh { "视觉" } else { "Vision" }, cx));
             }

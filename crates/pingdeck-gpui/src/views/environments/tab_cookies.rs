@@ -81,6 +81,10 @@ pub fn render_cookies_tab(
                     )
                     .on_click(cx.listener(|this, _, _, cx| this.delete_expired_cookies(cx)))
                 }))
+                .children((!view.cookies.is_empty()).then(|| {
+                    btn_danger("ck-clear-all", view.t("清空全部", "Clear All"))
+                        .on_click(cx.listener(|this, _, _, cx| this.clear_all_cookies(cx)))
+                }))
                 .child(
                     btn_ghost("ck-import", view.t("导入", "Import"))
                         .icon(icon_xs(UiIcon::Upload))

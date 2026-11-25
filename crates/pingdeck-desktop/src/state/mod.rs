@@ -8,7 +8,9 @@ pub mod shell;
 pub use chat_reducer::{
     ChatThreadState, LiveApproval, LiveCostPause, LiveFileChange, LiveSubagent, LiveToolCall,
 };
-pub use palette::{PaletteAction, PaletteCategory, PaletteEngine, PaletteItem};
+pub use palette::{
+    PaletteAction, PaletteCategory, PaletteDynamicItems, PaletteEngine, PaletteItem,
+};
 pub use shell::{
     NavGroup, NavModule, SettingsGroup, SettingsSection, ShellState, ToastKind, ToastMessage,
     UtilityDialog,

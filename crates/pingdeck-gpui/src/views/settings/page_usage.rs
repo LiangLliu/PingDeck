@@ -5,7 +5,7 @@ use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styl
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 use pingdeck_desktop::core::model::settings::limits::CaptureMode;
 use pingdeck_desktop::core::model::settings::registry::RegistryConstant;
-use pingdeck_desktop::state::NavModule;
+use pingdeck_desktop::state::{NavModule, SettingsSection};
 
 use crate::ui::{
     Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, choice_chip, h_row, icon_xs, kv_line,
@@ -13,6 +13,7 @@ use crate::ui::{
 };
 
 use super::SettingsView;
+use super::state_inputs::format_bytes;
 
 pub fn render_usage(
     view: &SettingsView,
@@ -81,10 +82,18 @@ pub fn render_usage(
         .child(setting_row(
             if zh { "单次调用用量保留天数" } else { "Usage record retention" },
             None,
-            Some(SharedString::from(if zh {
-                "本地保存每次 AI 调用 Token 与费用的天数（30–3,650 天，默认 365 天）。"
-            } else {
-                "Days of per-call token and cost rows stored locally (30–3,650 days, default 365)."
+            Some(SharedString::from(match view.usage_retention_preview {
+                Some((rows, bytes)) if zh => format!(
+                    "本地保存每次 AI 调用 Token 与费用的天数（30–3,650 天，默认 365 天）。当前用量表占 {}，按此天数待清理 {} 条。",
+                    format_bytes(bytes),
+                    rows
+                ),
+                Some((rows, bytes)) => format!(
+                    "Days of per-call token/cost rows stored locally (30–3,650d). Table uses {}; {rows} row(s) older than this window.",
+                    format_bytes(bytes)
+                ),
+                None if zh => "本地保存每次 AI 调用 Token 与费用的天数（30–3,650 天，默认 365 天）。".into(),
+                None => "Days of per-call token and cost rows stored locally (30–3,650 days, default 365).".into(),
             })),
             h_row()
                 .gap(px(6.0))
@@ -254,7 +263,13 @@ pub fn render_usage(
                 } else {
                     format!("\"All requests\" stores full prompts and responses locally (capped at {cap_max_days} days / {cap_max_mb} MiB); clear anytime in Data & Sync.")
                 },
-                None,
+                Some(
+                    btn_secondary("usage-go-data", if zh { "前往数据与同步 →" } else { "Open Data & Sync →" })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.set_section(SettingsSection::Data, cx);
+                        }))
+                        .into_any_element(),
+                ),
                 cx,
             )),
         );

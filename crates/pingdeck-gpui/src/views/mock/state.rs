@@ -104,6 +104,7 @@ pub enum TrafficFilter {
 /// Modal dialogs owned by `MockView`.
 #[derive(Debug, Clone)]
 pub enum MockModal {
+    CreateServer,
     DeleteServer { id: String, name: String },
     Import { format: MockImportFormat },
     ExportOptions { include_credentials: bool },
@@ -152,6 +153,9 @@ pub struct MockView {
 
     // Shared form inputs hydrated on selection changes
     pub search_input: Entity<InputState>,
+    pub route_search_input: Entity<InputState>,
+    pub new_srv_name_input: Entity<InputState>,
+    pub new_srv_port_input: Entity<InputState>,
     pub srv_name_input: Entity<InputState>,
     pub srv_port_input: Entity<InputState>,
     pub srv_prefix_input: Entity<InputState>,
@@ -169,6 +173,8 @@ pub struct MockView {
     pub stream_ev_data_input: Entity<InputState>,
     pub kv_key_input: Entity<InputState>,
     pub kv_val_input: Entity<InputState>,
+    pub proxy_res_kv_key: Entity<InputState>,
+    pub proxy_res_kv_val: Entity<InputState>,
     pub rule_mod_input: Entity<InputState>,
     pub rule_val_input: Entity<InputState>,
     pub bucket_name_input: Entity<InputState>,
@@ -183,6 +189,8 @@ pub struct MockView {
     pub import_editor: Entity<EditorState>,
 
     // Modal, feedback, sync flags, handoff
+    pub try_it_busy: bool,
+    pub try_it_result: Option<(u16, u64, String, String)>,
     pub active_modal: Option<MockModal>,
     pub status_msg: Option<(Tone, String)>,
     pub pending_sync: bool,

@@ -1,5 +1,6 @@
 //! State container, tabs, modals, and input synchronization for `FlowsView`.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use gpui_kit::{Context, Entity, Subscription, Task, Window};
@@ -82,6 +83,7 @@ pub enum FlowRunTab {
 /// Modal dialogs owned by `FlowsView`.
 #[derive(Debug, Clone)]
 pub enum FlowModal {
+    CreateFlow,
     DeleteFlow {
         id: String,
         name: String,
@@ -93,6 +95,13 @@ pub enum FlowModal {
     },
     Options,
     AddSavedStep,
+    PickStepRequest,
+}
+
+/// Cross-module handoff signals emitted by `FlowsView` and polled by `AppShell`.
+#[derive(Debug, Clone)]
+pub enum FlowsHandoff {
+    OpenRequest(String),
 }
 
 /// Full stateful Flow orchestration workbench (`NavModule::Flows`).
@@ -108,9 +117,10 @@ pub struct FlowsView {
     pub selected_step_id: Option<String>,
     pub selected_env_id: Option<String>,
 
-    // Tabs
+    // Tabs & layout
     pub step_tab: FlowStepTab,
     pub run_tab: FlowRunTab,
+    pub inspector_open: bool,
 
     // Execution state
     pub running: bool,
@@ -147,12 +157,14 @@ pub struct FlowsView {
     pub seed_key_input: Entity<InputState>,
     pub seed_val_input: Entity<InputState>,
     pub req_picker_search: Entity<InputState>,
+    pub new_flow_name_input: Entity<InputState>,
 
     // Modals, feedback, sync
     pub active_modal: Option<FlowModal>,
     pub status_msg: Option<(Tone, String)>,
     pub pending_sync: bool,
     pub syncing: bool,
+    pub pending_handoff: Cell<Option<FlowsHandoff>>,
     pub(super) _subscriptions: Vec<Subscription>,
     pub(super) _tasks: Vec<Task<()>>,
 }

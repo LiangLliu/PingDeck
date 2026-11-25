@@ -479,6 +479,7 @@ fn render_provider_model_row(
     let pid_del = pm.provider_id.clone();
     let mid_del = pm.model_id.clone();
 
+    let pm_edit = pm.clone();
     let mut row = h_row()
         .justify_between()
         .gap(px(8.0))
@@ -511,15 +512,34 @@ fn render_provider_model_row(
                         .child(SharedString::from(eff)),
                 ),
         )
-        .children(has_override.then(|| {
-            btn_ghost(
-                SharedString::from(format!("cat-pm-del-{idx}")),
-                if zh { "清除覆盖" } else { "Reset" },
-            )
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.delete_provider_override(pid_del.clone(), mid_del.clone(), window, cx);
-            }))
-        }));
+        .child(
+            h_row()
+                .gap(px(4.0))
+                .child(
+                    btn_ghost(
+                        SharedString::from(format!("cat-pm-ovr-{idx}")),
+                        if has_override {
+                            if zh { "编辑覆盖" } else { "Edit" }
+                        } else if zh {
+                            "另计覆盖"
+                        } else {
+                            "Override"
+                        },
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.start_edit_provider_override(&pm_edit, window, cx);
+                    })),
+                )
+                .children(has_override.then(|| {
+                    btn_ghost(
+                        SharedString::from(format!("cat-pm-del-{idx}")),
+                        if zh { "清除覆盖" } else { "Reset" },
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delete_provider_override(pid_del.clone(), mid_del.clone(), window, cx);
+                    }))
+                })),
+        );
 
     if border {
         row = row

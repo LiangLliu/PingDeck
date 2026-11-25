@@ -156,7 +156,12 @@ pub fn render_callbacks_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyE
                     .gap(px(10.0))
                     .child(section_header(
                         view.t("回调配置", "Callback Configuration"),
-                        None,
+                        Some(
+                            btn_secondary("mock-cb-test-now", view.t("立即测试", "Test Now"))
+                                .icon(icon_xs(UiIcon::Send))
+                                .on_click(cx.listener(|this, _, _, cx| this.test_callback_now(cx)))
+                                .into_any_element(),
+                        ),
                         cx,
                     ))
                     .child(m_row)

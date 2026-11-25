@@ -7,7 +7,8 @@ use gpui_kit::{
 
 use crate::ui::{
     Tone, UiIcon, alert_banner, btn_danger, btn_primary, btn_secondary, choice_chip, code_editor,
-    h_row, icon_xs, modal_dialog, palette, setting_row, to_hsla, toggle_switch, v_col,
+    h_row, icon_xs, modal_dialog, number_field, palette, setting_row, text_input, to_hsla,
+    toggle_switch, v_col,
 };
 
 use super::state::{MockImportFormat, MockModal, MockView};
@@ -27,6 +28,59 @@ pub fn render_modal(
     };
 
     let el = match modal {
+        MockModal::CreateServer => {
+            let body = v_col()
+                .w_full()
+                .gap(px(10.0))
+                .child(setting_row(
+                    view.t("服务名称", "Server Name"),
+                    None,
+                    None,
+                    div()
+                        .w(px(260.0))
+                        .child(text_input(&view.new_srv_name_input)),
+                    cx,
+                ))
+                .child(setting_row(
+                    view.t(
+                        "监听端口（仅绑定 127.0.0.1）",
+                        "Listen Port (127.0.0.1 only)",
+                    ),
+                    None,
+                    Some(SharedString::from(view.t(
+                        "创建后默认包含一条 GET 路由，可立即启动或热编辑。",
+                        "Starts with a default GET route ready to launch or hot-edit.",
+                    ))),
+                    number_field(&view.new_srv_port_input, None, 110.0, cx),
+                    cx,
+                ))
+                .into_any_element();
+            let footer = h_row()
+                .gap(px(8.0))
+                .child(
+                    btn_secondary("mock-new-cancel", view.t("取消", "Cancel")).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.active_modal = None;
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .child(
+                    btn_primary("mock-new-confirm", view.t("创建服务", "Create Server"))
+                        .on_click(cx.listener(|this, _, _, cx| this.create_server_from_modal(cx))),
+                )
+                .into_any_element();
+            modal_dialog(
+                "mock-create-modal",
+                view.t("新建 Mock 服务", "New Mock Server"),
+                460.0,
+                body,
+                footer,
+                window,
+                cx,
+                on_close,
+            )
+        }
         MockModal::DeleteServer { id, name } => {
             let p = palette(cx);
             let body = v_col()

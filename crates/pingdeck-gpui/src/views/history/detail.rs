@@ -1,6 +1,10 @@
 //! Detail pane header, undo banner, and sub-tab host for `HistoryView`.
 
-use gpui_kit::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, div, px};
+use gpui_kit::{
+    AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
+};
+use pingdeck_desktop::core::app::current_time_ms;
+use pingdeck_desktop::time::format_smart_timestamp;
 
 use crate::ui::{
     Tone, UiIcon, alert_banner, badge, btn_ghost, btn_icon, btn_primary, btn_secondary,
@@ -82,12 +86,22 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
     };
 
     let method_s = format!("{:?}", entry.method).to_uppercase();
+    let checks_failed = entry.check_summary.as_ref().is_some_and(|c| c.failed > 0);
     let (st_text, st_tone) = if entry.status_code == 0 || entry.error_kind.is_some() {
         (
             entry
                 .error_kind
                 .clone()
                 .unwrap_or_else(|| "ERROR".to_owned()),
+            Tone::Danger,
+        )
+    } else if checks_failed {
+        (
+            if zh {
+                format!("{} · 断言失败", entry.status_code)
+            } else {
+                format!("{} · Checks Failed", entry.status_code)
+            },
             Tone::Danger,
         )
     } else {
@@ -154,6 +168,21 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
                         )
                         .child(meta_pill(source_label(entry.source, zh), cx))
                         .children(
+                            (!entry.source_name.is_empty())
+                                .then(|| meta_pill(entry.source_name.clone(), cx)),
+                        )
+                        .children(
+                            (!entry.collection_path.is_empty())
+                                .then(|| meta_pill(entry.collection_path.join(" / "), cx)),
+                        )
+                        .children(
+                            entry
+                                .origin_label
+                                .as_ref()
+                                .filter(|s| !s.is_empty())
+                                .map(|s| meta_pill(s.clone(), cx)),
+                        )
+                        .children(
                             (!entry.environment_name.is_empty())
                                 .then(|| meta_pill(entry.environment_name.clone(), cx)),
                         ),
@@ -200,7 +229,25 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
             cx.notify();
         }));
     for tab in HistoryDetailTab::ALL {
-        tabs = tabs.child(tab_item(tab.label(zh)));
+        let lbl = match tab {
+            HistoryDetailTab::Headers if !entry.response_headers.is_empty() => SharedString::from(
+                format!("{} ({})", tab.label(zh), entry.response_headers.len()),
+            ),
+            HistoryDetailTab::Checks => {
+                if let Some(cs) = &entry.check_summary {
+                    SharedString::from(format!(
+                        "{} ({}/{})",
+                        tab.label(zh),
+                        cs.passed,
+                        cs.passed + cs.failed
+                    ))
+                } else {
+                    SharedString::from(tab.label(zh))
+                }
+            }
+            _ => SharedString::from(tab.label(zh)),
+        };
+        tabs = tabs.child(tab_item(lbl));
     }
 
     v_col()
@@ -210,7 +257,7 @@ pub fn render_detail(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyEl
         .child(top_banners)
         .child(subtab_strip(
             tabs,
-            Some(meta_pill(format_timestamp(&entry.executed_at), cx).into_any_element()),
+            Some(meta_pill(format_timestamp(&entry.executed_at, zh), cx).into_any_element()),
             cx,
         ))
         .child(
@@ -233,15 +280,9 @@ pub fn format_bytes(bytes: usize) -> String {
     }
 }
 
-pub fn format_timestamp(raw: &str) -> String {
+pub fn format_timestamp(raw: &str, zh: bool) -> String {
     if let Ok(ms) = raw.trim().parse::<i64>() {
-        let secs = ms.div_euclid(1000).rem_euclid(86_400);
-        return format!(
-            "{:02}:{:02}:{:02} UTC",
-            secs / 3600,
-            (secs % 3600) / 60,
-            secs % 60
-        );
+        return format_smart_timestamp(ms, current_time_ms() as i64, zh);
     }
     raw.to_owned()
 }

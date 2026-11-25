@@ -36,9 +36,7 @@ impl AppShell {
                     cx.notify();
                 }
                 Err(err) => {
-                    this.state
-                        .push_toast(ToastKind::Error, err.message().to_owned(), None);
-                    cx.notify();
+                    this.push_toast_auto(ToastKind::Error, err.message().to_owned(), None, cx);
                 }
             },
         );
@@ -60,9 +58,7 @@ impl AppShell {
                     cx.notify();
                 }
                 Err(err) => {
-                    this.state
-                        .push_toast(ToastKind::Error, err.message().to_owned(), None);
-                    cx.notify();
+                    this.push_toast_auto(ToastKind::Error, err.message().to_owned(), None, cx);
                 }
             },
         );
@@ -102,7 +98,7 @@ impl AppShell {
                     this.modules.set_workspace(Some(ws_id), cx);
                     this.workspace_menu_open = false;
                     this.persist_local(cx);
-                    this.state.push_toast(
+                    this.push_toast_auto(
                         ToastKind::Success,
                         if this.language() == Language::ZhCn {
                             "已创建工作区"
@@ -110,13 +106,11 @@ impl AppShell {
                             "Workspace created"
                         },
                         None,
+                        cx,
                     );
-                    cx.notify();
                 }
                 Err(err) => {
-                    this.state
-                        .push_toast(ToastKind::Error, err.message().to_owned(), None);
-                    cx.notify();
+                    this.push_toast_auto(ToastKind::Error, err.message().to_owned(), None, cx);
                 }
             },
         );

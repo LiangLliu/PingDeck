@@ -218,11 +218,11 @@ impl ProvidersView {
             secret: None,
             enabled: !key.enabled,
             position: key.position,
-            api_user_id: None,
+            api_user_id: key.api_user_id,
             management_token: None,
-            notes: None,
-            group_name: None,
-            protocols: None,
+            notes: key.notes,
+            group_name: key.group_name,
+            protocols: key.protocols,
         };
         let ver = Some(key.updated_at_ms);
         let task = spawn_blocking_into(
@@ -241,6 +241,63 @@ impl ProvidersView {
                     ));
                     cx.notify();
                 }
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn save_edited_key(
+        &mut self,
+        key: ProviderKey,
+        zh: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let name = self.edit_key_name_input.read(cx).value().trim().to_owned();
+        let group = self.edit_key_group_input.read(cx).value().trim().to_owned();
+        let notes = self.edit_key_notes_input.read(cx).value().trim().to_owned();
+        let secret_raw = self
+            .edit_key_secret_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_owned();
+        let input = SaveProviderKeyInput {
+            id: key.id,
+            provider_id: key.provider_id,
+            name: if name.is_empty() { key.name } else { name },
+            secret: (!secret_raw.is_empty()).then_some(secret_raw),
+            enabled: key.enabled,
+            position: key.position,
+            api_user_id: key.api_user_id,
+            management_token: None,
+            notes: Some(notes),
+            group_name: (!group.is_empty()).then_some(group),
+            protocols: key.protocols,
+        };
+        self.edit_key_secret_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        let ver = Some(key.updated_at_ms);
+        let task = spawn_blocking_into(
+            cx,
+            move |state| llm_key_save_guarded_impl(state, input, ver),
+            move |this, res, cx| {
+                match res {
+                    Ok(k) => {
+                        this.editing_key_id = None;
+                        this.status_msg = Some((
+                            Tone::Success,
+                            if zh {
+                                format!("已更新密钥「{}」", k.name)
+                            } else {
+                                format!("Updated key {}", k.name)
+                            },
+                        ));
+                        this.reload_all(cx);
+                    }
+                    Err(err) => this.status_msg = Some((Tone::Danger, err.message().to_owned())),
+                }
+                cx.notify();
             },
         );
         self._tasks.push(task);

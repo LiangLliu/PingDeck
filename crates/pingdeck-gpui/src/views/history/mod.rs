@@ -59,6 +59,7 @@ impl HistoryView {
             selected_entry: None,
             run_children: Vec::new(),
             detail_tab: HistoryDetailTab::Body,
+            body_pretty: true,
             last_undo: None,
             active_modal: None,
             status_msg: None,

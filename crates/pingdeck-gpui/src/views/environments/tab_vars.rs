@@ -11,7 +11,7 @@ use crate::ui::{
     palette, search_input, section_header, table_header, text_input, to_hsla, v_col,
 };
 
-use super::state::{EditableVarRow, EnvModal, EnvironmentsView};
+use super::state::{EditableVarRow, EnvDetailTab, EnvModal, EnvironmentsView};
 
 pub fn render_variables_panel(
     view: &EnvironmentsView,
@@ -380,6 +380,84 @@ pub fn render_variables_panel(
         );
 
     let mut page = content.child(tbl).child(add_card);
+    if !is_global {
+        let secret_cnt = rows.iter().filter(|r| r.is_secret).count();
+        let unres_cnt = view.unresolved_vars.len();
+        page = page.child(
+            h_row()
+                .w_full()
+                .gap(px(10.0))
+                .items_stretch()
+                .child(
+                    card(cx)
+                        .flex_1()
+                        .min_w_0()
+                        .p(px(12.0))
+                        .gap(px(6.0))
+                        .child(section_header(
+                            view.t("未解析变量扫描", "Unresolved Variables"),
+                            Some(
+                                badge(
+                                    unres_cnt.to_string(),
+                                    if unres_cnt == 0 {
+                                        Tone::Success
+                                    } else {
+                                        Tone::Warning
+                                    },
+                                    cx,
+                                )
+                                .into_any_element(),
+                            ),
+                            cx,
+                        ))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .child(if unres_cnt == 0 {
+                                    view.t(
+                                        "工作区所有请求的 {{var}} 均可在此环境下解析。",
+                                        "All {{var}} references resolve cleanly.",
+                                    )
+                                } else {
+                                    view.t(
+                                        "部分已保存请求引用了未定义的 {{var}}，点击前往一键定义。",
+                                        "Some saved requests reference missing {{var}} placeholders.",
+                                    )
+                                }),
+                        )
+                        .child(
+                            div().pt(px(2.0)).child(
+                                btn_secondary(
+                                    "env-goto-resolved",
+                                    view.t("查看解析顺序与扫描 →", "Open Resolved & Scan →"),
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.detail_tab = EnvDetailTab::Resolved;
+                                    this.refresh_env_analysis(cx);
+                                    cx.notify();
+                                })),
+                            ),
+                        ),
+                )
+                .child(
+                    card(cx)
+                        .flex_1()
+                        .min_w_0()
+                        .p(px(12.0))
+                        .gap(px(6.0))
+                        .child(section_header(
+                            view.t("本地 .secrets 明文库", "Local .secrets Store"),
+                            Some(meta_pill(format!("{secret_cnt} secrets"), cx).into_any_element()),
+                            cx,
+                        ))
+                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(view.t(
+                            "机密变量值保存在本机 0600 权限明文 SQLite (.secrets) 中，不在界面明文回显，仅在发送时由核心注入。",
+                            "Secret values live in owner-only 0600 plaintext SQLite (.secrets), never echoed to UI, injected by core at send time.",
+                        ))),
+                ),
+        );
+    }
     if (is_global && view.globals_dirty) || (!is_global && view.env_dirty) {
         page = page.child(alert_banner(
             Tone::Accent,

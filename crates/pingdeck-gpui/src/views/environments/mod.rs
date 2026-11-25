@@ -12,12 +12,15 @@
 pub mod actions;
 pub mod actions_resources;
 pub mod modals;
+pub mod modals_resources;
 pub mod sidebar;
 pub mod state;
 pub mod tab_analysis;
 pub mod tab_certs;
 pub mod tab_cookies;
 pub mod tab_vars;
+
+use std::cell::Cell;
 
 use gpui_kit::{
     AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
@@ -29,8 +32,8 @@ use crate::bridge::runtime;
 use crate::ui::{
     EditorState, InputEvent, InputState, Tone, UiIcon, alert_banner, btn_icon, btn_primary,
     btn_secondary, dismissible_banner, empty_state_with_actions, h_resizable, h_row, icon_xs,
-    palette, resizable_panel, subtab_strip, tab_bar_segmented, tab_bar_underline, tab_item,
-    text_input, to_hsla, toolbar_strip, v_col,
+    palette, resizable_panel, subtab_strip, tab_bar_underline, tab_item, text_input, to_hsla,
+    toolbar_strip, v_col,
 };
 
 pub use state::EnvironmentsView;
@@ -41,6 +44,8 @@ impl EnvironmentsView {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
         let env_search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("筛选环境 / Filter…"));
+        let new_env_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("e.g. staging / prod"));
         let env_name_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Environment name"));
         let var_filter_input =
@@ -104,6 +109,8 @@ impl EnvironmentsView {
             resource_tab: EnvResourceTab::Environments,
             detail_tab: EnvDetailTab::Variables,
             environments: Vec::new(),
+            active_env_id: None,
+            pending_active_env: Cell::new(None),
             selected_env_id: None,
             env_draft_name: String::new(),
             env_draft_vars: Vec::new(),
@@ -127,6 +134,7 @@ impl EnvironmentsView {
             deleted_cookies_undo: None,
             certificates: Vec::new(),
             env_search_input,
+            new_env_name_input,
             env_name_input,
             var_filter_input,
             new_var_key,
@@ -203,6 +211,18 @@ impl EnvironmentsView {
             false
         }
     }
+
+    pub fn set_active_environment(&mut self, env_id: Option<String>, cx: &mut Context<Self>) {
+        if self.active_env_id != env_id {
+            self.active_env_id = env_id;
+            cx.notify();
+        }
+    }
+
+    #[must_use]
+    pub fn take_pending_active_env(&self) -> Option<Option<String>> {
+        self.pending_active_env.take()
+    }
 }
 
 impl Render for EnvironmentsView {
@@ -213,35 +233,7 @@ impl Render for EnvironmentsView {
         let p = palette(cx);
         let zh = self.is_zh();
 
-        // Top workspace resource switcher
-        let mut res_tabs = tab_bar_segmented("env-resource-tabs")
-            .selected_index(self.resource_tab.index())
-            .on_click(cx.listener(|this, idx: &usize, _, cx| {
-                this.resource_tab = EnvResourceTab::from_index(*idx);
-                if let Some(ws) = this.workspace_id.clone() {
-                    match this.resource_tab {
-                        EnvResourceTab::Globals => this.reload_globals(ws, cx),
-                        EnvResourceTab::Cookies => this.reload_cookies(ws, cx),
-                        EnvResourceTab::Certificates => this.reload_certificates(ws, cx),
-                        EnvResourceTab::Environments => this.refresh_env_analysis(cx),
-                    }
-                }
-                cx.notify();
-            }));
-        for rt in EnvResourceTab::ALL {
-            let label = match rt {
-                EnvResourceTab::Cookies if !self.cookies.is_empty() => {
-                    SharedString::from(format!("{} ({})", rt.label(zh), self.cookies.len()))
-                }
-                EnvResourceTab::Certificates if !self.certificates.is_empty() => {
-                    SharedString::from(format!("{} ({})", rt.label(zh), self.certificates.len()))
-                }
-                _ => SharedString::from(rt.label(zh)),
-            };
-            res_tabs = res_tabs.child(tab_item(label));
-        }
-
-        let top_bar = toolbar_strip(cx).justify_between().child(res_tabs);
+        let left = sidebar::render_env_sidebar(self, cx);
 
         let mut banners = v_col().w_full().gap(px(6.0));
         if let Some((_, deleted_name)) = &self.env_undo {
@@ -277,19 +269,28 @@ impl Render for EnvironmentsView {
         }
 
         let main_body = match self.resource_tab {
-            EnvResourceTab::Environments => self.render_environments_split(cx),
+            EnvResourceTab::Environments => self.render_environment_detail(cx),
             EnvResourceTab::Globals => tab_vars::render_variables_panel(self, true, cx),
             EnvResourceTab::Cookies => tab_cookies::render_cookies_tab(self, cx),
             EnvResourceTab::Certificates => tab_certs::render_certs_tab(self, cx),
         };
 
-        let mut root = v_col()
-            .relative()
+        let right = v_col()
             .size_full()
-            .bg(to_hsla(p.surface))
-            .child(top_bar)
+            .min_h_0()
             .child(banners)
             .child(div().flex_1().min_h_0().w_full().child(main_body));
+
+        let mut root = div().relative().size_full().bg(to_hsla(p.surface)).child(
+            h_resizable("env-split")
+                .child(
+                    resizable_panel()
+                        .size(px(250.0))
+                        .size_range(px(205.0)..px(360.0))
+                        .child(left),
+                )
+                .child(resizable_panel().child(right)),
+        );
 
         if let Some(modal) = modals::render_modal(self, window, cx) {
             root = root.child(modal);
@@ -299,13 +300,14 @@ impl Render for EnvironmentsView {
 }
 
 impl EnvironmentsView {
-    fn render_environments_split(&self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+    fn render_environment_detail(&self, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
         let zh = self.is_zh();
-        let left = sidebar::render_env_sidebar(self, cx);
         let right = if let Some(env_id) = self.selected_env_id.clone() {
             let env_name = self.env_draft_name.clone();
             let env_id_exp = env_id.clone();
             let env_name_exp = env_name.clone();
+            let env_id_act = env_id.clone();
+            let is_active_env = self.active_env_id.as_deref() == Some(env_id.as_str());
 
             let header = toolbar_strip(cx)
                 .justify_between()
@@ -314,6 +316,17 @@ impl EnvironmentsView {
                     h_row()
                         .gap(px(6.0))
                         .flex_shrink_0()
+                        .child(if is_active_env {
+                            btn_secondary("env-active-btn", self.t("● 当前生效", "● Active"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.activate_env(None, cx);
+                                }))
+                        } else {
+                            btn_secondary("env-active-btn", self.t("设为当前生效", "Set Active"))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.activate_env(Some(env_id_act.clone()), cx);
+                                }))
+                        })
                         .child(if self.env_dirty {
                             btn_primary("env-save-btn", self.t("保存", "Save"))
                                 .icon(icon_xs(UiIcon::Check))
@@ -337,6 +350,7 @@ impl EnvironmentsView {
                                         id: env_id_exp.clone(),
                                         name: env_name_exp.clone(),
                                         include_secrets: false,
+                                        ack_secrets: false,
                                     });
                                     cx.notify();
                                 })),
@@ -396,21 +410,15 @@ impl EnvironmentsView {
                 Some(
                     btn_primary("env-empty-new", self.t("新建环境", "New Environment"))
                         .icon(icon_xs(UiIcon::Plus))
-                        .on_click(cx.listener(|this, _, _, cx| this.create_env(cx)))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_create_env_modal(window, cx);
+                        }))
                         .into_any_element(),
                 ),
                 cx,
             ))
         };
 
-        h_resizable("env-split")
-            .child(
-                resizable_panel()
-                    .size(px(250.0))
-                    .size_range(px(200.0)..px(360.0))
-                    .child(left),
-            )
-            .child(resizable_panel().child(right))
-            .into_any_element()
+        right.into_any_element()
     }
 }

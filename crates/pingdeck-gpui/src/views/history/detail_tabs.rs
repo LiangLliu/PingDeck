@@ -4,12 +4,15 @@ use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
     div, px,
 };
+use pingdeck_desktop::core::app::{BodySource, response_format_body_impl};
 use pingdeck_desktop::core::model::ExecutionHistoryEntry;
+use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
 use pingdeck_desktop::services::clipboard;
 
+use crate::bridge::runtime;
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_secondary, card, empty_inline,
-    icon_xs, kv_line, palette, section_header, to_hsla, v_col,
+    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_secondary, card, choice_chip,
+    empty_inline, h_row, icon_xs, kv_line, palette, section_header, to_hsla, v_col,
 };
 
 use super::detail_trace::{render_checks_tab, render_trace_tab};
@@ -83,22 +86,81 @@ fn render_body_tab(
         ));
     }
 
+    let display_body = if view.body_pretty && !entry.response_body_preview.is_empty() {
+        let ct = entry
+            .response_headers
+            .iter()
+            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+            .map(|h| h.value.to_ascii_lowercase())
+            .unwrap_or_default();
+        let trimmed = entry.response_body_preview.trim_start();
+        let fmt = if ct.contains("xml") || trimmed.starts_with("<?xml") {
+            ResponseBodyFormat::Xml
+        } else if ct.contains("html")
+            || trimmed.starts_with("<!DOCTYPE")
+            || trimmed.starts_with("<html")
+        {
+            ResponseBodyFormat::Html
+        } else if ct.contains("yaml") {
+            ResponseBodyFormat::Yaml
+        } else {
+            ResponseBodyFormat::Json
+        };
+        response_format_body_impl(
+            runtime(cx).state(),
+            BodySource::Text(entry.response_body_preview.clone()),
+            fmt,
+        )
+        .map(|f| f.text)
+        .unwrap_or_else(|_| entry.response_body_preview.clone())
+    } else {
+        entry.response_body_preview.clone()
+    };
+
     let body_card = card(cx)
         .p(px(12.0))
         .gap(px(8.0))
         .child(section_header(
             view.t("响应正文预览", "Response Body Preview"),
             Some(
-                btn_secondary("hist-copy-body", view.t("复制正文", "Copy Body"))
-                    .icon(icon_xs(UiIcon::Copy))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        let _ = clipboard::set_text(&body_copy);
-                        this.status_msg = Some((
-                            Tone::Success,
-                            this.t("已复制响应正文", "Copied response body").to_owned(),
-                        ));
-                        cx.notify();
-                    }))
+                h_row()
+                    .gap(px(6.0))
+                    .child(
+                        choice_chip(
+                            "hist-body-pretty",
+                            view.t("格式化", "Pretty"),
+                            view.body_pretty,
+                            cx,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.body_pretty = true;
+                            cx.notify();
+                        })),
+                    )
+                    .child(
+                        choice_chip(
+                            "hist-body-raw",
+                            view.t("原文", "Raw"),
+                            !view.body_pretty,
+                            cx,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.body_pretty = false;
+                            cx.notify();
+                        })),
+                    )
+                    .child(
+                        btn_secondary("hist-copy-body", view.t("复制正文", "Copy Body"))
+                            .icon(icon_xs(UiIcon::Copy))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                let _ = clipboard::set_text(&body_copy);
+                                this.status_msg = Some((
+                                    Tone::Success,
+                                    this.t("已复制响应正文", "Copied response body").to_owned(),
+                                ));
+                                cx.notify();
+                            })),
+                    )
                     .into_any_element(),
             ),
             cx,
@@ -118,7 +180,7 @@ fn render_body_tab(
                 .bg(to_hsla(p.sunken))
                 .text_xs()
                 .text_color(to_hsla(p.ink_2))
-                .child(entry.response_body_preview.clone())
+                .child(display_body)
         });
 
     col.child(body_card).into_any_element()

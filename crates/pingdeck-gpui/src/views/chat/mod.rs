@@ -1,60 +1,81 @@
 //! AI Chat & Coding Agent module (`NavModule::Chat`).
-//!
-//! 3-pane native GPUI workspace (`h_resizable`): categorized thread sidebar, centered
-//! editorial conversation stream with live auto-expanded reasoning & structured tool trace cards,
-//! floating top-accented approval gate & rounded composer dock with native anchored popovers,
-//! and a collapsible right-hand Details inspector (`Progress` / `Changes` / `Context` / `Options`).
 
 pub mod actions;
+pub mod actions_extra;
+pub mod actions_items;
 pub mod composer;
+pub mod composer_popovers;
 pub mod gates;
+pub mod gates_extra;
 pub mod inspector;
+pub mod inspector_tabs;
 pub mod metrics;
+pub mod modals;
 pub mod reasoning;
 pub mod reasoning_diag;
+pub mod session_sync;
 pub mod sidebar;
+pub mod sidebar_board;
 pub mod thread;
+pub mod thread_header;
 pub mod trace;
 pub mod types;
 pub mod welcome;
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle,
-    Styled as _, Subscription, Task, Window, px,
+    Styled as _, Subscription, Task, Window, div, px,
 };
-use pingdeck_desktop::core::agent::dto::AgentSubscribeTarget;
+use pingdeck_desktop::core::agent::dto::AgentBoard;
 use pingdeck_desktop::core::agent::model::{
-    AgentEvent, AgentRunStatus, AgentSession, AgentSessionFilter, AgentSessionSummary, AgentTarget,
-    AgentToolCallRecord,
+    AgentRunStatus, AgentSession, AgentSessionSummary, AgentSkill, AgentTarget,
+    AgentToolCallRecord, FileChange,
 };
-use pingdeck_desktop::core::app::{
-    AgentPageRequest, agent_run_subscribe_impl, agent_run_unsubscribe_impl, agent_session_get_impl,
-    agent_session_list_impl, settings_get_impl,
-};
-use pingdeck_desktop::core::logging::{LogLevel, log_line};
+use pingdeck_desktop::core::agent::tools::process::BackgroundProcess;
+use pingdeck_desktop::core::app::{EnvironmentDto, WorkspaceInfo, settings_get_impl};
+use pingdeck_desktop::core::model::Workspace;
 use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::persistence::ChatDraftsStore;
 use pingdeck_desktop::state::ChatThreadState;
-use pingdeck_desktop::streams::coalesced_agent_sink;
 
-use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
+use crate::bridge::runtime;
 use crate::ui::{
     InputEvent, InputState, TextareaState, Tone, h_resizable, palette, resizable_panel, to_hsla,
     v_col,
 };
 
-use actions::load_model_options;
-pub use types::{DetailsTab, ModelOption, ProviderChatMeta};
+pub use types::{
+    ChatHandoff, ChatModal, ChatSidebarMode, DetailsTab, ModelOption, PendingAttachment,
+    ProviderChatMeta,
+};
 
 pub struct ChatView {
+    pub sidebar_mode: ChatSidebarMode,
     pub sessions: Vec<AgentSessionSummary>,
+    pub trash_sessions: Vec<AgentSessionSummary>,
+    pub board: Option<AgentBoard>,
     pub search_input: Entity<InputState>,
+    pub model_search_input: Entity<InputState>,
+    pub question_other_input: Entity<InputState>,
+    pub modal_input: Entity<InputState>,
+    pub modal_textarea: Entity<TextareaState>,
     pub show_archived: bool,
     pub session: Option<AgentSession>,
+    pub plan_mode: bool,
     pub audit_tool_calls: Vec<AgentToolCallRecord>,
+    pub persisted_changes: Vec<FileChange>,
+    pub processes: Vec<BackgroundProcess>,
+    pub workspace_info: Option<WorkspaceInfo>,
+    pub workspaces: Vec<Workspace>,
+    pub environments: Vec<EnvironmentDto>,
+    pub available_skills: Vec<AgentSkill>,
+    pub pending_attachments: Vec<PendingAttachment>,
+    pub selected_skills: Vec<String>,
+    pub question_draft_choices: HashMap<String, Vec<u8>>,
     pub thread: ChatThreadState,
     pub drafts: ChatDraftsStore,
     pub composer: Entity<TextareaState>,
@@ -73,12 +94,15 @@ pub struct ChatView {
     pub scroll_handle: ScrollHandle,
     pub details_open: bool,
     pub details_tab: DetailsTab,
+    pub active_modal: Option<ChatModal>,
     pub status_msg: Option<(Tone, String)>,
+    pub pending_handoff: Cell<Option<ChatHandoff>>,
     pub(super) pending_draft_sync: Option<String>,
     pub(super) pending_instructions_sync: Option<String>,
     pub(super) active_sub_id: Option<u64>,
     pub(super) subscribed_session_id: Option<String>,
     pub(super) stream_task: Option<Task<()>>,
+    pub(super) tick_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
     pub(super) _tasks: Vec<Task<()>>,
 }
@@ -89,9 +113,18 @@ impl ChatView {
         let drafts = rt.load_chat_drafts();
         let search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("搜索对话 / Search chats…"));
+        let model_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("筛选模型 / Filter models…"));
+        let question_other_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("或输入自定义回答 / Or type custom answer…")
+        });
+        let modal_input = cx.new(|cx| InputState::new(window, cx).placeholder("输入标题…"));
+        let modal_textarea = cx.new(|cx| TextareaState::new(window, cx).rows(5));
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("输入消息或编码任务… (Enter 发送 · Shift+Enter 换行)")
+                .placeholder(
+                    "输入消息或编码任务… (Enter 发送/排队 · ⌘Enter 插队 · Shift+Enter 换行)",
+                )
                 .rows(3)
                 .submit_on_enter(true)
         });
@@ -101,25 +134,55 @@ impl ChatView {
                 .rows(4)
         });
 
-        let enter_sub = cx.subscribe_in(&composer, window, |this, _, ev, window, cx| {
-            if matches!(
-                ev,
-                InputEvent::PressEnter { shift: false, .. }
-                    | InputEvent::PressEnter {
-                        secondary: true,
-                        ..
-                    }
-            ) {
+        let enter_sub = cx.subscribe_in(&composer, window, |this, _, ev, window, cx| match ev {
+            InputEvent::PressEnter {
+                secondary: true, ..
+            } => {
+                if this.is_run_active() {
+                    this.steer_active_run(window, cx);
+                } else {
+                    this.send_message(window, cx);
+                }
+            }
+            InputEvent::PressEnter { shift: false, .. } => {
                 this.send_message(window, cx);
+            }
+            _ => {}
+        });
+        let search_sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        });
+        let model_search_sub = cx.subscribe(&model_search_input, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
             }
         });
 
         let mut view = Self {
+            sidebar_mode: ChatSidebarMode::Time,
             sessions: Vec::new(),
+            trash_sessions: Vec::new(),
+            board: None,
             search_input,
+            model_search_input,
+            question_other_input,
+            modal_input,
+            modal_textarea,
             show_archived: false,
             session: None,
+            plan_mode: false,
             audit_tool_calls: Vec::new(),
+            persisted_changes: Vec::new(),
+            processes: Vec::new(),
+            workspace_info: None,
+            workspaces: Vec::new(),
+            environments: Vec::new(),
+            available_skills: Vec::new(),
+            pending_attachments: Vec::new(),
+            selected_skills: Vec::new(),
+            question_draft_choices: HashMap::new(),
             thread: ChatThreadState::default(),
             drafts,
             composer,
@@ -138,13 +201,16 @@ impl ChatView {
             scroll_handle: ScrollHandle::new(),
             details_open: false,
             details_tab: DetailsTab::Progress,
+            active_modal: None,
             status_msg: None,
+            pending_handoff: Cell::new(None),
             pending_draft_sync: None,
             pending_instructions_sync: None,
             active_sub_id: None,
             subscribed_session_id: None,
             stream_task: None,
-            _subscriptions: vec![enter_sub],
+            tick_task: None,
+            _subscriptions: vec![enter_sub, search_sub, model_search_sub],
             _tasks: Vec::new(),
         };
         view.reload_sessions(cx);
@@ -165,7 +231,32 @@ impl ChatView {
             || !self.thread.streaming_reasoning.is_empty()
     }
 
-    /// Formats `(provider_id, model_id)` using the user's custom provider name (`provider / model`).
+    #[must_use]
+    pub fn take_pending_handoff(&self) -> Option<ChatHandoff> {
+        self.pending_handoff.take()
+    }
+
+    pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.active_modal.take().is_some() {
+            cx.notify();
+            true
+        } else {
+            false
+        }
+    }
+
+    #[must_use]
+    pub fn pending_attention_count(&self) -> usize {
+        self.board.as_ref().map_or_else(
+            || {
+                self.thread.pending_approvals.len()
+                    + self.thread.open_gates.len()
+                    + usize::from(self.thread.cost_pause.is_some())
+            },
+            |b| b.needs_you.len(),
+        )
+    }
+
     #[must_use]
     pub fn format_provider_model(&self, provider_id: &str, model_id: &str) -> String {
         let pname = self
@@ -176,7 +267,6 @@ impl ChatView {
         format!("{pname} / {model_id}")
     }
 
-    /// Formats an [`AgentTarget`] as `provider / model` (resolving custom provider names).
     #[must_use]
     pub fn format_target_label(&self, target: &AgentTarget) -> String {
         match target {
@@ -187,7 +277,6 @@ impl ChatView {
         }
     }
 
-    /// Resolves a stored `provider_id/model` label into `provider_name / model`.
     #[must_use]
     pub fn format_raw_model_label(&self, raw: &str) -> String {
         if let Some((pid, mid)) = raw.split_once('/') {
@@ -197,8 +286,6 @@ impl ChatView {
         }
     }
 
-    /// Looks up provider metadata for a raw `provider_id/model` label (or falls back to the
-    /// session's current target provider).
     #[must_use]
     pub fn provider_meta_for_raw(&self, raw: Option<&str>) -> Option<&ProviderChatMeta> {
         if let Some((pid, _)) = raw.and_then(|r| r.split_once('/'))
@@ -218,298 +305,10 @@ impl ChatView {
         }
     }
 
-    /// Returns true if the currently selected provider is OpenAI-compat without a reasoning quirk.
     #[must_use]
     pub fn active_provider_missing_reasoning_quirk(&self) -> bool {
         self.provider_meta_for_raw(None)
             .is_some_and(ProviderChatMeta::missing_reasoning_quirk)
-    }
-
-    /// Lightweight refresh of sessions list + available models (safe to call mid-run).
-    pub fn refresh_catalog(&mut self, cx: &mut Context<Self>) {
-        let include_archived = self.show_archived;
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                let filter = AgentSessionFilter {
-                    include_archived,
-                    ..AgentSessionFilter::default()
-                };
-                let page = agent_session_list_impl(state, Some(filter), Some(150), None);
-                let catalog = load_model_options(state);
-                (page, catalog)
-            },
-            |this, (res, (opts, meta)), cx| {
-                this.available_models = opts;
-                this.provider_meta = meta;
-                if let Ok(page) = res {
-                    this.sessions = page.sessions;
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn reload_sessions(&mut self, cx: &mut Context<Self>) {
-        let include_archived = self.show_archived;
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                let filter = AgentSessionFilter {
-                    include_archived,
-                    ..AgentSessionFilter::default()
-                };
-                let page = agent_session_list_impl(state, Some(filter), Some(150), None);
-                let catalog = load_model_options(state);
-                (page, catalog)
-            },
-            |this, (res, (opts, meta)), cx| {
-                this.available_models = opts;
-                this.provider_meta = meta;
-                if let Ok(page) = res {
-                    let first_id = page.sessions.first().map(|s| s.id.clone());
-                    this.sessions = page.sessions;
-                    if this.thread.session_id.is_empty()
-                        && !this.submitting
-                        && let Some(id) = first_id
-                    {
-                        this.open_session(id, cx);
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub(super) fn ensure_subscribed(&mut self, session_id: &str, cx: &mut Context<Self>) {
-        if self.subscribed_session_id.as_deref() == Some(session_id) && self.stream_task.is_some() {
-            return;
-        }
-        let rt = runtime(cx);
-        if let Some(old_id) = self.active_sub_id.take() {
-            agent_run_unsubscribe_impl(rt.state(), old_id);
-        }
-        self.stream_task = None;
-        self.subscribed_session_id = None;
-
-        let (sink, rx) = coalesced_agent_sink(rt.tokio_handle());
-        let target = AgentSubscribeTarget::Session {
-            session_id: session_id.to_owned(),
-        };
-        match agent_run_subscribe_impl(rt.state(), &target, None, sink) {
-            Ok(sub_id) => {
-                self.active_sub_id = Some(sub_id);
-                self.subscribed_session_id = Some(session_id.to_owned());
-                self.stream_task = Some(subscribe_stream_into(cx, rx, 32, |this, batch, cx| {
-                    let mut got_user_msg = false;
-                    let mut got_run_started = false;
-                    let mut got_title = false;
-                    let mut got_finished = false;
-                    let mut got_scroll_worthy = false;
-                    let mut auto_expand_reasoning_ids: Vec<String> = Vec::new();
-
-                    for env in &batch {
-                        match &env.event {
-                            AgentEvent::RunStarted { .. } => {
-                                got_run_started = true;
-                                got_scroll_worthy = true;
-                                this.thinking_started_at = None;
-                                this.thinking_ended_at = None;
-                            }
-                            AgentEvent::UserMessage { .. } => {
-                                got_user_msg = true;
-                                got_scroll_worthy = true;
-                            }
-                            AgentEvent::ReasoningDelta { .. } => {
-                                got_scroll_worthy = true;
-                                this.thinking_started_at.get_or_insert_with(Instant::now);
-                            }
-                            AgentEvent::TextDelta { text } => {
-                                got_scroll_worthy = true;
-                                if text.contains("<think>") || text.contains("<thinking>") {
-                                    this.thinking_started_at.get_or_insert_with(Instant::now);
-                                } else if this.thinking_started_at.is_some()
-                                    && this.thinking_ended_at.is_none()
-                                {
-                                    this.thinking_ended_at = Some(Instant::now());
-                                }
-                            }
-                            AgentEvent::ToolCallStarted { .. } => {
-                                got_scroll_worthy = true;
-                                if this.thinking_started_at.is_some()
-                                    && this.thinking_ended_at.is_none()
-                                {
-                                    this.thinking_ended_at = Some(Instant::now());
-                                }
-                            }
-                            AgentEvent::MessageSaved { message } => {
-                                got_scroll_worthy = true;
-                                if let Some(started) = this.thinking_started_at.take() {
-                                    let ended =
-                                        this.thinking_ended_at.take().unwrap_or_else(Instant::now);
-                                    let dur_ms =
-                                        ended.saturating_duration_since(started).as_millis() as u64;
-                                    if dur_ms > 0 {
-                                        this.thinking_durations.insert(message.id.clone(), dur_ms);
-                                    }
-                                }
-                                let (rinfo, _) =
-                                    reasoning::extract_message_reasoning(message, None);
-                                if rinfo.kind == reasoning::ReasoningKind::Plaintext {
-                                    auto_expand_reasoning_ids
-                                        .push(format!("reason-{}", message.id));
-                                }
-                            }
-                            AgentEvent::ToolOutputDelta { .. }
-                            | AgentEvent::ToolApprovalRequired { .. } => {
-                                got_scroll_worthy = true;
-                            }
-                            AgentEvent::SessionTitleUpdated { .. } => {
-                                got_title = true;
-                            }
-                            AgentEvent::Done { .. } | AgentEvent::Error { .. } => {
-                                got_finished = true;
-                                got_scroll_worthy = true;
-                                this.thinking_started_at = None;
-                                this.thinking_ended_at = None;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    let changed = this.thread.apply_batch(batch);
-                    if !this.collapsed_live_reasoning {
-                        for rkey in auto_expand_reasoning_ids {
-                            this.expanded_reasoning.insert(rkey);
-                        }
-                    }
-                    if got_user_msg {
-                        this.pending_user_text = None;
-                    }
-                    if got_run_started {
-                        this.submitting = false;
-                        this.run_started_at.get_or_insert_with(Instant::now);
-                    }
-                    if got_finished {
-                        this.submitting = false;
-                        this.run_started_at = None;
-                        this.pending_user_text = None;
-                        this.refresh_after_turn(cx);
-                    } else if got_title {
-                        this.refresh_catalog(cx);
-                    }
-                    if changed {
-                        if this.thread.needs_reload {
-                            let sid = this.thread.session_id.clone();
-                            this.open_session(sid, cx);
-                        } else if got_scroll_worthy {
-                            this.scroll_handle.scroll_to_bottom();
-                        }
-                        cx.notify();
-                    }
-                }));
-            }
-            Err(err) => {
-                log_line(
-                    LogLevel::Warn,
-                    "chat",
-                    &format!(
-                        "failed to subscribe to session {session_id}: {}",
-                        err.message()
-                    ),
-                );
-            }
-        }
-    }
-
-    fn refresh_after_turn(&mut self, cx: &mut Context<Self>) {
-        self.refresh_catalog(cx);
-        let sid = self.thread.session_id.clone();
-        if sid.is_empty() {
-            return;
-        }
-        let sid_check = sid.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| agent_session_get_impl(state, &sid, AgentPageRequest::default()),
-            move |this, res, cx| {
-                if this.thread.session_id != sid_check {
-                    return;
-                }
-                if let Ok(detail) = res {
-                    this.audit_tool_calls = detail.tool_calls;
-                    this.thread.todos = detail.session.todos.clone();
-                    this.thread.context_used_tokens = detail.session.last_context_tokens;
-                    this.thread.cost_micro_usd = detail.session.total_cost_micro_usd;
-                    if !this.is_run_active() && detail.messages.len() >= this.thread.messages.len()
-                    {
-                        this.thread
-                            .replace_snapshot(detail.session.title.clone(), detail.messages);
-                    }
-                    this.session = Some(detail.session);
-                    cx.notify();
-                }
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn open_session(&mut self, session_id: String, cx: &mut Context<Self>) {
-        let prev_sid = self.thread.session_id.clone();
-        if !prev_sid.is_empty() && prev_sid != session_id {
-            let current_text = self.composer.read(cx).value().to_string();
-            self.drafts.set(&prev_sid, current_text);
-            runtime(cx).save_chat_drafts(&self.drafts);
-        }
-
-        self.thread = ChatThreadState::new(session_id.clone(), "");
-        self.session = None;
-        self.audit_tool_calls.clear();
-        self.status_msg = None;
-        self.submitting = false;
-        self.pending_user_text = None;
-        self.thinking_started_at = None;
-        self.thinking_ended_at = None;
-        self.collapsed_live_reasoning = false;
-        self.pending_draft_sync = Some(self.drafts.get(&session_id).unwrap_or_default().to_owned());
-
-        self.ensure_subscribed(&session_id, cx);
-
-        let sid_load = session_id.clone();
-        let sid_check = session_id;
-        let task = spawn_blocking_into(
-            cx,
-            move |state| agent_session_get_impl(state, &sid_load, AgentPageRequest::default()),
-            move |this, res, cx| {
-                if this.thread.session_id != sid_check {
-                    return;
-                }
-                if let Ok(detail) = res {
-                    if !this.submitting && !this.is_run_active() {
-                        this.thread
-                            .replace_snapshot(detail.session.title.clone(), detail.messages);
-                        if let Some(run) = detail.runs.first() {
-                            this.thread.active_run = Some(run.clone());
-                        }
-                    } else if this.thread.title.is_empty() {
-                        this.thread.title = detail.session.title.clone();
-                    }
-                    this.thread.todos = detail.session.todos.clone();
-                    this.thread.context_used_tokens = detail.session.last_context_tokens;
-                    this.thread.cost_micro_usd = detail.session.total_cost_micro_usd;
-                    this.pending_instructions_sync =
-                        Some(detail.session.instructions.clone().unwrap_or_default());
-                    this.audit_tool_calls = detail.tool_calls;
-                    this.session = Some(detail.session);
-                    this.scroll_handle.scroll_to_bottom();
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-        cx.notify();
     }
 }
 
@@ -530,15 +329,15 @@ impl Render for ChatView {
             .size_full()
             .min_w_0()
             .bg(to_hsla(p.surface))
-            .child(thread::render_header(self, zh, cx))
+            .child(thread_header::render_header(self, zh, cx))
             .child(thread::render_messages(self, zh, cx))
             .child(composer::render_dock(self, zh, cx));
 
         let mut split = h_resizable("chat-split-layout")
             .child(
                 resizable_panel()
-                    .size(px(254.0))
-                    .size_range(px(200.0)..px(360.0))
+                    .size(px(260.0))
+                    .size_range(px(210.0)..px(360.0))
                     .child(sidebar::render_sidebar(self, zh, cx)),
             )
             .child(resizable_panel().child(center));
@@ -546,12 +345,16 @@ impl Render for ChatView {
         if self.details_open {
             split = split.child(
                 resizable_panel()
-                    .size(px(304.0))
-                    .size_range(px(240.0)..px(420.0))
+                    .size(px(316.0))
+                    .size_range(px(250.0)..px(440.0))
                     .child(inspector::render_inspector(self, zh, cx)),
             );
         }
 
-        split
+        let mut root = div().relative().size_full().child(split);
+        if let Some(modal) = self.active_modal.clone() {
+            root = root.child(modals::render_active_modal(self, modal, zh, window, cx));
+        }
+        root
     }
 }

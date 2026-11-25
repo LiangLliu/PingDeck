@@ -11,8 +11,8 @@ use pingdeck_desktop::core::model::settings::{
 use pingdeck_desktop::theme::{PaletteId, resolve_palette};
 
 use crate::ui::{
-    UiIcon, btn_ghost, h_row, icon_xs, palette, section_header, setting_row, slider,
-    tab_bar_segmented, tab_item, to_hsla, v_col,
+    Tone, UiIcon, badge, btn_ghost, card, h_row, icon_xs, palette, section_header, setting_row,
+    slider, tab_bar_segmented, tab_item, to_hsla, v_col,
 };
 
 use super::SettingsView;
@@ -77,7 +77,7 @@ pub fn render_appearance(
                 ))
                 .child(setting_row(
                     if zh { "色彩模式" } else { "Color mode" },
-                    None,
+                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
                     Some(SharedString::from(if zh {
                         "跟随操作系统浅色/深色外观，或固定为其中一种。"
                     } else {
@@ -130,11 +130,11 @@ pub fn render_appearance(
                 ))
                 .child(setting_row(
                     if zh { "界面字号" } else { "UI font size" },
-                    None,
+                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
                     Some(SharedString::from(if zh {
-                        "实时按比例缩放全局界面字体（10–20 px，默认 13 px）。"
+                        "实时按比例缩放全局界面字体（10–26 px，默认 13 px）。"
                     } else {
-                        "Proportionally scales global interface typography live (10–20 px, default 13 px)."
+                        "Proportionally scales global interface typography live (10–26 px, default 13 px)."
                     })),
                     h_row()
                         .gap(px(10.0))
@@ -151,11 +151,11 @@ pub fn render_appearance(
                 ))
                 .child(setting_row(
                     if zh { "等宽代码字号" } else { "Monospace font size" },
-                    None,
+                    Some(SharedString::from(if zh { "仅这台电脑" } else { "Local only" })),
                     Some(SharedString::from(if zh {
-                        "用于请求编辑器、响应体、脚本与日志（10–20 px，默认 12 px）。"
+                        "用于请求编辑器、响应体、脚本与日志（10–24 px，默认 12 px）。"
                     } else {
-                        "Used for request editors, response viewers, scripts, and logs (10–20 px, default 12 px)."
+                        "Used for request editors, response viewers, scripts, and logs (10–24 px, default 12 px)."
                     })),
                     h_row()
                         .gap(px(10.0))
@@ -170,6 +170,7 @@ pub fn render_appearance(
                         ),
                     cx,
                 ))
+                .child(render_live_preview(ui_font_val, mono_font_val, app.density, zh, cx))
                 .child(setting_row(
                     if zh { "侧栏呈现方式" } else { "Sidebar layout" },
                     None,
@@ -400,11 +401,25 @@ fn render_palette_grid(
                                 .justify_between()
                                 .px(px(2.0))
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                        .text_color(to_hsla(p.ink))
-                                        .child(if zh { pid.label_zh() } else { pid.label_en() }),
+                                    v_col()
+                                        .gap(px(1.0))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                                .text_color(to_hsla(p.ink))
+                                                .child(if zh {
+                                                    pid.label_zh()
+                                                } else {
+                                                    pid.label_en()
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(10.0))
+                                                .text_color(to_hsla(p.faint))
+                                                .child(palette_subtitle(pid, zh)),
+                                        ),
                                 )
                                 .child(if selected {
                                     div()
@@ -423,4 +438,105 @@ fn render_palette_grid(
         swatches = swatches.child(row);
     }
     swatches
+}
+
+fn render_live_preview(
+    ui_px: u8,
+    mono_px: u8,
+    density: Density,
+    zh: bool,
+    cx: &gpui_kit::App,
+) -> gpui_kit::Div {
+    let p = palette(cx);
+    let pad = if density == Density::Compact {
+        9.0
+    } else {
+        13.0
+    };
+    div().py(px(8.0)).child(
+        card(cx).p(px(pad)).bg(to_hsla(p.pane)).child(
+            v_col()
+                .gap(px(if density == Density::Compact {
+                    6.0
+                } else {
+                    9.0
+                }))
+                .child(
+                    h_row()
+                        .justify_between()
+                        .gap(px(8.0))
+                        .child(
+                            h_row()
+                                .gap(px(6.0))
+                                .child(badge("GET", Tone::Success, cx))
+                                .child(
+                                    div()
+                                        .text_size(px(f32::from(ui_px)))
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .text_color(to_hsla(p.ink))
+                                        .child("/v1/invoices?status=open"),
+                                ),
+                        )
+                        .child(
+                            h_row()
+                                .gap(px(6.0))
+                                .child(badge("200 OK", Tone::Success, cx))
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(to_hsla(p.muted))
+                                        .child(if zh {
+                                            "148 ms · 实时预览"
+                                        } else {
+                                            "148 ms · Live preview"
+                                        }),
+                                ),
+                        ),
+                )
+                .child(
+                    h_row()
+                        .w_full()
+                        .h(px(6.0))
+                        .rounded(px(3.0))
+                        .overflow_hidden()
+                        .bg(to_hsla(p.sunken))
+                        .child(div().w(px(38.0)).h_full().bg(to_hsla(p.accent)))
+                        .child(div().w(px(64.0)).h_full().bg(to_hsla(p.ok)))
+                        .child(div().w(px(96.0)).h_full().bg(to_hsla(p.warn))),
+                )
+                .child(
+                    div()
+                        .px(px(10.0))
+                        .py(px(7.0))
+                        .rounded(px(6.0))
+                        .bg(to_hsla(p.surface))
+                        .border_1()
+                        .border_color(to_hsla(p.line.composite_over(p.surface)))
+                        .text_size(px(f32::from(mono_px)))
+                        .text_color(to_hsla(p.ink_2))
+                        .child("{\"id\":\"inv_9f2a\",\"status\":\"open\",\"total_cents\":4200}"),
+                ),
+        ),
+    )
+}
+
+const fn palette_subtitle(pid: PaletteId, zh: bool) -> &'static str {
+    match (pid, zh) {
+        (PaletteId::Slate, true) => "冷灰青蓝 · 默认专注",
+        (PaletteId::Slate, false) => "Focused cool slate",
+        (PaletteId::Ocean, true) => "深海清蓝 · 清晰",
+        (PaletteId::Ocean, false) => "Crisp deep ocean",
+        (PaletteId::Nord, true) => "北欧冰蓝 · 冷静",
+        (PaletteId::Nord, false) => "Calm nordic frost",
+        (PaletteId::Sage, true) => "鼠尾草绿 · 低蓝光",
+        (PaletteId::Sage, false) => "Low-blue soft sage",
+        (PaletteId::Emerald, true) => "翡翠翠绿 · 通透",
+        (PaletteId::Emerald, false) => "Fresh crisp emerald",
+        (PaletteId::Amber, true) => "暖纸琥珀 · 护眼阅读",
+        (PaletteId::Amber, false) => "Warm amber reading",
+        (PaletteId::Violet, true) => "柔和紫调 · 夜间舒适",
+        (PaletteId::Violet, false) => "Soft violet night",
+        (PaletteId::Graphite, true) => "纯灰无彩 · 极简",
+        (PaletteId::Graphite, false) => "Minimal neutral gray",
+    }
 }

@@ -6,14 +6,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use gpui_kit::{AppContext as _, Context, Entity, IntoElement, Render, Subscription, Task, Window};
 use pingdeck_desktop::core::app::{
-    ProbeCellDto, ProbeEstimateDto, ProbeEvent, ProbeItem, ProbeRunInput, ProbeSummary,
-    llm_key_list_impl, llm_model_list_impl, llm_probe_apply_impl, llm_probe_apply_preview_impl,
-    llm_probe_apply_undo_impl, llm_probe_estimate_impl, llm_probe_results_impl, llm_probe_run_impl,
-    llm_provider_list_impl,
+    ProbeApplyPreviewDto, ProbeCellDto, ProbeEstimateDto, ProbeEvent, ProbeExportFilter,
+    ProbeExportFormat, ProbeItem, ProbeRunInput, ProbeSummary, llm_key_list_impl,
+    llm_model_list_impl, llm_probe_apply_impl, llm_probe_apply_preview_impl,
+    llm_probe_apply_undo_impl, llm_probe_estimate_impl, llm_probe_export_impl,
+    llm_probe_results_impl, llm_probe_run_impl, llm_provider_list_impl,
 };
 use pingdeck_desktop::core::llm::probe::plan::{CheckSelection, CheckSet};
 use pingdeck_desktop::core::llm::probe::{ProbeStatus, ProbeTest};
 use pingdeck_desktop::core::llm::store::{ProbeResult, Provider, ProviderKey, ProviderModel};
+use pingdeck_desktop::services::{FileFilter, HostDialog, RfdDialog, SaveFileSpec};
 use pingdeck_desktop::streams::ChannelSink;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
@@ -39,7 +41,7 @@ pub struct BenchView {
     pub(super) selected_provider_id: Option<String>,
     pub(super) selected_key_id: Option<String>,
     pub(super) check_set: CheckSet,
-    concurrency: u8,
+    pub(super) concurrency: u8,
     pub(super) include_disabled: bool,
     pub(super) filter: BenchFilter,
     pub(super) search_input: Entity<InputState>,
@@ -47,6 +49,8 @@ pub struct BenchView {
     /// `(model_id, test_name) -> ProbeCellDto` for the active or loaded run.
     pub(super) cells: BTreeMap<(String, String), ProbeCellDto>,
     pub(super) estimate: Option<ProbeEstimateDto>,
+    pub(super) pending_cost_confirm: Option<Option<String>>,
+    pub(super) pending_apply_preview: Option<ProbeApplyPreviewDto>,
     pub(super) running: bool,
     cancel_token: Option<String>,
     pub(super) run_id: Option<String>,
@@ -98,6 +102,8 @@ impl BenchView {
             selected_models: initial_models.into_iter().collect(),
             cells: BTreeMap::new(),
             estimate: None,
+            pending_cost_confirm: None,
+            pending_apply_preview: None,
             running: false,
             cancel_token: None,
             run_id: None,
@@ -288,8 +294,23 @@ impl BenchView {
         self._tasks.push(task);
     }
 
-    pub(super) fn start_run(&mut self, retry_of: Option<String>, cx: &mut Context<Self>) {
-        let Some(input) = self.build_run_input(retry_of, true) else {
+    pub(super) fn request_start_run(&mut self, retry_of: Option<String>, cx: &mut Context<Self>) {
+        if retry_of.is_none() && self.estimate.as_ref().is_some_and(|e| e.needs_confirmation) {
+            self.pending_cost_confirm = Some(retry_of);
+            cx.notify();
+            return;
+        }
+        self.start_run(retry_of, false, cx);
+    }
+
+    pub(super) fn start_run(
+        &mut self,
+        retry_of: Option<String>,
+        confirmed_cost: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending_cost_confirm = None;
+        let Some(input) = self.build_run_input(retry_of, confirmed_cost) else {
             self.flash = Some((
                 Tone::Warning,
                 if self.zh {
@@ -378,18 +399,35 @@ impl BenchView {
         }
     }
 
-    pub(super) fn apply_results(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn open_apply_preview(&mut self, cx: &mut Context<Self>) {
         let Some(rid) = self.run_id.clone() else {
             return;
         };
+        let task = spawn_blocking_into(
+            cx,
+            move |state| llm_probe_apply_preview_impl(state, &rid),
+            |this, res, cx| {
+                match res {
+                    Ok(preview) => this.pending_apply_preview = Some(preview),
+                    Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub(super) fn confirm_apply_results(&mut self, cx: &mut Context<Self>) {
+        let Some(preview) = self.pending_apply_preview.take() else {
+            return;
+        };
+        let rid = preview.run_id;
+        let sel = preview.default_selection;
         let parent = self.parent.clone();
         let zh = self.zh;
         let task = spawn_blocking_into(
             cx,
-            move |state| {
-                let preview = llm_probe_apply_preview_impl(state, &rid)?;
-                llm_probe_apply_impl(state, &rid, &preview.default_selection)
-            },
+            move |state| llm_probe_apply_impl(state, &rid, &sel),
             move |this, res, cx| {
                 match res {
                     Ok(rep) => {
@@ -415,6 +453,58 @@ impl BenchView {
                         parent.update(cx, |p, cx| p.reload_all(cx));
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub(super) fn export_probe_results(
+        &mut self,
+        format: ProbeExportFormat,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(rid) = self.run_id.clone() else {
+            return;
+        };
+        let zh = self.zh;
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let file =
+                    llm_probe_export_impl(state, &rid, &ProbeExportFilter::default(), format)?;
+                let spec = SaveFileSpec {
+                    title: None,
+                    starting_dir: None,
+                    file_name: Some(file.file_name),
+                    filters: vec![FileFilter {
+                        name: "CSV / JSON".into(),
+                        extensions: vec!["csv".into(), "json".into()],
+                    }],
+                };
+                let Some(dest) = RfdDialog.save_file(&spec) else {
+                    return Ok::<Option<String>, pingdeck_desktop::core::error::AppError>(None);
+                };
+                std::fs::write(&dest, file.bytes).map_err(|e| {
+                    pingdeck_desktop::core::error::AppError::io(format!("export write failed: {e}"))
+                })?;
+                Ok(Some(dest.display().to_string()))
+            },
+            move |this, res, cx| {
+                match res {
+                    Ok(Some(path)) => {
+                        this.flash = Some((
+                            Tone::Success,
+                            if zh {
+                                format!("已导出实测报告到 {path}")
+                            } else {
+                                format!("Exported report to {path}")
+                            },
+                        ));
+                    }
+                    Ok(None) => {}
+                    Err(e) => this.flash = Some((Tone::Danger, e.message().to_owned())),
                 }
                 cx.notify();
             },

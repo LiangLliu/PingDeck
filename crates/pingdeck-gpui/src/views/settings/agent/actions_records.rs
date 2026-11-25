@@ -139,11 +139,13 @@ impl AgentSettingsView {
         self._tasks.push(task);
     }
 
-    pub(super) fn add_blocked_command(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn add_blocked_command(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let pat = self.blocked_cmd_input.read(cx).value().trim().to_owned();
         if pat.is_empty() {
             return;
         }
+        self.blocked_cmd_input
+            .update(cx, |i, cx| i.set_value("", window, cx));
         let mut list = self.settings.ai.agent.blocked_commands.clone();
         if !list.contains(&pat) {
             list.push(pat);
@@ -172,11 +174,13 @@ impl AgentSettingsView {
         );
     }
 
-    pub(super) fn add_shell_env(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn add_shell_env(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let name = self.env_pass_input.read(cx).value().trim().to_owned();
         if name.is_empty() {
             return;
         }
+        self.env_pass_input
+            .update(cx, |i, cx| i.set_value("", window, cx));
         let mut list = self.settings.ai.agent.shell_env_passthrough.clone();
         if !list.contains(&name) {
             list.push(name);

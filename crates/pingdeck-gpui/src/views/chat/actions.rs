@@ -1,4 +1,4 @@
-//! Chat mutations, optimistic send/auto-model binding, session lifecycle, and approval handlers.
+//! Chat mutations, optimistic send/queue/auto-model binding, session lifecycle, and approval handlers.
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -13,16 +13,17 @@ use pingdeck_desktop::core::agent::model::{
 use pingdeck_desktop::core::app::{
     AgentPageRequest, AppState, agent_approval_answer_impl, agent_run_continue_impl,
     agent_run_start_impl, agent_run_stop_impl, agent_run_unsubscribe_impl,
-    agent_session_create_impl, agent_session_delete_impl, agent_session_get_impl,
-    agent_session_update_impl, llm_model_list_impl, llm_provider_list_impl,
+    agent_session_create_impl, agent_session_get_impl, agent_session_update_impl,
+    llm_model_list_impl, llm_provider_list_impl, settings_get_impl,
 };
-use pingdeck_desktop::core::model::settings::ToolApproval;
+use pingdeck_desktop::core::model::settings::{Language, ToolApproval};
 use pingdeck_desktop::state::ChatThreadState;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::reasoning::message_has_reasoning;
+use super::types::ChatModal;
 use super::{ChatView, ModelOption, ProviderChatMeta};
 
 pub(super) fn load_model_options(
@@ -54,7 +55,6 @@ pub(super) fn load_model_options(
             enabled,
         });
     }
-    // Prefer enabled models at the front so auto-fallback picks a callable model first.
     opts.sort_by_key(|m| !m.enabled);
     (opts, meta)
 }
@@ -82,7 +82,7 @@ impl ChatView {
             self.patch_session(
                 AgentSessionPatch {
                     target: Some(target),
-                    ..AgentSessionPatch::default()
+                    ..Default::default()
                 },
                 cx,
             );
@@ -136,8 +136,6 @@ impl ChatView {
         cx.notify();
     }
 
-    /// Populates a Chat draft with sanitized handoff context from Requests / History / Usage
-    /// without auto-sending (`docs/design.md §1.3`).
     pub fn accept_handoff_draft(
         &mut self,
         title: String,
@@ -171,19 +169,28 @@ impl ChatView {
     }
 
     pub fn send_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.submitting || self.is_run_active() {
+        let text = self.composer.read(cx).value().trim().to_owned();
+        if text.is_empty() && self.pending_attachments.is_empty() {
             return;
         }
-        let text = self.composer.read(cx).value().trim().to_owned();
-        if text.is_empty() {
+        if self.submitting || self.is_run_active() {
+            if !self.thread.session_id.is_empty() {
+                self.composer
+                    .update(cx, |c, cx| c.set_value("", window, cx));
+                self.enqueue_turn(text, cx);
+            }
             return;
         }
 
-        // Immediate optimistic UI response (0ms feedback: user bubble + live Thinking state).
         self.composer
             .update(cx, |c, cx| c.set_value("", window, cx));
+        let attachment_ids: Vec<String> =
+            self.pending_attachments.drain(..).map(|a| a.id).collect();
+        let skills = std::mem::take(&mut self.selected_skills);
+
         self.submitting = true;
         self.run_started_at = Some(Instant::now());
+        self.start_elapsed_ticker(cx);
         self.thinking_started_at = None;
         self.thinking_ended_at = None;
         self.pending_user_text = Some(text.clone());
@@ -215,7 +222,7 @@ impl ChatView {
                         this.session = Some(session);
                         this.ensure_subscribed(&id, cx);
                         this.refresh_catalog(cx);
-                        this.dispatch_run(id, text_for_run, cx);
+                        this.dispatch_run(id, text_for_run, attachment_ids, skills, cx);
                     }
                     Err(err) => {
                         this.submitting = false;
@@ -236,10 +243,17 @@ impl ChatView {
         self.drafts.set(&sid, String::new());
         runtime(cx).save_chat_drafts(&self.drafts);
         self.ensure_subscribed(&sid, cx);
-        self.dispatch_run(sid, text, cx);
+        self.dispatch_run(sid, text, attachment_ids, skills, cx);
     }
 
-    fn dispatch_run(&mut self, sid: String, text: String, cx: &mut Context<Self>) {
+    fn dispatch_run(
+        &mut self,
+        sid: String,
+        text: String,
+        attachment_ids: Vec<String>,
+        skills: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
         let original_text = text.clone();
         let needs_model = self.session.as_ref().is_none_or(|s| s.target.is_none());
         let sid_for_cb = sid.clone();
@@ -277,8 +291,8 @@ impl ChatView {
                 let input = AgentRunInput {
                     session_id: sid,
                     text,
-                    attachment_ids: Vec::new(),
-                    skills: Vec::new(),
+                    attachment_ids,
+                    skills,
                     workspace_id: None,
                     environment_id: None,
                     contexts: Vec::new(),
@@ -312,6 +326,7 @@ impl ChatView {
                     Err(err) => {
                         this.submitting = false;
                         this.run_started_at = None;
+                        this.tick_task = None;
                         this.pending_user_text = None;
                         this.pending_draft_sync = Some(original_text);
                         let msg = err.message().to_owned();
@@ -329,6 +344,7 @@ impl ChatView {
     pub fn stop_active_run(&mut self, cx: &mut Context<Self>) {
         let Some(run) = &self.thread.active_run else {
             self.submitting = false;
+            self.tick_task = None;
             cx.notify();
             return;
         };
@@ -353,12 +369,13 @@ impl ChatView {
         self._tasks.push(task);
     }
 
-    pub fn answer_approval(
+    pub fn answer_approval_ext(
         &mut self,
         run_id: String,
         call_id: String,
         decision: ApprovalDecision,
         scope: ApprovalScope,
+        allow_network_once: bool,
         cx: &mut Context<Self>,
     ) {
         let answer = ApprovalAnswer {
@@ -366,29 +383,45 @@ impl ChatView {
             scope,
             message: None,
             edited_arguments: None,
-            allow_network_once: false,
+            allow_network_once,
         };
         let task = spawn_blocking_into(
             cx,
             move |state| agent_approval_answer_impl(state, &run_id, &call_id, answer),
-            |_, _, _| {},
+            |this, res, cx| {
+                if let Err(err) = res {
+                    this.status_msg = Some((Tone::Danger, err.message().to_owned()));
+                    cx.notify();
+                }
+            },
         );
         self._tasks.push(task);
     }
 
     pub fn patch_session(&mut self, patch: AgentSessionPatch, cx: &mut Context<Self>) {
         let sid = self.thread.session_id.clone();
-        if sid.is_empty() {
-            return;
+        if !sid.is_empty() {
+            self.patch_session_by_id(sid, patch, cx);
         }
+    }
+
+    pub fn patch_session_by_id(
+        &mut self,
+        sid: String,
+        patch: AgentSessionPatch,
+        cx: &mut Context<Self>,
+    ) {
+        let sid_check = sid.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_session_update_impl(state, &sid, patch),
-            |this, res, cx| {
+            move |this, res, cx| {
                 match res {
                     Ok(updated) => {
-                        this.thread.title = updated.title.clone();
-                        this.session = Some(updated);
+                        if this.thread.session_id == sid_check {
+                            this.thread.title = updated.title.clone();
+                            this.session = Some(updated);
+                        }
                         this.refresh_catalog(cx);
                     }
                     Err(err) => {
@@ -401,11 +434,22 @@ impl ChatView {
         self._tasks.push(task);
     }
 
+    pub fn request_permission_mode(&mut self, mode: ToolApproval, cx: &mut Context<Self>) {
+        if mode == ToolApproval::AutoAll {
+            self.active_modal = Some(ChatModal::FullAccessConfirm {
+                acknowledged: false,
+            });
+            cx.notify();
+        } else {
+            self.set_permission_mode(mode, cx);
+        }
+    }
+
     pub fn set_permission_mode(&mut self, mode: ToolApproval, cx: &mut Context<Self>) {
         self.patch_session(
             AgentSessionPatch {
                 permission_mode: Some(mode),
-                ..AgentSessionPatch::default()
+                ..Default::default()
             },
             cx,
         );
@@ -419,7 +463,7 @@ impl ChatView {
         self.patch_session(
             AgentSessionPatch {
                 reasoning_effort: Some(effort),
-                ..AgentSessionPatch::default()
+                ..Default::default()
             },
             cx,
         );
@@ -430,7 +474,7 @@ impl ChatView {
         self.patch_session(
             AgentSessionPatch {
                 web_enabled: Some(next),
-                ..AgentSessionPatch::default()
+                ..Default::default()
             },
             cx,
         );
@@ -444,13 +488,14 @@ impl ChatView {
         self.patch_session(
             AgentSessionPatch {
                 pinned: Some(next),
-                ..AgentSessionPatch::default()
+                ..Default::default()
             },
             cx,
         );
     }
 
     pub fn save_instructions(&mut self, cx: &mut Context<Self>) {
+        let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let text = self.instructions_input.read(cx).value().trim().to_owned();
         self.patch_session(
             AgentSessionPatch {
@@ -459,7 +504,15 @@ impl ChatView {
             },
             cx,
         );
-        self.status_msg = Some((Tone::Success, "Saved instructions".into()));
+        self.status_msg = Some((
+            Tone::Success,
+            if zh {
+                "已保存附加指令"
+            } else {
+                "Saved instructions"
+            }
+            .into(),
+        ));
         cx.notify();
     }
 
@@ -501,33 +554,5 @@ impl ChatView {
             }
         }
         cx.notify();
-    }
-
-    pub fn delete_current_session(&mut self, cx: &mut Context<Self>) {
-        let sid = self.thread.session_id.clone();
-        if sid.is_empty() {
-            return;
-        }
-        let task = spawn_blocking_into(
-            cx,
-            move |state| agent_session_delete_impl(state, &sid),
-            |this, res, cx| {
-                if res.is_ok() {
-                    if let Some(sub_id) = this.active_sub_id.take() {
-                        agent_run_unsubscribe_impl(runtime(cx).state(), sub_id);
-                    }
-                    this.subscribed_session_id = None;
-                    this.thread = ChatThreadState::default();
-                    this.session = None;
-                    this.audit_tool_calls.clear();
-                    this.stream_task = None;
-                    this.submitting = false;
-                    this.pending_user_text = None;
-                    this.reload_sessions(cx);
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
     }
 }

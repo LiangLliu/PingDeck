@@ -126,6 +126,24 @@ pub fn render_models_tab(
                 )
                 .child(
                     btn_secondary(
+                        "pm-bench-all",
+                        if zh {
+                            "基准测试全部…"
+                        } else {
+                            "Test Bench…"
+                        },
+                    )
+                    .h(px(30.0))
+                    .icon(icon_xs(UiIcon::Activity))
+                    .on_click(cx.listener({
+                        let pid_b = prov_id.clone();
+                        move |this, _, window, cx| {
+                            this.open_bench(Some(pid_b.clone()), Vec::new(), window, cx);
+                        }
+                    })),
+                )
+                .child(
+                    btn_secondary(
                         "pm-add-toggle",
                         if zh { "+ 添加模型" } else { "+ Add model" },
                     )

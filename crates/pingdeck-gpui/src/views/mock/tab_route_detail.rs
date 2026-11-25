@@ -9,8 +9,8 @@ use pingdeck_desktop::core::model::items::{
 use pingdeck_desktop::services::{FilePickerSpec, HostDialog as _, RfdDialog};
 
 use crate::ui::{
-    UiIcon, btn_ghost, btn_icon, btn_secondary, card, choice_chip, code_editor, data_row, h_row,
-    meta_pill, number_field, palette, section_header, text_input, to_hsla, v_col,
+    Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary, card, choice_chip, code_editor,
+    data_row, h_row, meta_pill, number_field, palette, section_header, text_input, to_hsla, v_col,
 };
 
 use super::state::MockView;
@@ -345,22 +345,41 @@ pub fn render_response_branches(
     } else if let Some(stream) = &resp.stream {
         box_el = box_el.child(render_sse_editor(view, stream, cx));
     } else {
+        let body_val = view.resp_body_editor.read(cx).value().to_string();
+        let json_valid =
+            mode_idx == 0 && serde_json::from_str::<serde_json::Value>(&body_val).is_ok();
         box_el = box_el.child(
             v_col()
                 .w_full()
                 .gap(px(4.0))
                 .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(to_hsla(p.muted))
-                        .child(if mode_idx == 2 {
-                            view.t("Base64 编码字节内容", "Base64-encoded binary payload")
-                        } else {
-                            view.t(
-                                "支持模板变量：{{urlParam 'id'}} · {{queryParam 'q'}} · {{body 'key'}} · {{data 'bucket'}} · {{faker.uuid}}",
-                                "Templates: {{urlParam 'id'}} · {{queryParam 'q'}} · {{body 'key'}} · {{data 'bucket'}} · {{faker.uuid}}",
+                    h_row()
+                        .w_full()
+                        .justify_between()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_size(px(11.0))
+                                .text_color(to_hsla(p.muted))
+                                .truncate()
+                                .child(if mode_idx == 2 {
+                                    view.t("Base64 编码字节内容", "Base64-encoded binary payload")
+                                } else {
+                                    view.t(
+                                        "模板：{{urlParam 'id'}} · {{queryParam 'q'}} · {{body 'key'}} · {{data 'bucket'}} · {{faker.uuid}}",
+                                        "Templates: {{urlParam 'id'}} · {{queryParam 'q'}} · {{body 'key'}} · {{data 'bucket'}} · {{faker.uuid}}",
+                                    )
+                                }),
+                        )
+                        .children((mode_idx == 0 && !body_val.trim().is_empty()).then(|| {
+                            badge(
+                                if json_valid { "JSON ✓" } else { view.t("模板/文本", "Template") },
+                                if json_valid { Tone::Success } else { Tone::Neutral },
+                                cx,
                             )
-                        }),
+                        })),
                 )
                 .child(div().w_full().h(px(180.0)).child(code_editor(&view.resp_body_editor))),
         );

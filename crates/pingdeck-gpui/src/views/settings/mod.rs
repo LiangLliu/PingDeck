@@ -9,6 +9,7 @@ pub mod actions_sync;
 pub mod agent;
 pub mod appearance;
 pub mod catalog;
+mod dispatch;
 pub mod modals;
 pub mod page_advanced;
 pub mod page_data;
@@ -44,9 +45,9 @@ use pingdeck_desktop::theme::PaletteId;
 
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::{
-    InputState, ScrollableElement as _, SliderEvent, StatusShape, Tone, UiIcon, btn_secondary,
-    dismissible_banner, empty_inline, h_row, icon_xs, list_row, palette, search_input,
-    status_indicator, to_hsla, v_col,
+    InputEvent, InputState, ScrollableElement as _, SliderEvent, StatusShape, Tone, UiIcon, badge,
+    btn_secondary, dismissible_banner, empty_inline, h_row, icon_xs, list_row, palette,
+    search_input, status_indicator, to_hsla, v_col,
 };
 
 use state_inputs::{ProxyModeChoice, SettingsInputs, SettingsModal, section_matches_query};
@@ -72,6 +73,7 @@ pub struct SettingsView {
     pub storage_loading: bool,
     pub data_busy: bool,
     pub chat_retention_preview: Option<u64>,
+    pub usage_retention_preview: Option<(u64, u64)>,
     pub sync_status: Option<SyncStatus>,
     pub sync_folder_info: Option<SyncFolderInfoDto>,
     pub sync_busy: bool,
@@ -104,14 +106,24 @@ impl SettingsView {
         let inputs = SettingsInputs::new(&settings, window, cx);
         let proxy_mode = ProxyModeChoice::from_proxy_url(&settings.network.proxy_url);
 
+        let search_sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        });
+        let sc_filter_sub = cx.subscribe(&inputs.shortcut_filter, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        });
         let ui_slider_sub =
             cx.subscribe(&inputs.ui_font_slider, |this, _, ev: &SliderEvent, cx| {
                 let val = match ev {
                     SliderEvent::Release(v) | SliderEvent::Change(v) => v.end().round() as u8,
                 };
-                if matches!(ev, SliderEvent::Release(_))
-                    && val != this.settings.appearance.ui_font_size
-                {
+                if matches!(ev, SliderEvent::Change(_)) {
+                    cx.notify();
+                } else if val != this.settings.appearance.ui_font_size {
                     this.patch_section(
                         CoreSection::Appearance,
                         serde_json::json!({ "ui_font_size": val }),
@@ -124,9 +136,9 @@ impl SettingsView {
                 let val = match ev {
                     SliderEvent::Release(v) | SliderEvent::Change(v) => v.end().round() as u8,
                 };
-                if matches!(ev, SliderEvent::Release(_))
-                    && val != this.settings.appearance.mono_font_size
-                {
+                if matches!(ev, SliderEvent::Change(_)) {
+                    cx.notify();
+                } else if val != this.settings.appearance.mono_font_size {
                     this.patch_section(
                         CoreSection::Appearance,
                         serde_json::json!({ "mono_font_size": val }),
@@ -168,6 +180,7 @@ impl SettingsView {
             storage_loading: false,
             data_busy: false,
             chat_retention_preview: None,
+            usage_retention_preview: None,
             sync_status: None,
             sync_folder_info: None,
             sync_busy: false,
@@ -181,7 +194,7 @@ impl SettingsView {
             pending_palette: Cell::new(None),
             pending_back: Cell::new(false),
             pending_navigate: Cell::new(None),
-            _subscriptions: vec![ui_slider_sub, mono_slider_sub],
+            _subscriptions: vec![search_sub, sc_filter_sub, ui_slider_sub, mono_slider_sub],
             _tasks: vec![settings_task],
         };
         view.reload_aux(cx);
@@ -228,6 +241,12 @@ impl SettingsView {
             self.refresh_data_and_sync(cx);
         }
         cx.notify();
+    }
+
+    pub fn has_pending_shell_signal(&self) -> bool {
+        self.pending_palette.get().is_some()
+            || self.pending_back.get()
+            || self.pending_navigate.get().is_some()
     }
 
     pub fn take_pending_palette(&self) -> Option<PaletteId> {
@@ -302,14 +321,16 @@ impl Render for SettingsView {
             nav_hits += matching.len();
             let (gz, ge) = group.label_pair();
             nav = nav.child(
-                div()
+                h_row()
+                    .justify_between()
                     .px(px(10.0))
                     .pt(px(12.0))
                     .pb(px(3.0))
                     .text_size(px(11.0))
                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                     .text_color(to_hsla(p.faint))
-                    .child(if zh { gz } else { ge }),
+                    .child(if zh { gz } else { ge })
+                    .child(SharedString::from(matching.len().to_string())),
             );
             for sec in matching {
                 let (zl, el) = sec.label_pair();
@@ -346,7 +367,7 @@ impl Render for SettingsView {
                     "No matching settings"
                 },
                 Some(SharedString::from(if zh {
-                    "尝试搜索如：代理、超时、备份、快捷键、MCP"
+                    "尝试搜索：代理、超时、备份、快捷键、MCP"
                 } else {
                     "Try: proxy, timeout, backup, shortcuts, MCP"
                 })),
@@ -385,19 +406,29 @@ impl Render for SettingsView {
                                 cx.notify();
                             }),
                         )
+                        .justify_between()
                         .gap(px(6.0))
                         .text_color(to_hsla(p.ink_2))
-                        .child(icon_xs(UiIcon::ArrowLeft))
                         .child(
-                            div()
-                                .text_xs()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .child(if zh {
-                                    "返回工作区"
-                                } else {
-                                    "Back to workspace"
-                                }),
-                        ),
+                            h_row()
+                                .gap(px(6.0))
+                                .child(icon_xs(UiIcon::ArrowLeft))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                        .child(if zh { "返回工作区" } else { "Back" }),
+                                ),
+                        )
+                        .child(badge(
+                            if zh {
+                                format!("{} 页", SettingsSection::ALL.len())
+                            } else {
+                                format!("{} pages", SettingsSection::ALL.len())
+                            },
+                            Tone::Neutral,
+                            cx,
+                        )),
                     )
                     .child(search_input(&self.search_input, cx)),
             )
@@ -406,13 +437,18 @@ impl Render for SettingsView {
         let (gz, ge) = self.active.group().label_pair();
         let (sz, se) = self.active.label_pair();
         let breadcrumb = if zh {
-            format!("{gz}  ›  {sz}")
+            if gz == sz {
+                sz.to_owned()
+            } else {
+                format!("{gz}  ›  {sz}")
+            }
+        } else if ge == se {
+            se.to_owned()
         } else {
             format!("{ge}  ›  {se}")
         };
 
-        let show_status_pill = self.active != SettingsSection::About;
-        let status_pill = show_status_pill.then(|| {
+        let status_pill = (self.active != SettingsSection::About).then(|| {
             let (bg, border, fg, icon_el, text) = if self.last_save_error {
                 (
                     to_hsla(p.bad_soft),
@@ -449,68 +485,7 @@ impl Render for SettingsView {
                 .child(text)
         });
 
-        let page_body = match self.active {
-            SettingsSection::About => self
-                .about_view
-                .get_or_insert_with(|| cx.new(about::AboutSettingsView::new))
-                .clone()
-                .into_any_element(),
-            SettingsSection::Agent
-            | SettingsSection::Personalization
-            | SettingsSection::Memory
-            | SettingsSection::Subagents
-            | SettingsSection::Tools
-            | SettingsSection::Permissions
-            | SettingsSection::Mcp
-            | SettingsSection::Skills => {
-                let sec = self.active;
-                let ent = if let Some(existing) = &self.agent_view {
-                    existing.clone()
-                } else {
-                    let created = cx.new(|cx| agent::AgentSettingsView::new(sec, window, cx));
-                    let sub = cx.observe(&created, |this, ent, cx| {
-                        this.settings = ent.read(cx).settings.clone();
-                        cx.notify();
-                    });
-                    self._subscriptions.push(sub);
-                    self.agent_view = Some(created.clone());
-                    created
-                };
-                if ent.read(cx).active != sec {
-                    ent.update(cx, |v, cx| v.set_section(sec, cx));
-                }
-                ent.into_any_element()
-            }
-            SettingsSection::Catalog => self
-                .catalog_view
-                .get_or_insert_with(|| cx.new(|cx| catalog::CatalogSettingsView::new(window, cx)))
-                .clone()
-                .into_any_element(),
-            SettingsSection::General => {
-                page_general::render_general(self, zh, cx).into_any_element()
-            }
-            SettingsSection::Appearance => {
-                appearance::render_appearance(self, zh, cx).into_any_element()
-            }
-            SettingsSection::Shortcuts => {
-                page_shortcuts::render_shortcuts(self, zh, cx).into_any_element()
-            }
-            SettingsSection::Requests => {
-                page_requests::render_requests(self, zh, cx).into_any_element()
-            }
-            SettingsSection::Network => {
-                page_network::render_network(self, zh, cx).into_any_element()
-            }
-            SettingsSection::Mock => page_mock::render_mock(self, zh, cx).into_any_element(),
-            SettingsSection::Data => page_data::render_data(self, zh, cx).into_any_element(),
-            SettingsSection::Routing => {
-                page_routing::render_routing(self, zh, cx).into_any_element()
-            }
-            SettingsSection::Usage => page_usage::render_usage(self, zh, cx).into_any_element(),
-            SettingsSection::Advanced => {
-                page_advanced::render_advanced(self, zh, cx).into_any_element()
-            }
-        };
+        let page_body = dispatch::render_page_body(self, zh, window, cx);
 
         let flash_banner = self.flash.clone().map(|(tone, msg)| {
             h_row()

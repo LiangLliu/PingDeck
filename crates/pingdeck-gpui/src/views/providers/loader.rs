@@ -9,18 +9,22 @@ use pingdeck_desktop::core::app::{
     llm_gateway_client_list_impl, llm_gateway_overview_impl, llm_gateway_rules_impl,
     llm_key_list_impl, llm_log_list_impl, llm_model_list_view_impl, llm_presets_impl,
     llm_probe_results_impl, llm_provider_health_impl, llm_provider_list_view_impl,
-    llm_provider_status_list_impl, settings_get_impl,
+    llm_provider_status_list_impl, llm_subscribe_impl, settings_get_impl,
 };
 use pingdeck_desktop::core::client_config::{ClientApp, DetectedClient, DetectedSnippetClient};
+use pingdeck_desktop::core::llm::events::LlmEvent;
 use pingdeck_desktop::core::llm::presets::ProviderPreset;
 use pingdeck_desktop::core::llm::store::{
     GatewayClient, LogFilter, ProbeResult, ProviderKey, RequestLogEntry,
 };
+use pingdeck_desktop::core::model::events::Sequenced;
 use pingdeck_desktop::core::model::settings::{AiGatewaySettings, Language};
+use pingdeck_desktop::streams::channel_sink;
 
-use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::WindowExt as _;
 
+use super::connect_sheet::ConnectToolKind;
 use super::{
     LeftSelection, ProviderTab, ProvidersView, bench, connect_sheet, detail_config, sniff_sheet,
 };
@@ -43,6 +47,34 @@ struct ReloadSnapshot {
 }
 
 impl ProvidersView {
+    pub fn ensure_llm_subscribed(&mut self, cx: &mut Context<Self>) {
+        if self.llm_stream_task.is_some() {
+            return;
+        }
+        let (sink, rx) = channel_sink::<Sequenced<LlmEvent>>();
+        if let Ok(sub_id) = llm_subscribe_impl(runtime(cx).state(), sink, None) {
+            self.llm_sub_id = Some(sub_id);
+            self.llm_stream_task = Some(subscribe_stream_into(cx, rx, 16, |this, batch, cx| {
+                let relevant = batch.iter().any(|ev| {
+                    matches!(
+                        ev.event,
+                        LlmEvent::GatewayStatus { .. }
+                            | LlmEvent::ProviderStatusChanged { .. }
+                            | LlmEvent::ProvidersChanged
+                            | LlmEvent::KeysChanged { .. }
+                            | LlmEvent::ModelsChanged { .. }
+                            | LlmEvent::ClientsChanged
+                            | LlmEvent::GatewayLogBatch { .. }
+                            | LlmEvent::Gap { .. }
+                    )
+                });
+                if relevant {
+                    this.reload_all(cx);
+                }
+            }));
+        }
+    }
+
     pub fn provider_name(&self, id: &str) -> String {
         self.providers
             .iter()
@@ -111,6 +143,15 @@ impl ProvidersView {
                 this.models = snap.models;
                 this.presets = snap.presets;
                 this.overview = snap.overview;
+                let gw_changed = this.gateway_settings.port != snap.gw_settings.port
+                    || this.gateway_settings.extra_allowed_hosts
+                        != snap.gw_settings.extra_allowed_hosts;
+                if gw_changed {
+                    this.pending_gw_inputs_sync = Some((
+                        snap.gw_settings.port.to_string(),
+                        snap.gw_settings.extra_allowed_hosts.join(", "),
+                    ));
+                }
                 this.gateway_settings = snap.gw_settings;
                 this.detected_clients = snap.detected_clients;
                 this.snippet_clients = snap.snippet_clients;
@@ -214,12 +255,23 @@ impl ProvidersView {
         let is_resniff = resniff_provider_id.is_some();
         let parent = cx.entity().clone();
         let presets = self.presets.clone();
+        let (resniff_url, resniff_name) = resniff_provider_id
+            .as_deref()
+            .and_then(|id| self.providers.iter().find(|p| p.provider.id == id))
+            .map(|p| {
+                (
+                    Some(p.provider.base_url.clone()),
+                    Some(p.provider.name.clone()),
+                )
+            })
+            .unwrap_or((initial_url, None));
         let sheet_ent = cx.new(|cx| {
             sniff_sheet::SniffProviderSheet::new(
                 parent,
                 presets,
                 resniff_provider_id,
-                initial_url,
+                resniff_url,
+                resniff_name,
                 initial_preset,
                 zh,
                 window,
@@ -250,6 +302,19 @@ impl ProvidersView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_connect_sheet_kind(
+            ConnectToolKind::File(initial_app.unwrap_or(ClientApp::ClaudeCode)),
+            window,
+            cx,
+        );
+    }
+
+    pub fn open_connect_sheet_kind(
+        &mut self,
+        initial_tool: ConnectToolKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
         let parent = cx.entity().clone();
         let gw_url = self
@@ -258,22 +323,24 @@ impl ProvidersView {
             .map(|o| o.status.base_url.clone())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| format!("http://127.0.0.1:{}", self.gateway_settings.port));
-        let available_models: Vec<String> = self
+        let available_models: Vec<(String, String)> = self
             .models
             .iter()
             .filter(|m| m.model.enabled)
             .map(|m| {
-                format!(
+                let canonical = format!("{}/{}", m.model.provider_id, m.model.model_id);
+                let display = format!(
                     "{}/{}",
                     self.provider_name(&m.model.provider_id),
                     m.model.model_id
-                )
+                );
+                (canonical, display)
             })
             .collect();
         let sheet_ent = cx.new(|cx| {
             connect_sheet::ConnectClientSheet::new(
                 parent,
-                initial_app,
+                initial_tool,
                 gw_url,
                 available_models,
                 zh,

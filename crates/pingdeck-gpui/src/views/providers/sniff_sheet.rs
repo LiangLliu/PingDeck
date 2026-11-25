@@ -14,9 +14,10 @@ use pingdeck_desktop::core::llm::sniff::SniffReport;
 use pingdeck_desktop::core::llm::wire::Protocol;
 
 use crate::ui::{
-    Anchor, InputEvent, InputState, ScrollableElement as _, TextareaState, Tone, badge, btn_ghost,
-    btn_primary, btn_secondary, card, collapsible_box, field_row, filter_chip, h_row, list_row,
-    palette, popover, section_heading, select_pill, text_input, to_hsla, toggle_switch, v_col,
+    Anchor, InputEvent, InputState, ScrollableElement as _, TextareaState, Tone, WindowExt as _,
+    badge, btn_ghost, btn_primary, btn_secondary, card, collapsible_box, field_row, filter_chip,
+    h_row, list_row, palette, popover, section_heading, select_pill, text_input, to_hsla,
+    toggle_switch, v_col,
 };
 
 use super::ProvidersView;
@@ -71,6 +72,7 @@ pub struct SniffProviderSheet {
     pub(super) primary_protocol: Option<Protocol>,
     pub(super) checked_models: BTreeSet<String>,
     pub(super) saving: bool,
+    pub(super) pending_close: bool,
     pub(super) flash: Option<(Tone, String)>,
     _subscriptions: Vec<Subscription>,
     pub(super) _stream_task: Option<Task<()>>,
@@ -84,12 +86,14 @@ impl SniffProviderSheet {
         presets: Vec<ProviderPreset>,
         resniff_provider_id: Option<String>,
         initial_url: Option<String>,
+        initial_name: Option<String>,
         initial_preset: Option<String>,
         zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let mut init_url = initial_url.unwrap_or_default();
+        let init_name = initial_name.unwrap_or_default();
         let mut init_region = None;
         if let Some(pid) = &initial_preset
             && let Some(pr) = presets.iter().find(|p| &p.id == pid)
@@ -116,11 +120,15 @@ impl SniffProviderSheet {
                 .masked(true)
         });
         let name_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(if zh {
+            let mut st = InputState::new(window, cx).placeholder(if zh {
                 "自定义名称（如 公司中转 / 个人主力；留空自动推断）"
             } else {
                 "Custom name (optional; auto-inferred if empty)"
-            })
+            });
+            if !init_name.is_empty() {
+                st.set_value(init_name, window, cx);
+            }
+            st
         });
         let models_filter_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(if zh {
@@ -192,6 +200,7 @@ impl SniffProviderSheet {
             primary_protocol: None,
             checked_models: BTreeSet::new(),
             saving: false,
+            pending_close: false,
             flash: None,
             _subscriptions: vec![url_sub, filter_sub],
             _stream_task: None,
@@ -205,7 +214,11 @@ impl SniffProviderSheet {
 }
 
 impl Render for SniffProviderSheet {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.pending_close {
+            self.pending_close = false;
+            window.close_sheet(cx);
+        }
         let p = palette(cx);
         let zh = self.zh;
 
@@ -312,6 +325,7 @@ impl Render for SniffProviderSheet {
                         for (i, pr) in all_presets.iter().enumerate() {
                             let id = pr.id.clone();
                             let ent = ent_all.clone();
+                            let pop_h = cx.entity().clone();
                             col = col.child(
                                 list_row(
                                     SharedString::from(format!("sn-all-{i}")),
@@ -321,6 +335,7 @@ impl Render for SniffProviderSheet {
                                         ent.update(cx, |this, cx| {
                                             this.pick_preset(id.clone(), window, cx);
                                         });
+                                        pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                                     },
                                 )
                                 .child(div().text_xs().child(SharedString::from(pr.name.clone()))),
@@ -334,6 +349,46 @@ impl Render for SniffProviderSheet {
                             .child(col)
                     });
                 quick_row = quick_row.child(more_pop);
+
+                let region_row = self
+                    .selected_preset_id
+                    .as_deref()
+                    .and_then(|pid| self.presets.iter().find(|pr| pr.id == pid))
+                    .filter(|pr| pr.regions.len() > 1)
+                    .map(|pr| {
+                        let mut rr = h_row().flex_wrap().gap(px(5.0)).items_center().child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(to_hsla(p.muted))
+                                .child(if zh { "区域：" } else { "Region:" }),
+                        );
+                        for reg in &pr.regions {
+                            let rid = reg.id.clone();
+                            let url = reg.base_url.clone();
+                            let active = self.selected_region_id.as_deref() == Some(rid.as_str());
+                            rr = rr.child(
+                                filter_chip(
+                                    SharedString::from(format!("sn-reg-{rid}")),
+                                    reg.label.clone(),
+                                    None,
+                                    active,
+                                    cx,
+                                )
+                                .h(px(24.0))
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
+                                        this.selected_region_id = Some(rid.clone());
+                                        this.url_input.update(cx, |i, cx| {
+                                            i.set_value(url.clone(), window, cx);
+                                        });
+                                        this.normalized = llm_url_normalize_impl(&url).ok();
+                                        cx.notify();
+                                    },
+                                )),
+                            );
+                        }
+                        rr
+                    });
 
                 let adv_body = v_col()
                     .gap(px(8.0))
@@ -429,7 +484,8 @@ impl Render for SniffProviderSheet {
                                 if zh { "快速预设" } else { "Quick Presets" },
                                 cx,
                             ))
-                            .child(quick_row),
+                            .child(quick_row)
+                            .children(region_row),
                     )
                     .child(
                         card(cx).p(px(12.0)).child(

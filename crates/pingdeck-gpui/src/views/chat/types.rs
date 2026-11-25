@@ -1,8 +1,18 @@
-//! Shared chat UI value types: inspector tab enum, configured model options, and cached
-//! provider metadata for display formatting and reasoning diagnostics.
+//! Shared chat UI value types: inspector tab enum, sidebar mode, modals, handoffs,
+//! pending attachments, configured model options, and cached provider metadata.
 
 use pingdeck_desktop::core::agent::model::AgentTarget;
 use pingdeck_desktop::core::llm::wire::{Protocol, ReasoningStyle};
+use pingdeck_desktop::state::{LiveApproval, SettingsSection};
+
+/// Sidebar view mode in Chat (`时间` / `运行看板` / `最近删除`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChatSidebarMode {
+    #[default]
+    Time,
+    Board,
+    Trash,
+}
 
 /// Active tab inside the right-hand Chat Details inspector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +44,54 @@ impl DetailsTab {
             _ => Self::Progress,
         }
     }
+}
+
+/// Cross-module navigation handoff requested from Chat.
+#[derive(Debug, Clone)]
+pub enum ChatHandoff {
+    OpenSettings(SettingsSection),
+    OpenProviders,
+}
+
+/// Staged file attachment waiting to be sent with the next prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingAttachment {
+    pub id: String,
+    pub name: String,
+    pub size_bytes: u64,
+}
+
+/// Active modal dialog over `ChatView`.
+#[derive(Debug, Clone)]
+pub enum ChatModal {
+    FullAccessConfirm {
+        acknowledged: bool,
+    },
+    DeleteRunningConfirm {
+        session_id: String,
+        title: String,
+    },
+    RenameSession {
+        session_id: String,
+    },
+    ScopeApproval {
+        appr: Box<LiveApproval>,
+    },
+    DiffPreview {
+        path: String,
+        diff: String,
+        binary: bool,
+    },
+    ToolOutput {
+        call_id: String,
+        name: String,
+        content: String,
+        has_more: bool,
+        next_offset: u64,
+    },
+    EditMessage {
+        message_id: String,
+    },
 }
 
 /// Real configured model entry returned by `llm_provider_list_impl` + `llm_model_list_impl`.

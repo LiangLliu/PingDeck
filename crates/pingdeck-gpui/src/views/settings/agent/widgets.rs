@@ -5,14 +5,16 @@ use gpui_kit::{
     App, ClickEvent, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
+use pingdeck_desktop::core::agent::mcp::{AgentMcpServerView, McpServerStatus};
 use pingdeck_desktop::core::app::ProviderView;
 use pingdeck_desktop::core::llm::store::ProviderModel;
 use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::i18n::t;
 
 use crate::ui::{
-    Anchor, InputState, Popover, ScrollableElement as _, Tone, UiIcon, dismissible_banner, h_row,
-    icon_xs, list_row, number_field, palette, popover, section_header, select_pill, setting_row,
-    to_hsla, v_col,
+    Anchor, InputState, Popover, ScrollableElement as _, StatusShape, Tone, UiIcon,
+    dismissible_banner, h_row, icon_xs, list_row, number_field, palette, popover, section_header,
+    select_pill, setting_row, to_hsla, v_col,
 };
 
 use super::AgentSettingsView;
@@ -336,5 +338,62 @@ pub fn format_ago_short(ts_ms: i64, now_ms: i64, zh: bool) -> String {
         } else {
             format!("{d}d ago")
         }
+    }
+}
+
+pub(super) fn format_mcp_status(
+    sv: &AgentMcpServerView,
+    lang: Language,
+    zh: bool,
+    p: &pingdeck_desktop::theme::ResolvedPalette,
+) -> (StatusShape, String, gpui_kit::Hsla) {
+    match &sv.status {
+        McpServerStatus::Running => {
+            let txt = match sv.tool_count {
+                Some(n) if zh => format!("已连接 · {n} 个工具"),
+                Some(n) => format!("Connected · {n} tool(s)"),
+                None => t(lang, "set.tools.mcp.state.running").to_owned(),
+            };
+            (StatusShape::Ok, txt, to_hsla(p.ink_2))
+        }
+        McpServerStatus::Starting => (
+            StatusShape::Run,
+            t(lang, "set.tools.mcp.state.starting").to_owned(),
+            to_hsla(p.muted),
+        ),
+        McpServerStatus::NeedsAuth => (
+            StatusShape::Warn,
+            if zh {
+                "需要处理：缺少令牌"
+            } else {
+                "Needs auth token"
+            }
+            .to_owned(),
+            to_hsla(p.warn),
+        ),
+        McpServerStatus::NeedsReview => (
+            StatusShape::Warn,
+            if zh {
+                "配置已变，待保存复核"
+            } else {
+                "Config changed — review"
+            }
+            .to_owned(),
+            to_hsla(p.warn),
+        ),
+        McpServerStatus::Error { message } => (
+            StatusShape::Bad,
+            if message.is_empty() {
+                t(lang, "set.tools.mcp.state.error").to_owned()
+            } else {
+                message.clone()
+            },
+            to_hsla(p.bad),
+        ),
+        McpServerStatus::Disabled => (
+            StatusShape::Idle,
+            t(lang, "set.tools.mcp.state.disabled").to_owned(),
+            to_hsla(p.muted),
+        ),
     }
 }

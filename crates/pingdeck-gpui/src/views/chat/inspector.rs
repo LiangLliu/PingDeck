@@ -1,27 +1,47 @@
-//! Collapsible right-hand Details inspector for AI Chat using native underline `TabBar`:
-//! `Progress` (todos & sub-agents), `Changes` (file edits), `Context` (tokens & budget),
-//! and `Options` (per-chat instructions, web/pin toggles, archive/delete).
+//! Collapsible right-hand Details inspector for AI Chat: header + close button + badge counts,
+//! `Progress` (todos, sub-agents, background processes w/ Kill), `Changes` (persisted journal w/
+//! Diff / Keep / Undo), `Context` (tokens, budget, Compact now), and `Options` (sandbox & rules).
 
-use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
-use pingdeck_desktop::core::agent::model::{AgentSessionPatch, AgentTodoStatus};
-use pingdeck_desktop::core::agent::tools::FileChangeKind;
+use gpui_kit::{
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Styled as _,
+    div, px,
+};
+use pingdeck_desktop::core::agent::model::{AgentTodoStatus, FileChangeKind, FileChangeStatus};
+use pingdeck_desktop::core::agent::tools::process::ProcessState;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger, btn_primary,
-    btn_secondary, card, field_row, h_row, icon_xs, multiline_input, palette, progress_bar,
-    section_heading, status_indicator, tab_bar_underline, tab_item, to_hsla, toggle_switch, v_col,
+    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_icon,
+    card, h_row, icon_xs, palette, progress_bar, section_heading, status_indicator,
+    tab_bar_underline, tab_item, to_hsla, v_col,
 };
 
+use super::inspector_tabs::{render_context_tab, render_options_tab};
 use super::{ChatView, DetailsTab};
 
 pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let chat_entity = cx.entity().clone();
+    let changes_count = if view.persisted_changes.is_empty() {
+        view.thread.file_changes.len()
+    } else {
+        view.persisted_changes.len()
+    };
+    let changes_lbl = if changes_count > 0 {
+        if zh {
+            format!("变更 ({changes_count})")
+        } else {
+            format!("Changes ({changes_count})")
+        }
+    } else if zh {
+        "变更".to_owned()
+    } else {
+        "Changes".to_owned()
+    };
 
     let tabs = tab_bar_underline("chat-details-tabs")
         .selected_index(view.details_tab.index())
         .child(tab_item(if zh { "进度" } else { "Progress" }))
-        .child(tab_item(if zh { "变更" } else { "Changes" }))
+        .child(tab_item(changes_lbl))
         .child(tab_item(if zh { "上下文" } else { "Context" }))
         .child(tab_item(if zh { "选项" } else { "Options" }))
         .on_click(move |idx, _, cx| {
@@ -43,15 +63,39 @@ pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
         .size_full()
         .bg(to_hsla(p.pane))
         .child(
+            h_row()
+                .justify_between()
+                .px(px(12.0))
+                .py(px(8.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink))
+                        .child(if zh { "对话检视器" } else { "Inspector" }),
+                )
+                .child(
+                    btn_icon("chat-insp-close", UiIcon::Close).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.details_open = false;
+                            cx.notify();
+                        },
+                    )),
+                ),
+        )
+        .child(
             div()
                 .px(px(8.0))
-                .pt(px(6.0))
+                .pt(px(4.0))
                 .border_b_1()
                 .border_color(to_hsla(p.line.composite_over(p.pane)))
                 .child(tabs),
         )
         .child(
             div()
+                .id("chat-insp-body-scroll")
                 .flex_1()
                 .min_h_0()
                 .p(px(12.0))
@@ -60,7 +104,7 @@ pub fn render_inspector(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -
         )
 }
 
-fn render_progress_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
+fn render_progress_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
     let todos = &view.thread.todos;
     let total = todos.len();
@@ -141,7 +185,7 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_ki
     }
 
     if !view.thread.subagents.is_empty() {
-        col = col.child(div().pt(px(6.0)).child(section_heading(
+        col = col.child(div().pt(px(4.0)).child(section_heading(
             if zh { "子智能体" } else { "Sub-agents" },
             cx,
         )));
@@ -177,26 +221,103 @@ fn render_progress_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_ki
         }
     }
 
+    if !view.processes.is_empty() {
+        col = col.child(div().pt(px(4.0)).child(section_heading(
+            if zh {
+                "后台进程"
+            } else {
+                "Background Processes"
+            },
+            cx,
+        )));
+        for proc_item in &view.processes {
+            let pid_kill = proc_item.id.clone();
+            let running = proc_item.state == ProcessState::Running;
+            col = col.child(
+                card(cx).p(px(8.0)).child(
+                    h_row()
+                        .justify_between()
+                        .gap(px(6.0))
+                        .child(
+                            v_col()
+                                .flex_1()
+                                .min_w_0()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(to_hsla(p.ink))
+                                        .truncate()
+                                        .child(proc_item.command.clone()),
+                                )
+                                .child(div().text_xs().text_color(to_hsla(p.muted)).child(
+                                    format!(
+                                    "{:?}{}",
+                                    proc_item.state,
+                                    proc_item
+                                        .pid
+                                        .map(|pid| format!(" · PID {pid}"))
+                                        .unwrap_or_default()
+                                ),
+                                )),
+                        )
+                        .children(running.then(|| {
+                            btn_danger(
+                                SharedString::from(format!("chat-pk-{}", proc_item.id)),
+                                if zh { "终止" } else { "Kill" },
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.kill_process(pid_kill.clone(), cx);
+                                },
+                            ))
+                        })),
+                ),
+            );
+        }
+    }
+
     col
 }
 
-fn render_changes_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
+fn render_changes_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
-    let mut col = v_col().gap(px(8.0)).child(section_heading(
-        if zh { "文件改动" } else { "Modified files" },
-        cx,
-    ));
+    let pending_ids: Vec<String> = view
+        .persisted_changes
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.status,
+                FileChangeStatus::Pending | FileChangeStatus::Conflict
+            )
+        })
+        .map(|c| c.id.clone())
+        .collect();
 
-    if view.thread.file_changes.is_empty() {
+    let mut col = v_col().gap(px(8.0)).child(
+        h_row()
+            .justify_between()
+            .child(section_heading(
+                if zh { "文件改动" } else { "Modified files" },
+                cx,
+            ))
+            .children((!pending_ids.is_empty()).then(|| {
+                let ids_all = pending_ids.clone();
+                btn_ghost("chat-ch-keep-all", if zh { "全部保留" } else { "Keep all" }).on_click(
+                    cx.listener(move |this, _, _, cx| this.keep_changes(ids_all.clone(), cx)),
+                )
+            })),
+    );
+
+    if view.persisted_changes.is_empty() && view.thread.file_changes.is_empty() {
         return col.child(div().text_xs().text_color(to_hsla(p.muted)).child(if zh {
-            "本次运行暂无文件改动。"
+            "本对话暂无文件改动。"
         } else {
-            "No file edits recorded in this run."
+            "No file edits recorded in this chat."
         }));
     }
 
-    for ch in &view.thread.file_changes {
-        let kind_label = match ch.change {
+    for ch in &view.persisted_changes {
+        let kind_lbl = match ch.kind {
             FileChangeKind::Create => {
                 if zh {
                     "新建"
@@ -212,10 +333,26 @@ fn render_changes_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_kit
                 }
             }
         };
+        let status_tone = match ch.status {
+            FileChangeStatus::Pending => Tone::Warning,
+            FileChangeStatus::Kept => Tone::Success,
+            FileChangeStatus::Undone => Tone::Neutral,
+            FileChangeStatus::Conflict => Tone::Danger,
+            FileChangeStatus::Applying => Tone::Accent,
+        };
+        let cid_diff = ch.id.clone();
+        let path_diff = ch.path.clone();
+        let cid_keep = ch.id.clone();
+        let cid_undo = ch.id.clone();
+        let actionable = matches!(
+            ch.status,
+            FileChangeStatus::Pending | FileChangeStatus::Conflict
+        );
+
         col = col.child(
             card(cx).p(px(8.0)).child(
                 v_col()
-                    .gap(px(4.0))
+                    .gap(px(5.0))
                     .child(
                         h_row()
                             .justify_between()
@@ -236,256 +373,71 @@ fn render_changes_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_kit
                                             .child(SharedString::from(ch.path.clone())),
                                     ),
                             )
-                            .child(badge(kind_label, Tone::Neutral, cx)),
+                            .child(badge(kind_lbl, Tone::Neutral, cx))
+                            .child(badge(format!("{:?}", ch.status), status_tone, cx)),
                     )
                     .child(
                         h_row()
-                            .gap(px(8.0))
-                            .text_xs()
+                            .justify_between()
                             .child(
-                                div()
-                                    .text_color(to_hsla(p.ok))
-                                    .child(SharedString::from(format!("+{}", ch.added))),
+                                h_row()
+                                    .gap(px(8.0))
+                                    .text_xs()
+                                    .child(
+                                        div()
+                                            .text_color(to_hsla(p.ok))
+                                            .child(format!("+{}", ch.added)),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_color(to_hsla(p.bad))
+                                            .child(format!("-{}", ch.removed)),
+                                    ),
                             )
                             .child(
-                                div()
-                                    .text_color(to_hsla(p.bad))
-                                    .child(SharedString::from(format!("-{}", ch.removed))),
+                                h_row()
+                                    .gap(px(4.0))
+                                    .child(
+                                        btn_ghost(
+                                            SharedString::from(format!("ch-df-{}", ch.id)),
+                                            "Diff",
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.open_change_diff(
+                                                    cid_diff.clone(),
+                                                    path_diff.clone(),
+                                                    cx,
+                                                );
+                                            }),
+                                        ),
+                                    )
+                                    .children(actionable.then(|| {
+                                        btn_ghost(
+                                            SharedString::from(format!("ch-kp-{}", ch.id)),
+                                            if zh { "保留" } else { "Keep" },
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.keep_changes(vec![cid_keep.clone()], cx);
+                                            }),
+                                        )
+                                    }))
+                                    .children(actionable.then(|| {
+                                        btn_ghost(
+                                            SharedString::from(format!("ch-ud-{}", ch.id)),
+                                            if zh { "撤回" } else { "Undo" },
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.undo_change(cid_undo.clone(), cx);
+                                            }),
+                                        )
+                                    })),
                             ),
                     ),
             ),
         );
     }
     col
-}
-
-fn render_context_tab(view: &ChatView, zh: bool, cx: &gpui_kit::App) -> gpui_kit::Div {
-    let p = palette(cx);
-    let used = view.thread.context_used_tokens;
-    let limit = view.thread.context_limit_tokens;
-    let cost_usd = view.thread.cost_micro_usd as f64 / 1_000_000.0;
-    let currency = view.thread.cost_currency.as_deref().unwrap_or("USD");
-
-    let mut col = v_col().gap(px(10.0)).child(
-        card(cx).p(px(10.0)).child(
-            v_col()
-                .gap(px(6.0))
-                .child(section_heading(
-                    if zh {
-                        "上下文窗口"
-                    } else {
-                        "Context window"
-                    },
-                    cx,
-                ))
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .child(SharedString::from(match limit {
-                            Some(l) if l > 0 => format!("{used} / {l} tokens"),
-                            _ => format!("{used} tokens"),
-                        })),
-                )
-                .children(limit.filter(|&l| l > 0).map(|l| {
-                    let pct = ((used as f64 / l as f64) * 100.0).min(100.0) as f32;
-                    progress_bar("ctx-detail-bar", pct)
-                })),
-        ),
-    );
-
-    if let Some(sess) = &view.session {
-        let in_tok = sess.total_usage.input_tokens.unwrap_or(0);
-        let out_tok = sess.total_usage.output_tokens.unwrap_or(0);
-        let cached = sess.total_usage.cached_input_tokens.unwrap_or(0);
-        let cache_write = sess.total_usage.cache_write_tokens.unwrap_or(0);
-        let reasoning_tok = sess.total_usage.reasoning_tokens.unwrap_or(0);
-        col = col.child(
-            card(cx).p(px(10.0)).child(
-                v_col()
-                    .gap(px(5.0))
-                    .child(section_heading(
-                        if zh { "累计消耗" } else { "Session totals" },
-                        cx,
-                    ))
-                    .child(metric_line(
-                        if zh { "输入 Tokens" } else { "Input tokens" },
-                        super::metrics::format_tokens_int(in_tok),
-                        cx,
-                    ))
-                    .child(metric_line(
-                        if zh { "输出 Tokens" } else { "Output tokens" },
-                        super::metrics::format_tokens_int(out_tok),
-                        cx,
-                    ))
-                    .child(metric_line(
-                        if zh { "缓存命中" } else { "Cached input" },
-                        super::metrics::format_tokens_int(cached),
-                        cx,
-                    ))
-                    .children((cache_write > 0).then(|| {
-                        metric_line(
-                            if zh { "缓存写入" } else { "Cache write" },
-                            super::metrics::format_tokens_int(cache_write),
-                            cx,
-                        )
-                    }))
-                    .children((reasoning_tok > 0).then(|| {
-                        metric_line(
-                            if zh {
-                                "思考 Tokens"
-                            } else {
-                                "Reasoning tokens"
-                            },
-                            super::metrics::format_tokens_int(reasoning_tok),
-                            cx,
-                        )
-                    }))
-                    .child(metric_line(
-                        if zh { "估算费用" } else { "Estimated cost" },
-                        format!("{currency} {cost_usd:.4}"),
-                        cx,
-                    )),
-            ),
-        );
-
-        if let Some(dir) = &sess.workspace_dir {
-            col = col.child(
-                card(cx).p(px(10.0)).child(
-                    v_col()
-                        .gap(px(4.0))
-                        .child(section_heading(
-                            if zh {
-                                "绑定本地目录"
-                            } else {
-                                "Bound folder"
-                            },
-                            cx,
-                        ))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.muted))
-                                .child(SharedString::from(dir.clone())),
-                        ),
-                ),
-            );
-        }
-    }
-
-    if !view.thread.notices.is_empty() {
-        col = col.child(section_heading(if zh { "系统提示" } else { "Notices" }, cx));
-        for n in &view.thread.notices {
-            col = col.child(
-                div()
-                    .text_xs()
-                    .text_color(to_hsla(p.muted))
-                    .child(SharedString::from(n.clone())),
-            );
-        }
-    }
-
-    col
-}
-
-fn render_options_tab(view: &ChatView, zh: bool, cx: &mut Context<ChatView>) -> gpui_kit::Div {
-    let web_on = view.session.as_ref().is_some_and(|s| s.web_enabled);
-    let pinned = view
-        .session
-        .as_ref()
-        .is_some_and(|s| s.pinned_at_ms.is_some());
-    let archived = view
-        .session
-        .as_ref()
-        .is_some_and(|s| s.archived_at_ms.is_some());
-
-    v_col()
-        .gap(px(10.0))
-        .child(field_row(
-            if zh {
-                "联网搜索与抓取"
-            } else {
-                "Web access"
-            },
-            None,
-            toggle_switch("chat-opt-web", web_on)
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_web_enabled(cx))),
-            cx,
-        ))
-        .child(field_row(
-            if zh {
-                "置顶本对话"
-            } else {
-                "Pin conversation"
-            },
-            None,
-            toggle_switch("chat-opt-pin", pinned)
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
-            cx,
-        ))
-        .child(
-            v_col()
-                .gap(px(6.0))
-                .pt(px(4.0))
-                .child(section_heading(
-                    if zh {
-                        "本对话附加指令"
-                    } else {
-                        "Chat instructions"
-                    },
-                    cx,
-                ))
-                .child(multiline_input(&view.instructions_input))
-                .child(
-                    h_row().justify_end().child(
-                        btn_primary("chat-opt-save-inst", if zh { "保存指令" } else { "Save" })
-                            .on_click(cx.listener(|this, _, _, cx| this.save_instructions(cx))),
-                    ),
-                ),
-        )
-        .child(
-            h_row()
-                .pt(px(8.0))
-                .gap(px(6.0))
-                .child(
-                    btn_secondary(
-                        "chat-opt-arch",
-                        if archived {
-                            if zh { "取消归档" } else { "Unarchive" }
-                        } else if zh {
-                            "归档"
-                        } else {
-                            "Archive"
-                        },
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.patch_session(
-                            AgentSessionPatch {
-                                archived: Some(!archived),
-                                ..Default::default()
-                            },
-                            cx,
-                        );
-                    })),
-                )
-                .child(
-                    btn_danger("chat-opt-del", if zh { "删除对话" } else { "Delete" })
-                        .on_click(cx.listener(|this, _, _, cx| this.delete_current_session(cx))),
-                ),
-        )
-}
-
-fn metric_line(label: &'static str, value: String, cx: &gpui_kit::App) -> gpui_kit::Div {
-    let p = palette(cx);
-    h_row()
-        .justify_between()
-        .text_xs()
-        .child(div().text_color(to_hsla(p.muted)).child(label))
-        .child(
-            div()
-                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                .text_color(to_hsla(p.ink))
-                .child(SharedString::from(value)),
-        )
 }

@@ -175,13 +175,16 @@ pub fn render_overview_panels(
                     "All models".into()
                 }
             } else {
-                c.allowed_models.first().cloned().unwrap_or_else(|| {
-                    if zh {
-                        "无模型".into()
-                    } else {
-                        "None".into()
-                    }
-                })
+                c.allowed_models
+                    .first()
+                    .map(|m| view.format_model_ref(m))
+                    .unwrap_or_else(|| {
+                        if zh {
+                            "无模型".into()
+                        } else {
+                            "None".into()
+                        }
+                    })
             };
             clients_summary = clients_summary.child(
                 h_row()
@@ -268,7 +271,16 @@ pub fn render_overview_panels(
     } else {
         for r in view.gateway_rules.iter().take(6) {
             let (st_lbl, st_tone) = format_rule_status(r.status, zh);
-            let chain: Vec<String> = r.fallbacks.iter().map(|m| m.id_form()).collect();
+            let primary_disp = format!(
+                "{}/{}",
+                view.provider_name(&r.primary.provider_id),
+                r.primary.model
+            );
+            let chain: Vec<String> = r
+                .fallbacks
+                .iter()
+                .map(|m| format!("{}/{}", view.provider_name(&m.provider_id), m.model))
+                .collect();
             rules_summary = rules_summary.child(
                 h_row()
                     .justify_between()
@@ -288,7 +300,7 @@ pub fn render_overview_panels(
                                     .font_weight(gpui_kit::FontWeight::MEDIUM)
                                     .text_color(to_hsla(p.ink))
                                     .truncate()
-                                    .child(SharedString::from(r.primary.id_form())),
+                                    .child(SharedString::from(primary_disp)),
                             )
                             .child(
                                 div()

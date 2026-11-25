@@ -20,7 +20,7 @@ use pingdeck_desktop::services::{
 use crate::bridge::{runtime, spawn_blocking_into};
 use crate::ui::Tone;
 
-use super::state::{EditableVarRow, EnvironmentsView};
+use super::state::{EditableVarRow, EnvModal, EnvironmentsView};
 
 impl EnvironmentsView {
     pub fn reload_all(&mut self, ws_id: String, cx: &mut Context<Self>) {
@@ -138,13 +138,63 @@ impl EnvironmentsView {
         self._tasks.push(task);
     }
 
+    pub fn open_create_env_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let n = self.environments.len() + 1;
+        let default_name = if self.is_zh() {
+            format!("环境 {n}")
+        } else {
+            format!("Environment {n}")
+        };
+        self.new_env_name_input
+            .update(cx, |s, cx| s.set_value(default_name, window, cx));
+        self.active_modal = Some(EnvModal::CreateEnv);
+        cx.notify();
+    }
+
+    pub fn create_env_from_modal(&mut self, cx: &mut Context<Self>) {
+        let name = self.new_env_name_input.read(cx).value().trim().to_owned();
+        if name.is_empty() {
+            self.status_msg = Some((
+                Tone::Warning,
+                self.t("环境名称不能为空", "Environment name cannot be blank")
+                    .to_owned(),
+            ));
+            cx.notify();
+            return;
+        }
+        self.active_modal = None;
+        self.create_env_with_name(Some(name), cx);
+    }
+
+    pub fn activate_env(&mut self, env_id: Option<String>, cx: &mut Context<Self>) {
+        self.active_env_id = env_id.clone();
+        self.pending_active_env.set(Some(env_id.clone()));
+        self.status_msg = Some((
+            Tone::Success,
+            if env_id.is_some() {
+                self.t(
+                    "已设为当前工作区生效环境",
+                    "Set as active workspace environment",
+                )
+            } else {
+                self.t("已取消当前生效环境", "Cleared active workspace environment")
+            }
+            .to_owned(),
+        ));
+        cx.notify();
+    }
+
     pub fn create_env(&mut self, cx: &mut Context<Self>) {
+        self.create_env_with_name(None, cx);
+    }
+
+    fn create_env_with_name(&mut self, custom_name: Option<String>, cx: &mut Context<Self>) {
         let Some(ws_id) = self.workspace_id.clone() else {
             return;
         };
         let ws_reload = ws_id.clone();
         let n = self.environments.len() + 1;
-        let name = format!("Environment {n}");
+        let name = custom_name.unwrap_or_else(|| format!("Environment {n}"));
         let task = spawn_blocking_into(
             cx,
             move |state| {

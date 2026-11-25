@@ -133,6 +133,11 @@ impl RequestsView {
         });
 
         let mut subs = Vec::new();
+        subs.push(cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        }));
         subs.push(cx.subscribe(&url_input, |this, _, ev: &InputEvent, cx| {
             if !this.hydrating && matches!(ev, InputEvent::Change) {
                 this.on_url_input_changed(cx);

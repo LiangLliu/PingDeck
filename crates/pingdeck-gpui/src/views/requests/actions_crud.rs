@@ -24,6 +24,109 @@ use super::RequestsView;
 use super::model::{ActiveModal, OpenTab, RequestTabState, TreeItemKind};
 
 impl RequestsView {
+    pub fn set_active_environment(&mut self, env_id: Option<String>, cx: &mut Context<Self>) {
+        if self.active_env_id != env_id {
+            self.active_env_id = env_id;
+            self.reload_resolved_vars(cx);
+            cx.notify();
+        }
+    }
+
+    pub fn open_saved_request_by_id(
+        &mut self,
+        request_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(req) = self
+            .requests
+            .iter()
+            .find(|r| r.id.as_str() == request_id)
+            .cloned()
+        {
+            self.open_request_tab(&req, window, cx);
+            return;
+        }
+        if let Some(ws_id) = self.workspace_id.clone()
+            && let Ok(reqs) =
+                pingdeck_desktop::core::app::request_list_impl(runtime(cx).state(), ws_id)
+        {
+            self.requests = reqs;
+            if let Some(req) = self
+                .requests
+                .iter()
+                .find(|r| r.id.as_str() == request_id)
+                .cloned()
+            {
+                self.open_request_tab(&req, window, cx);
+            }
+        }
+    }
+
+    pub fn open_ai_client_draft(
+        &mut self,
+        draft: pingdeck_desktop::core::llm::capture::ApiClientDraft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
+        };
+        let req = match draft.target {
+            pingdeck_desktop::core::llm::capture::ApiClientTarget::Provider {
+                provider_id,
+                model,
+            } => {
+                let mut r = super::model::default_ai_request(
+                    &ws_id,
+                    &draft.title,
+                    Some((
+                        &provider_id,
+                        &model,
+                        draft.protocol.as_str(),
+                        "/chat/completions",
+                    )),
+                )
+                .or_else(|| {
+                    Request::new(
+                        format!("req-ai-{}", current_time_ms()),
+                        &ws_id,
+                        draft.title.clone(),
+                        "",
+                    )
+                    .ok()
+                });
+                if let Some(ref mut req) = r
+                    && !draft.body.trim().is_empty()
+                {
+                    req.body = pingdeck_desktop::core::model::RequestBody::Json {
+                        content: draft.body,
+                    };
+                }
+                r
+            }
+            pingdeck_desktop::core::llm::capture::ApiClientTarget::Custom { url } => Request::new(
+                format!("req-ai-{}", current_time_ms()),
+                &ws_id,
+                draft.title,
+                url,
+            )
+            .ok()
+            .map(|mut r| {
+                r.method = pingdeck_desktop::core::model::HttpMethod::Post;
+                if !draft.body.trim().is_empty() {
+                    r.body = pingdeck_desktop::core::model::RequestBody::Json {
+                        content: draft.body,
+                    };
+                }
+                r
+            }),
+        };
+        if let Some(r) = req {
+            self.open_external_draft_request(r, window, cx);
+        }
+    }
+
     pub fn create_collection(&mut self, name: String, cx: &mut Context<Self>) {
         let Some(ws_id) = self.workspace_id.clone() else {
             return;

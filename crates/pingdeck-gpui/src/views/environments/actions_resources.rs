@@ -183,6 +183,47 @@ impl EnvironmentsView {
         self._tasks.push(task);
     }
 
+    pub fn clear_all_cookies(&mut self, cx: &mut Context<Self>) {
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
+        };
+        if self.cookies.is_empty() {
+            return;
+        }
+        let backup = self.cookies.clone();
+        let ids: Vec<String> = self
+            .cookies
+            .iter()
+            .map(|c| c.id.as_str().to_owned())
+            .collect();
+        let count = ids.len();
+        let ws_reload = ws_id.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| cookie_jar_delete_many_impl(state, ws_id, ids),
+            move |this, res, cx| {
+                match res {
+                    Ok(_) => {
+                        this.deleted_cookies_undo = Some(backup);
+                        this.selected_cookie_id = None;
+                        this.status_msg = Some((
+                            Tone::Success,
+                            if this.is_zh() {
+                                format!("已清空 {count} 条 Cookie（可撤销恢复）")
+                            } else {
+                                format!("Cleared {count} cookie(s) — undo to restore")
+                            },
+                        ));
+                        this.reload_cookies(ws_reload, cx);
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
     pub fn undo_delete_cookies(&mut self, cx: &mut Context<Self>) {
         let (Some(ws_id), Some(entries)) =
             (self.workspace_id.clone(), self.deleted_cookies_undo.take())

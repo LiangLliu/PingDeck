@@ -3,34 +3,61 @@
 //! Switching modules never drops mounted module entities or cancels active streams, matching the
 //! run/view separation contract.
 
-use gpui_kit::{AnyElement, AppContext as _, Context, Entity, IntoElement as _, Window};
+use std::cell::Cell;
+
+use gpui_kit::{
+    AnyElement, AppContext as _, Context, Entity, IntoElement as _, Subscription, Window,
+};
+use pingdeck_desktop::core::llm::capture::ApiClientDraft;
 use pingdeck_desktop::state::{NavModule, SettingsSection};
 use pingdeck_desktop::theme::PaletteId;
 
 use crate::views::{
-    chat::ChatView,
-    environments::EnvironmentsView,
-    flows::FlowsView,
-    history::{HistoryHandoff, HistoryView},
-    mock::{MockHandoff, MockView},
-    providers::ProvidersView,
-    requests::{RequestsHandoff, RequestsView},
-    settings::SettingsView,
+    chat::ChatView, environments::EnvironmentsView, flows::FlowsView, history::HistoryView,
+    mock::MockView, providers::ProvidersView, requests::RequestsView, settings::SettingsView,
     usage::UsageView,
 };
 
 /// Owns lazily-mounted GPUI entities for all 9 navigation destinations.
 #[derive(Default)]
 pub struct ModuleHost {
-    requests: Option<Entity<RequestsView>>,
-    mock: Option<Entity<MockView>>,
-    flows: Option<Entity<FlowsView>>,
-    history: Option<Entity<HistoryView>>,
-    environments: Option<Entity<EnvironmentsView>>,
-    chat: Option<Entity<ChatView>>,
-    providers: Option<Entity<ProvidersView>>,
-    usage: Option<Entity<UsageView>>,
-    settings: Option<Entity<SettingsView>>,
+    pub(super) requests: Option<Entity<RequestsView>>,
+    pub(super) mock: Option<Entity<MockView>>,
+    pub(super) flows: Option<Entity<FlowsView>>,
+    pub(super) history: Option<Entity<HistoryView>>,
+    pub(super) environments: Option<Entity<EnvironmentsView>>,
+    pub(super) chat: Option<Entity<ChatView>>,
+    pub(super) providers: Option<Entity<ProvidersView>>,
+    pub(super) usage: Option<Entity<UsageView>>,
+    pub(super) settings: Option<Entity<SettingsView>>,
+    _subscriptions: Vec<Subscription>,
+}
+
+fn cell_has<T>(cell: &Cell<Option<T>>) -> bool {
+    let val = cell.take();
+    let has = val.is_some();
+    cell.set(val);
+    has
+}
+
+fn ensure_watched<V: 'static, M: 'static>(
+    slot: &mut Option<Entity<M>>,
+    subs: &mut Vec<Subscription>,
+    build: impl FnOnce(&mut Context<M>) -> M,
+    has_signal: fn(&M) -> bool,
+    cx: &mut Context<V>,
+) -> Entity<M> {
+    if let Some(existing) = slot {
+        return existing.clone();
+    }
+    let ent = cx.new(build);
+    subs.push(cx.observe(&ent, move |_, view, cx| {
+        if has_signal(view.read(cx)) {
+            cx.notify();
+        }
+    }));
+    *slot = Some(ent.clone());
+    ent
 }
 
 impl ModuleHost {
@@ -53,6 +80,23 @@ impl ModuleHost {
         }
     }
 
+    /// Propagates the workspace's active environment across mounted API modules.
+    pub fn set_active_environment<V: 'static>(
+        &mut self,
+        env_id: Option<String>,
+        cx: &mut Context<V>,
+    ) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.set_active_environment(env_id.clone(), cx));
+        }
+        if let Some(v) = &self.flows {
+            v.update(cx, |f, cx| f.set_active_environment(env_id.clone(), cx));
+        }
+        if let Some(v) = &self.environments {
+            v.update(cx, |e, cx| e.set_active_environment(env_id, cx));
+        }
+    }
+
     /// Selects a specific section in the Settings view if mounted.
     pub fn set_settings_section<V: 'static>(
         &mut self,
@@ -64,15 +108,89 @@ impl ModuleHost {
         }
     }
 
-    /// Opens a specific chat session when invoked from notifications / command palette.
+    /// Opens a specific chat session when invoked from notifications, popover, or command palette.
     pub fn open_chat_session<V: 'static>(&mut self, session_id: String, cx: &mut Context<V>) {
         if let Some(v) = &self.chat {
             v.update(cx, |c, cx| c.open_session(session_id, cx));
         }
     }
 
-    /// Refreshes lightweight catalogs when navigating back into a mounted module (e.g., picking up
-    /// newly added providers/models, environments, mock servers, or newly recorded history entries).
+    fn ensure_requests<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        active_env_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<RequestsView> {
+        ensure_watched(
+            &mut self.requests,
+            &mut self._subscriptions,
+            |cx| {
+                let mut v = RequestsView::new(workspace_id, window, cx);
+                if active_env_id.is_some() {
+                    v.set_active_environment(active_env_id, cx);
+                }
+                v
+            },
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        )
+    }
+
+    fn ensure_chat<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<ChatView> {
+        ensure_watched(
+            &mut self.chat,
+            &mut self._subscriptions,
+            |cx| ChatView::new(window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        )
+    }
+
+    fn ensure_providers<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<ProvidersView> {
+        ensure_watched(
+            &mut self.providers,
+            &mut self._subscriptions,
+            |cx| ProvidersView::new(window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        )
+    }
+
+    fn ensure_usage<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<UsageView> {
+        ensure_watched(
+            &mut self.usage,
+            &mut self._subscriptions,
+            |cx| UsageView::new(window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        )
+    }
+
+    /// Mounts `ChatView` if needed and opens a specific chat session.
+    pub fn open_chat_session_mounted<V: 'static>(
+        &mut self,
+        session_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let chat = self.ensure_chat(window, cx);
+        chat.update(cx, |c, cx| c.open_session(session_id, cx));
+    }
+
+    /// Refreshes lightweight catalogs when navigating back into a mounted module.
     pub fn on_enter_module<V: 'static>(&mut self, module: NavModule, cx: &mut Context<V>) {
         match module {
             NavModule::Chat => {
@@ -105,7 +223,17 @@ impl ModuleHost {
                     v.update(cx, |e, cx| e.refresh_catalog(cx));
                 }
             }
-            _ => {}
+            NavModule::Providers => {
+                if let Some(v) = &self.providers {
+                    v.update(cx, |p, cx| p.reload_all(cx));
+                }
+            }
+            NavModule::Usage => {
+                if let Some(v) = &self.usage {
+                    v.update(cx, |u, cx| u.reload_all(cx));
+                }
+            }
+            NavModule::Settings => {}
         }
     }
 
@@ -117,24 +245,133 @@ impl ModuleHost {
         window: &mut Window,
         cx: &mut Context<V>,
     ) {
-        let view = self
-            .requests
-            .get_or_insert_with(|| cx.new(|cx| RequestsView::new(workspace_id, window, cx)));
+        let view = self.ensure_requests(workspace_id, None, window, cx);
         view.update(cx, |r, cx| r.open_external_draft_request(req, window, cx));
     }
 
-    /// Polls Mock view for route test-request handoffs.
-    pub fn poll_mock_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<MockHandoff> {
-        self.mock
-            .as_ref()
-            .and_then(|v| v.read(cx).take_pending_handoff())
+    /// Opens a saved request by ID inside Requests (from Flows inspector or Command Palette).
+    pub fn open_saved_request_by_id<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        request_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_requests(workspace_id, None, window, cx);
+        view.update(cx, |r, cx| {
+            r.open_saved_request_by_id(request_id, window, cx);
+        });
     }
 
-    /// Polls History view for replay-in-Requests or Ask-Agent handoffs.
-    pub fn poll_history_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<HistoryHandoff> {
-        self.history
-            .as_ref()
-            .and_then(|v| v.read(cx).take_pending_handoff())
+    /// Opens a Usage Call Log `ApiClientDraft` in a fresh Requests workbench tab.
+    pub fn open_ai_client_draft<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        draft: ApiClientDraft,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_requests(workspace_id, None, window, cx);
+        view.update(cx, |r, cx| r.open_ai_client_draft(draft, window, cx));
+    }
+
+    /// Selects a specific Mock server in `MockView`.
+    pub fn open_mock_server<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        server_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = ensure_watched(
+            &mut self.mock,
+            &mut self._subscriptions,
+            |cx| MockView::new(workspace_id, window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        );
+        view.update(cx, |m, cx| m.select_server(server_id, cx));
+    }
+
+    /// Selects a specific Flow in `FlowsView`.
+    pub fn open_flow<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        flow_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = ensure_watched(
+            &mut self.flows,
+            &mut self._subscriptions,
+            |cx| FlowsView::new(workspace_id, window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        );
+        view.update(cx, |f, cx| f.select_flow(flow_id, cx));
+    }
+
+    /// Navigates `ProvidersView` to Local Gateway or a specific provider, or opens a wizard sheet.
+    pub fn open_providers_gateway<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        let view = self.ensure_providers(window, cx);
+        view.update(cx, |p, cx| p.select_gateway(cx));
+    }
+
+    pub fn open_provider_by_id<V: 'static>(
+        &mut self,
+        provider_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_providers(window, cx);
+        view.update(cx, |p, cx| p.select_provider(provider_id, window, cx));
+    }
+
+    pub fn open_sniff_wizard<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        let view = self.ensure_providers(window, cx);
+        view.update(cx, |p, cx| {
+            p.open_sniff_sheet(None, None, None, window, cx);
+        });
+    }
+
+    pub fn open_connect_client_wizard<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_providers(window, cx);
+        view.update(cx, |p, cx| p.open_connect_sheet(None, window, cx));
+    }
+
+    /// Deep-links into `UsageView` scoped to a provider or opening a specific call detail sheet.
+    pub fn open_usage_provider<V: 'static>(
+        &mut self,
+        provider_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.select_provider_scope(provider_id, false, cx));
+    }
+
+    pub fn open_usage_call_id<V: 'static>(
+        &mut self,
+        call_id: i64,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.open_call_by_id(call_id, cx));
+    }
+
+    pub fn open_usage_call_request_id<V: 'static>(
+        &mut self,
+        request_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.open_call_by_request_id(request_id, cx));
     }
 
     /// Dismisses an open modal inside the active feature module when pressing `Esc`.
@@ -164,11 +401,22 @@ impl ModuleHost {
                 .environments
                 .as_ref()
                 .is_some_and(|v| v.update(cx, |e, cx| e.dismiss_modal_if_open(cx))),
+            NavModule::Chat => self
+                .chat
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |c, cx| c.dismiss_modal_if_open(cx))),
+            NavModule::Providers => self
+                .providers
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |p, cx| p.dismiss_modal_if_open(cx))),
+            NavModule::Usage => self
+                .usage
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |u, cx| u.dismiss_modal_if_open(cx))),
             NavModule::Settings => self
                 .settings
                 .as_ref()
                 .is_some_and(|v| v.update(cx, |s, cx| s.dismiss_modal_if_open(cx))),
-            _ => false,
         }
     }
 
@@ -180,19 +428,10 @@ impl ModuleHost {
         window: &mut Window,
         cx: &mut Context<V>,
     ) {
-        let chat = self
-            .chat
-            .get_or_insert_with(|| cx.new(|cx| ChatView::new(window, cx)));
+        let chat = self.ensure_chat(window, cx);
         chat.update(cx, |c, cx| {
             c.accept_handoff_draft(title, context_markdown, window, cx);
         });
-    }
-
-    /// Polls Requests view for cross-module navigation or Chat handoff intents.
-    pub fn poll_requests_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<RequestsHandoff> {
-        self.requests
-            .as_ref()
-            .and_then(|v| v.read(cx).take_pending_handoff())
     }
 
     /// Dispatches workspace-level Requests shortcuts to the mounted Requests view.
@@ -226,22 +465,6 @@ impl ModuleHost {
         }
     }
 
-    pub fn requests_dismiss_modal<V: 'static>(&mut self, cx: &mut Context<V>) -> bool {
-        if let Some(v) = &self.requests {
-            v.update(cx, |r, cx| r.dismiss_modal_if_open(cx))
-        } else {
-            false
-        }
-    }
-
-    pub fn settings_dismiss_modal<V: 'static>(&mut self, cx: &mut Context<V>) -> bool {
-        if let Some(v) = &self.settings {
-            v.update(cx, |s, cx| s.dismiss_modal_if_open(cx))
-        } else {
-            false
-        }
-    }
-
     /// Polls settings view for palette-change, back-button, or cross-module jump signals.
     pub fn poll_settings_signals<V: 'static>(
         &self,
@@ -259,10 +482,12 @@ impl ModuleHost {
     }
 
     /// Lazily mounts (if first visit) and returns the active module element.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_active<V: 'static>(
         &mut self,
         module: NavModule,
         workspace_id: Option<String>,
+        active_env_id: Option<String>,
         settings_section: SettingsSection,
         palette: PaletteId,
         window: &mut Window,
@@ -270,52 +495,63 @@ impl ModuleHost {
     ) -> AnyElement {
         match module {
             NavModule::Requests => self
-                .requests
-                .get_or_insert_with(|| cx.new(|cx| RequestsView::new(workspace_id, window, cx)))
-                .clone()
+                .ensure_requests(workspace_id, active_env_id, window, cx)
                 .into_any_element(),
-            NavModule::Mock => self
-                .mock
-                .get_or_insert_with(|| cx.new(|cx| MockView::new(workspace_id, window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::Flows => self
-                .flows
-                .get_or_insert_with(|| cx.new(|cx| FlowsView::new(workspace_id, window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::History => self
-                .history
-                .get_or_insert_with(|| cx.new(|cx| HistoryView::new(workspace_id, window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::Environments => self
-                .environments
-                .get_or_insert_with(|| cx.new(|cx| EnvironmentsView::new(workspace_id, window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::Chat => self
-                .chat
-                .get_or_insert_with(|| cx.new(|cx| ChatView::new(window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::Providers => self
-                .providers
-                .get_or_insert_with(|| cx.new(|cx| ProvidersView::new(window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::Usage => self
-                .usage
-                .get_or_insert_with(|| cx.new(|cx| UsageView::new(window, cx)))
-                .clone()
-                .into_any_element(),
-            NavModule::Settings => self
-                .settings
-                .get_or_insert_with(|| {
-                    cx.new(|cx| SettingsView::new(settings_section, palette, window, cx))
-                })
-                .clone()
-                .into_any_element(),
+            NavModule::Mock => ensure_watched(
+                &mut self.mock,
+                &mut self._subscriptions,
+                |cx| MockView::new(workspace_id, window, cx),
+                |v| cell_has(&v.pending_handoff),
+                cx,
+            )
+            .into_any_element(),
+            NavModule::Flows => ensure_watched(
+                &mut self.flows,
+                &mut self._subscriptions,
+                |cx| {
+                    let mut v = FlowsView::new(workspace_id, window, cx);
+                    if active_env_id.is_some() {
+                        v.set_active_environment(active_env_id, cx);
+                    }
+                    v
+                },
+                |v| cell_has(&v.pending_handoff),
+                cx,
+            )
+            .into_any_element(),
+            NavModule::History => ensure_watched(
+                &mut self.history,
+                &mut self._subscriptions,
+                |cx| HistoryView::new(workspace_id, window, cx),
+                |v| cell_has(&v.pending_handoff),
+                cx,
+            )
+            .into_any_element(),
+            NavModule::Environments => ensure_watched(
+                &mut self.environments,
+                &mut self._subscriptions,
+                |cx| {
+                    let mut v = EnvironmentsView::new(workspace_id, window, cx);
+                    if active_env_id.is_some() {
+                        v.set_active_environment(active_env_id, cx);
+                    }
+                    v
+                },
+                |v| cell_has(&v.pending_active_env),
+                cx,
+            )
+            .into_any_element(),
+            NavModule::Chat => self.ensure_chat(window, cx).into_any_element(),
+            NavModule::Providers => self.ensure_providers(window, cx).into_any_element(),
+            NavModule::Usage => self.ensure_usage(window, cx).into_any_element(),
+            NavModule::Settings => ensure_watched(
+                &mut self.settings,
+                &mut self._subscriptions,
+                |cx| SettingsView::new(settings_section, palette, window, cx),
+                SettingsView::has_pending_shell_signal,
+                cx,
+            )
+            .into_any_element(),
         }
     }
 }

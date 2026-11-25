@@ -190,17 +190,18 @@ fn render_ai_messages_tab(
                     .items_start()
                     .gap(px(8.0))
                     .child(
-                        btn_ghost(
-                            SharedString::from(format!("ai-role-{idx}")),
-                            msg.role.clone(),
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
+                        btn_ghost(SharedString::from(format!("ai-role-{idx}")), "")
+                            .px(px(2.0))
+                            .tooltip(if zh {
+                                "点击切换角色 (system / user / assistant)"
+                            } else {
+                                "Click to cycle role"
+                            })
+                            .child(badge(format!("{} ▾", msg.role), tone, cx))
+                            .on_click(cx.listener(move |this, _, window, cx| {
                                 this.ai_cycle_message_role(idx, window, cx);
-                            },
-                        )),
+                            })),
                     )
-                    .child(badge(msg.role.clone(), tone, cx))
                     .child(
                         div()
                             .flex_1()

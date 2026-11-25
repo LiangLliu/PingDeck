@@ -1,8 +1,8 @@
 //! Settings › 智能体 › MCP 服务器 (`SettingsSection::Mcp`, prototype `ai/mcp`).
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Styled as _,
-    Window, div, px,
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use pingdeck_desktop::core::agent::mcp::{
     AgentMcpServerView, McpServerStatus, McpTransportConfig, McpTrustState,
@@ -17,7 +17,7 @@ use crate::ui::{
 };
 
 use super::AgentSettingsView;
-use super::widgets::section_head;
+use super::widgets::{format_mcp_status, section_head};
 
 pub(super) fn render_mcp(
     view: &AgentSettingsView,
@@ -229,7 +229,9 @@ fn render_mcp_row(
                 .child(SharedString::from(transport_target.clone())),
         );
 
-    let status_col = h_row()
+    let needs_auth = matches!(sv.status, McpServerStatus::NeedsAuth);
+    let srv_auth = srv.clone();
+    let status_inner = h_row()
         .w(px(180.0))
         .gap(px(5.0))
         .child(status_indicator(
@@ -249,6 +251,22 @@ fn render_mcp_row(
                 .text_color(st_fg)
                 .child(SharedString::from(st_text)),
         );
+    let status_col: gpui_kit::AnyElement = if needs_auth {
+        div()
+            .id(SharedString::from(format!("mcp-auth-{idx}")))
+            .cursor_pointer()
+            .rounded(px(5.0))
+            .px(px(4.0))
+            .py(px(2.0))
+            .bg(to_hsla(p.warn_soft))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_mcp_edit_sheet(srv_auth.clone(), window, cx);
+            }))
+            .child(status_inner)
+            .into_any_element()
+    } else {
+        status_inner.into_any_element()
+    };
 
     let srv_toggle = srv.clone();
     let srv_edit = srv.clone();
@@ -535,61 +553,4 @@ fn render_mcp_row(
             .border_color(to_hsla(p.line.composite_over(p.surface)));
     }
     wrapper
-}
-
-fn format_mcp_status(
-    sv: &AgentMcpServerView,
-    lang: Language,
-    zh: bool,
-    p: &pingdeck_desktop::theme::ResolvedPalette,
-) -> (StatusShape, String, gpui_kit::Hsla) {
-    match &sv.status {
-        McpServerStatus::Running => {
-            let txt = match sv.tool_count {
-                Some(n) if zh => format!("已连接 · {n} 个工具"),
-                Some(n) => format!("Connected · {n} tool(s)"),
-                None => t(lang, "set.tools.mcp.state.running").to_owned(),
-            };
-            (StatusShape::Ok, txt, to_hsla(p.ink_2))
-        }
-        McpServerStatus::Starting => (
-            StatusShape::Run,
-            t(lang, "set.tools.mcp.state.starting").to_owned(),
-            to_hsla(p.muted),
-        ),
-        McpServerStatus::NeedsAuth => (
-            StatusShape::Warn,
-            if zh {
-                "需要处理：缺少令牌"
-            } else {
-                "Needs auth token"
-            }
-            .to_owned(),
-            to_hsla(p.warn),
-        ),
-        McpServerStatus::NeedsReview => (
-            StatusShape::Warn,
-            if zh {
-                "配置已变，待保存复核"
-            } else {
-                "Config changed — review"
-            }
-            .to_owned(),
-            to_hsla(p.warn),
-        ),
-        McpServerStatus::Error { message } => (
-            StatusShape::Bad,
-            if message.is_empty() {
-                t(lang, "set.tools.mcp.state.error").to_owned()
-            } else {
-                message.clone()
-            },
-            to_hsla(p.bad),
-        ),
-        McpServerStatus::Disabled => (
-            StatusShape::Idle,
-            t(lang, "set.tools.mcp.state.disabled").to_owned(),
-            to_hsla(p.muted),
-        ),
-    }
 }

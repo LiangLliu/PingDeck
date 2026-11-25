@@ -14,6 +14,7 @@ use crate::ui::{
 
 use super::format::{format_balance_report, format_family, format_protocol};
 use super::sniff_sheet::SniffProviderSheet;
+use super::sniff_sheet_actions::format_sniff_warning;
 
 pub(super) fn render_step_two(
     sheet: &SniffProviderSheet,
@@ -176,6 +177,20 @@ pub(super) fn render_step_two(
                         ),
                 ),
         );
+    }
+
+    if !rep.warnings.is_empty() {
+        let msgs: Vec<String> = rep
+            .warnings
+            .iter()
+            .map(|w| format_sniff_warning(w, zh))
+            .collect();
+        out = out.child(crate::ui::alert_banner(
+            Tone::Warning,
+            msgs.join(" · "),
+            None,
+            cx,
+        ));
     }
 
     let bal_summary = rep

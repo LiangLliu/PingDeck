@@ -142,49 +142,62 @@ fn render_request_tab(
         );
     }
 
-    let source_bar = h_row()
-        .w_full()
-        .justify_between()
-        .gap(px(8.0))
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(view.t("关联请求:", "Linked:")),
-                )
-                .child(meta_pill(
-                    linked.map(|r| r.name.clone()).unwrap_or_else(|| {
-                        view.t("内联步骤（无关联请求）", "Inline step").to_owned()
-                    }),
-                    cx,
-                )),
-        )
-        .child(
-            h_row()
-                .gap(px(4.0))
-                .child(
-                    btn_secondary("flow-pick-req", view.t("选择请求…", "Pick Request…")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.active_modal = Some(FlowModal::AddSavedStep);
-                            cx.notify();
+    let source_bar =
+        h_row()
+            .w_full()
+            .justify_between()
+            .gap(px(8.0))
+            .child(
+                h_row()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(to_hsla(p.muted))
+                            .child(view.t("关联请求:", "Linked:")),
+                    )
+                    .child(meta_pill(
+                        linked.map(|r| r.name.clone()).unwrap_or_else(|| {
+                            view.t("内联步骤（无关联请求）", "Inline step").to_owned()
                         }),
-                    ),
-                )
-                .children(linked.is_some().then(|| {
-                    btn_icon("flow-unlink-req", UiIcon::Close)
-                        .tooltip(view.t("转为内联步骤", "Detach into inline step"))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            if let Some(st) = this.selected_step_mut() {
-                                st.request_id.clear();
-                                this.dirty = true;
-                                cx.notify();
-                            }
+                        cx,
+                    )),
+            )
+            .child(
+                h_row()
+                    .gap(px(4.0))
+                    .children(linked.map(|r| {
+                        let rid_open = r.id.as_str().to_owned();
+                        crate::ui::btn_ghost(
+                            "flow-open-linked",
+                            view.t("打开原请求 ↗", "Open Request ↗"),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.pending_handoff.set(Some(
+                                super::state::FlowsHandoff::OpenRequest(rid_open.clone()),
+                            ));
+                            cx.notify();
                         }))
-                })),
-        );
+                    }))
+                    .child(
+                        btn_secondary("flow-pick-req", view.t("选择请求…", "Pick Request…"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.active_modal = Some(FlowModal::PickStepRequest);
+                                cx.notify();
+                            })),
+                    )
+                    .children(linked.is_some().then(|| {
+                        btn_icon("flow-unlink-req", UiIcon::Close)
+                            .tooltip(view.t("转为内联步骤", "Detach into inline step"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(st) = this.selected_step_mut() {
+                                    st.request_id.clear();
+                                    this.dirty = true;
+                                    cx.notify();
+                                }
+                            }))
+                    })),
+            );
 
     let mut hdr_card = card(cx).p(px(12.0)).gap(px(6.0)).child(section_header(
         view.t("请求头覆盖", "Header Overrides"),
@@ -437,11 +450,14 @@ fn render_assertions_tab(
 ) -> AnyElement {
     let p = palette(cx);
     let kinds = [
-        (0, view.t("状态码等于", "Status ==")),
-        (1, view.t("响应头存在", "Header Exists")),
-        (2, view.t("JSONPath 存在", "JSONPath Exists")),
-        (3, view.t("正文包含", "Body Contains")),
-        (4, view.t("耗时小于(ms)", "Time < ms")),
+        (0, view.t("状态码 ==", "Status ==")),
+        (1, view.t("状态码 ∈", "Status In")),
+        (2, view.t("响应头存在", "Header Exists")),
+        (3, view.t("响应头 ==", "Header ==")),
+        (4, view.t("JSONPath 存在", "JSONPath Exists")),
+        (5, view.t("JSONPath ==", "JSONPath ==")),
+        (6, view.t("正文包含", "Body Contains")),
+        (7, view.t("耗时 < ms", "Time < ms")),
     ];
 
     let mut box_el = card(cx)

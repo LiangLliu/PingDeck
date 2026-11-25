@@ -188,6 +188,14 @@ impl DesktopRuntime {
         self.data_root().map(|root| root.join("chat_drafts.json"))
     }
 
+    /// Returns the path to the active diagnostic log file when running against a data directory.
+    #[must_use]
+    pub fn log_file_path(&self) -> Option<PathBuf> {
+        self.data_dirs
+            .as_ref()
+            .map(|d| d.logs.join(pingdeck_core::logging::LOG_FILE_NAME))
+    }
+
     /// Loads persisted local UI state (falling back to defaults on missing/corrupt file).
     #[must_use]
     pub fn load_ui_state(&self) -> UiLocalState {

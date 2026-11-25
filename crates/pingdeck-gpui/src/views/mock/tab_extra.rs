@@ -380,25 +380,30 @@ pub(super) fn render_kv_card(
         );
     }
 
+    let (key_inp, val_inp) = match target {
+        KvListTarget::ProxyRes => (&view.proxy_res_kv_key, &view.proxy_res_kv_val),
+        _ => (&view.kv_key_input, &view.kv_val_input),
+    };
     box_el = box_el.child(
         h_row()
             .w_full()
             .gap(px(6.0))
-            .child(div().w(px(180.0)).child(text_input(&view.kv_key_input)))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(text_input(&view.kv_val_input)),
-            )
+            .child(div().w(px(180.0)).child(text_input(key_inp)))
+            .child(div().flex_1().min_w_0().child(text_input(val_inp)))
             .child(
                 btn_secondary(
                     SharedString::from(format!("mock-{prefix}-add")),
                     view.t("+ 添加", "+ Add"),
                 )
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    let k = this.kv_key_input.read(cx).value().trim().to_owned();
-                    let v = this.kv_val_input.read(cx).value().to_string();
+                    let (k_ent, v_ent) = match target {
+                        KvListTarget::ProxyRes => {
+                            (this.proxy_res_kv_key.clone(), this.proxy_res_kv_val.clone())
+                        }
+                        _ => (this.kv_key_input.clone(), this.kv_val_input.clone()),
+                    };
+                    let k = k_ent.read(cx).value().trim().to_owned();
+                    let v = v_ent.read(cx).value().to_string();
                     if k.is_empty() {
                         return;
                     }
@@ -411,10 +416,8 @@ pub(super) fn render_kv_card(
                         });
                         this.dirty = true;
                     }
-                    this.kv_key_input
-                        .update(cx, |s, cx| s.set_value("", window, cx));
-                    this.kv_val_input
-                        .update(cx, |s, cx| s.set_value("", window, cx));
+                    k_ent.update(cx, |s, cx| s.set_value("", window, cx));
+                    v_ent.update(cx, |s, cx| s.set_value("", window, cx));
                     cx.notify();
                 })),
             ),

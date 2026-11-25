@@ -384,16 +384,18 @@ impl Render for ProviderConfigForm {
                 .enumerate()
                 {
                     let ent = ent_auth.clone();
+                    let pop_h = cx.entity().clone();
                     col = col.child(
                         list_row(
                             SharedString::from(format!("cfg-auth-{i}")),
                             cur_auth == a,
                             cx,
-                            move |_, _, cx| {
+                            move |_, window, cx| {
                                 ent.update(cx, |this, cx| {
                                     this.view.provider.auth = a;
                                     cx.notify();
                                 });
+                                pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                             },
                         )
                         .child(div().text_xs().child(format_auth(a, zh))),

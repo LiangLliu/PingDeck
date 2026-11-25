@@ -34,7 +34,9 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
         Some(
             btn_primary("flow-new-btn", view.t("新建", "New"))
                 .icon(icon_xs(UiIcon::Plus))
-                .on_click(cx.listener(|this, _, _, cx| this.create_flow(cx)))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_create_flow_modal(window, cx);
+                }))
                 .into_any_element(),
         ),
         Some(search_input(&view.search_input, cx).into_any_element()),
@@ -60,11 +62,16 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
         for entry in filtered {
             let fid = entry.flow.id.clone();
             let active = view.selected_flow_id.as_deref() == Some(entry.flow.id.as_str());
-            let shape = match &entry.last_run {
-                Some(r) if r.cancelled => StatusShape::Warn,
-                Some(r) if r.passed => StatusShape::Ok,
-                Some(_) => StatusShape::Bad,
-                None => StatusShape::Idle,
+            let is_running_row = active && view.running;
+            let shape = if is_running_row {
+                StatusShape::Run
+            } else {
+                match &entry.last_run {
+                    Some(r) if r.cancelled => StatusShape::Warn,
+                    Some(r) if r.passed => StatusShape::Ok,
+                    Some(_) => StatusShape::Bad,
+                    None => StatusShape::Idle,
+                }
             };
             let steps_text = if zh {
                 format!("{} 步", entry.flow.steps.len())
@@ -100,19 +107,29 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
                         h_row()
                             .gap(px(6.0))
                             .child(meta_pill(steps_text, cx))
-                            .children(entry.last_run.as_ref().map(|r| {
-                                if r.cancelled {
-                                    badge(view.t("已取消", "Cancelled"), Tone::Warning, cx)
-                                } else if r.passed {
-                                    badge(format!("{} ms", r.elapsed_ms), Tone::Success, cx)
-                                } else {
-                                    badge(
-                                        format!("{}/{}", r.steps_passed, r.steps_total),
-                                        Tone::Danger,
-                                        cx,
-                                    )
-                                }
-                            })),
+                            .children(
+                                is_running_row.then(|| {
+                                    badge(view.t("↻ 运行中", "↻ Running"), Tone::Accent, cx)
+                                }),
+                            )
+                            .children(
+                                (!is_running_row)
+                                    .then_some(entry.last_run.as_ref())
+                                    .flatten()
+                                    .map(|r| {
+                                        if r.cancelled {
+                                            badge(view.t("已取消", "Cancelled"), Tone::Warning, cx)
+                                        } else if r.passed {
+                                            badge(format!("{} ms", r.elapsed_ms), Tone::Success, cx)
+                                        } else {
+                                            badge(
+                                                format!("{}/{}", r.steps_passed, r.steps_total),
+                                                Tone::Danger,
+                                                cx,
+                                            )
+                                        }
+                                    }),
+                            ),
                     ),
             );
             if active && view.dirty {

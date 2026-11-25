@@ -381,7 +381,7 @@ impl ShellState {
         kind: ToastKind,
         title: impl Into<String>,
         detail: Option<String>,
-    ) {
+    ) -> u64 {
         let id = self.next_toast_id;
         self.next_toast_id = self.next_toast_id.saturating_add(1);
         self.toasts.push(ToastMessage {
@@ -393,6 +393,7 @@ impl ShellState {
         if self.toasts.len() > 5 {
             self.toasts.remove(0);
         }
+        id
     }
 
     pub fn dismiss_toast(&mut self, id: u64) {

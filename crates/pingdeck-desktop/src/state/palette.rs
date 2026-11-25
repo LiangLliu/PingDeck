@@ -10,11 +10,37 @@ use super::shell::{NavModule, SettingsSection, UtilityDialog};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaletteCategory {
     NeedsYou,
+    Wizard,
     Navigation,
+    Entity,
     Workspace,
-    Settings,
     Utility,
+    Settings,
     Command,
+}
+
+impl PaletteCategory {
+    #[must_use]
+    pub const fn label(self, zh: bool) -> &'static str {
+        match (self, zh) {
+            (Self::NeedsYou, true) => "等待处理",
+            (Self::NeedsYou, false) => "Needs Attention",
+            (Self::Wizard, true) => "快速向导",
+            (Self::Wizard, false) => "Quick Wizards",
+            (Self::Navigation, true) => "页面导航",
+            (Self::Navigation, false) => "Navigation",
+            (Self::Entity, true) => "工作区与实体",
+            (Self::Entity, false) => "Workspace & Items",
+            (Self::Workspace, true) => "切换工作区",
+            (Self::Workspace, false) => "Workspaces",
+            (Self::Utility, true) => "实用工具",
+            (Self::Utility, false) => "Utilities",
+            (Self::Settings, true) => "设置",
+            (Self::Settings, false) => "Settings",
+            (Self::Command, true) => "快捷命令",
+            (Self::Command, false) => "Commands",
+        }
+    }
 }
 
 /// Concrete intent dispatched when a palette item is chosen.
@@ -25,9 +51,26 @@ pub enum PaletteAction {
     OpenUtility(UtilityDialog),
     SwitchWorkspace(String),
     OpenChatSession(String),
+    OpenRequestById(String),
+    OpenMockServer(String),
+    OpenFlow(String),
+    OpenProvider(String),
+    OpenGateway,
+    OpenSniffWizard,
+    OpenConnectClientWizard,
     ToggleSidebar,
     CycleThemeMode,
     ToggleLanguage,
+}
+
+/// Dynamic workspace and shared-AI entities indexed into the Command Palette.
+#[derive(Debug, Default, Clone)]
+pub struct PaletteDynamicItems {
+    pub requests: Vec<(String, String, String)>,
+    pub chats: Vec<(String, String)>,
+    pub mocks: Vec<(String, String, bool)>,
+    pub flows: Vec<(String, String)>,
+    pub providers: Vec<(String, String)>,
 }
 
 /// One searchable entry in the command palette.
@@ -37,6 +80,7 @@ pub struct PaletteItem {
     pub category: PaletteCategory,
     pub title: String,
     pub subtitle: Option<String>,
+    pub badge_label: Option<String>,
     pub keywords: String,
     pub shortcut: Option<String>,
     pub action: PaletteAction,
@@ -55,8 +99,23 @@ impl PaletteEngine {
         workspaces: &[(String, String)],
         attention_sessions: &[(String, String)],
     ) -> Self {
+        Self::build_full(
+            lang,
+            workspaces,
+            attention_sessions,
+            &PaletteDynamicItems::default(),
+        )
+    }
+
+    #[must_use]
+    pub fn build_full(
+        lang: Language,
+        workspaces: &[(String, String)],
+        attention_sessions: &[(String, String)],
+        dynamic: &PaletteDynamicItems,
+    ) -> Self {
         let zh = lang == Language::ZhCn;
-        let mut items = Vec::with_capacity(64);
+        let mut items = Vec::with_capacity(96);
 
         for (session_id, title) in attention_sessions {
             items.push(PaletteItem {
@@ -64,11 +123,73 @@ impl PaletteEngine {
                 category: PaletteCategory::NeedsYou,
                 title: title.clone(),
                 subtitle: Some(if zh { "等待批准" } else { "Needs approval" }.into()),
+                badge_label: Some(if zh { "待批" } else { "GATE" }.into()),
                 keywords: format!("approval gate chat {title}"),
                 shortcut: None,
                 action: PaletteAction::OpenChatSession(session_id.clone()),
             });
         }
+
+        // Quick Wizards
+        items.push(PaletteItem {
+            id: "wiz:sniff-provider".into(),
+            category: PaletteCategory::Wizard,
+            title: if zh {
+                "智能识别添加 AI 服务商…"
+            } else {
+                "Add AI Provider (Smart Sniff)…"
+            }
+            .into(),
+            subtitle: Some(
+                if zh {
+                    "服务商向导"
+                } else {
+                    "Provider wizard"
+                }
+                .into(),
+            ),
+            badge_label: Some("AI".into()),
+            keywords: "add provider sniff openai anthropic deepseek ollama 添加 服务商 嗅探".into(),
+            shortcut: None,
+            action: PaletteAction::OpenSniffWizard,
+        });
+        items.push(PaletteItem {
+            id: "wiz:connect-client".into(),
+            category: PaletteCategory::Wizard,
+            title: if zh {
+                "一键接入外部编程工具…"
+            } else {
+                "Connect Coding Client…"
+            }
+            .into(),
+            subtitle: Some("Claude Code / Codex / Cursor / OpenCode".into()),
+            badge_label: Some("GW".into()),
+            keywords: "connect client claude code codex cursor zed gateway 接入 客户端 网关".into(),
+            shortcut: None,
+            action: PaletteAction::OpenConnectClientWizard,
+        });
+        items.push(PaletteItem {
+            id: "wiz:gateway".into(),
+            category: PaletteCategory::Wizard,
+            title: if zh {
+                "打开本地 AI 网关控制台"
+            } else {
+                "Open Local AI Gateway Cockpit"
+            }
+            .into(),
+            subtitle: Some(
+                if zh {
+                    "服务商 › 网关"
+                } else {
+                    "Providers › Gateway"
+                }
+                .into(),
+            ),
+            badge_label: Some("GW".into()),
+            keywords: "gateway 4141 proxy 网关 控制台".into(),
+            shortcut: None,
+            action: PaletteAction::OpenGateway,
+        });
 
         for module in NavModule::ALL {
             let (zh_label, en_label) = module.label_pair();
@@ -77,9 +198,92 @@ impl PaletteEngine {
                 category: PaletteCategory::Navigation,
                 title: if zh { zh_label } else { en_label }.into(),
                 subtitle: Some(if zh { en_label } else { zh_label }.into()),
+                badge_label: None,
                 keywords: format!("{zh_label} {en_label}"),
                 shortcut: Some(format!("⌘{}", module.shortcut_digit())),
                 action: PaletteAction::Navigate(module),
+            });
+        }
+
+        // Dynamic Workspace & AI entities
+        for (req_id, method, name) in dynamic.requests.iter().take(40) {
+            items.push(PaletteItem {
+                id: format!("req:{req_id}"),
+                category: PaletteCategory::Entity,
+                title: name.clone(),
+                subtitle: Some(
+                    if zh {
+                        "已保存请求"
+                    } else {
+                        "Saved request"
+                    }
+                    .into(),
+                ),
+                badge_label: Some(method.clone()),
+                keywords: format!("request 请求 {method} {name}"),
+                shortcut: None,
+                action: PaletteAction::OpenRequestById(req_id.clone()),
+            });
+        }
+        for (sid, title) in dynamic.chats.iter().take(20) {
+            items.push(PaletteItem {
+                id: format!("chat:{sid}"),
+                category: PaletteCategory::Entity,
+                title: title.clone(),
+                subtitle: Some(if zh { "AI 对话" } else { "AI Chat" }.into()),
+                badge_label: Some(if zh { "对话" } else { "CHAT" }.into()),
+                keywords: format!("chat session 对话 {title}"),
+                shortcut: None,
+                action: PaletteAction::OpenChatSession(sid.clone()),
+            });
+        }
+        for (mid, name, running) in dynamic.mocks.iter().take(20) {
+            items.push(PaletteItem {
+                id: format!("mock:{mid}"),
+                category: PaletteCategory::Entity,
+                title: name.clone(),
+                subtitle: Some(
+                    if *running {
+                        if zh {
+                            "Mock 服务 · 运行中"
+                        } else {
+                            "Mock · Running"
+                        }
+                    } else if zh {
+                        "Mock 服务"
+                    } else {
+                        "Mock server"
+                    }
+                    .into(),
+                ),
+                badge_label: Some(if *running { "LIVE" } else { "MOCK" }.into()),
+                keywords: format!("mock server 模拟服务 {name}"),
+                shortcut: None,
+                action: PaletteAction::OpenMockServer(mid.clone()),
+            });
+        }
+        for (fid, name) in dynamic.flows.iter().take(20) {
+            items.push(PaletteItem {
+                id: format!("flow:{fid}"),
+                category: PaletteCategory::Entity,
+                title: name.clone(),
+                subtitle: Some(if zh { "接口流程" } else { "Flow" }.into()),
+                badge_label: Some(if zh { "流程" } else { "FLOW" }.into()),
+                keywords: format!("flow 流程 {name}"),
+                shortcut: None,
+                action: PaletteAction::OpenFlow(fid.clone()),
+            });
+        }
+        for (pid, name) in dynamic.providers.iter().take(20) {
+            items.push(PaletteItem {
+                id: format!("prov:{pid}"),
+                category: PaletteCategory::Entity,
+                title: name.clone(),
+                subtitle: Some(if zh { "AI 服务商" } else { "AI Provider" }.into()),
+                badge_label: Some("AI".into()),
+                keywords: format!("provider model 服务商 {name}"),
+                shortcut: None,
+                action: PaletteAction::OpenProvider(pid.clone()),
             });
         }
 
@@ -96,6 +300,7 @@ impl PaletteEngine {
                     }
                     .into(),
                 ),
+                badge_label: None,
                 keywords: format!("workspace 工作区 {ws_name}"),
                 shortcut: None,
                 action: PaletteAction::SwitchWorkspace(ws_id.clone()),
@@ -109,6 +314,7 @@ impl PaletteEngine {
                 category: PaletteCategory::Utility,
                 title: if zh { zh_label } else { en_label }.into(),
                 subtitle: Some(if zh { "工具" } else { "Utility" }.into()),
+                badge_label: None,
                 keywords: format!("{zh_label} {en_label}"),
                 shortcut: None,
                 action: PaletteAction::OpenUtility(utility),
@@ -127,6 +333,7 @@ impl PaletteEngine {
                     format!("{grp_en} › {en_label}")
                 },
                 subtitle: Some(if zh { "设置" } else { "Settings" }.into()),
+                badge_label: None,
                 keywords: format!("settings 设置 {grp_zh} {grp_en} {zh_label} {en_label}"),
                 shortcut: None,
                 action: PaletteAction::OpenSettings(section),
@@ -143,6 +350,7 @@ impl PaletteEngine {
             }
             .into(),
             subtitle: None,
+            badge_label: None,
             keywords: "sidebar 侧栏 toggle 折叠".into(),
             shortcut: Some("⌘B".into()),
             action: PaletteAction::ToggleSidebar,
@@ -157,6 +365,7 @@ impl PaletteEngine {
             }
             .into(),
             subtitle: None,
+            badge_label: None,
             keywords: "theme dark light 浅色 深色 主题 外观".into(),
             shortcut: None,
             action: PaletteAction::CycleThemeMode,
@@ -171,6 +380,7 @@ impl PaletteEngine {
             }
             .into(),
             subtitle: None,
+            badge_label: None,
             keywords: "language chinese english 语言 中文 英文".into(),
             shortcut: None,
             action: PaletteAction::ToggleLanguage,
@@ -217,7 +427,9 @@ impl PaletteEngine {
 fn category_base_priority(cat: PaletteCategory) -> i64 {
     match cat {
         PaletteCategory::NeedsYou => 500,
-        PaletteCategory::Navigation => 300,
+        PaletteCategory::Navigation => 340,
+        PaletteCategory::Wizard => 300,
+        PaletteCategory::Entity => 260,
         PaletteCategory::Command => 220,
         PaletteCategory::Workspace => 200,
         PaletteCategory::Utility => 160,

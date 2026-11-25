@@ -6,17 +6,22 @@ use gpui_kit::{
     Context, Div, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString,
     Styled as _, div, px,
 };
+use pingdeck_desktop::core::app::ProbeExportFormat;
 use pingdeck_desktop::core::llm::probe::ProbeStatus;
 use pingdeck_desktop::core::llm::probe::plan::CheckSet;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary,
-    btn_secondary, card, checkbox, filter_chip, h_row, icon_xs, list_row, palette, popover,
-    progress_bar, search_input, select_pill, tab_bar_segmented, tab_item, to_hsla, v_col,
+    Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary,
+    card, checkbox, filter_chip, h_row, icon_xs, list_row, palette, popover, search_input,
+    select_pill, tab_bar_segmented, tab_item, to_hsla, v_col,
 };
 
 use super::bench::{BenchFilter, BenchView};
-use super::format::{format_probe_status, format_probe_test};
+use super::bench_panels::{
+    render_cell_detail_bar, render_conc_picker, render_confirm_banners, render_key_picker,
+    render_status_bar,
+};
+use super::format::format_probe_status;
 
 pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div {
     let p = palette(cx);
@@ -51,18 +56,20 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
             for (i, pr) in provs_clone.iter().enumerate() {
                 let pid = pr.id.clone();
                 let ent = ent_p.clone();
+                let pop_h = cx.entity().clone();
                 col = col.child(
                     list_row(
                         SharedString::from(format!("bp-{i}")),
                         false,
                         cx,
-                        move |_, _, cx| {
+                        move |_, window, cx| {
                             ent.update(cx, |this, cx| {
                                 this.selected_provider_id = Some(pid.clone());
                                 this.selected_key_id = None;
                                 this.selected_models.clear();
                                 this.reload(cx);
                             });
+                            pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                         },
                     )
                     .child(div().text_xs().child(SharedString::from(pr.name.clone()))),
@@ -76,6 +83,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         CheckSet::Standard => 1,
         CheckSet::Full => 2,
     };
+    let ent_seg = ent.clone();
     let set_seg = tab_bar_segmented("bench-check-set")
         .selected_index(set_idx)
         .child(tab_item(if zh { "快速" } else { "Quick" }))
@@ -87,7 +95,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 2 => CheckSet::Full,
                 _ => CheckSet::Quick,
             };
-            ent.update(cx, |this, cx| {
+            ent_seg.update(cx, |this, cx| {
                 this.check_set = next;
                 this.recompute_estimate(cx);
                 cx.notify();
@@ -106,6 +114,16 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         format!("Run selected ({})", view.selected_models.len())
     };
 
+    let pid_hdr = view.selected_provider_id.as_deref().unwrap_or("");
+    let enabled_keys: Vec<_> = view
+        .keys
+        .iter()
+        .filter(|k| k.provider_id == pid_hdr && k.enabled)
+        .cloned()
+        .collect();
+    let key_picker = render_key_picker(view, &enabled_keys, ent.clone(), cx);
+    let conc_picker = render_conc_picker(view, ent.clone(), cx);
+
     let header = h_row()
         .flex_shrink_0()
         .justify_between()
@@ -117,7 +135,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         .child(
             h_row()
                 .flex_shrink_0()
-                .gap(px(10.0))
+                .gap(px(8.0))
                 .child(
                     div()
                         .text_sm()
@@ -130,7 +148,9 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                         }),
                 )
                 .child(prov_picker)
-                .child(set_seg),
+                .children((enabled_keys.len() > 1).then_some(key_picker))
+                .child(set_seg)
+                .child(conc_picker),
         )
         .child(
             h_row()
@@ -143,12 +163,12 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 } else {
                     btn_primary("bench-run", run_label)
                         .icon(icon_xs(UiIcon::Play))
-                        .on_click(cx.listener(|this, _, _, cx| this.start_run(None, cx)))
+                        .on_click(cx.listener(|this, _, _, cx| this.request_start_run(None, cx)))
                 })
                 .children(view.run_id.clone().filter(|_| !view.running).map(|rid| {
                     btn_secondary("bench-retry", if zh { "重试失败" } else { "Retry failed" })
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            this.start_run(Some(rid.clone()), cx);
+                            this.request_start_run(Some(rid.clone()), cx);
                         }))
                 }))
                 .children((view.run_id.is_some() && !view.running).then(|| {
@@ -160,7 +180,14 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                             "Apply results"
                         },
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.apply_results(cx)))
+                    .on_click(cx.listener(|this, _, _, cx| this.open_apply_preview(cx)))
+                }))
+                .children((view.run_id.is_some() && !view.running).then(|| {
+                    btn_ghost("bench-exp-csv", if zh { "导出 CSV" } else { "Export CSV" })
+                        .icon(icon_xs(UiIcon::Download))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.export_probe_results(ProbeExportFormat::Csv, cx);
+                        }))
                 }))
                 .children(view.last_apply_id.is_some().then(|| {
                     btn_ghost("bench-undo", if zh { "撤销应用" } else { "Undo apply" })
@@ -285,6 +312,8 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 .as_ref()
                 .map(|e| badge(SharedString::from(e.summary.clone()), Tone::Neutral, cx)),
         );
+
+    let confirm_banners = render_confirm_banners(view, cx);
 
     let cols: [(&str, &str); 7] = [
         ("chat", if zh { "对话" } else { "Chat" }),
@@ -422,6 +451,28 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
             }
             tbody = tbody.child(row);
         }
+        if prov_models.len() > shown {
+            tbody = tbody.child(
+                div()
+                    .px(px(12.0))
+                    .py(px(8.0))
+                    .text_size(px(11.0))
+                    .text_color(to_hsla(p.faint))
+                    .border_t_1()
+                    .border_color(to_hsla(p.line.composite_over(p.surface)))
+                    .child(SharedString::from(if zh {
+                        format!(
+                            "当前显示前 {shown} / 共 {} 个模型，请使用搜索框筛选定位",
+                            prov_models.len()
+                        )
+                    } else {
+                        format!(
+                            "Showing first {shown} of {} models — use search to filter",
+                            prov_models.len()
+                        )
+                    })),
+            );
+        }
     }
 
     let table_card = div().flex_1().min_h_0().px(px(20.0)).pb(px(14.0)).child(
@@ -445,124 +496,14 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         .size_full()
         .child(header)
         .child(toolbar)
+        .child(confirm_banners)
         .child(table_card);
 
-    // Bottom-docked progress, flash & cell detail bars (0.0px layout shift on the matrix above).
-    if view.running || view.progress_total > 0 || view.flash.is_some() {
-        let pct = if view.progress_total > 0 {
-            (view.progress_done as f32 / view.progress_total as f32) * 100.0
-        } else {
-            0.0
-        };
-        let mut status_bar = v_col()
-            .flex_shrink_0()
-            .gap(px(6.0))
-            .px(px(20.0))
-            .py(px(9.0))
-            .bg(to_hsla(p.pane))
-            .border_t_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)));
-        status_bar = status_bar.child(
-            h_row()
-                .justify_between()
-                .gap(px(8.0))
-                .child(
-                    h_row()
-                        .gap(px(8.0))
-                        .children((view.running || view.progress_total > 0).then(|| {
-                            div().text_xs().child(SharedString::from(format!(
-                                "{} {}/{}",
-                                if view.running {
-                                    if zh { "探测进度" } else { "Progress" }
-                                } else if zh {
-                                    "上次运行"
-                                } else {
-                                    "Last run"
-                                },
-                                view.progress_done,
-                                view.progress_total
-                            )))
-                        }))
-                        .children(
-                            view.flash
-                                .as_ref()
-                                .map(|(tone, msg)| badge(msg.clone(), *tone, cx)),
-                        ),
-                )
-                .children(view.last_summary.as_ref().map(|s| {
-                    badge(
-                        format!("{} ok · {} err", s.passed, s.failed),
-                        if s.failed == 0 {
-                            Tone::Success
-                        } else {
-                            Tone::Warning
-                        },
-                        cx,
-                    )
-                })),
-        );
-        if view.running || view.progress_total > 0 {
-            status_bar = status_bar.child(progress_bar("bench-prog", pct));
-        }
+    if let Some(status_bar) = render_status_bar(view, cx) {
         root = root.child(status_bar);
     }
-
-    if let Some((mid, ck)) = &view.selected_cell
-        && let Some(cell) = view.cells.get(&(mid.clone(), ck.clone()))
-    {
-        let (lbl, tone) = format_probe_status(cell.status, zh);
-        let detail_line = cell
-            .result
-            .as_ref()
-            .map(|r| {
-                format!(
-                    "HTTP {:?} · {}ms · TTFT {:?}ms · {}",
-                    r.status,
-                    r.latency_ms.unwrap_or(0),
-                    r.ttft_ms,
-                    if r.message.is_empty() {
-                        &cell.reason
-                    } else {
-                        &r.message
-                    }
-                )
-            })
-            .unwrap_or_else(|| cell.reason.clone());
-        root = root.child(
-            h_row()
-                .flex_shrink_0()
-                .justify_between()
-                .gap(px(8.0))
-                .px(px(20.0))
-                .py(px(9.0))
-                .bg(to_hsla(p.pane))
-                .border_t_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(
-                    h_row()
-                        .gap(px(8.0))
-                        .flex_1()
-                        .min_w_0()
-                        .child(badge(SharedString::from(mid.clone()), Tone::Accent, cx))
-                        .child(badge(format_probe_test(cell.test, zh), Tone::Neutral, cx))
-                        .child(badge(lbl, tone, cx))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.muted))
-                                .truncate()
-                                .child(SharedString::from(detail_line)),
-                        ),
-                )
-                .child(
-                    btn_icon("bc-detail-close", UiIcon::Close).on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.selected_cell = None;
-                            cx.notify();
-                        },
-                    )),
-                ),
-        );
+    if let Some(detail_bar) = render_cell_detail_bar(view, cx) {
+        root = root.child(detail_bar);
     }
 
     root

@@ -15,7 +15,8 @@ use pingdeck_desktop::core::llm::store::ClientInput;
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::{
     Anchor, InputState, ScrollableElement as _, Tone, badge, card, field_row, filter_chip, h_row,
-    list_row, popover, section_heading, select_pill, text_input, toggle_switch, v_col,
+    list_row, popover, section_heading, select_pill, tab_bar_segmented, tab_item, text_input,
+    toggle_switch, v_col,
 };
 
 use super::ProvidersView;
@@ -50,7 +51,8 @@ pub struct ConnectClientSheet {
     pub zh: bool,
     gateway_url: String,
     pub tool: ConnectToolKind,
-    available_models: Vec<String>,
+    /// `(canonical "provider_id/model", display "provider_name/model")`.
+    available_models: Vec<(String, String)>,
     selected_model: Option<String>,
     fast_model: Option<String>,
     client_name_input: Entity<InputState>,
@@ -70,16 +72,16 @@ pub struct ConnectClientSheet {
 impl ConnectClientSheet {
     pub fn new(
         parent: Entity<ProvidersView>,
-        initial_app: Option<ClientApp>,
+        initial_tool: ConnectToolKind,
         gateway_url: String,
-        available_models: Vec<String>,
+        available_models: Vec<(String, String)>,
         zh: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let tool = ConnectToolKind::File(initial_app.unwrap_or(ClientApp::ClaudeCode));
+        let tool = initial_tool;
         let default_name = tool.label(zh).to_owned();
-        let selected_model = available_models.first().cloned();
+        let selected_model = available_models.first().map(|(id, _)| id.clone());
         let client_name_input = cx.new(|cx| {
             let mut st = InputState::new(window, cx).placeholder("Client name…");
             st.set_value(default_name, window, cx);
@@ -369,13 +371,23 @@ impl Render for ConnectClientSheet {
 
         let ent_m = cx.entity().clone();
         let models_list = self.available_models.clone();
-        let cur_model = self.selected_model.clone().unwrap_or_else(|| {
-            if zh {
-                "选择默认对话模型".into()
-            } else {
-                "Pick default model".into()
-            }
-        });
+        let disp_for = |id: &str| {
+            self.available_models
+                .iter()
+                .find(|(k, _)| k == id)
+                .map_or_else(|| id.to_owned(), |(_, d)| d.clone())
+        };
+        let cur_model = self
+            .selected_model
+            .as_deref()
+            .map(disp_for)
+            .unwrap_or_else(|| {
+                if zh {
+                    "选择默认对话模型".into()
+                } else {
+                    "Pick default model".into()
+                }
+            });
         let model_picker = popover("conn-model-pop")
             .anchor(Anchor::TopLeft)
             .trigger(select_pill(
@@ -394,26 +406,28 @@ impl Render for ConnectClientSheet {
                         "Enable at least one chat model first"
                     }));
                 } else {
-                    for (i, m) in models_list.iter().take(60).enumerate() {
-                        let m_val = m.clone();
+                    for (i, (m_id, m_disp)) in models_list.iter().take(60).enumerate() {
+                        let m_val = m_id.clone();
                         let ent = ent_m.clone();
+                        let pop_h = cx.entity().clone();
                         col = col.child(
                             list_row(
                                 SharedString::from(format!("conn-m-{i}")),
                                 false,
                                 cx,
-                                move |_, _, cx| {
+                                move |_, window, cx| {
                                     ent.update(cx, |this, cx| {
                                         this.selected_model = Some(m_val.clone());
                                         this.refresh_preview(cx);
                                     });
+                                    pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                                 },
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .truncate()
-                                    .child(SharedString::from(m.clone())),
+                                    .child(SharedString::from(m_disp.clone())),
                             ),
                         );
                     }
@@ -424,6 +438,29 @@ impl Render for ConnectClientSheet {
                     .overflow_y_scrollbar()
                     .id("conn-model-pop-scroll")
                     .child(col)
+            });
+
+        let ent_ex = cx.entity().clone();
+        let ex_idx = match self.on_existing {
+            OnExisting::Rotate | OnExisting::Fail => 0,
+            OnExisting::SecondClient => 1,
+            OnExisting::ReplaceRevoked => 2,
+        };
+        let on_existing_seg = tab_bar_segmented("conn-on-existing")
+            .selected_index(ex_idx)
+            .child(tab_item(if zh { "轮换已有" } else { "Rotate" }))
+            .child(tab_item(if zh { "另建客户端" } else { "Add 2nd" }))
+            .child(tab_item(if zh { "替换已吊销" } else { "Replace" }))
+            .on_click(move |idx, _, cx| {
+                let next = match *idx {
+                    1 => OnExisting::SecondClient,
+                    2 => OnExisting::ReplaceRevoked,
+                    _ => OnExisting::Rotate,
+                };
+                ent_ex.update(cx, |this, cx| {
+                    this.on_existing = next;
+                    cx.notify();
+                });
             });
 
         let mut body = v_col()
@@ -455,6 +492,14 @@ impl Render for ConnectClientSheet {
                             div().w(px(210.0)).child(text_input(&self.client_name_input)),
                             cx,
                         ))
+                        .children(matches!(self.tool, ConnectToolKind::File(_)).then(|| {
+                            field_row(
+                                if zh { "已有同名配置时" } else { "If already connected" },
+                                None,
+                                on_existing_seg,
+                                cx,
+                            )
+                        }))
                         .children(matches!(self.tool, ConnectToolKind::File(_)).then(|| {
                             field_row(
                                 if zh { "未知模型名回退到默认模型" } else { "Map unknown model names" },

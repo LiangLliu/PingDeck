@@ -66,6 +66,8 @@ pub struct CatalogDrawer {
     pub alias_search: Entity<InputState>,
     pub alias_candidates: Vec<ModelCatalogRow>,
     pub selected_alias_key: Option<String>,
+    /// When set inside `ModelDetail`, edits a per-provider price override `(provider_id, provider_name, model_id)`.
+    pub editing_provider_override: Option<(String, String, String)>,
     pub busy: bool,
     pub error_msg: Option<String>,
     pub(super) pending_close: bool,
@@ -126,6 +128,7 @@ impl CatalogDrawer {
             alias_search,
             alias_candidates: Vec::new(),
             selected_alias_key: None,
+            editing_provider_override: None,
             busy: false,
             error_msg: None,
             pending_close: false,
@@ -166,6 +169,40 @@ impl CatalogDrawer {
         drawer.pricing_mode = initial_pricing.mode;
         drawer.currency = initial_pricing.currency;
         drawer.selected_catalog_family = initial_pricing.catalog_family;
+        if let DrawerKind::ModelDetail { row, .. } = &drawer.kind
+            && row.source == CatalogSource::User
+        {
+            drawer.user_kind = row.kind;
+            drawer.user_reasoning = row.reasoning;
+            drawer.user_vision = row.vision;
+            drawer.user_tools = row.tools;
+            let fam = row.family.clone();
+            let mid = row.model_id.clone();
+            let nm = row.name.clone();
+            let ctx_s = row
+                .context_tokens
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let out_s = row
+                .max_output_tokens
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            drawer
+                .user_family
+                .update(cx, |s, cx| s.set_value(fam, window, cx));
+            drawer
+                .user_model_id
+                .update(cx, |s, cx| s.set_value(mid, window, cx));
+            drawer
+                .user_name
+                .update(cx, |s, cx| s.set_value(nm, window, cx));
+            drawer
+                .user_context
+                .update(cx, |s, cx| s.set_value(ctx_s, window, cx));
+            drawer
+                .user_max_output
+                .update(cx, |s, cx| s.set_value(out_s, window, cx));
+        }
 
         drawer
             .in_price
@@ -289,6 +326,46 @@ impl CatalogDrawer {
     pub fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.close_sheet(cx);
     }
+
+    pub fn start_edit_provider_override(
+        &mut self,
+        pm: &pingdeck_desktop::core::app::ProviderModelPrice,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.editing_provider_override = Some((
+            pm.provider_id.clone(),
+            pm.provider_name.clone(),
+            pm.model_id.clone(),
+        ));
+        if let Some(ov) = &pm.pricing {
+            self.pricing_mode = ov.mode;
+            self.currency = ov.currency.clone();
+            self.selected_catalog_family = ov.catalog_family.clone();
+            self.in_price.update(cx, |s, cx| {
+                s.set_value(opt_f64_input(ov.input_per_mtok), window, cx)
+            });
+            self.out_price.update(cx, |s, cx| {
+                s.set_value(opt_f64_input(ov.output_per_mtok), window, cx)
+            });
+            self.cache_read_price.update(cx, |s, cx| {
+                s.set_value(opt_f64_input(ov.cache_read_per_mtok), window, cx)
+            });
+            self.cache_write_price.update(cx, |s, cx| {
+                s.set_value(opt_f64_input(ov.cache_write_per_mtok), window, cx)
+            });
+            self.reasoning_price.update(cx, |s, cx| {
+                s.set_value(opt_f64_input(ov.reasoning_per_mtok), window, cx)
+            });
+            self.per_call_price.update(cx, |s, cx| {
+                s.set_value(opt_f64_input(ov.per_call), window, cx)
+            });
+        } else {
+            self.pricing_mode = PricingMode::Custom;
+        }
+        self.error_msg = None;
+        cx.notify();
+    }
 }
 
 impl Render for CatalogDrawer {
@@ -330,6 +407,17 @@ impl Render for CatalogDrawer {
                     .as_deref()
                     .map(|d| d.offers.as_slice())
                     .unwrap_or(&[]);
+                let heading = if let Some((_, pname, _)) = &self.editing_provider_override {
+                    if zh {
+                        format!("专属服务商覆盖价 · {pname}")
+                    } else {
+                        format!("Provider override · {pname}")
+                    }
+                } else if zh {
+                    "默认价格（所有服务商）".into()
+                } else {
+                    "Default pricing (all providers)".into()
+                };
                 content = content
                     .child(render_model_facts(
                         row,
@@ -337,17 +425,40 @@ impl Render for CatalogDrawer {
                         zh,
                         cx,
                     ))
+                    .children(self.editing_provider_override.as_ref().map(|(_, pname, _)| {
+                        crate::ui::alert_banner(
+                            crate::ui::Tone::Accent,
+                            if zh {
+                                format!("正在为「{pname}」设置专属价格覆盖（不影响其他服务商）。")
+                            } else {
+                                format!("Editing per-provider override for \"{pname}\" (other providers unchanged).")
+                            },
+                            Some(
+                                crate::ui::btn_ghost(
+                                    "cat-ovr-back",
+                                    if zh { "返回默认价" } else { "Back to default" },
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.editing_provider_override = None;
+                                    cx.notify();
+                                }))
+                                .into_any_element(),
+                            ),
+                            cx,
+                        )
+                    }))
+                    .children(
+                        (row.source == CatalogSource::User && self.editing_provider_override.is_none())
+                            .then(|| {
+                                super::drawer_forms_extra::render_user_model_meta_editor(
+                                    self, zh, cx,
+                                )
+                            }),
+                    )
                     .child(
                         v_col()
                             .gap(px(6.0))
-                            .child(section_heading(
-                                if zh {
-                                    "默认价格（所有服务商）"
-                                } else {
-                                    "Default pricing (all providers)"
-                                },
-                                cx,
-                            ))
+                            .child(section_heading(heading, cx))
                             .child(render_pricing_editor_fields(self, offers, zh, cx)),
                     );
                 if let Some(d) = detail.as_deref() {

@@ -1,7 +1,7 @@
 //! Gateway Access Control tab: autostart, port, token auth, LAN bind, extra allowed Host names,
 //! request body capture mode, Host/Origin boundary card, and circuit reset.
 
-use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::model::CaptureMode;
 
 use crate::ui::{
@@ -155,16 +155,68 @@ pub fn render_access_tab(
                 ),
                 toggle_switch("gw-opt-lan", gw.serve_lan).on_click(cx.listener(
                     |this, _, _, cx| {
-                        let next = !this.gateway_settings.serve_lan;
-                        this.patch_gateway_setting(
-                            serde_json::json!({ "serve_lan": next }),
-                            true,
-                            cx,
-                        );
+                        if !this.gateway_settings.serve_lan {
+                            this.confirm_lan_open = true;
+                            cx.notify();
+                        } else {
+                            this.confirm_lan_open = false;
+                            this.patch_gateway_setting(
+                                serde_json::json!({ "serve_lan": false }),
+                                true,
+                                cx,
+                            );
+                        }
                     },
                 )),
                 cx,
             ))
+            .children(view.confirm_lan_open.then(|| {
+                let cands = view
+                    .overview
+                    .as_ref()
+                    .map(|o| {
+                        o.hosts
+                            .lan_candidates
+                            .iter()
+                            .map(|a| a.host.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "0.0.0.0".to_owned());
+                crate::ui::alert_banner(
+                    Tone::Warning,
+                    if zh {
+                        format!("确认在局域网 ({cands}) 以明文 HTTP 暴露网关？仅限受信任局域网。")
+                    } else {
+                        format!("Expose gateway over plaintext HTTP on LAN ({cands})?")
+                    },
+                    Some(
+                        h_row()
+                            .gap(px(6.0))
+                            .child(
+                                btn_ghost("gw-lan-cancel", if zh { "取消" } else { "Cancel" })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.confirm_lan_open = false;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                btn_danger("gw-lan-confirm", if zh { "确认开启" } else { "Enable LAN" })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.confirm_lan_open = false;
+                                        this.patch_gateway_setting(
+                                            serde_json::json!({ "serve_lan": true }),
+                                            true,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .into_any_element(),
+                    ),
+                    cx,
+                )
+            }))
             .child(field_row(
                 if zh { "额外允许的 Host 名" } else { "Extra allowed Host names" },
                 desc(

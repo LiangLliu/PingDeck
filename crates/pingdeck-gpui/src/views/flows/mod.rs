@@ -16,6 +16,7 @@ pub mod sidebar;
 pub mod state;
 pub mod steps_pane;
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use gpui_kit::{
@@ -27,13 +28,15 @@ use pingdeck_desktop::core::model::items::FlowExtractionSource;
 
 use crate::bridge::runtime;
 use crate::ui::{
-    EditorState, InputEvent, InputState, Tone, UiIcon, btn_danger, btn_icon, btn_primary,
-    btn_secondary, choice_chip, dismissible_banner, empty_state_with_actions, h_resizable, h_row,
-    icon_xs, palette, resizable_panel, text_input, to_hsla, toolbar_strip, v_col, v_resizable,
+    Anchor, EditorState, InputEvent, InputState, StatusShape, Tone, UiIcon, badge, btn_danger,
+    btn_ghost, btn_icon, btn_primary, btn_secondary, dismissible_banner, empty_state_with_actions,
+    h_resizable, h_row, icon_xs, list_row, meta_pill, palette, popover, progress_bar,
+    resizable_panel, select_pill, status_indicator, text_input, to_hsla, toolbar_strip, v_col,
+    v_resizable,
 };
 
-pub use state::FlowsView;
 use state::{FlowModal, FlowRunTab, FlowStepTab};
+pub use state::{FlowsHandoff, FlowsView};
 
 impl FlowsView {
     pub fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -72,6 +75,9 @@ impl FlowsView {
         let seed_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Seed value"));
         let req_picker_search =
             cx.new(|cx| InputState::new(window, cx).placeholder("搜索已保存请求…"));
+        let new_flow_name_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("例如：登录并下单 / Auth + Checkout")
+        });
 
         let mut subs = Vec::new();
         for inp in [
@@ -121,6 +127,7 @@ impl FlowsView {
             selected_env_id: None,
             step_tab: FlowStepTab::Request,
             run_tab: FlowRunTab::LiveRun,
+            inspector_open: true,
             running: false,
             cancel_token: None,
             live_total: 0,
@@ -151,10 +158,12 @@ impl FlowsView {
             seed_key_input,
             seed_val_input,
             req_picker_search,
+            new_flow_name_input,
             active_modal: None,
             status_msg: None,
             pending_sync: false,
             syncing: false,
+            pending_handoff: Cell::new(None),
             _subscriptions: subs,
             _tasks: Vec::new(),
         };
@@ -202,6 +211,18 @@ impl FlowsView {
             false
         }
     }
+
+    #[must_use]
+    pub fn take_pending_handoff(&self) -> Option<FlowsHandoff> {
+        self.pending_handoff.take()
+    }
+
+    pub fn set_active_environment(&mut self, env_id: Option<String>, cx: &mut Context<Self>) {
+        if self.selected_env_id != env_id {
+            self.selected_env_id = env_id;
+            cx.notify();
+        }
+    }
 }
 
 impl Render for FlowsView {
@@ -216,34 +237,95 @@ impl Render for FlowsView {
             let fid_del = flow.id.clone();
             let fname_del = flow.name.clone();
 
-            let mut env_bar = h_row().gap(px(4.0)).flex_wrap().child(
-                choice_chip(
-                    "flow-env-none",
-                    self.t("无环境", "No Env"),
-                    self.selected_env_id.is_none(),
+            let zh = self.is_zh();
+            let ent_env = cx.entity().clone();
+            let envs_pop = self.environments.clone();
+            let sel_env_id = self.selected_env_id.clone();
+            let sel_env = sel_env_id
+                .as_deref()
+                .and_then(|id| envs_pop.iter().find(|e| e.id == id));
+            let env_label = sel_env
+                .map(|e| {
+                    if e.confirm_before_send {
+                        format!("● {} ({})", e.name, if zh { "保护" } else { "Guard" })
+                    } else {
+                        e.name.clone()
+                    }
+                })
+                .unwrap_or_else(|| if zh { "无环境" } else { "No Env" }.to_owned());
+
+            let env_picker = popover("flow-env-pop")
+                .anchor(Anchor::TopLeft)
+                .trigger(select_pill(
+                    "flow-env-trig",
+                    SharedString::from(env_label),
+                    sel_env_id.is_some(),
                     cx,
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.selected_env_id = None;
-                    cx.notify();
-                })),
-            );
-            for env in &self.environments {
-                let eid = env.id.clone();
-                let active = self.selected_env_id.as_deref() == Some(env.id.as_str());
-                env_bar = env_bar.child(
-                    choice_chip(
-                        SharedString::from(format!("flow-env-{}", env.id)),
-                        env.name.clone(),
-                        active,
-                        cx,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.selected_env_id = Some(eid.clone());
-                        cx.notify();
-                    })),
-                );
-            }
+                ))
+                .content(move |_, _, pop_cx| {
+                    let mut col = v_col().w(px(230.0)).gap(px(2.0)).p(px(6.0));
+                    let e0 = ent_env.clone();
+                    let ph0 = pop_cx.entity().clone();
+                    col = col.child(
+                        list_row(
+                            "fl-env-none",
+                            sel_env_id.is_none(),
+                            pop_cx,
+                            move |_, w, cx| {
+                                e0.update(cx, |this, cx| {
+                                    this.selected_env_id = None;
+                                    cx.notify();
+                                });
+                                ph0.update(cx, |s, cx| s.dismiss(w, cx));
+                            },
+                        )
+                        .gap(px(6.0))
+                        .child(status_indicator(StatusShape::Idle, pop_cx))
+                        .child(div().text_xs().child(if zh {
+                            "不使用环境"
+                        } else {
+                            "No environment"
+                        })),
+                    );
+                    for env in &envs_pop {
+                        let eid = env.id.clone();
+                        let sel = sel_env_id.as_deref() == Some(env.id.as_str());
+                        let ent_i = ent_env.clone();
+                        let ph = pop_cx.entity().clone();
+                        col = col.child(
+                            list_row(
+                                SharedString::from(format!("fl-env-{eid}")),
+                                sel,
+                                pop_cx,
+                                move |_, w, cx| {
+                                    ent_i.update(cx, |this, cx| {
+                                        this.selected_env_id = Some(eid.clone());
+                                        cx.notify();
+                                    });
+                                    ph.update(cx, |s, cx| s.dismiss(w, cx));
+                                },
+                            )
+                            .justify_between()
+                            .child(
+                                h_row()
+                                    .gap(px(6.0))
+                                    .child(status_indicator(
+                                        if env.confirm_before_send {
+                                            StatusShape::Warn
+                                        } else {
+                                            StatusShape::Ok
+                                        },
+                                        pop_cx,
+                                    ))
+                                    .child(div().text_xs().child(env.name.clone())),
+                            )
+                            .children(env.confirm_before_send.then(|| {
+                                badge(if zh { "确认" } else { "Guard" }, Tone::Warning, pop_cx)
+                            })),
+                        );
+                    }
+                    col
+                });
 
             let top_bar = toolbar_strip(cx)
                 .justify_between()
@@ -264,6 +346,21 @@ impl Render for FlowsView {
                     h_row()
                         .gap(px(6.0))
                         .flex_shrink_0()
+                        .child(env_picker)
+                        .child(
+                            btn_ghost(
+                                "flow-insp-tog",
+                                if self.inspector_open {
+                                    self.t("收起检查器", "Hide Inspector")
+                                } else {
+                                    self.t("展开检查器", "Inspector")
+                                },
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.inspector_open = !this.inspector_open;
+                                cx.notify();
+                            })),
+                        )
                         .child(
                             btn_secondary("flow-opt-btn", self.t("选项", "Options"))
                                 .icon(icon_xs(UiIcon::Sliders))
@@ -311,40 +408,56 @@ impl Render for FlowsView {
                         ),
                 );
 
-            let env_strip = h_row()
-                .w_full()
-                .flex_shrink_0()
-                .gap(px(8.0))
-                .px(px(14.0))
-                .py(px(6.0))
-                .bg(to_hsla(p.pane))
-                .border_b_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .child(self.t("运行环境:", "Environment:")),
-                )
-                .child(env_bar);
-
             let editor_split = h_row()
                 .size_full()
                 .min_h_0()
                 .child(steps_pane::render_steps_pane(self, cx))
-                .child(
+                .children(self.inspector_open.then(|| {
                     div()
                         .flex_1()
                         .min_w_0()
                         .h_full()
-                        .child(inspector::render_step_inspector(self, cx)),
-                );
+                        .child(inspector::render_step_inspector(self, cx))
+                }));
 
-            let mut detail = v_col()
-                .size_full()
-                .min_h_0()
-                .child(top_bar)
-                .child(env_strip);
+            let mut detail = v_col().size_full().min_h_0().child(top_bar);
+            if self.running {
+                let pct = if self.live_total > 0 {
+                    (self.live_steps.len() as f32 / self.live_total as f32) * 100.0
+                } else {
+                    10.0
+                };
+                detail = detail.child(
+                    v_col()
+                        .px(px(14.0))
+                        .py(px(6.0))
+                        .gap(px(4.0))
+                        .bg(to_hsla(p.pane))
+                        .border_b_1()
+                        .border_color(to_hsla(p.line.composite_over(p.pane)))
+                        .child(
+                            h_row()
+                                .justify_between()
+                                .child(div().text_xs().text_color(to_hsla(p.ink)).child(
+                                    SharedString::from(if zh {
+                                        format!(
+                                            "正在执行流程… {}/{} 步已完成",
+                                            self.live_steps.len(),
+                                            self.live_total
+                                        )
+                                    } else {
+                                        format!(
+                                            "Running flow… {}/{} steps complete",
+                                            self.live_steps.len(),
+                                            self.live_total
+                                        )
+                                    }),
+                                ))
+                                .child(meta_pill("HistoryOnly", cx)),
+                        )
+                        .child(progress_bar("flow-live-prog", pct)),
+                );
+            }
             if let Some((tone, msg)) = &self.status_msg {
                 detail = detail.child(div().px(px(12.0)).pt(px(8.0)).child(dismissible_banner(
                     "flow-banner-close",
@@ -357,18 +470,35 @@ impl Render for FlowsView {
                     cx,
                 )));
             }
-            detail.child(
-                div().flex_1().min_h_0().w_full().child(
-                    v_resizable("flow-vert-split")
-                        .child(resizable_panel().child(editor_split))
-                        .child(
-                            resizable_panel()
-                                .size(px(210.0))
-                                .size_range(px(120.0)..px(420.0))
-                                .child(run_panel::render_run_panel(self, cx)),
-                        ),
-                ),
-            )
+            detail
+                .child(
+                    div().flex_1().min_h_0().w_full().child(
+                        v_resizable("flow-vert-split")
+                            .child(resizable_panel().child(editor_split))
+                            .child(
+                                resizable_panel()
+                                    .size(px(210.0))
+                                    .size_range(px(120.0)..px(420.0))
+                                    .child(run_panel::render_run_panel(self, cx)),
+                            ),
+                    ),
+                )
+                .child(
+                    h_row()
+                        .flex_shrink_0()
+                        .justify_between()
+                        .px(px(14.0))
+                        .py(px(4.0))
+                        .bg(to_hsla(p.pane))
+                        .border_t_1()
+                        .border_color(to_hsla(p.line.composite_over(p.pane)))
+                        .text_size(px(10.5))
+                        .text_color(to_hsla(p.faint))
+                        .child(self.t(
+                            "持久化模式：HistoryOnly（写入执行历史，不改写工作区 Cookie 罐）",
+                            "Persistence: HistoryOnly (writes history; does not mutate workspace Cookie Jar)",
+                        )),
+                )
         } else {
             v_col().size_full().child(empty_state_with_actions(
                 UiIcon::Workflow,
@@ -380,7 +510,9 @@ impl Render for FlowsView {
                 Some(
                     btn_primary("flow-empty-new", self.t("新建流程", "New Flow"))
                         .icon(icon_xs(UiIcon::Plus))
-                        .on_click(cx.listener(|this, _, _, cx| this.create_flow(cx)))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_create_flow_modal(window, cx);
+                        }))
                         .into_any_element(),
                 ),
                 cx,

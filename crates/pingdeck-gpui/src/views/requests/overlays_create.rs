@@ -140,6 +140,66 @@ pub(super) fn render_new_item(
                 ))
                 .child(col_row),
         );
+        if let Some(cid_sel) = target_col.as_deref() {
+            let flds: Vec<_> = view
+                .folders
+                .iter()
+                .filter(|f| f.collection_id.as_str() == cid_sel)
+                .collect();
+            if !flds.is_empty() {
+                let mut f_row = h_row().gap(px(6.0)).flex_wrap().child(
+                    choice_chip(
+                        "new-fld-root",
+                        if zh { "集合根目录" } else { "Root" },
+                        target_fld.is_none(),
+                        cx,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(ActiveModal::NewItem {
+                            target_folder_id, ..
+                        }) = &mut this.active_modal
+                        {
+                            *target_folder_id = None;
+                        }
+                        cx.notify();
+                    })),
+                );
+                for f in flds {
+                    let fid = f.id.as_str().to_owned();
+                    let sel = target_fld.as_deref() == Some(fid.as_str());
+                    f_row = f_row.child(
+                        choice_chip(
+                            SharedString::from(format!("new-fld-{fid}")),
+                            f.name.clone(),
+                            sel,
+                            cx,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(ActiveModal::NewItem {
+                                target_folder_id, ..
+                            }) = &mut this.active_modal
+                            {
+                                *target_folder_id = Some(fid.clone());
+                            }
+                            cx.notify();
+                        })),
+                    );
+                }
+                body = body.child(
+                    v_col()
+                        .gap(px(6.0))
+                        .child(section_heading(
+                            if zh {
+                                "所属文件夹（可选）"
+                            } else {
+                                "Folder (optional)"
+                            },
+                            cx,
+                        ))
+                        .child(f_row),
+                );
+            }
+        }
     }
 
     let tc = target_col.clone();
@@ -300,7 +360,7 @@ pub(super) fn render_save_as(
         );
     }
 
-    let body = v_col()
+    let mut body = v_col()
         .gap(px(12.0))
         .child(
             v_col()
@@ -317,6 +377,62 @@ pub(super) fn render_save_as(
                 .child(section_heading(if zh { "保存位置" } else { "Save to" }, cx))
                 .child(col_row),
         );
+    if let Some(cid_sel) = target_col.as_deref() {
+        let flds: Vec<_> = view
+            .folders
+            .iter()
+            .filter(|f| f.collection_id.as_str() == cid_sel)
+            .collect();
+        if !flds.is_empty() {
+            let mut f_row = h_row().gap(px(6.0)).flex_wrap().child(
+                choice_chip(
+                    "saveas-fld-root",
+                    if zh { "根目录" } else { "Root" },
+                    target_fld.is_none(),
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(ActiveModal::SaveAs {
+                        target_folder_id, ..
+                    }) = &mut this.active_modal
+                    {
+                        *target_folder_id = None;
+                    }
+                    cx.notify();
+                })),
+            );
+            for f in flds {
+                let fid = f.id.as_str().to_owned();
+                let sel = target_fld.as_deref() == Some(fid.as_str());
+                f_row = f_row.child(
+                    choice_chip(
+                        SharedString::from(format!("saveas-fld-{fid}")),
+                        f.name.clone(),
+                        sel,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(ActiveModal::SaveAs {
+                            target_folder_id, ..
+                        }) = &mut this.active_modal
+                        {
+                            *target_folder_id = Some(fid.clone());
+                        }
+                        cx.notify();
+                    })),
+                );
+            }
+            body = body.child(
+                v_col()
+                    .gap(px(6.0))
+                    .child(section_heading(
+                        if zh { "目标文件夹" } else { "Folder" },
+                        cx,
+                    ))
+                    .child(f_row),
+            );
+        }
+    }
 
     let footer = h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
         btn_primary("saveas-ok", if zh { "保存" } else { "Save" }).on_click(cx.listener(
@@ -391,7 +507,7 @@ pub(super) fn render_move_request(
             })),
         );
     }
-    let body = v_col()
+    let mut body = v_col()
         .gap(px(8.0))
         .child(section_heading(
             if zh {
@@ -402,6 +518,59 @@ pub(super) fn render_move_request(
             cx,
         ))
         .child(row);
+    if let Some(cid_sel) = target_col.as_deref() {
+        let flds: Vec<_> = view
+            .folders
+            .iter()
+            .filter(|f| f.collection_id.as_str() == cid_sel)
+            .collect();
+        if !flds.is_empty() {
+            let mut f_row = h_row().gap(px(6.0)).flex_wrap().child(
+                choice_chip(
+                    "mv-fld-root",
+                    if zh { "根目录" } else { "Root" },
+                    target_fld.is_none(),
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(ActiveModal::MoveRequest {
+                        target_folder_id, ..
+                    }) = &mut this.active_modal
+                    {
+                        *target_folder_id = None;
+                    }
+                    cx.notify();
+                })),
+            );
+            for f in flds {
+                let fid = f.id.as_str().to_owned();
+                let sel = target_fld.as_deref() == Some(fid.as_str());
+                f_row = f_row.child(
+                    choice_chip(
+                        SharedString::from(format!("mv-fld-{fid}")),
+                        f.name.clone(),
+                        sel,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(ActiveModal::MoveRequest {
+                            target_folder_id, ..
+                        }) = &mut this.active_modal
+                        {
+                            *target_folder_id = Some(fid.clone());
+                        }
+                        cx.notify();
+                    })),
+                );
+            }
+            body = body
+                .child(section_heading(
+                    if zh { "目标文件夹" } else { "Folder" },
+                    cx,
+                ))
+                .child(f_row);
+        }
+    }
     let footer = h_row().gap(px(8.0)).child(cancel_btn(zh, cx)).child(
         btn_primary("mv-ok", if zh { "移动" } else { "Move" }).on_click(cx.listener(
             move |this, _, _, cx| {

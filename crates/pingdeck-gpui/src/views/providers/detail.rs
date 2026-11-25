@@ -421,7 +421,9 @@ fn render_overview_tab(
             view, prov, &prov_keys, zh, cx,
         ))
         .child(detail_side::render_health_card(view, prov, zh, cx))
-        .child(detail_side::render_recent_calls_card(view, zh, cx));
+        .child(detail_side::render_recent_calls_card(
+            view, &prov.id, zh, cx,
+        ));
 
     v_col().gap(px(12.0)).child(top_banners).child(
         h_row()

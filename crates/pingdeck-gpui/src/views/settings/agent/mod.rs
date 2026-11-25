@@ -201,20 +201,24 @@ impl AgentSettingsView {
         on_commit!(shell_timeout_input, commit_shell_timeout);
         on_commit!(searxng_url_input, commit_searxng_url);
 
-        subs.push(
-            cx.subscribe(&blocked_cmd_input, |this, _, ev: &InputEvent, cx| {
+        subs.push(cx.subscribe_in(
+            &blocked_cmd_input,
+            window,
+            |this, _, ev: &InputEvent, window, cx| {
                 if matches!(ev, InputEvent::PressEnter { .. }) {
-                    this.add_blocked_command(cx);
+                    this.add_blocked_command(window, cx);
                 }
-            }),
-        );
-        subs.push(
-            cx.subscribe(&env_pass_input, |this, _, ev: &InputEvent, cx| {
+            },
+        ));
+        subs.push(cx.subscribe_in(
+            &env_pass_input,
+            window,
+            |this, _, ev: &InputEvent, window, cx| {
                 if matches!(ev, InputEvent::PressEnter { .. }) {
-                    this.add_shell_env(cx);
+                    this.add_shell_env(window, cx);
                 }
-            }),
-        );
+            },
+        ));
         subs.push(
             cx.subscribe(&instructions_input, |this, state, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change) {

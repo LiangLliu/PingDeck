@@ -1210,4 +1210,401 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn usage_workbench_presets_dims_and_calls_filter(cx: &mut TestAppContext) {
+        use crate::views::usage::state::{
+            BreakdownDim, CallsQuickFilter, ChartMetric, RangePreset, UsageModal, UsageViewTab,
+        };
+        use crate::views::usage::{UsageHandoff, UsageView};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(UsageView::new);
+        visual.run_until_parked();
+
+        // 1. Cycle all 9 time-range presets, 5 chart metrics, and 6 breakdown dimensions.
+        visual.update(|window, cx| {
+            for preset in RangePreset::ALL {
+                view.update(cx, |v, cx| {
+                    v.range = preset;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+            for metric in ChartMetric::ALL {
+                view.update(cx, |v, cx| {
+                    v.chart_metric = metric;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+            for dim in BreakdownDim::ALL {
+                view.update(cx, |v, cx| {
+                    v.breakdown_dim = dim;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+        });
+
+        // 2. Switch to Calls tab, cycle quick filters & live search, open/dismiss ClearLogs modal, emit handoff.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.active_tab = UsageViewTab::Calls;
+                for qf in CallsQuickFilter::ALL {
+                    v.calls_quick = qf;
+                    cx.notify();
+                }
+                v.calls_search_input.update(cx, |i, cx| {
+                    i.set_value("is:failed model:deepseek", window, cx);
+                });
+                v.active_modal = Some(UsageModal::ClearLogs { count: 3 });
+                cx.notify();
+            });
+            window.refresh();
+            assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+            assert!(view.read(cx).active_modal.is_none());
+
+            view.update(cx, |v, cx| {
+                v.pending_handoff
+                    .set(Some(UsageHandoff::OpenSettings(SettingsSection::Usage)));
+                cx.notify();
+            });
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(UsageHandoff::OpenSettings(SettingsSection::Usage))
+            ));
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn chat_workbench_modes_gates_and_modals(cx: &mut TestAppContext) {
+        use crate::views::chat::{ChatHandoff, ChatModal, ChatSidebarMode, ChatView, DetailsTab};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            for mode in [
+                ChatSidebarMode::Time,
+                ChatSidebarMode::Board,
+                ChatSidebarMode::Trash,
+            ] {
+                view.update(cx, |v, cx| {
+                    v.sidebar_mode = mode;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+
+            view.update(cx, |v, cx| {
+                v.details_open = true;
+                v.plan_mode = true;
+                cx.notify();
+            });
+            for tab in [
+                DetailsTab::Progress,
+                DetailsTab::Changes,
+                DetailsTab::Context,
+                DetailsTab::Options,
+            ] {
+                view.update(cx, |v, cx| {
+                    v.details_tab = tab;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+
+            // Exercise FullAccessConfirm, DiffPreview, and ToolOutput modals + Esc dismissal.
+            for modal in [
+                ChatModal::FullAccessConfirm {
+                    acknowledged: false,
+                },
+                ChatModal::DiffPreview {
+                    path: "src/main.rs".into(),
+                    diff: "+fn ok() {}\n".into(),
+                    binary: false,
+                },
+                ChatModal::ToolOutput {
+                    call_id: "call_1".into(),
+                    name: "read_file".into(),
+                    content: "line 1\nline 2".into(),
+                    has_more: false,
+                    next_offset: 0,
+                },
+            ] {
+                view.update(cx, |v, cx| {
+                    v.active_modal = Some(modal);
+                    cx.notify();
+                });
+                window.refresh();
+                assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+                assert!(view.read(cx).active_modal.is_none());
+            }
+
+            view.update(cx, |v, cx| {
+                v.pending_handoff.set(Some(ChatHandoff::OpenProviders));
+                cx.notify();
+            });
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(ChatHandoff::OpenProviders)
+            ));
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn providers_gateway_bench_and_handoff(cx: &mut TestAppContext) {
+        use crate::views::providers::{GatewayTab, LeftSelection, ProvidersHandoff, ProvidersView};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Ocean, true, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ProvidersView::new);
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            // 1. Cycle all 4 Local Gateway cockpit tabs.
+            for tab in [
+                GatewayTab::Overview,
+                GatewayTab::Clients,
+                GatewayTab::Access,
+                GatewayTab::Rules,
+            ] {
+                view.update(cx, |v, cx| {
+                    v.selection = LeftSelection::Gateway;
+                    v.gateway_tab = tab;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+
+            // 2. Mount and render Model Test Bench view.
+            view.update(cx, |v, cx| {
+                v.open_bench(None, Vec::new(), window, cx);
+            });
+            assert_eq!(view.read(cx).selection, LeftSelection::Bench);
+            assert!(view.read(cx).bench_view.is_some());
+            window.refresh();
+
+            // 3. Exercise inline modal dismissal & Usage handoff emission.
+            view.update(cx, |v, cx| {
+                v.confirm_lan_open = true;
+                v.adding_key_open = true;
+                cx.notify();
+            });
+            assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+            assert!(!view.read(cx).confirm_lan_open && !view.read(cx).adding_key_open);
+
+            view.update(cx, |v, cx| {
+                v.pending_handoff
+                    .set(Some(ProvidersHandoff::OpenUsageProvider(None)));
+                cx.notify();
+            });
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(ProvidersHandoff::OpenUsageProvider(None))
+            ));
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn shell_palette_dynamic_entities_handoffs_and_utility_tabs(cx: &mut TestAppContext) {
+        use pingdeck_desktop::core::app::factory_service::{flow_new, mock_server_new};
+        use pingdeck_desktop::core::app::{
+            SaveRequestInput, flow_save_impl, mock_server_save_impl, request_save_impl,
+        };
+        use pingdeck_desktop::core::model::ai_request::RequestMode;
+        use pingdeck_desktop::core::model::{
+            AuthConfig, HttpMethod, NetworkOptions, ProtocolKind, RequestBody,
+        };
+        use pingdeck_desktop::state::{PaletteAction, ToastKind};
+
+        use crate::views::utility::console::ConsoleMode;
+        use crate::views::utility::import_export::IoTab;
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        workspace_create_impl(rt.state(), "ws-shell-e2e".into(), "Shell E2E WS".into())
+            .expect("create workspace");
+
+        let saved_req = request_save_impl(
+            rt.state(),
+            SaveRequestInput {
+                id: "req-pal-1".into(),
+                workspace_id: "ws-shell-e2e".into(),
+                collection_id: None,
+                folder_id: None,
+                name: "Get Invoice".into(),
+                protocol: ProtocolKind::HttpRest,
+                method: HttpMethod::Get,
+                url: "https://api.example.com/invoices".into(),
+                query_params: Vec::new(),
+                path_variables: Vec::new(),
+                headers: Vec::new(),
+                auth: AuthConfig::None,
+                body: RequestBody::None,
+                network_options: NetworkOptions::default(),
+                assertions: Vec::new(),
+                description: String::new(),
+                pre_request_script: String::new(),
+                test_script: String::new(),
+                position: 0,
+                mode: RequestMode::Http,
+                ai: None,
+                examples: None,
+            },
+        )
+        .expect("seed request");
+        let mock_srv = mock_server_save_impl(
+            rt.state(),
+            mock_server_new(rt.state(), "ws-shell-e2e").expect("new mock"),
+        )
+        .expect("seed mock");
+        let flow = flow_save_impl(
+            rt.state(),
+            flow_new(rt.state(), "ws-shell-e2e").expect("new flow"),
+        )
+        .expect("seed flow");
+
+        let (host, rx) = GpuiHostWindow::pair();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let mut shell_slot = None;
+        let (_root, visual) = cx.add_window_view(|window, cx| {
+            use gpui_kit::AppContext as _;
+            let s = cx.new(|cx| AppShell::new(rx, host, window, cx));
+            shell_slot = Some(s.clone());
+            crate::ui::Root::new(s, window, cx)
+        });
+        let shell = shell_slot.expect("mounted AppShell");
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            // 1. Verify dynamic Command Palette indexing & keyboard selection navigation.
+            shell.update(cx, |s, cx| {
+                s.switch_workspace("ws-shell-e2e".into(), cx);
+                let dyn_items = s.collect_palette_dynamic_items(cx);
+                assert!(
+                    dyn_items
+                        .requests
+                        .iter()
+                        .any(|(id, _, _)| id == saved_req.id.as_str())
+                );
+                assert!(dyn_items.mocks.iter().any(|(id, _, _)| id == &mock_srv.id));
+                assert!(dyn_items.flows.iter().any(|(id, _)| id == &flow.id));
+                s.toggle_palette(window, cx);
+            });
+            assert!(shell.read(cx).state.palette_open);
+            let pal = shell.read(cx).palette_view.clone();
+            pal.update(cx, |p, cx| {
+                p.move_selection(1, cx);
+                p.move_selection(-1, cx);
+                p.trigger_selected(cx);
+            });
+        });
+        // Flush observer notification -> AppShell::render() to consume palette action & close overlay.
+        visual.run_until_parked();
+        visual.update(|window, cx| {
+            assert!(!shell.read(cx).state.palette_open);
+
+            // 2. Execute dynamic entity & wizard palette actions cleanly.
+            for (id, action, expected_mod) in [
+                (
+                    "req:1",
+                    PaletteAction::OpenRequestById(saved_req.id.as_str().to_owned()),
+                    NavModule::Requests,
+                ),
+                (
+                    "mock:1",
+                    PaletteAction::OpenMockServer(mock_srv.id.clone()),
+                    NavModule::Mock,
+                ),
+                (
+                    "flow:1",
+                    PaletteAction::OpenFlow(flow.id.clone()),
+                    NavModule::Flows,
+                ),
+                ("wiz:gw", PaletteAction::OpenGateway, NavModule::Providers),
+            ] {
+                shell.update(cx, |s, cx| {
+                    s.execute_palette_action(id.into(), action, window, cx);
+                });
+                assert_eq!(shell.read(cx).state.active_module, expected_mod);
+                window.refresh();
+            }
+
+            // 3. Exercise 3-tab Workspace Import/Export & 2-tab Diagnostic Console inside UtilityPanel.
+            shell.update(cx, |s, cx| {
+                s.open_utility(UtilityDialog::ImportExport, window, cx);
+            });
+            let util = shell.read(cx).utility_view.clone();
+            for tab in [IoTab::Import, IoTab::SanitizedExport, IoTab::SecretsExport] {
+                util.update(cx, |u, cx| {
+                    u.io_tab = tab;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+            shell.update(cx, |s, cx| {
+                s.open_utility(UtilityDialog::Console, window, cx);
+            });
+            for mode in [ConsoleMode::Diagnostics, ConsoleMode::GpuBench] {
+                util.update(cx, |u, cx| {
+                    u.console_mode = mode;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+
+            // 4. Push auto-dismissing toast & verify sidebar collapse/expand rendering.
+            shell.update(cx, |s, cx| {
+                s.push_toast_auto(ToastKind::Success, "Saved", None, cx);
+                s.toggle_sidebar(cx);
+            });
+            assert_eq!(shell.read(cx).state.toasts.len(), 1);
+            window.refresh();
+            shell.update(cx, |s, cx| s.toggle_sidebar(cx));
+            window.refresh();
+        });
+
+        rt.shutdown_blocking();
+    }
 }

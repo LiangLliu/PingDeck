@@ -1,6 +1,9 @@
 //! Multi-tab document bar and Request Identity / HTTP-vs-AI Mode Strip.
 
-use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px,
+};
 use pingdeck_desktop::core::model::ai_request::RequestMode;
 
 use crate::ui::{
@@ -110,6 +113,12 @@ pub fn render_identity_strip(
     let is_ai = tab.is_ai();
     let is_dirty = tab.dirty;
     let is_saved = tab.saved_request_id.is_some();
+    let agent_touched = tab.draft.agent_touched_ms.is_some();
+    let col_id_for_bc = tab
+        .draft
+        .collection_id
+        .as_ref()
+        .map(|c| c.as_str().to_owned());
 
     let breadcrumb = {
         let mut parts = Vec::new();
@@ -256,6 +265,28 @@ pub fn render_identity_strip(
             m
         });
 
+    let bc_el: gpui_kit::AnyElement = if let Some(cid) = col_id_for_bc {
+        div()
+            .id("req-bc-col")
+            .text_size(px(11.0))
+            .text_color(to_hsla(p.faint))
+            .flex_shrink_0()
+            .cursor_pointer()
+            .hover(|s| s.text_color(to_hsla(p.accent_ink)))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_collection_settings_tab(cid.clone(), window, cx);
+            }))
+            .child(SharedString::from(breadcrumb))
+            .into_any_element()
+    } else {
+        div()
+            .text_size(px(11.0))
+            .text_color(to_hsla(p.faint))
+            .flex_shrink_0()
+            .child(SharedString::from(breadcrumb))
+            .into_any_element()
+    };
+
     toolbar_strip(cx)
         .justify_between()
         .py(px(6.0))
@@ -264,14 +295,11 @@ pub fn render_identity_strip(
                 .flex_1()
                 .min_w_0()
                 .gap(px(6.0))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(to_hsla(p.faint))
-                        .flex_shrink_0()
-                        .child(SharedString::from(breadcrumb)),
-                )
+                .child(bc_el)
                 .child(div().w(px(220.0)).child(text_input(&view.name_input)))
+                .children(
+                    agent_touched.then(|| badge(if zh { "AI 改" } else { "AI" }, Tone::Accent, cx)),
+                )
                 .child(if is_dirty {
                     badge(if zh { "未保存" } else { "Unsaved" }, Tone::Warning, cx)
                 } else {

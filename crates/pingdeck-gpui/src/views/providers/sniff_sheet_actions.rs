@@ -11,7 +11,7 @@ use pingdeck_desktop::core::app::{
     llm_provider_create_unverified_impl, llm_provider_duplicate_check_impl,
     llm_provider_sniff_impl, llm_url_normalize_impl,
 };
-use pingdeck_desktop::core::llm::sniff::{SniffEvent, SniffInput};
+use pingdeck_desktop::core::llm::sniff::{SniffEvent, SniffInput, SniffWarning};
 use pingdeck_desktop::core::llm::wire::Protocol;
 use pingdeck_desktop::streams::ChannelSink;
 
@@ -221,8 +221,17 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
+                            p.status_msg = Some((
+                                Tone::Success,
+                                if zh {
+                                    format!("已添加服务商「{}」", saved.name)
+                                } else {
+                                    format!("Added provider {}", saved.name)
+                                },
+                            ));
                             p.reload_all(cx);
                         });
+                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -272,8 +281,17 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
+                            p.status_msg = Some((
+                                Tone::Success,
+                                if zh {
+                                    format!("已添加服务商「{}」", saved.name)
+                                } else {
+                                    format!("Added provider {}", saved.name)
+                                },
+                            ));
                             p.reload_all(cx);
                         });
+                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -364,8 +382,17 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
+                            p.status_msg = Some((
+                                Tone::Success,
+                                if zh {
+                                    format!("已添加服务商「{}」", saved.name)
+                                } else {
+                                    format!("Added provider {}", saved.name)
+                                },
+                            ));
                             p.reload_all(cx);
                         });
+                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -400,6 +427,7 @@ impl SniffProviderSheet {
                             p.selection = super::LeftSelection::Provider(k.provider_id);
                             p.reload_all(cx);
                         });
+                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -407,5 +435,116 @@ impl SniffProviderSheet {
             },
         );
         self._tasks.push(task);
+    }
+}
+
+pub(super) fn format_sniff_warning(w: &SniffWarning, zh: bool) -> String {
+    match w {
+        SniffWarning::UserinfoIgnored => if zh {
+            "已忽略 URL 中的用户信息"
+        } else {
+            "Ignored userinfo in URL"
+        }
+        .into(),
+        SniffWarning::KeyInUrlIgnored => if zh {
+            "已忽略 URL 查询参数中的密钥"
+        } else {
+            "Ignored API key in URL query"
+        }
+        .into(),
+        SniffWarning::DashboardPathIgnored => if zh {
+            "已截断控制台页面路径"
+        } else {
+            "Trimmed dashboard path"
+        }
+        .into(),
+        SniffWarning::PlainHttpPublic => if zh {
+            "公网地址使用明文 HTTP"
+        } else {
+            "Plain HTTP on public host"
+        }
+        .into(),
+        SniffWarning::RedirectIgnored { location_host } => match location_host {
+            Some(h) if zh => format!("忽略了指向 {h} 的重定向"),
+            Some(h) => format!("Ignored redirect to {h}"),
+            None if zh => "忽略了 3xx 重定向".into(),
+            None => "Ignored 3xx redirect".into(),
+        },
+        SniffWarning::BodyTruncated => if zh {
+            "响应体超限已截断"
+        } else {
+            "Response body truncated"
+        }
+        .into(),
+        SniffWarning::ListTruncated => if zh {
+            "模型列表超过分页上限（前 5 页）"
+        } else {
+            "Model list truncated (first 5 pages)"
+        }
+        .into(),
+        SniffWarning::RateLimited => if zh {
+            "探测触发限流"
+        } else {
+            "Rate limited during scan"
+        }
+        .into(),
+        SniffWarning::LookalikeHost => if zh {
+            "疑似仿冒域名，未发送密钥"
+        } else {
+            "Lookalike host — key not sent"
+        }
+        .into(),
+        SniffWarning::VendorKeyOnOtherHost => if zh {
+            "密钥前缀与其他厂商不匹配，未发送密钥"
+        } else {
+            "Vendor key prefix mismatch — key not sent"
+        }
+        .into(),
+        SniffWarning::PresetRouteMismatch { protocol } => {
+            if zh {
+                format!("预设路由 {:?} 与主机响应不符", protocol)
+            } else {
+                format!("Preset route {:?} differs from host", protocol)
+            }
+        }
+        SniffWarning::RegionMismatch {
+            suggested_region_id,
+        } => {
+            if zh {
+                format!("密钥可能属于区域 {suggested_region_id}")
+            } else {
+                format!("Key may belong to region {suggested_region_id}")
+            }
+        }
+        SniffWarning::HtmlPage => if zh {
+            "目标返回网页而非 API 响应"
+        } else {
+            "Host returned HTML page instead of API"
+        }
+        .into(),
+        SniffWarning::ChallengePage => if zh {
+            "目标触发人机验证拦截页"
+        } else {
+            "Host returned bot-challenge page"
+        }
+        .into(),
+        SniffWarning::ScanTimeout => if zh {
+            "扫描超时，以下为部分结果"
+        } else {
+            "Scan timed out; partial results shown"
+        }
+        .into(),
+        SniffWarning::ScanCancelled => if zh {
+            "已取消扫描，保留已探测结果"
+        } else {
+            "Scan cancelled; partial results kept"
+        }
+        .into(),
+        SniffWarning::BrandThirdParty => if zh {
+            "厂商识别基于第三方特征"
+        } else {
+            "Brand inferred from third-party signals"
+        }
+        .into(),
     }
 }

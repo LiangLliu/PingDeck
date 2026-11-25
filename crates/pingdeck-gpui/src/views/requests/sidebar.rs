@@ -92,6 +92,7 @@ pub fn render_sidebar(
         let collapsed = view.collapsed_nodes.contains(&col_key) && query.is_empty();
         let col_id_toggle = col_key.clone();
         let col_id_run = col.id.clone();
+        let col_id_settings = col.id.clone();
         let col_id_menu = col.id.clone();
         let col_name_menu = col.name.clone();
 
@@ -162,6 +163,26 @@ pub fn render_sidebar(
                                     this.open_collection_runner_tab(
                                         col_id_run.clone(),
                                         None,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
+                        )
+                        .child(
+                            btn_icon(
+                                SharedString::from(format!("col-cfg-{}", col.id)),
+                                UiIcon::Settings,
+                            )
+                            .tooltip(if zh {
+                                "集合设置"
+                            } else {
+                                "Collection settings"
+                            })
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.open_collection_settings_tab(
+                                        col_id_settings.clone(),
                                         window,
                                         cx,
                                     );

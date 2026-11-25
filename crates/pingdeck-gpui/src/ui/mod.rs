@@ -34,7 +34,7 @@ pub use gpui_kit::component::{
     slider::{Slider, SliderEvent, SliderState, SliderValue},
     spinner::Spinner,
     tab::{Tab, TabBar},
-    table::{Column, ColumnSort, TableDelegate, TableState},
+    table::{Column, ColumnSort, TableDelegate, TableEvent, TableState},
 };
 
 pub use assets::{APP_ICON_PNG_BYTES, PingDeckAssets};

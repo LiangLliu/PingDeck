@@ -96,8 +96,62 @@ impl CatalogDrawer {
 
         match &self.kind {
             DrawerKind::ModelDetail { row, .. } => {
+                if let Some((ovr_pid, ovr_pname, ovr_mid)) = self.editing_provider_override.clone()
+                {
+                    let pricing = match self.build_pricing(&ovr_pid, &ovr_mid, cx) {
+                        Ok(p) => p,
+                        Err(msg) => {
+                            self.error_msg = Some(msg);
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    let key_reload = row.model_key.clone();
+                    self.busy = true;
+                    cx.notify();
+                    let task = spawn_blocking_into(
+                        cx,
+                        move |state| llm_model_pricing_save_impl(state, pricing),
+                        move |this, res, cx| {
+                            this.busy = false;
+                            match res {
+                                Ok(_) => {
+                                    this.editing_provider_override = None;
+                                    this.load_detail(key_reload, cx);
+                                    let msg = if zh {
+                                        format!("已保存「{ovr_pname}」的专属覆盖价")
+                                    } else {
+                                        format!("Saved override for {ovr_pname}")
+                                    };
+                                    this.parent.update(cx, |p, cx| {
+                                        p.set_flash(Tone::Success, msg, cx);
+                                        p.reload_all(cx);
+                                    });
+                                }
+                                Err(err) => this.error_msg = Some(err.message().to_owned()),
+                            }
+                            cx.notify();
+                        },
+                    );
+                    self._tasks.push(task);
+                    return;
+                }
                 let model_id = row.model_key.clone();
                 let name = row.name.clone();
+                let user_update = if row.source
+                    == pingdeck_desktop::core::model::model_catalog::CatalogSource::User
+                {
+                    match self.build_user_model_input(cx) {
+                        Ok(u) => Some(u),
+                        Err(msg) => {
+                            self.error_msg = Some(msg);
+                            cx.notify();
+                            return;
+                        }
+                    }
+                } else {
+                    None
+                };
                 let pricing = match self.build_pricing("", &model_id, cx) {
                     Ok(p) => p,
                     Err(msg) => {
@@ -110,7 +164,12 @@ impl CatalogDrawer {
                 cx.notify();
                 let task = spawn_blocking_into(
                     cx,
-                    move |state| llm_model_pricing_save_impl(state, pricing),
+                    move |state| {
+                        if let Some(u) = user_update {
+                            llm_model_catalog_user_save_impl(state, u)?;
+                        }
+                        llm_model_pricing_save_impl(state, pricing)
+                    },
                     move |this, res, cx| {
                         this.busy = false;
                         match res {

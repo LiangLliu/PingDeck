@@ -136,16 +136,16 @@ impl SettingsInputs {
         let ui_font_slider = cx.new(|_| {
             SliderState::new()
                 .min(10.0)
-                .max(20.0)
+                .max(26.0)
                 .step(1.0)
-                .default_value(f32::from(settings.appearance.ui_font_size.clamp(10, 20)))
+                .default_value(f32::from(settings.appearance.ui_font_size.clamp(10, 26)))
         });
         let mono_font_slider = cx.new(|_| {
             SliderState::new()
                 .min(10.0)
-                .max(20.0)
+                .max(24.0)
                 .step(1.0)
-                .default_value(f32::from(settings.appearance.mono_font_size.clamp(10, 20)))
+                .default_value(f32::from(settings.appearance.mono_font_size.clamp(10, 24)))
         });
 
         let net = &settings.network;
@@ -274,10 +274,10 @@ impl SettingsInputs {
         window: &mut Window,
         cx: &mut Context<SettingsView>,
     ) {
-        let ui_val = f32::from(settings.appearance.ui_font_size.clamp(10, 20));
+        let ui_val = f32::from(settings.appearance.ui_font_size.clamp(10, 26));
         self.ui_font_slider
             .update(cx, |s, cx| s.set_value(ui_val, window, cx));
-        let mono_val = f32::from(settings.appearance.mono_font_size.clamp(10, 20));
+        let mono_val = f32::from(settings.appearance.mono_font_size.clamp(10, 24));
         self.mono_font_slider
             .update(cx, |s, cx| s.set_value(mono_val, window, cx));
 

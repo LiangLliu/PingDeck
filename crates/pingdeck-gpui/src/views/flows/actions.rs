@@ -109,7 +109,18 @@ impl FlowsView {
         self._tasks.push(task);
     }
 
+    pub fn open_create_flow_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_flow_name_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        self.active_modal = Some(FlowModal::CreateFlow);
+        cx.notify();
+    }
+
     pub fn create_flow(&mut self, cx: &mut Context<Self>) {
+        self.create_flow_named(None, cx);
+    }
+
+    pub fn create_flow_named(&mut self, custom_name: Option<String>, cx: &mut Context<Self>) {
         let Some(ws_id) = self.workspace_id.clone() else {
             return;
         };
@@ -118,6 +129,9 @@ impl FlowsView {
             cx,
             move |state| {
                 let mut flow = flow_new(state, &ws_id)?;
+                if let Some(nm) = custom_name {
+                    flow.name = nm;
+                }
                 let mut first = flow_step_new(&flow);
                 first.method_override = Some(HttpMethod::Get);
                 first.url_override = Some("https://httpbin.org/get".to_owned());
@@ -252,6 +266,20 @@ impl FlowsView {
         cx.notify();
     }
 
+    pub fn relink_selected_step_request(&mut self, req: &Request, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        if let Some(step) = self.selected_step_mut() {
+            step.request_id = req.id.as_str().to_owned();
+            if step.name.trim().is_empty() || step.name.starts_with("Step ") {
+                step.name = req.name.clone();
+            }
+            self.dirty = true;
+            self.pending_sync = true;
+        }
+        self.active_modal = None;
+        cx.notify();
+    }
+
     pub fn add_saved_request_step(&mut self, req: &Request, cx: &mut Context<Self>) {
         self.snapshot_inputs(cx);
         let Some(flow) = self.draft.as_mut() else {
@@ -349,22 +377,52 @@ impl FlowsView {
             0 => Assertion::StatusEquals {
                 value: val_str.parse::<u16>().unwrap_or(200),
             },
-            1 => Assertion::HeaderExists {
+            1 => {
+                let vals: Vec<u16> = val_str
+                    .split(',')
+                    .filter_map(|s| s.trim().parse::<u16>().ok())
+                    .collect();
+                Assertion::StatusIn {
+                    values: if vals.is_empty() {
+                        vec![200, 201]
+                    } else {
+                        vals
+                    },
+                }
+            }
+            2 => Assertion::HeaderExists {
                 key: if path_or_key.is_empty() {
                     "content-type".into()
                 } else {
                     path_or_key
                 },
             },
-            2 => Assertion::JsonPathExists {
+            3 => Assertion::HeaderEquals {
+                key: if path_or_key.is_empty() {
+                    "content-type".into()
+                } else {
+                    path_or_key
+                },
+                value: val_str,
+            },
+            4 => Assertion::JsonPathExists {
                 path: if path_or_key.is_empty() {
                     "$.id".into()
                 } else {
                     path_or_key
                 },
             },
-            3 => Assertion::BodyContains { value: val_str },
-            4 => Assertion::ResponseTimeLessThanMs {
+            5 => Assertion::JsonPathEquals {
+                path: if path_or_key.is_empty() {
+                    "$.ok".into()
+                } else {
+                    path_or_key
+                },
+                value: serde_json::from_str::<serde_json::Value>(&val_str)
+                    .unwrap_or(serde_json::Value::String(val_str)),
+            },
+            6 => Assertion::BodyContains { value: val_str },
+            7 => Assertion::ResponseTimeLessThanMs {
                 value: val_str.parse::<u64>().unwrap_or(1000),
             },
             _ => match assertion_new("StatusEquals") {

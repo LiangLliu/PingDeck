@@ -8,13 +8,15 @@ use pingdeck_desktop::core::app::factory_service::mock_crud_endpoints;
 use pingdeck_desktop::core::model::items::{MockResponseMode, MockRouteType};
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary, card,
-    checkbox, choice_chip, data_row, empty_inline, empty_state, h_row, icon_xs, list_row,
-    meta_pill, method_badge, palette, section_header, table_header, text_input, to_hsla, v_col,
+    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary, btn_secondary,
+    card, checkbox, choice_chip, data_row, empty_inline, empty_state, h_row, icon_xs, list_row,
+    meta_pill, method_badge, palette, search_input, section_header, table_header, text_input,
+    to_hsla, v_col,
 };
 
 use super::state::MockView;
 use super::tab_route_detail::render_response_branches;
+use super::tab_route_strip::{render_live_traffic_strip, render_try_it_card};
 
 const HTTP_METHODS: [&str; 8] = [
     "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ANY",
@@ -42,10 +44,31 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
     };
 
     // Left route list column
+    let route_q = view
+        .route_search_input
+        .read(cx)
+        .value()
+        .trim()
+        .to_lowercase();
+    let enabled_cnt = srv.routes.iter().filter(|r| r.enabled).count();
+    let filtered_routes: Vec<_> = srv
+        .routes
+        .iter()
+        .filter(|r| {
+            route_q.is_empty()
+                || r.path.to_lowercase().contains(&route_q)
+                || r.method.to_lowercase().contains(&route_q)
+                || r.description.to_lowercase().contains(&route_q)
+        })
+        .collect();
     let mut route_list = v_col().w_full().p(px(8.0)).gap(px(4.0));
-    if srv.routes.is_empty() {
+    if filtered_routes.is_empty() {
         route_list = route_list.child(empty_inline(
-            view.t("暂无路由规则", "No routes yet"),
+            if srv.routes.is_empty() {
+                view.t("暂无路由规则", "No routes yet")
+            } else {
+                view.t("没有匹配的路由", "No matching routes")
+            },
             Some(SharedString::from(view.t(
                 "添加 HTTP 路由或 CRUD 数据路由开始模拟接口。",
                 "Add an HTTP or CRUD route to start mocking endpoints.",
@@ -54,7 +77,7 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
             cx,
         ));
     } else {
-        for route in &srv.routes {
+        for route in filtered_routes {
             let rid = route.id.clone();
             let rid_toggle = route.id.clone();
             let rid_dup = route.id.clone();
@@ -201,15 +224,43 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
         )
         .child(
             div()
+                .w_full()
+                .px(px(8.0))
+                .py(px(6.0))
+                .border_b_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(search_input(&view.route_search_input, cx)),
+        )
+        .child(
+            div()
                 .id("mock-routes-list-scroll")
                 .flex_1()
                 .min_h_0()
                 .overflow_y_scrollbar()
                 .child(route_list),
+        )
+        .child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .px(px(10.0))
+                .py(px(6.0))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.muted))
+                        .child(if zh {
+                            format!("{enabled_cnt}/{} 启用 · 127.0.0.1", srv.routes.len())
+                        } else {
+                            format!("{enabled_cnt}/{} enabled · 127.0.0.1", srv.routes.len())
+                        }),
+                ),
         );
 
-    // Right route editor column
-    let right_col = if let Some(route) = view.selected_route() {
+    // Right route editor column + docked Live Traffic Strip
+    let right_main = if let Some(route) = view.selected_route() {
         render_route_editor(view, srv, route, cx)
     } else {
         empty_state(
@@ -224,11 +275,20 @@ pub fn render_routes_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElem
         .into_any_element()
     };
 
+    let mut right_pane = v_col()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .child(div().flex_1().min_h_0().w_full().child(right_main));
+    if !view.logs.is_empty() {
+        right_pane = right_pane.child(render_live_traffic_strip(view, srv, cx));
+    }
+
     h_row()
         .size_full()
         .min_h_0()
         .child(left_col)
-        .child(div().flex_1().min_w_0().h_full().child(right_col))
+        .child(right_pane)
         .into_any_element()
 }
 
@@ -242,6 +302,7 @@ fn render_route_editor(
     let zh = view.is_zh();
     let is_crud = route.route_type == MockRouteType::Crud;
     let route_id_test = route.id.clone();
+    let route_id_try = route.id.clone();
 
     let mut content = v_col().w_full().p(px(16.0)).gap(px(14.0));
 
@@ -253,18 +314,40 @@ fn render_route_editor(
             view.t("HTTP 路由定义", "HTTP Route Definition")
         },
         Some(
-            btn_secondary(
-                "mock-test-route-btn",
-                view.t("在请求中测试", "Test in Requests"),
-            )
-            .icon(icon_xs(UiIcon::Send))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.test_route_in_requests(&route_id_test, cx);
-            }))
-            .into_any_element(),
+            h_row()
+                .gap(px(6.0))
+                .child(
+                    btn_primary(
+                        "mock-try-route-btn",
+                        if view.try_it_busy {
+                            view.t("请求中…", "Trying…")
+                        } else {
+                            view.t("试一下", "Try It")
+                        },
+                    )
+                    .icon(icon_xs(UiIcon::Play))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.try_route_inline(&route_id_try, cx);
+                    })),
+                )
+                .child(
+                    btn_secondary(
+                        "mock-test-route-btn",
+                        view.t("在请求中测试", "Open in Requests"),
+                    )
+                    .icon(icon_xs(UiIcon::Send))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.test_route_in_requests(&route_id_test, cx);
+                    })),
+                )
+                .into_any_element(),
         ),
         cx,
     ));
+
+    if let Some((code, ms, url, body)) = &view.try_it_result {
+        content = content.child(render_try_it_card(view, *code, *ms, url, body, cx));
+    }
 
     if !is_crud {
         let mut method_row = h_row().gap(px(4.0)).flex_wrap();

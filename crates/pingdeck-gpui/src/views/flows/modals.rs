@@ -28,6 +28,44 @@ pub fn render_modal(
     };
 
     let el = match modal {
+        FlowModal::CreateFlow => {
+            let body = v_col()
+                .w_full()
+                .gap(px(8.0))
+                .child(section_header(view.t("流程名称", "Flow Name"), None, cx))
+                .child(text_input(&view.new_flow_name_input))
+                .into_any_element();
+            let footer = h_row()
+                .gap(px(8.0))
+                .child(
+                    btn_secondary("flow-new-cancel", view.t("取消", "Cancel")).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.active_modal = None;
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .child(
+                    btn_primary("flow-new-go", view.t("创建流程", "Create")).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            let name = this.new_flow_name_input.read(cx).value().trim().to_owned();
+                            this.active_modal = None;
+                            this.create_flow_named((!name.is_empty()).then_some(name), cx);
+                        },
+                    )),
+                )
+                .into_any_element();
+            modal_dialog(
+                "flow-create-modal",
+                view.t("新建流程", "New Flow"),
+                440.0,
+                body,
+                footer,
+                window,
+                cx,
+                on_close,
+            )
+        }
         FlowModal::DeleteFlow { id, name } => {
             let p = palette(cx);
             let body = div()
@@ -227,7 +265,8 @@ pub fn render_modal(
                 on_close,
             )
         }
-        FlowModal::AddSavedStep => {
+        FlowModal::AddSavedStep | FlowModal::PickStepRequest => {
+            let is_relink = matches!(modal, FlowModal::PickStepRequest);
             let p = palette(cx);
             let q = view
                 .req_picker_search
@@ -262,7 +301,11 @@ pub fn render_modal(
                             false,
                             cx,
                             cx.listener(move |this, _, _, cx| {
-                                this.add_saved_request_step(&req_clone, cx);
+                                if is_relink {
+                                    this.relink_selected_step_request(&req_clone, cx);
+                                } else {
+                                    this.add_saved_request_step(&req_clone, cx);
+                                }
                             }),
                         )
                         .child(method_badge(&method_s, cx))
@@ -308,7 +351,11 @@ pub fn render_modal(
                 .into_any_element();
             modal_dialog(
                 "flow-pick-req-modal",
-                view.t("从已保存请求添加步骤", "Add Step from Saved Request"),
+                if is_relink {
+                    view.t("为当前步骤关联已保存请求", "Link Step to Saved Request")
+                } else {
+                    view.t("从已保存请求添加步骤", "Add Step from Saved Request")
+                },
                 560.0,
                 body,
                 footer,

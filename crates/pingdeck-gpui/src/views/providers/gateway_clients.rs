@@ -1,7 +1,7 @@
 //! Gateway Clients tab: detected coding tools (inspect/connect/verify/restore),
 //! issued client tokens (create/rotate/policy/revoke/delete), and managed config backups.
 
-use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::app::VerifyOutcome;
 use pingdeck_desktop::core::client_config::ClientStatus;
 use pingdeck_desktop::services::clipboard;
@@ -272,6 +272,41 @@ pub fn render_clients_tab(
         tools_box = tools_box.child(card(cx).p(px(11.0)).child(tool_col));
     }
 
+    if !view.snippet_clients.is_empty() {
+        let mut sn_row = h_row().gap(px(6.0)).flex_wrap();
+        for sc in &view.snippet_clients {
+            let tool_kind = super::connect_sheet::ConnectToolKind::Snippet(sc.client);
+            sn_row = sn_row.child(
+                btn_secondary(
+                    SharedString::from(format!("snip-cl-{:?}", sc.client)),
+                    format!(
+                        "{}{}",
+                        tool_kind.label(zh),
+                        if sc.installed { " ✓" } else { "" }
+                    ),
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_connect_sheet_kind(tool_kind, window, cx);
+                })),
+            );
+        }
+        tools_box = tools_box.child(
+            card(cx).p(px(10.0)).child(
+                v_col()
+                    .gap(px(6.0))
+                    .child(section_heading(
+                        if zh {
+                            "手动片段客户端（Zed / Cursor / Cherry Studio / 环境变量）"
+                        } else {
+                            "Snippet Clients (Zed / Cursor / Cherry Studio / Env)"
+                        },
+                        cx,
+                    ))
+                    .child(sn_row),
+            ),
+        );
+    }
+
     root = root.child(tools_box);
 
     // 2. Issued Gateway Client Tokens table + inline create form.
@@ -457,17 +492,32 @@ pub fn render_clients_tab(
                                 ))
                             }))
                             .children(active.then(|| {
-                                btn_ghost(
-                                    SharedString::from(format!("cl-rev-{cid}")),
-                                    if zh { "吊销" } else { "Revoke" },
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
+                                let confirming =
+                                    view.confirm_revoke_client.as_deref() == Some(cid.as_str());
+                                if confirming {
+                                    btn_danger(
+                                        SharedString::from(format!("cl-rev-ok-{cid}")),
+                                        if zh { "确认吊销" } else { "Confirm revoke" },
+                                    )
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_revoke_client = None;
                                         this.revoke_gateway_client(cid_rev.clone(), zh, cx);
-                                    },
-                                ))
+                                    }))
+                                    .into_any_element()
+                                } else {
+                                    let cid_arm = cid.clone();
+                                    btn_ghost(
+                                        SharedString::from(format!("cl-rev-{cid}")),
+                                        if zh { "吊销" } else { "Revoke" },
+                                    )
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_revoke_client = Some(cid_arm.clone());
+                                        cx.notify();
+                                    }))
+                                    .into_any_element()
+                                }
                             }))
-                            .child(
+                            .children((!active).then(|| {
                                 btn_danger(
                                     SharedString::from(format!("cl-del-{cid}")),
                                     if zh { "删除" } else { "Delete" },
@@ -476,8 +526,8 @@ pub fn render_clients_tab(
                                     move |this, _, _, cx| {
                                         this.delete_gateway_client(cid_del.clone(), zh, cx);
                                     },
-                                )),
-                            ),
+                                ))
+                            })),
                     ),
             );
 

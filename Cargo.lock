@@ -6713,6 +6713,7 @@ name = "pingdeck-desktop"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "chrono",
  "notify-rust",
  "pingdeck-core",
  "rfd",

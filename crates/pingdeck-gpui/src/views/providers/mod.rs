@@ -13,7 +13,9 @@
 pub mod actions;
 pub mod actions_models;
 pub mod actions_provider;
+pub mod actions_rules;
 pub mod bench;
+pub mod bench_panels;
 pub mod bench_table;
 pub mod connect_sheet;
 pub mod connect_sheet_body;
@@ -37,6 +39,7 @@ pub mod sniff_sheet;
 pub mod sniff_sheet_actions;
 pub mod sniff_sheet_steps;
 
+use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap};
 
 use gpui_kit::{
@@ -138,6 +141,12 @@ pub enum ModelFilterKind {
     Removed,
 }
 
+#[derive(Debug, Clone)]
+pub enum ProvidersHandoff {
+    OpenUsageProvider(Option<String>),
+    OpenUsageCall(i64),
+}
+
 pub struct RuleEditorState {
     pub primary: ModelRef,
     pub chain: Vec<ModelRef>,
@@ -178,16 +187,24 @@ pub struct ProvidersView {
     pub new_key_secret_input: Entity<InputState>,
     pub new_key_group_input: Entity<InputState>,
     pub new_key_user_id_input: Entity<InputState>,
+    pub edit_key_name_input: Entity<InputState>,
+    pub edit_key_group_input: Entity<InputState>,
+    pub edit_key_notes_input: Entity<InputState>,
+    pub edit_key_secret_input: Entity<InputState>,
     pub new_model_id_input: Entity<InputState>,
     pub new_model_ctx_input: Entity<InputState>,
 
     pub editing_client_policy: Option<String>,
+    pub confirm_revoke_client: Option<String>,
+    pub confirm_lan_open: bool,
     pub revealed_client_token: Option<(String, String)>,
     pub client_verify_results: HashMap<ClientApp, VerifyResult>,
     pub rule_editor: Option<RuleEditorState>,
     pub route_preview: Option<RoutePreview>,
 
     pub adding_key_open: bool,
+    pub editing_key_id: Option<String>,
+    pub confirm_delete_key: Option<String>,
     pub revealed_provider_key: Option<(String, String)>,
     pub evidence_open: bool,
     pub refreshing_balance: bool,
@@ -201,6 +218,10 @@ pub struct ProvidersView {
     pub config_form: Option<Entity<detail_config::ProviderConfigForm>>,
     pub bench_view: Option<Entity<bench::BenchView>>,
     pub status_msg: Option<(Tone, String)>,
+    pub pending_handoff: Cell<Option<ProvidersHandoff>>,
+    pub(super) pending_gw_inputs_sync: Option<(String, String)>,
+    pub(super) llm_sub_id: Option<u64>,
+    pub(super) llm_stream_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
     pub(super) _tasks: Vec<Task<()>>,
 }
@@ -303,6 +324,38 @@ impl ProvidersView {
             cx,
         );
         let new_key_user_id_input = mk("New-Api-User (opt)", "", false, window, cx);
+        let edit_key_name_input = mk(
+            if zh { "密钥名称" } else { "Key name" },
+            "",
+            false,
+            window,
+            cx,
+        );
+        let edit_key_group_input = mk(
+            if zh { "分组名（可选）" } else { "Group" },
+            "",
+            false,
+            window,
+            cx,
+        );
+        let edit_key_notes_input = mk(
+            if zh { "备注（可选）" } else { "Notes" },
+            "",
+            false,
+            window,
+            cx,
+        );
+        let edit_key_secret_input = mk(
+            if zh {
+                "替换密钥（留空保持不变）"
+            } else {
+                "New secret (empty = keep)"
+            },
+            "",
+            true,
+            window,
+            cx,
+        );
         let new_model_id_input = mk(
             if zh {
                 "输入模型 ID（如 gpt-5-mini）"
@@ -369,14 +422,22 @@ impl ProvidersView {
             new_key_secret_input,
             new_key_group_input,
             new_key_user_id_input,
+            edit_key_name_input,
+            edit_key_group_input,
+            edit_key_notes_input,
+            edit_key_secret_input,
             new_model_id_input,
             new_model_ctx_input,
             editing_client_policy: None,
+            confirm_revoke_client: None,
+            confirm_lan_open: false,
             revealed_client_token: None,
             client_verify_results: HashMap::new(),
             rule_editor: None,
             route_preview: None,
             adding_key_open: false,
+            editing_key_id: None,
+            confirm_delete_key: None,
             revealed_provider_key: None,
             evidence_open: false,
             refreshing_balance: false,
@@ -389,16 +450,69 @@ impl ProvidersView {
             config_form: None,
             bench_view: None,
             status_msg: None,
+            pending_handoff: Cell::new(None),
+            pending_gw_inputs_sync: None,
+            llm_sub_id: None,
+            llm_stream_task: None,
             _subscriptions: vec![sub_s, sub_m],
             _tasks: Vec::new(),
         };
+        view.ensure_llm_subscribed(cx);
         view.reload_all(cx);
         view
+    }
+
+    #[must_use]
+    pub fn take_pending_handoff(&self) -> Option<ProvidersHandoff> {
+        self.pending_handoff.take()
+    }
+
+    pub fn select_gateway(&mut self, cx: &mut Context<Self>) {
+        self.selection = LeftSelection::Gateway;
+        cx.notify();
+    }
+
+    pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
+        let had = self.confirm_lan_open
+            || self.confirm_revoke_client.is_some()
+            || self.confirm_delete_key.is_some()
+            || self.adding_key_open
+            || self.adding_model_open
+            || self.editing_key_id.is_some()
+            || self.rule_editor.is_some()
+            || self.editing_client_policy.is_some();
+        if had {
+            self.confirm_lan_open = false;
+            self.confirm_revoke_client = None;
+            self.confirm_delete_key = None;
+            self.adding_key_open = false;
+            self.adding_model_open = false;
+            self.editing_key_id = None;
+            self.rule_editor = None;
+            self.editing_client_policy = None;
+            cx.notify();
+        }
+        had
+    }
+
+    #[must_use]
+    pub fn format_model_ref(&self, raw: &str) -> String {
+        if let Some((pid, mid)) = raw.split_once('/') {
+            format!("{}/{mid}", self.provider_name(pid))
+        } else {
+            raw.to_owned()
+        }
     }
 }
 
 impl Render for ProvidersView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some((port_s, hosts_s)) = self.pending_gw_inputs_sync.take() {
+            self.gw_port_input
+                .update(cx, |i, cx| i.set_value(port_s, window, cx));
+            self.gw_extra_hosts_input
+                .update(cx, |i, cx| i.set_value(hosts_s, window, cx));
+        }
         let p = palette(cx);
         let zh = settings_get_impl(runtime(cx).state()).general.language == Language::ZhCn;
 

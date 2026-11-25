@@ -1,14 +1,14 @@
 //! Provider Overview Keys Pool card (`render_keys_card`).
 
-use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::llm::providers::KeyStrategy;
 use pingdeck_desktop::core::llm::store::{KeyRunState, Provider, ProviderKey};
 use pingdeck_desktop::services::clipboard;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_primary, btn_secondary, card, h_row,
-    icon_xs, palette, section_heading, status_indicator, tab_bar_segmented, tab_item, text_input,
-    to_hsla, toggle_switch, v_col,
+    StatusShape, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_icon, btn_primary, btn_secondary,
+    card, h_row, icon_xs, palette, section_heading, status_indicator, tab_bar_segmented, tab_item,
+    text_input, to_hsla, toggle_switch, v_col,
 };
 
 use super::ProvidersView;
@@ -268,8 +268,15 @@ pub fn render_keys_card(
             let kid_rev = kid.clone();
             let kid_list = kid.clone();
             let kid_cd = kid.clone();
-            let kid_del = kid;
+            let kid_edit = kid.clone();
+            let kid_probe = kid.clone();
+            let kid_del = kid.clone();
+            let pid_probe = prov_id.clone();
             let key_clone = key.clone();
+            let key_for_edit = key.clone();
+            let key_for_save = key.clone();
+            let is_editing = view.editing_key_id.as_deref() == Some(kid.as_str());
+            let is_confirm_del = view.confirm_delete_key.as_deref() == Some(kid.as_str());
 
             let mut row_col = v_col().gap(px(5.0)).child(
                 h_row()
@@ -380,19 +387,87 @@ pub fn render_keys_card(
                                 )),
                             )
                             .child(
+                                btn_ghost(
+                                    SharedString::from(format!("key-probe-{i}")),
+                                    if zh { "探测" } else { "Probe" },
+                                )
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
+                                        this.open_bench(
+                                            Some(pid_probe.clone()),
+                                            Vec::new(),
+                                            window,
+                                            cx,
+                                        );
+                                        if let Some(bv) = &this.bench_view {
+                                            let k_sel = kid_probe.clone();
+                                            bv.update(cx, |b, cx| {
+                                                b.selected_key_id = Some(k_sel);
+                                                b.recompute_estimate(cx);
+                                                cx.notify();
+                                            });
+                                        }
+                                    },
+                                )),
+                            )
+                            .child(
+                                btn_icon(("key-edit", i), UiIcon::Pencil).on_click(cx.listener(
+                                    move |this, _, window, cx| {
+                                        if this.editing_key_id.as_deref() == Some(kid_edit.as_str())
+                                        {
+                                            this.editing_key_id = None;
+                                        } else {
+                                            this.edit_key_name_input.update(cx, |s, cx| {
+                                                s.set_value(key_for_edit.name.clone(), window, cx);
+                                            });
+                                            this.edit_key_group_input.update(cx, |s, cx| {
+                                                s.set_value(
+                                                    key_for_edit
+                                                        .group_name
+                                                        .clone()
+                                                        .unwrap_or_default(),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                            this.edit_key_notes_input.update(cx, |s, cx| {
+                                                s.set_value(
+                                                    key_for_edit.notes.clone().unwrap_or_default(),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                            this.edit_key_secret_input
+                                                .update(cx, |s, cx| s.set_value("", window, cx));
+                                            this.editing_key_id = Some(kid_edit.clone());
+                                        }
+                                        cx.notify();
+                                    },
+                                )),
+                            )
+                            .child(
                                 toggle_switch(("key-en", i), key.enabled).on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.toggle_key_enabled(key_clone.clone(), zh, cx);
                                     },
                                 )),
                             )
-                            .child(
-                                btn_icon(("key-del", i), UiIcon::Trash).on_click(cx.listener(
-                                    move |this, _, _, cx| {
+                            .child(if is_confirm_del {
+                                btn_danger(("key-del-ok", i), if zh { "确认删" } else { "Confirm" })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_delete_key = None;
                                         this.delete_provider_key(kid_del.clone(), zh, cx);
-                                    },
-                                )),
-                            ),
+                                    }))
+                                    .into_any_element()
+                            } else {
+                                let k_arm = kid_del.clone();
+                                btn_icon(("key-del", i), UiIcon::Trash)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_delete_key = Some(k_arm.clone());
+                                        cx.notify();
+                                    }))
+                                    .into_any_element()
+                            }),
                     ),
             );
 
@@ -428,6 +503,56 @@ pub fn render_keys_card(
                                     ));
                                     cx.notify();
                                 })),
+                        ),
+                );
+            }
+
+            if is_editing {
+                row_col = row_col.child(
+                    v_col()
+                        .gap(px(6.0))
+                        .p(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(to_hsla(p.surface))
+                        .child(
+                            h_row()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .w(px(140.0))
+                                        .child(text_input(&view.edit_key_name_input)),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .child(text_input(&view.edit_key_secret_input)),
+                                ),
+                        )
+                        .child(
+                            h_row()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .w(px(140.0))
+                                        .child(text_input(&view.edit_key_group_input)),
+                                )
+                                .child(div().flex_1().child(text_input(&view.edit_key_notes_input)))
+                                .child(
+                                    btn_primary(
+                                        ("key-ed-save", i),
+                                        if zh { "保存" } else { "Save" },
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, window, cx| {
+                                            this.save_edited_key(
+                                                key_for_save.clone(),
+                                                zh,
+                                                window,
+                                                cx,
+                                            );
+                                        },
+                                    )),
+                                ),
                         ),
                 );
             }

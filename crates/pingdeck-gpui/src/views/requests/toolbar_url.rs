@@ -262,6 +262,12 @@ pub fn render_variables_popover(
     cx: &mut Context<RequestsView>,
 ) -> Popover {
     let vars = view.resolved_vars.clone();
+    let active_env_name = view
+        .active_env_id
+        .as_deref()
+        .and_then(|id| view.environments.iter().find(|e| e.id == id))
+        .map(|e| e.name.clone());
+    let has_secrets = vars.iter().any(|v| v.is_secret);
     let ent = cx.entity().clone();
     popover("req-vars-pop")
         .anchor(Anchor::TopRight)
@@ -277,15 +283,17 @@ pub fn render_variables_popover(
         ))
         .content(move |_, _, pop_cx| {
             let pop_p = palette(pop_cx);
-            let mut col = v_col().w(px(344.0)).max_h(px(320.0)).gap(px(4.0));
+            let mut col = v_col().w(px(344.0)).max_h(px(340.0)).gap(px(4.0));
             let ent_m = ent.clone();
             let ph = pop_cx.entity().clone();
+            let hdr_title = match (&active_env_name, zh) {
+                (Some(nm), true) => format!("生效变量 · {nm}"),
+                (Some(nm), false) => format!("Variables · {nm}"),
+                (None, true) => "生效变量（环境 › 集合 › 全局）".into(),
+                (None, false) => "Resolved variables".into(),
+            };
             col = col.child(popover_header(
-                if zh {
-                    "生效变量（环境 › 集合 › 全局）"
-                } else {
-                    "Resolved variables"
-                },
+                SharedString::from(hdr_title),
                 Some((
                     "req-vars-manage".into(),
                     SharedString::from(if zh {
@@ -385,6 +393,19 @@ pub fn render_variables_popover(
                     );
                 }
             }
-            col.child(rows)
+            col.child(rows).children(has_secrets.then(|| {
+                div()
+                    .px(px(6.0))
+                    .pt(px(4.0))
+                    .border_t_1()
+                    .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
+                    .text_size(px(10.5))
+                    .text_color(to_hsla(pop_p.warn))
+                    .child(if zh {
+                        "机密变量仅在发送时由核心从 0600 .secrets 注入，不会回显明文。"
+                    } else {
+                        "Secrets inject at send time from the 0600 .secrets vault and never echo here."
+                    })
+            }))
         })
 }

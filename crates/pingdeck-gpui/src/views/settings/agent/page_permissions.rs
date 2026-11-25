@@ -382,7 +382,7 @@ pub(super) fn render_permissions(
             &view.blocked_cmd_input,
             "blocked-cmd",
             t(lang, "set.agent.rules.add"),
-            |this, cx| this.add_blocked_command(cx),
+            |this, window, cx| this.add_blocked_command(window, cx),
             |this, item, cx| this.remove_blocked_command(&item, cx),
             cx,
         ))
@@ -393,7 +393,7 @@ pub(super) fn render_permissions(
             &view.env_pass_input,
             "env-pass",
             t(lang, "set.agent.env.add"),
-            |this, cx| this.add_shell_env(cx),
+            |this, window, cx| this.add_shell_env(window, cx),
             |this, item, cx| this.remove_shell_env(&item, cx),
             cx,
         ));
@@ -416,7 +416,8 @@ fn render_chip_list_row(
     input: &gpui_kit::Entity<crate::ui::InputState>,
     id_prefix: &'static str,
     add_label: &str,
-    on_add: impl Fn(&mut AgentSettingsView, &mut Context<AgentSettingsView>) + 'static,
+    on_add: impl Fn(&mut AgentSettingsView, &mut gpui_kit::Window, &mut Context<AgentSettingsView>)
+    + 'static,
     on_remove: impl Fn(&mut AgentSettingsView, String, &mut Context<AgentSettingsView>)
     + Clone
     + 'static,
@@ -459,7 +460,7 @@ fn render_chip_list_row(
                 SharedString::from(format!("{id_prefix}-add")),
                 add_label.to_owned(),
             )
-            .on_click(cx.listener(move |this, _, _, cx| on_add(this, cx))),
+            .on_click(cx.listener(move |this, _, window, cx| on_add(this, window, cx))),
         );
 
     v_col()

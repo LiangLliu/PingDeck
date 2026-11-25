@@ -1,6 +1,6 @@
 //! Server lifecycle, status polling, live log stream subscription, and recording toggle for `MockView`.
 
-use gpui_kit::Context;
+use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::app::factory_service::{mock_server_add_route, mock_server_new};
 use pingdeck_desktop::core::app::{
     environment_list_impl, mock_port_suggest_impl, mock_recording_set_impl,
@@ -17,7 +17,7 @@ use pingdeck_desktop::streams::channel_sink;
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::Tone;
 
-use super::state::MockView;
+use super::state::{MockModal, MockView};
 
 impl MockView {
     pub fn reload(&mut self, ws_id: String, cx: &mut Context<Self>) {
@@ -81,6 +81,8 @@ impl MockView {
         self.selected_log_id = None;
         self.logs.clear();
         self.live_data = None;
+        self.try_it_busy = false;
+        self.try_it_result = None;
         self.pending_sync = true;
         self.attach_live_server(&id, cx);
         cx.notify();
@@ -185,7 +187,51 @@ impl MockView {
         self._tasks.push(task);
     }
 
+    pub fn open_create_server_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let idx = self.servers.len() + 1;
+        let next_port = self
+            .servers
+            .iter()
+            .map(|s| s.port)
+            .max()
+            .map_or(3001, |p| p.saturating_add(1));
+        let default_name = if self.is_zh() {
+            format!("本地 Mock 服务 {idx}")
+        } else {
+            format!("Local Mock {idx}")
+        };
+        self.new_srv_name_input
+            .update(cx, |s, cx| s.set_value(default_name, window, cx));
+        self.new_srv_port_input
+            .update(cx, |s, cx| s.set_value(next_port.to_string(), window, cx));
+        self.active_modal = Some(MockModal::CreateServer);
+        cx.notify();
+    }
+
+    pub fn create_server_from_modal(&mut self, cx: &mut Context<Self>) {
+        let name = self.new_srv_name_input.read(cx).value().trim().to_owned();
+        let port = self
+            .new_srv_port_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p > 0);
+        self.active_modal = None;
+        self.create_server_with((!name.is_empty()).then_some(name), port, cx);
+    }
+
     pub fn create_server(&mut self, cx: &mut Context<Self>) {
+        self.create_server_with(None, None, cx);
+    }
+
+    fn create_server_with(
+        &mut self,
+        name: Option<String>,
+        port: Option<u16>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(ws_id) = self.workspace_id.clone() else {
             return;
         };
@@ -193,6 +239,12 @@ impl MockView {
             cx,
             move |state| {
                 let mut srv = mock_server_new(state, &ws_id)?;
+                if let Some(n) = name {
+                    srv.name = n;
+                }
+                if let Some(p) = port {
+                    srv.port = p;
+                }
                 srv = mock_server_add_route(srv, "GET")?;
                 mock_server_save_impl(state, srv)
             },

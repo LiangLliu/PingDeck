@@ -64,12 +64,13 @@ pub fn render_rules_tab(
                     let pid = pid.clone();
                     let mid = mid.clone();
                     let ent = ent.clone();
+                    let pop_h = cx.entity().clone();
                     list = list.child(
                         list_row(
                             SharedString::from(format!("rule-pick-{idx}")),
                             false,
                             cx,
-                            move |_, _, cx| {
+                            move |_, window, cx| {
                                 ent.update(cx, |this, cx| {
                                     this.start_edit_rule(
                                         ModelRef {
@@ -80,6 +81,7 @@ pub fn render_rules_tab(
                                         cx,
                                     );
                                 });
+                                pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                             },
                         )
                         .child(
@@ -239,13 +241,14 @@ pub fn render_rules_tab(
                     let pid = c.provider_id.clone();
                     let mid = c.model.clone();
                     let ent = ent_pick.clone();
+                    let pop_h = cx.entity().clone();
                     let pname = ent.read(cx).provider_name(&pid);
                     list = list.child(
                         list_row(
                             SharedString::from(format!("fb-cand-{i}")),
                             false,
                             cx,
-                            move |_, _, cx| {
+                            move |_, window, cx| {
                                 ent.update(cx, |this, cx| {
                                     if let Some(ed) = &mut this.rule_editor
                                         && ed.chain.len() < 5
@@ -257,6 +260,7 @@ pub fn render_rules_tab(
                                         cx.notify();
                                     }
                                 });
+                                pop_h.update(cx, |s, cx| s.dismiss(window, cx));
                             },
                         )
                         .child(

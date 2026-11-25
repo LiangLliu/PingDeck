@@ -87,9 +87,18 @@ pub fn render_gateway_cockpit(
                     )
                 }))
                 .child(
-                    btn_secondary("gw-restart", if zh { "重启" } else { "Restart" })
-                        .on_click(cx.listener(|this, _, _, cx| this.gateway_action("restart", cx))),
+                    btn_ghost("gw-open-usage", if zh { "查看日志 ↗" } else { "Logs ↗" }).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.pending_handoff
+                                .set(Some(super::ProvidersHandoff::OpenUsageProvider(None)));
+                            cx.notify();
+                        }),
+                    ),
                 )
+                .children(gw_running.then(|| {
+                    btn_secondary("gw-restart", if zh { "重启" } else { "Restart" })
+                        .on_click(cx.listener(|this, _, _, cx| this.gateway_action("restart", cx)))
+                }))
                 .child(if gw_running {
                     btn_secondary("gw-stop", if zh { "停止网关" } else { "Stop" })
                         .on_click(cx.listener(|this, _, _, cx| this.gateway_action("stop", cx)))
@@ -259,6 +268,24 @@ fn render_overview_tab(
     };
     let enabled_models = view.models.iter().filter(|m| m.model.enabled).count();
 
+    let today_cost = view
+        .overview
+        .as_ref()
+        .and_then(|o| o.today.as_ref())
+        .map(|t| {
+            if t.usage.cost_micro.is_empty() {
+                "—".to_owned()
+            } else {
+                t.usage
+                    .cost_micro
+                    .iter()
+                    .map(|(cur, &m)| format!("{cur} {:.4}", m as f64 / 1_000_000.0))
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            }
+        })
+        .unwrap_or_else(|| "—".to_owned());
+
     let kpis = h_row()
         .gap(px(10.0))
         .child(kpi_card(
@@ -269,9 +296,9 @@ fn render_overview_tab(
             },
             today_reqs.to_string(),
             if zh {
-                format!("{today_ok} 次成功 · {today_fail} 次失败")
+                format!("{today_ok} 次成功 · {today_fail} 次失败 · 费用 {today_cost}")
             } else {
-                format!("{today_ok} ok · {today_fail} failed")
+                format!("{today_ok} ok · {today_fail} failed · Cost {today_cost}")
             },
             cx,
         ))

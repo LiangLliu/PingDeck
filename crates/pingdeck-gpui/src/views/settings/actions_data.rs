@@ -5,7 +5,8 @@ use gpui_kit::Context;
 use pingdeck_desktop::core::app::{
     ClearAttachmentsOptions, chat_retention_apply_impl, chat_retention_preview_impl,
     clear_attachments_impl, clear_captured_bodies_impl, current_time_ms, data_backup_impl,
-    data_compact_impl, inspect_sync_folder_impl, llm_gateway_status_impl, reveal_path_impl,
+    data_compact_impl, inspect_sync_folder_impl, llm_gateway_reset_circuits_impl,
+    llm_gateway_status_impl, llm_usage_retention_preview_impl, reveal_path_impl,
     storage_usage_impl, sync_status_impl,
 };
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
@@ -23,6 +24,7 @@ impl SettingsView {
         self.storage_loading = true;
         cx.notify();
         let retention_days = u32::from(self.settings.data.chat_retention_days);
+        let usage_days = self.settings.ai.providers.usage_retention_days;
         let task = spawn_blocking_into(
             cx,
             move |state| {
@@ -43,20 +45,40 @@ impl SettingsView {
                 } else {
                     None
                 };
+                let usage_prev = llm_usage_retention_preview_impl(state, usage_days)
+                    .ok()
+                    .map(|p| (p.rows_to_delete, p.table_bytes));
                 let gw = llm_gateway_status_impl(state);
-                (usage, data_dir, sync, folder_info, preview, gw)
+                (usage, data_dir, sync, folder_info, preview, usage_prev, gw)
             },
-            |this, (usage, data_dir, sync, folder_info, preview, gw), cx| {
+            |this, (usage, data_dir, sync, folder_info, preview, usage_prev, gw), cx| {
                 this.storage_loading = false;
                 this.storage_usage = usage;
                 this.data_dir_path = data_dir;
                 this.sync_status = Some(sync);
                 this.sync_folder_info = folder_info;
                 this.chat_retention_preview = preview;
+                this.usage_retention_preview = usage_prev;
                 this.gateway_status = Some(gw);
                 cx.notify();
             },
         );
+        self._tasks.push(task);
+    }
+
+    pub fn reset_gateway_circuits(&mut self, cx: &mut Context<Self>) {
+        let zh = self.is_zh();
+        let task = spawn_blocking_into(cx, llm_gateway_reset_circuits_impl, move |this, (), cx| {
+            this.set_flash(
+                Tone::Success,
+                if zh {
+                    "已重置全部路由熔断器状态"
+                } else {
+                    "All open route circuits reset"
+                },
+                cx,
+            );
+        });
         self._tasks.push(task);
     }
 

@@ -40,12 +40,12 @@ pub fn render_ai_response(
     // Live streaming view while AI run is active before `Done`.
     if tab.sending && tab.last_ai.is_none() {
         let count = tab.ai_live_frames.len();
-        let last_frame = tab
-            .ai_live_frames
-            .last()
-            .map(|f| f.data.clone())
-            .unwrap_or_default();
-        return v_col()
+        let recent_start = count.saturating_sub(3);
+        let recent: Vec<(u32, u64, String, String)> = tab.ai_live_frames[recent_start..]
+            .iter()
+            .map(|f| (f.index, f.t_ms, f.event.clone(), f.data.clone()))
+            .collect();
+        let mut live = v_col()
             .size_full()
             .p(px(14.0))
             .gap(px(10.0))
@@ -59,17 +59,28 @@ pub fn render_ai_response(
                     } else {
                         format!("Streaming response… {count} frames received")
                     }))),
-            )
-            .children((!last_frame.is_empty()).then(|| {
-                card(cx).p(px(10.0)).child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.muted))
-                        .truncate()
-                        .child(SharedString::from(last_frame)),
-                )
-            }))
-            .into_any_element();
+            );
+        if !recent.is_empty() {
+            let mut frames_col = v_col().gap(px(4.0));
+            for (idx, t_ms, ev, data) in recent {
+                frames_col = frames_col.child(
+                    h_row()
+                        .gap(px(6.0))
+                        .child(badge(format!("#{idx} +{t_ms}ms {ev}"), Tone::Neutral, cx))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_xs()
+                                .text_color(to_hsla(p.muted))
+                                .truncate()
+                                .child(SharedString::from(data)),
+                        ),
+                );
+            }
+            live = live.child(card(cx).p(px(10.0)).child(frames_col));
+        }
+        return live.into_any_element();
     }
 
     let Some(ai) = &tab.last_ai else {
@@ -150,6 +161,9 @@ pub fn render_ai_response(
             });
 
     let log_req_id = ai.log_request_id.clone();
+    let total_checks = ai.assertion_results.len() + ai.script_tests.len();
+    let passed_checks = ai.assertion_results.iter().filter(|a| a.passed).count()
+        + ai.script_tests.iter().filter(|t| t.passed).count();
 
     let head = h_row()
         .w_full()
@@ -165,6 +179,21 @@ pub fn render_ai_response(
                 .gap(px(6.0))
                 .flex_wrap()
                 .child(badge(status_lbl, status_tone, cx))
+                .children((total_checks > 0).then(|| {
+                    badge(
+                        if zh {
+                            format!("{passed_checks}/{total_checks} 断言")
+                        } else {
+                            format!("{passed_checks}/{total_checks} checks")
+                        },
+                        if passed_checks == total_checks {
+                            Tone::Success
+                        } else {
+                            Tone::Danger
+                        },
+                        cx,
+                    )
+                }))
                 .children(
                     ai.ttft_ms.map(|ms| {
                         kv_chip(if zh { "首字" } else { "TTFT" }, format!("{ms} ms"), cx)
@@ -238,7 +267,15 @@ pub fn render_ai_response(
             format!("Headers ({})", ai.response_headers.len())
         }))
         .child(tab_item(if zh { "耗时" } else { "Timing" }))
-        .child(tab_item(if zh { "测试" } else { "Tests" }))
+        .child(tab_item(if total_checks > 0 {
+            if zh {
+                format!("测试 ({passed_checks}/{total_checks})")
+            } else {
+                format!("Tests ({passed_checks}/{total_checks})")
+            }
+        } else {
+            if zh { "测试" } else { "Tests" }.to_owned()
+        }))
         .child(tab_item(if zh { "用量与费用" } else { "Usage" }));
     if has_compare {
         tabs = tabs.child(tab_item(if zh { "对比" } else { "Compare" }));

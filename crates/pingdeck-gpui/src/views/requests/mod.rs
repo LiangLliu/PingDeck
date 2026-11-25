@@ -42,6 +42,7 @@ pub mod resp_ai;
 pub mod resp_ai_tabs;
 pub mod resp_http;
 pub mod resp_http_tabs;
+pub mod resp_http_timing;
 pub mod runner_and_settings;
 pub mod sidebar;
 pub mod sidebar_nodes;
@@ -167,7 +168,7 @@ pub struct RequestsView {
     pub console_open: bool,
     pub console_entries: Vec<ConsoleRecord>,
     pub status_msg: Option<(Tone, String)>,
-    pub(super) pending_handoff: Cell<Option<RequestsHandoff>>,
+    pub(crate) pending_handoff: Cell<Option<RequestsHandoff>>,
     pub(super) pending_hydrate: bool,
     pub(super) hydrating: bool,
     _subscriptions: Vec<Subscription>,

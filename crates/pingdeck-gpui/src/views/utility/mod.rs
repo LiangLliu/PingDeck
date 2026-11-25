@@ -1,8 +1,11 @@
 //! Global Utility modal hosting all 6 tools wired directly to `pingdeck-core`:
-//! Import/Export (cURL), Folder Sync, Cookies, TLS Certificates, Console (4-point native GPU
-//! perf/IME bench), and Collection Runner.
+//! Import/Export (3-tab workspace import + sanitized/plaintext export), Folder Sync, Cookies,
+//! TLS Certificates, Diagnostic Console (+ GPU perf bench), and Collection Runner.
 
 pub mod bench;
+pub mod console;
+pub mod import_export;
+mod import_export_actions;
 mod tools;
 
 use std::cell::Cell;
@@ -13,10 +16,10 @@ use gpui_kit::{
     Styled as _, Task, Window, div, px,
 };
 use pingdeck_desktop::core::app::{
-    CollectionDto, RunCollectionInput, TlsCertificateDto, certificate_delete_impl,
-    certificate_list_impl, collection_list_impl, cookie_jar_delete_expired_impl,
-    cookie_jar_list_impl, request_curl_import_impl, run_collection_impl, settings_get_impl,
-    sync_export_impl, sync_import_impl, sync_status_impl,
+    CollectionDto, EnvironmentDto, ImportConflict, ImportPreviewDto, RunCollectionInput,
+    TlsCertificateDto, certificate_delete_impl, certificate_list_impl, collection_list_impl,
+    cookie_jar_delete_expired_impl, cookie_jar_list_impl, environment_list_impl,
+    run_collection_impl, settings_get_impl, sync_export_impl, sync_import_impl, sync_status_impl,
 };
 use pingdeck_desktop::core::model::CookieJarEntry;
 use pingdeck_desktop::core::model::events::RunnerEvent;
@@ -27,26 +30,37 @@ use pingdeck_desktop::streams::channel_sink;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::{
-    TextareaState, Tone, UiIcon, badge, btn_icon, btn_primary, card, h_row, list_row,
-    multiline_input, palette, section_heading, to_hsla, v_col,
+    TextareaState, Tone, UiIcon, badge, btn_icon, card, h_row, list_row, palette, to_hsla, v_col,
 };
 
-use bench::{BenchTab, NativeBenchState};
+use bench::NativeBenchState;
+use console::ConsoleMode;
+use import_export::IoTab;
 
 pub struct UtilityPanel {
     active: UtilityDialog,
-    workspace_id: Option<String>,
+    pub(super) workspace_id: Option<String>,
     dismissed: Cell<bool>,
     pub bench: NativeBenchState,
-    curl_input: Entity<TextareaState>,
+    pub(crate) console_mode: ConsoleMode,
+    pub(super) diag_log_tail: Vec<String>,
+    pub(super) curl_input: Entity<TextareaState>,
+    pub(crate) io_tab: IoTab,
+    pub(super) io_format: String,
+    pub(super) io_conflict: ImportConflict,
+    pub(super) io_preview: Option<ImportPreviewDto>,
+    pub(super) io_export_col_id: Option<String>,
+    pub(super) io_export_env_id: Option<String>,
+    pub(super) io_ack_secrets: bool,
     pub(super) sync_status: Option<SyncStatus>,
     pub(super) cookies: Vec<CookieJarEntry>,
     pub(super) certificates: Vec<TlsCertificateDto>,
     pub(super) collections: Vec<CollectionDto>,
+    pub(super) environments: Vec<EnvironmentDto>,
     pub(super) runner_events: Vec<String>,
     pub(super) running_collection: bool,
-    status_note: Option<(Tone, String)>,
-    _tasks: Vec<Task<()>>,
+    pub(super) status_note: Option<(Tone, String)>,
+    pub(super) _tasks: Vec<Task<()>>,
 }
 
 impl UtilityPanel {
@@ -54,8 +68,10 @@ impl UtilityPanel {
         let bench = NativeBenchState::new(window, cx);
         let curl_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("curl -X POST https://api.example.com/v1/chat -H 'Content-Type: application/json' -d '{}'")
-                .rows(6)
+                .placeholder(
+                    "Paste cURL, Postman JSON, OpenAPI YAML/JSON, HAR, or Environment JSON…",
+                )
+                .rows(7)
         });
 
         Self {
@@ -63,11 +79,21 @@ impl UtilityPanel {
             workspace_id: None,
             dismissed: Cell::new(false),
             bench,
+            console_mode: ConsoleMode::Diagnostics,
+            diag_log_tail: Vec::new(),
             curl_input,
+            io_tab: IoTab::Import,
+            io_format: "curl".to_owned(),
+            io_conflict: ImportConflict::Update,
+            io_preview: None,
+            io_export_col_id: None,
+            io_export_env_id: None,
+            io_ack_secrets: false,
             sync_status: None,
             cookies: Vec::new(),
             certificates: Vec::new(),
             collections: Vec::new(),
+            environments: Vec::new(),
             runner_events: Vec::new(),
             running_collection: false,
             status_note: None,
@@ -85,6 +111,7 @@ impl UtilityPanel {
         self.active = dialog;
         self.workspace_id = workspace_id;
         self.dismissed.set(false);
+        self.io_ack_secrets = false;
         self.reload_active(cx);
         cx.notify();
     }
@@ -93,9 +120,69 @@ impl UtilityPanel {
         self.dismissed.get()
     }
 
-    fn reload_active(&mut self, cx: &mut Context<Self>) {
+    pub fn take_dismissed_flag(&self) -> bool {
+        self.dismissed.replace(false)
+    }
+
+    pub(super) fn reload_diagnostics(&mut self, cx: &mut Context<Self>) {
+        let Some(log_path) = runtime(cx).log_file_path() else {
+            self.diag_log_tail.clear();
+            return;
+        };
+        let task = spawn_blocking_into(
+            cx,
+            move |_| {
+                let text = std::fs::read_to_string(&log_path).unwrap_or_default();
+                let lines: Vec<String> = text.lines().map(str::to_owned).collect();
+                let start = lines.len().saturating_sub(100);
+                lines[start..].to_vec()
+            },
+            |this, tail, cx| {
+                this.diag_log_tail = tail;
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub(super) fn reload_active(&mut self, cx: &mut Context<Self>) {
         let ws = self.workspace_id.clone();
         match self.active {
+            UtilityDialog::Console => self.reload_diagnostics(cx),
+            UtilityDialog::ImportExport => {
+                if let Some(ws_id) = ws {
+                    let task = spawn_blocking_into(
+                        cx,
+                        move |state| {
+                            let cols =
+                                collection_list_impl(state, ws_id.clone()).unwrap_or_default();
+                            let envs = environment_list_impl(state, ws_id).unwrap_or_default();
+                            (cols, envs)
+                        },
+                        |this, (cols, envs), cx| {
+                            if this
+                                .io_export_col_id
+                                .as_deref()
+                                .is_none_or(|id| !cols.iter().any(|c| c.id.as_str() == id))
+                            {
+                                this.io_export_col_id =
+                                    cols.first().map(|c| c.id.as_str().to_owned());
+                            }
+                            if this
+                                .io_export_env_id
+                                .as_deref()
+                                .is_none_or(|id| !envs.iter().any(|e| e.id == id))
+                            {
+                                this.io_export_env_id = envs.first().map(|e| e.id.clone());
+                            }
+                            this.collections = cols;
+                            this.environments = envs;
+                            cx.notify();
+                        },
+                    );
+                    self._tasks.push(task);
+                }
+            }
             UtilityDialog::Sync => {
                 let task = spawn_blocking_into(cx, sync_status_impl, |this, status, cx| {
                     this.sync_status = Some(status);
@@ -142,7 +229,6 @@ impl UtilityPanel {
                     self._tasks.push(task);
                 }
             }
-            UtilityDialog::ImportExport | UtilityDialog::Console => {}
         }
     }
 
@@ -302,65 +388,8 @@ impl Render for UtilityPanel {
         }
 
         let content: gpui_kit::AnyElement = match self.active {
-            UtilityDialog::Console => self
-                .bench
-                .render(
-                    cx,
-                    |this, tab: BenchTab, cx| {
-                        this.bench.tab = tab;
-                        cx.notify();
-                    },
-                    |this, cx| {
-                        this.bench.append_stream_burst();
-                        cx.notify();
-                    },
-                    |this, window, cx| {
-                        this.bench.load_10mib_json(window, cx);
-                        cx.notify();
-                    },
-                )
-                .into_any_element(),
-            UtilityDialog::ImportExport => v_col()
-                .size_full()
-                .gap(px(10.0))
-                .child(section_heading(
-                    if zh {
-                        "粘贴 cURL 快速导入"
-                    } else {
-                        "Paste cURL to import"
-                    },
-                    cx,
-                ))
-                .child(multiline_input(&self.curl_input))
-                .child(
-                    h_row().gap(px(8.0)).child(
-                        btn_primary(
-                            "util-curl-parse",
-                            if zh { "解析 cURL" } else { "Parse cURL" },
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let raw = this.curl_input.read(cx).value().to_string();
-                            let ws = this
-                                .workspace_id
-                                .clone()
-                                .unwrap_or_else(|| "default".into());
-                            match request_curl_import_impl(ws, raw) {
-                                Ok(req) => {
-                                    this.status_note = Some((
-                                        Tone::Success,
-                                        format!("Parsed: {:?} {}", req.method, req.url),
-                                    ));
-                                }
-                                Err(err) => {
-                                    this.status_note =
-                                        Some((Tone::Danger, err.message().to_owned()));
-                                }
-                            }
-                            cx.notify();
-                        })),
-                    ),
-                )
-                .into_any_element(),
+            UtilityDialog::Console => console::render_console(self, zh, cx),
+            UtilityDialog::ImportExport => import_export::render_import_export(self, zh, cx),
             UtilityDialog::Sync => tools::render_sync(self, zh, cx),
             UtilityDialog::Cookies => tools::render_cookies(self, zh, cx),
             UtilityDialog::Certificates => tools::render_certs(self, zh, cx),
