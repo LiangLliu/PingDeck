@@ -123,6 +123,7 @@ pub async fn llm_model_alias_save_impl(
     })
     .await?;
     state.llm.touch();
+    state.llm.emit(LlmEvent::CatalogChanged);
     Ok(saved)
 }
 
@@ -141,6 +142,7 @@ pub async fn llm_model_alias_delete_impl(
     .await?;
     if deleted {
         state.llm.touch();
+        state.llm.emit(LlmEvent::CatalogChanged);
     }
     Ok(deleted)
 }
@@ -186,6 +188,7 @@ pub async fn llm_provider_pricing_save_impl(
     })
     .await?;
     state.llm.touch();
+    state.llm.emit(LlmEvent::CatalogChanged);
     Ok(views)
 }
 
@@ -393,6 +396,7 @@ pub fn llm_model_catalog_user_save_impl(
         catalog::save_user_model(connection, model, current_time_ms())
     })?;
     state.llm.touch();
+    state.llm.emit(LlmEvent::CatalogChanged);
     Ok(row)
 }
 
@@ -410,6 +414,7 @@ pub fn llm_model_catalog_user_delete_impl(
     })?;
     if deleted {
         state.llm.touch();
+        state.llm.emit(LlmEvent::CatalogChanged);
     }
     Ok(deleted)
 }
@@ -443,6 +448,7 @@ pub fn llm_model_pricing_save_impl(
             provider_id: saved.provider_id.clone(),
         });
     }
+    state.llm.emit(LlmEvent::CatalogChanged);
     Ok(saved)
 }
 
@@ -465,6 +471,7 @@ pub fn llm_model_pricing_delete_impl(
                 provider_id: provider_id.to_owned(),
             });
         }
+        state.llm.emit(LlmEvent::CatalogChanged);
     }
     Ok(deleted)
 }

@@ -398,6 +398,13 @@ window.PD = window.PD || {};
               <tr class="clickable" data-drawer="mock-hit-detail"><td class="mono">14:30:19</td><td class="m-get">GET</td><td class="mono">/v1/customers</td><td>默认列表路由</td><td><span class="tag tag-ok">200</span></td><td class="text-faint">—</td><td class="mono text-right">5 ms</td></tr>
             </tbody>
           </table>
+          <div class="pg-bar compact" data-pg-bar="mock-traffic" data-pg-total="128" data-pg-size="50" data-pg-page="1">
+            <span class="pg-summary">显示第 1–50 条，共 128 条</span>
+            <div class="pg-controls">
+              <div class="pg-sizes"><button class="active" data-pg-size="50">50/页</button><button data-pg-size="100">100/页</button><button data-pg-size="200">200/页</button></div>
+              <div class="pg-nav"><button disabled data-pg-btn="first">«</button><button disabled data-pg-btn="prev">‹</button><span class="pg-page-num">1 / 3</span><button data-pg-btn="next">›</button><button data-pg-btn="last">»</button></div>
+            </div>
+          </div>
         </div>`,
       proxy: () => `
         <div class="card-panel" style="grid-column:1 / -1">
@@ -495,28 +502,97 @@ window.PD = window.PD || {};
     "prov-detail": {
       overview: () => DEFAULT_TAB_HTML["prov-detail"],
       models: () => `
-        <div class="card-panel">
-          <div class="card-panel-head"><span>已发现模型（38 个 · 34 已启用 · 2 个测试失败）</span><button class="btn btn-sm btn-primary" data-modal="benchmark-cost">基准测试全部…</button></div>
-          <table class="kv-table">
-            <thead><tr><th>模型 ID</th><th>协议</th><th>健康状态</th><th class="text-right">首字延迟</th><th style="width:72px">启用</th></tr></thead>
-            <tbody>
-              <tr><td class="mono">deepseek-v4-pro</td><td>Chat</td><td><span class="tag tag-ok">● 正常</span></td><td class="mono text-right">412 ms</td><td>${sw(true)}</td></tr>
-              <tr><td class="mono">claude-sonnet-5-5</td><td>Messages</td><td><span class="tag tag-ok">● 正常</span></td><td class="mono text-right">690 ms</td><td>${sw(true)}</td></tr>
-              <tr><td class="mono">gemini-3.2-pro</td><td>Gemini</td><td><span class="tag tag-bad">◆ 403 无权限</span></td><td class="mono text-right">—</td><td>${sw(true)}</td></tr>
-              <tr><td class="mono">glm-5</td><td>Chat</td><td><span class="tag tag-warn">▲ 探针超时</span></td><td class="mono text-right">&gt;10s</td><td>${sw(true)}</td></tr>
-            </tbody>
-          </table>
+        <div class="col-stack">
+          <div class="row-between" style="gap:8px;flex-wrap:wrap">
+            <div class="input-box sunken" style="width:280px"><input data-filter-rows="#prov-models-rows tr" placeholder="筛选模型 ID…" /></div>
+            <div class="row-center" style="gap:6px">
+              <button class="btn btn-sm" data-toast="已刷新 relay.acme.dev 模型目录">刷新模型</button>
+              <button class="btn btn-sm btn-primary" data-modal="benchmark-cost">基准测试全部…</button>
+              <button class="btn btn-sm" data-toast="已展开手动添加模型输入框">+ 添加模型</button>
+            </div>
+          </div>
+          <div class="row-between" style="gap:8px;flex-wrap:wrap">
+            <div class="row-wrap" data-pill-group="prov-models-flt">
+              <button class="tag tag-accent" data-pill-pick>全部</button>
+              <button class="tag" data-pill-pick>对话</button>
+              <button class="tag" data-pill-pick>向量</button>
+              <button class="tag" data-pill-pick>图像</button>
+              <button class="tag" data-pill-pick>失败</button>
+              <button class="tag" data-pill-pick>新增</button>
+            </div>
+            <div class="row-center" style="gap:8px">
+              <button id="prov-models-pricing-pill" class="btn btn-sm btn-ghost" data-tab-jump="prov-detail:config" title="点击前往配置页修改计价基准与倍率">计价：OpenRouter · ×0.5 CNY</button>
+              <span class="fs-xs text-faint">34/38 已启用 · 显示 38</span>
+            </div>
+          </div>
+          <div class="card-panel" style="padding:0;overflow:hidden">
+            <table class="kv-table" style="border:0;border-radius:0">
+              <thead><tr><th>模型 ID</th><th>上下文 / 输出</th><th class="text-right">价格 / 1M</th><th class="text-right">最近探测</th><th class="text-right" style="width:72px">启用</th></tr></thead>
+              <tbody id="prov-models-rows">
+                <tr><td class="mono">deepseek-v4-pro <span class="tag" style="height:17px">推理</span> <span class="tag" style="height:17px">工具</span></td><td class="mono">128K / 16K</td><td class="mono text-right">¥1.00 / ¥4.00</td><td class="text-right"><span class="tag tag-ok">412 ms</span></td><td class="text-right">${sw(true)}</td></tr>
+                <tr><td class="mono">claude-sonnet-5-5 <span class="tag" style="height:17px">推理</span> <span class="tag" style="height:17px">视觉</span></td><td class="mono">200K / 64K</td><td class="mono text-right">¥1.50 / ¥7.50</td><td class="text-right"><span class="tag tag-ok">690 ms</span></td><td class="text-right">${sw(true)}</td></tr>
+                <tr><td class="mono">gemini-3.2-pro</td><td class="mono">1M / 64K</td><td class="mono text-right">¥0.62 / ¥5.00</td><td class="text-right"><span class="tag tag-bad">403 无权限</span></td><td class="text-right">${sw(true)}</td></tr>
+                <tr><td class="mono">gemini-4-neon <span class="tag tag-accent" style="height:17px">新增</span></td><td class="mono">—</td><td class="text-right"><span class="tag tag-warn">未定价</span></td><td class="text-right"><span class="tag tag-warn">超时</span></td><td class="text-right">${sw(true)}</td></tr>
+              </tbody>
+            </table>
+            <div class="pg-bar" data-pg-bar="prov-models" data-pg-total="38" data-pg-size="50" data-pg-page="1">
+              <span class="pg-summary">显示第 1–38 条，共 38 条</span>
+              <div class="pg-controls">
+                <div class="pg-sizes"><button class="active" data-pg-size="50">50/页</button><button data-pg-size="100">100/页</button><button data-pg-size="200">200/页</button></div>
+                <div class="pg-nav"><button disabled data-pg-btn="first">«</button><button disabled data-pg-btn="prev">‹</button><span class="pg-page-num">1 / 1</span><button disabled data-pg-btn="next">›</button><button disabled data-pg-btn="last">»</button></div>
+              </div>
+            </div>
+          </div>
         </div>`,
       config: () => `
-        <div class="card-panel">
-          <div class="card-panel-head"><span>服务商连接与探测配置</span><span class="tag">new-api 0.9.7</span></div>
-          <div class="field-grid">
-            <div class="field-col"><span class="field-label">Base URL</span><div class="input-box"><input value="https://relay.acme.dev" /></div></div>
-            <div class="field-col"><span class="field-label">探测并发度</span><div class="input-box"><input value="4" /></div></div>
+        <div class="col-stack">
+          <div class="card-panel">
+            <div class="card-panel-head"><span>基本信息</span><span class="tag">new-api 0.9.7</span></div>
+            ${row("启用服务商", "关闭后，网关、对话与 AI 请求将跳过此服务商。", sw(true))}
+            <div class="field-grid">
+              <div class="field-col"><span class="field-label">服务商名称</span><div class="input-box"><input value="relay.acme.dev" /></div></div>
+              <div class="field-col"><span class="field-label">基础地址（Base URL）</span><div class="input-box"><input value="https://relay.acme.dev" /></div></div>
+            </div>
           </div>
-          <div class="row-center" style="justify-content:flex-end">
-            <button class="btn btn-sm btn-danger" data-toast="已停用服务商 relay.acme.dev（不删除历史用量）" data-toast-tone="warn">停用服务商</button>
-            <button class="btn btn-sm btn-primary" data-toast="已保存 relay.acme.dev 连接配置">保存配置</button>
+
+          <div class="card-panel" id="prov-pricing-card">
+            <div class="card-panel-head">
+              <span class="row-center" style="gap:6px"><span>计价与费率</span><span class="tag tag-accent">2个单模型单独定价</span></span>
+              <span id="prov-pricing-flash" class="tag tag-ok" hidden>已保存</span>
+            </div>
+            ${row(
+              "目录基准价",
+              "让该服务商下的模型默认按指定分发商目录价计费（选定后立即生效）。",
+              `<button id="prov-pricing-basis-btn" class="select-pill" data-popover="prov-pricing-basis" data-cur-basis="openrouter">OpenRouter ▾</button>`
+            )}
+            <div id="prov-pricing-cov" class="fs-xs text-muted">OpenRouter 目录价覆盖 32 / 34 个启用模型，其余按官方价</div>
+            <div id="prov-pricing-sug-banner" class="inline-banner" hidden>
+              <span>检测到该地址匹配 OpenRouter 目录价</span>
+              <button class="btn btn-sm" data-pick-basis="openrouter" data-basis-label="OpenRouter">一键采用推荐</button>
+            </div>
+            ${row(
+              "中转站倍率与币种",
+              "在基准价之上乘以折算倍率并指定结算币种（留空表示按基准原价）。",
+              `<div class="row-center" style="gap:6px;flex-wrap:wrap">
+                <div class="input-box" style="width:108px"><input id="prov-relay-mult" value="0.5" placeholder="例如 0.5" /></div>
+                <button id="prov-pricing-curr-btn" class="select-pill" data-popover="prov-pricing-curr" data-cur-curr="CNY">CNY ▾</button>
+                <button id="prov-relay-apply" class="btn btn-sm btn-primary" hidden data-action="apply-relay-pricing">应用</button>
+                <button id="prov-relay-reset" class="btn btn-sm btn-ghost" hidden data-action="reset-relay-pricing">重置</button>
+              </div>`
+            )}
+            <div id="prov-pricing-formula" class="pricing-formula">计费规则：OpenRouter 目录价 × 0.5（按 CNY 结算）· 单模型单独定价优先</div>
+          </div>
+
+          <div class="card-panel">
+            <div class="card-panel-head"><span>高级配置</span><span class="fs-2xs text-muted">计价倍率已迁入上方「计价与费率」</span></div>
+            <div class="field-grid">
+              <div class="field-col"><span class="field-label">模型列表路径</span><div class="input-box"><input value="/v1/models" /></div></div>
+              <div class="field-col"><span class="field-label">独立出站代理</span><div class="input-box"><input placeholder="留空跟随设置 › 网络" /></div></div>
+            </div>
+            <div class="row-center" style="justify-content:flex-end;gap:8px;padding-top:4px">
+              <button class="btn btn-sm btn-danger" data-toast="已停用服务商 relay.acme.dev（不删除历史用量）" data-toast-tone="warn">删除服务商</button>
+              <button class="btn btn-sm btn-primary" data-toast="已保存 relay.acme.dev 配置">保存配置</button>
+            </div>
           </div>
         </div>`,
     },

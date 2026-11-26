@@ -22,6 +22,7 @@ pub mod connect_sheet_body;
 pub mod detail;
 pub mod detail_config;
 pub mod detail_config_extra;
+pub mod detail_config_pricing;
 pub mod detail_keys;
 pub mod detail_models;
 pub mod detail_models_table;
@@ -48,8 +49,8 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::app::{
     ClientInspectDto, FallbackCandidate, GatewayOverviewDto, GatewayRule, ManagedTool,
-    ProviderHealthDto, ProviderModelView, ProviderView, RoutePreview, VerifyResult,
-    settings_get_impl,
+    ProviderHealthDto, ProviderModelView, ProviderPricingView, ProviderView, RoutePreview,
+    VerifyResult, settings_get_impl,
 };
 use pingdeck_desktop::core::client_config::{ClientApp, DetectedClient, DetectedSnippetClient};
 use pingdeck_desktop::core::llm::presets::ProviderPreset;
@@ -57,6 +58,7 @@ use pingdeck_desktop::core::llm::status::ProviderStatusDto;
 use pingdeck_desktop::core::llm::store::{
     GatewayClient, ModelRef, ProbeResult, ProviderKey, RequestLogEntry,
 };
+use pingdeck_desktop::core::model::model_catalog::ModelCatalogFamily;
 use pingdeck_desktop::core::model::settings::AiGatewaySettings;
 
 use crate::bridge::runtime;
@@ -172,6 +174,8 @@ pub struct ProvidersView {
     pub gateway_rules: Vec<GatewayRule>,
     pub probe_results: Vec<ProbeResult>,
     pub provider_health: Option<ProviderHealthDto>,
+    pub provider_pricing: HashMap<String, ProviderPricingView>,
+    pub catalog_families: Vec<ModelCatalogFamily>,
     pub recent_logs: Vec<RequestLogEntry>,
 
     // Interactive state & inputs.
@@ -381,6 +385,8 @@ impl ProvidersView {
             gateway_rules: Vec::new(),
             probe_results: Vec::new(),
             provider_health: None,
+            provider_pricing: HashMap::new(),
+            catalog_families: Vec::new(),
             recent_logs: Vec::new(),
             search_input,
             quick_url_input,
@@ -467,6 +473,11 @@ impl ProvidersView {
             cx.notify();
         }
         had
+    }
+
+    #[must_use]
+    pub fn pricing_of(&self, provider_id: &str) -> Option<&ProviderPricingView> {
+        self.provider_pricing.get(provider_id)
     }
 
     #[must_use]

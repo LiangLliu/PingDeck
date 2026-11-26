@@ -1,7 +1,8 @@
 //! "Models & Pricing" (`SettingsSection::Catalog`) page view & data controller.
 //!
-//! Connects directly to `pingdeck-core`'s model catalog, models.dev sync engine, provider pricing
-//! rules, per-model pricing overrides, user-defined models, and unlisted model aliases.
+//! Global Price Book organized as a compact source sync bar above a two-tab workspace:
+//! - Tab 1 (`CatalogTab::Catalog`): synced catalog (models.dev / future sources) & custom user models
+//! - Tab 2 (`CatalogTab::Unlisted`): enabled provider models not yet matched to a catalog row.
 
 pub mod drawer;
 pub mod drawer_forms;
@@ -9,42 +10,88 @@ pub mod drawer_forms_extra;
 pub mod drawer_save;
 pub mod filters;
 pub mod format;
-pub mod models_table;
 pub mod sync_section;
+pub mod tab_catalog;
+pub mod tab_unlisted;
 
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Subscription, Task, Window, px,
+    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+    Styled as _, Subscription, Task, Window, div, px,
 };
 use pingdeck_desktop::core::app::{
-    ProviderPricingView, UnlistedModel, current_time_ms, llm_model_catalog_config_save_impl,
+    UnlistedModel, current_time_ms, llm_model_catalog_config_save_impl,
     llm_model_catalog_list_impl, llm_model_catalog_status_impl, llm_model_catalog_sync_impl,
-    llm_model_unlisted_impl, llm_provider_pricing_list_impl, llm_provider_pricing_save_impl,
-    settings_get_impl, settings_update_impl,
+    llm_model_unlisted_impl, llm_subscribe_impl, settings_get_impl, settings_update_impl,
 };
+use pingdeck_desktop::core::llm::events::LlmEvent;
+use pingdeck_desktop::core::model::events::Sequenced;
 use pingdeck_desktop::core::model::model_catalog::{
     CatalogKind, CatalogSource, ModelCatalogPage, ModelCatalogQuery, ModelCatalogRow,
     ModelCatalogStatus, ModelCatalogSyncReport, PricingFilter,
 };
 use pingdeck_desktop::core::model::settings::{Settings, SettingsSection as CoreSection};
+use pingdeck_desktop::streams::channel_sink;
 
-use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
-use crate::ui::{InputEvent, InputState, Tone, WindowExt as _, v_col};
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
+use crate::ui::{
+    InputEvent, InputState, Tone, WindowExt as _, badge, btn_primary, card, h_row, palette,
+    tab_bar_underline, tab_item, to_hsla, v_col,
+};
 
 use drawer::CatalogDrawer;
 
 const DEFAULT_PAGE_SIZE: u32 = 50;
 
+/// Primary sub-tabs of the Models & Pricing global price book.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CatalogTab {
+    #[default]
+    Catalog,
+    Unlisted,
+}
+
+impl CatalogTab {
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Catalog => 0,
+            Self::Unlisted => 1,
+        }
+    }
+
+    #[must_use]
+    pub const fn from_index(idx: usize) -> Self {
+        match idx {
+            1 => Self::Unlisted,
+            _ => Self::Catalog,
+        }
+    }
+}
+
+/// Pricing status filter inside the Unlisted Models tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnlistedPriceFilter {
+    #[default]
+    All,
+    Unpriced,
+    Priced,
+}
+
 pub struct CatalogSettingsView {
+    pub active_tab: CatalogTab,
     pub status: Option<ModelCatalogStatus>,
     pub syncing: bool,
     pub sync_cancel_token: Option<String>,
     pub last_sync_report: Option<ModelCatalogSyncReport>,
     pub sync_error: Option<String>,
-    pub provider_pricing: Vec<ProviderPricingView>,
     pub unlisted: Vec<UnlistedModel>,
+    pub unlisted_search_input: Entity<InputState>,
+    pub unlisted_provider: Option<String>,
+    pub unlisted_price_filter: UnlistedPriceFilter,
     pub unlisted_page: usize,
+    pub unlisted_page_size: usize,
     pub page: Option<ModelCatalogPage>,
+    pub unfiltered_catalog_total: Option<usize>,
     pub page_index: usize,
     pub page_size: u32,
     pub loading_page: bool,
@@ -71,22 +118,40 @@ impl CatalogSettingsView {
                     .catalog_search_by_name_id_publisher(),
             )
         });
+        let unlisted_search_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(
+                crate::ui::tr(cx)
+                    .settings()
+                    .catalog_unlisted_search_placeholder(),
+            )
+        });
         let search_sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
                 this.load_page(false, cx);
             }
         });
+        let unlisted_sub = cx.subscribe(&unlisted_search_input, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
+                this.unlisted_page = 0;
+                cx.notify();
+            }
+        });
 
         let mut view = Self {
+            active_tab: CatalogTab::Catalog,
             status: None,
             syncing: false,
             sync_cancel_token: None,
             last_sync_report: None,
             sync_error: None,
-            provider_pricing: Vec::new(),
             unlisted: Vec::new(),
+            unlisted_search_input,
+            unlisted_provider: None,
+            unlisted_price_filter: UnlistedPriceFilter::All,
             unlisted_page: 0,
+            unlisted_page_size: DEFAULT_PAGE_SIZE as usize,
             page: None,
+            unfiltered_catalog_total: None,
             page_index: 0,
             page_size: DEFAULT_PAGE_SIZE,
             loading_page: true,
@@ -99,9 +164,27 @@ impl CatalogSettingsView {
             distributor_entries: false,
             flash_msg: None,
             auto_sync: settings.ai.providers.catalog_auto_refresh,
-            _subscriptions: vec![search_sub],
+            _subscriptions: vec![search_sub, unlisted_sub],
             _tasks: Vec::new(),
         };
+        let (llm_sink, llm_rx) = channel_sink::<Sequenced<LlmEvent>>();
+        if llm_subscribe_impl(runtime(cx).state(), llm_sink, None).is_ok() {
+            let sub_task = subscribe_stream_into(cx, llm_rx, 16, |this, batch, cx| {
+                let relevant = batch.iter().any(|ev| {
+                    matches!(
+                        ev.event,
+                        LlmEvent::CatalogChanged
+                            | LlmEvent::ProvidersChanged
+                            | LlmEvent::ModelsChanged { .. }
+                            | LlmEvent::Gap { .. }
+                    )
+                });
+                if relevant {
+                    this.reload_all(cx);
+                }
+            });
+            view._tasks.push(sub_task);
+        }
         view.reload_all(cx);
         view
     }
@@ -109,6 +192,13 @@ impl CatalogSettingsView {
     pub fn sync_from_settings(&mut self, settings: &Settings, cx: &mut Context<Self>) {
         if self.auto_sync != settings.ai.providers.catalog_auto_refresh {
             self.auto_sync = settings.ai.providers.catalog_auto_refresh;
+            cx.notify();
+        }
+    }
+
+    pub fn set_tab(&mut self, tab: CatalogTab, cx: &mut Context<Self>) {
+        if self.active_tab != tab {
+            self.active_tab = tab;
             cx.notify();
         }
     }
@@ -135,12 +225,32 @@ impl CatalogSettingsView {
         self.load_page(false, cx);
     }
 
+    pub fn unlisted_has_active_filters(&self, cx: &gpui_kit::App) -> bool {
+        !self
+            .unlisted_search_input
+            .read(cx)
+            .value()
+            .trim()
+            .is_empty()
+            || self.unlisted_provider.is_some()
+            || self.unlisted_price_filter != UnlistedPriceFilter::All
+    }
+
+    pub fn clear_unlisted_filters(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.unlisted_search_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
+        self.unlisted_provider = None;
+        self.unlisted_price_filter = UnlistedPriceFilter::All;
+        self.unlisted_page = 0;
+        cx.notify();
+    }
+
     pub fn set_flash(&mut self, tone: Tone, msg: String, cx: &mut Context<Self>) {
         self.flash_msg = Some((tone, msg));
         cx.notify();
     }
 
-    /// Reloads status, provider pricing, unlisted models, and the filtered first catalog page.
+    /// Reloads catalog sync status, unlisted models, and the filtered catalog page.
     pub fn reload_all(&mut self, cx: &mut Context<Self>) {
         let status_task = spawn_blocking_into(
             cx,
@@ -159,25 +269,22 @@ impl CatalogSettingsView {
         );
         self._tasks.push(status_task);
 
-        let aux_task = spawn_async_into(
+        let unlisted_task = spawn_async_into(
             cx,
-            |state| async move {
-                let pp = llm_provider_pricing_list_impl(&state).await;
-                let unlisted = llm_model_unlisted_impl(&state).await;
-                (pp, unlisted)
-            },
-            |this, (pp, unlisted), cx| {
-                if let Ok(rows) = pp {
-                    this.provider_pricing = rows;
-                }
+            |state| async move { llm_model_unlisted_impl(&state).await },
+            |this, unlisted, cx| {
                 if let Ok(rows) = unlisted {
+                    if let Some(pid) = &this.unlisted_provider
+                        && !rows.iter().any(|r| &r.provider_id == pid)
+                    {
+                        this.unlisted_provider = None;
+                    }
                     this.unlisted = rows;
-                    this.unlisted_page = 0;
                 }
                 cx.notify();
             },
         );
-        self._tasks.push(aux_task);
+        self._tasks.push(unlisted_task);
 
         self.load_page(false, cx);
     }
@@ -238,6 +345,9 @@ impl CatalogSettingsView {
                             this.page_index = total_pages - 1;
                             this.load_page(true, cx);
                             return;
+                        }
+                        if !this.has_active_filters(cx) {
+                            this.unfiltered_catalog_total = Some(next_page.total as usize);
                         }
                         this.page = Some(next_page);
                     }
@@ -341,38 +451,6 @@ impl CatalogSettingsView {
         }
     }
 
-    pub fn save_provider_pricing(
-        &mut self,
-        provider_id: String,
-        provider_name: String,
-        catalog_family: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        let task = spawn_async_into(
-            cx,
-            move |state| async move {
-                llm_provider_pricing_save_impl(&state, provider_id, catalog_family).await
-            },
-            move |this, res, cx| {
-                match res {
-                    Ok(views) => {
-                        this.provider_pricing = views;
-                        let msg = crate::ui::tr(cx)
-                            .settings()
-                            .catalog_saved_pricing_for(provider_name);
-                        this.flash_msg = Some((Tone::Success, msg));
-                        this.load_page(false, cx);
-                    }
-                    Err(err) => {
-                        this.flash_msg = Some((Tone::Danger, err.message().to_owned()));
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
     pub fn open_model_drawer(
         &mut self,
         row: ModelCatalogRow,
@@ -415,24 +493,86 @@ impl CatalogSettingsView {
 
 impl Render for CatalogSettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut root = v_col().w_full().gap(px(18.0)).pb(px(24.0));
+        let p = palette(cx);
+        let s = crate::ui::tr(cx).settings();
+        let catalog_total = self
+            .unfiltered_catalog_total
+            .or_else(|| self.page.as_ref().map(|pg| pg.total as usize))
+            .unwrap_or(0);
+        let unlisted_total = self.unlisted.len();
+        let unpriced_count = self
+            .unlisted
+            .iter()
+            .filter(|u| u.effective.is_none())
+            .count();
 
+        let tab_suffix = h_row()
+            .flex_shrink_0()
+            .gap(px(8.0))
+            .pb(px(5.0))
+            .children((unpriced_count > 0).then(|| {
+                badge(
+                    s.catalog_unlisted_unpriced_badge(unpriced_count),
+                    Tone::Warning,
+                    cx,
+                )
+            }))
+            .child(
+                btn_primary("cat-add-user-model", s.models_table_add_custom_model())
+                    .h(px(28.0))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_add_user_model_drawer(window, cx);
+                    })),
+            );
+
+        let tab_header = tab_bar_underline("cat-main-tabs")
+            .w_full()
+            .px(px(14.0))
+            .pt(px(4.0))
+            .selected_index(self.active_tab.index())
+            .child(tab_item(SharedString::from(
+                s.catalog_tab_catalog(catalog_total),
+            )))
+            .child(tab_item(SharedString::from(
+                s.catalog_tab_unlisted(unlisted_total),
+            )))
+            .suffix(tab_suffix)
+            .on_click(cx.listener(|this, idx: &usize, _, cx| {
+                this.set_tab(CatalogTab::from_index(*idx), cx);
+            }));
+
+        let body = match self.active_tab {
+            CatalogTab::Catalog => tab_catalog::render_catalog_tab(self, cx),
+            CatalogTab::Unlisted => tab_unlisted::render_unlisted_tab(self, cx),
+        };
+        let footnote = match self.active_tab {
+            CatalogTab::Catalog => s.models_table_prices_are_per_1m_tokens(),
+            CatalogTab::Unlisted => s.models_table_models_your_providers_serve_that(),
+        };
+
+        let workspace_card = v_col()
+            .w_full()
+            .gap(px(8.0))
+            .child(
+                card(cx)
+                    .w_full()
+                    .overflow_hidden()
+                    .child(tab_header)
+                    .child(body),
+            )
+            .child(
+                div()
+                    .px(px(4.0))
+                    .text_xs()
+                    .text_color(to_hsla(p.faint))
+                    .child(footnote),
+            );
+
+        let mut root = v_col().w_full().gap(px(16.0)).pb(px(24.0));
         if let Some((tone, msg)) = &self.flash_msg {
             root = root.child(sync_section::render_flash_banner(*tone, msg, cx));
         }
-
-        root = root.child(sync_section::render_sync_section(self, cx));
-
-        if !self.provider_pricing.is_empty() {
-            root = root.child(sync_section::render_provider_pricing_section(self, cx));
-        }
-
-        root = root.child(models_table::render_models_section(self, cx));
-
-        if !self.unlisted.is_empty() {
-            root = root.child(models_table::render_unlisted_section(self, cx));
-        }
-
-        root
+        root.child(sync_section::render_sync_section(self, cx))
+            .child(workspace_card)
     }
 }

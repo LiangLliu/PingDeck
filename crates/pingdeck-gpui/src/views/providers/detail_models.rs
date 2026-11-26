@@ -4,6 +4,7 @@
 use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::app::ProviderView;
 use pingdeck_desktop::core::llm::probe::listing::{ModelKind, Presence};
+use pingdeck_desktop::core::llm::wire::AuthStyle;
 
 use crate::ui::{
     UiIcon, btn_ghost, btn_icon, btn_primary, btn_secondary, card, filter_chip, h_row, icon_xs,
@@ -11,7 +12,7 @@ use crate::ui::{
 };
 
 use super::detail_models_table::render_models_table;
-use super::{ModelFilterKind, ProvidersView};
+use super::{ModelFilterKind, ProviderTab, ProvidersView};
 
 pub fn render_models_tab(
     view: &ProvidersView,
@@ -201,17 +202,59 @@ pub fn render_models_tab(
             })),
         );
     }
-    let filters_row = h_row().justify_between().gap(px(8.0)).child(chips).child(
-        div()
-            .flex_shrink_0()
-            .text_xs()
-            .text_color(to_hsla(p.faint))
-            .child(SharedString::from(
-                crate::ui::tr(cx)
-                    .providers()
-                    .prov_detail_models_enabled_of_showing(enabled_cnt, total_cnt, visible_cnt),
-            )),
-    );
+    let tr_p = crate::ui::tr(cx).providers();
+    let pricing_pill_label = if prov.category == "local" && prov.auth == AuthStyle::None {
+        tr_p.prov_pricing_local_free_badge().to_owned()
+    } else {
+        let base = view
+            .pricing_of(&prov.id)
+            .and_then(|pv| {
+                pv.catalog_family_name
+                    .as_deref()
+                    .or(pv.catalog_family.as_deref())
+            })
+            .unwrap_or_else(|| tr_p.prov_pricing_models_pill_official());
+        let summary = match &prov.quirks.relay_pricing {
+            Some(rp) => match &rp.currency {
+                Some(c) => format!("{base} · ×{} {c}", rp.multiplier),
+                None => format!("{base} · ×{}", rp.multiplier),
+            },
+            None => base.to_owned(),
+        };
+        tr_p.prov_pricing_models_pill(summary)
+    };
+
+    let filters_row = h_row()
+        .justify_between()
+        .gap(px(8.0))
+        .flex_wrap()
+        .child(chips)
+        .child(
+            h_row()
+                .flex_shrink_0()
+                .gap(px(8.0))
+                .child(
+                    btn_ghost("pm-pricing-jump", pricing_pill_label)
+                        .h(px(24.0))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.provider_tab = ProviderTab::Config;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_xs()
+                        .text_color(to_hsla(p.faint))
+                        .child(SharedString::from(
+                            tr_p.prov_detail_models_enabled_of_showing(
+                                enabled_cnt,
+                                total_cnt,
+                                visible_cnt,
+                            ),
+                        )),
+                ),
+        );
 
     let mut top_controls = v_col()
         .flex_shrink_0()

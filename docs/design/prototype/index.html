@@ -860,7 +860,10 @@ currency=USD</div>
                   </div>
                 </button>
               </div>
-              <div class="pane-foot"><span>本地保留 30 天</span><span>48 条记录</span></div>
+              <div class="pane-foot">
+                <span>48 条记录</span>
+                <div class="pg-nav" data-pg-bar="hist-side" data-pg-total="48" data-pg-size="20" data-pg-page="1"><button disabled data-pg-btn="prev">‹</button><span class="pg-page-num">1 / 3</span><button data-pg-btn="next">›</button></div>
+              </div>
             </div>
 
             <div class="work">
@@ -1065,6 +1068,7 @@ currency=USD</div>
                     <span class="work-title chat-head-title-trigger" title="点击修改标题">修复网关 429 熔断与退避</span>
                   </div>
                   <div class="work-actions">
+                    <button class="btn btn-sm" data-modal="run-monitor">运行看板</button>
                     <button class="btn btn-sm btn-ghost" data-toast="已导出对话 Markdown">导出</button>
                     <button class="btn btn-sm" data-action="toggle-chat-details">详情栏</button>
                   </div>
@@ -1112,11 +1116,18 @@ currency=USD</div>
                     </div>
                   </div>
 
-                  <!-- Assistant Intermediate Explanation (connects trace to the gate card below!) -->
+                  <!-- Assistant Intermediate Explanation (clean header + collapsible plaintext reasoning + 7-icon footer) -->
                   <div class="assistant-msg">
                     <div class="row-between">
                       <b>根因定位与修复说明</b>
-                      <span class="tag mono">deepseek-v4-pro</span>
+                      <span class="tag mono">DeepSeek / deepseek-v4-pro</span>
+                    </div>
+                    <div class="reason-card">
+                      <button type="button" class="reason-head" data-action="toggle-reason">
+                        <span>思考了 1.4s · 186 字 · 420 tok</span>
+                        <span id="reason-toggle-lbl" class="fs-2xs text-faint">展开 ▸</span>
+                      </button>
+                      <div id="reason-body" class="reason-body" hidden>先定位 router.rs 中处理 429 的分支，确认当前与 5xx 共享 60s 熔断器；按照网关不变量，首个内容事件发出前允许按 Retry-After 退避重试并在仍失败时切备用链。</div>
                     </div>
                     <p class="fs-xs text-ink2">原先 <code>router.rs</code> 将 <code>429 Too Many Requests</code> 与 <code>500..=599</code> 服务端故障合并处理，单次 429 即直接触发 60 秒熔断。现已拆分为：</p>
                     <div class="fs-xs text-ink2" style="padding-left:10px;border-left:2px solid var(--accent-line)">
@@ -1127,6 +1138,7 @@ currency=USD</div>
                     <div class="msg-stats">
                       <span class="msg-stat" title="输入 Token: 18,400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>18.4K</span>
                       <span class="msg-stat" title="输出 Token: 1,100"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>1.10K</span>
+                      <span class="msg-stat" title="推理思考 Token: 420"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></svg>420</span>
                       <span class="msg-stat" title="上下文窗口: 18,400 / 128,000 (14%)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>18.4K/128K (14%)</span>
                       <span class="msg-stat" title="总耗时: 4.30s（首字 1.20s · 生成 3.10s）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg>4.30s</span>
                       <span class="msg-stat" title="生成速度: 52.4 tok/s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>52.4/s</span>
@@ -1545,19 +1557,28 @@ currency=USD</div>
                     <button class="tag" data-pill-pick>含工具调用</button>
                   </div>
                 </div>
-                <table class="kv-table">
-                  <thead><tr><th>时间</th><th>来源 / 客户端</th><th>模型与路由</th><th>状态</th><th class="text-right">首字 / 总耗时</th><th class="text-right">输入 / 输出 token</th><th class="text-right">费用</th></tr></thead>
-                  <tbody id="usage-calls-tbody">
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:32:08</td><td>网关 · Claude Code</td><td class="mono">deepseek-v4-pro</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">412ms / 2.8s</td><td class="mono text-right">6,420 / 840</td><td class="mono text-right">¥0.0184</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:29:41</td><td>网关 · Codex CLI</td><td class="mono">claude-sonnet-5-5 → v4-pro</td><td><span class="tag tag-warn">429 → 故障转移</span></td><td class="mono text-right">680ms / 3.4s</td><td class="mono text-right">4,100 / 512</td><td class="mono text-right">¥0.0420</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:25:12</td><td>对话 · 主智能体</td><td class="mono">deepseek-v4-pro</td><td><span class="tag tag-ok">200 · 3 工具</span></td><td class="mono text-right">390ms / 1.9s</td><td class="mono text-right">8,910 / 620</td><td class="mono text-right">¥0.0210</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:24:03</td><td>对话 · 子智能体 Explore</td><td class="mono">deepseek-v4-flash</td><td><span class="tag tag-ok">200 · 只读</span></td><td class="mono text-right">218ms / 740ms</td><td class="mono text-right">3,200 / 310</td><td class="mono text-right">¥0.0022</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:18:04</td><td>AI 请求工作台</td><td class="mono">deepseek-v4-flash</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">233ms / 612ms</td><td class="mono text-right">9 / 2</td><td class="mono text-right">¥0.00002</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:12:49</td><td>网关 · Zed Editor</td><td class="mono">DeepSeek/deepseek-v4-flash</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">205ms / 520ms</td><td class="mono text-right">1,840 / 190</td><td class="mono text-right">¥0.0013</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:09:11</td><td>网关 · 未知客户端</td><td class="mono text-muted">gpt-unknown（路由前拒绝）</td><td><span class="tag tag-bad">401 鉴权失败</span></td><td class="mono text-right">— / 1ms</td><td class="mono text-right">0 / 0</td><td class="mono text-right text-faint">—</td></tr>
-                    <tr class="clickable" data-drawer="usage-call"><td class="mono">14:04:19</td><td>服务商探针 · relay.acme.dev</td><td class="mono">gemini-3.2-pro</td><td><span class="tag tag-bad">403 无权限</span></td><td class="mono text-right">118ms / 118ms</td><td class="mono text-right">12 / 0</td><td class="mono text-right">¥0.0000</td></tr>
-                  </tbody>
-                </table>
+                <div class="card-panel" style="padding:0;overflow:hidden">
+                  <table class="kv-table" style="border:0;border-radius:0">
+                    <thead><tr><th>时间</th><th>来源 / 客户端</th><th>模型与路由</th><th>状态</th><th class="text-right">首字 / 总耗时</th><th class="text-right">输入 / 输出 token</th><th class="text-right">费用</th></tr></thead>
+                    <tbody id="usage-calls-tbody">
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:32:08</td><td>网关 · Claude Code</td><td class="mono">deepseek-v4-pro</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">412ms / 2.8s</td><td class="mono text-right">6,420 / 840</td><td class="mono text-right">¥0.0184</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:29:41</td><td>网关 · Codex CLI</td><td class="mono">claude-sonnet-5-5 → v4-pro</td><td><span class="tag tag-warn">429 → 故障转移</span></td><td class="mono text-right">680ms / 3.4s</td><td class="mono text-right">4,100 / 512</td><td class="mono text-right">¥0.0420</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:25:12</td><td>对话 · 主智能体</td><td class="mono">deepseek-v4-pro</td><td><span class="tag tag-ok">200 · 3 工具</span></td><td class="mono text-right">390ms / 1.9s</td><td class="mono text-right">8,910 / 620</td><td class="mono text-right">¥0.0210</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:24:03</td><td>对话 · 子智能体 Explore</td><td class="mono">deepseek-v4-flash</td><td><span class="tag tag-ok">200 · 只读</span></td><td class="mono text-right">218ms / 740ms</td><td class="mono text-right">3,200 / 310</td><td class="mono text-right">¥0.0022</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:18:04</td><td>AI 请求工作台</td><td class="mono">deepseek-v4-flash</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">233ms / 612ms</td><td class="mono text-right">9 / 2</td><td class="mono text-right">¥0.00002</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:12:49</td><td>网关 · Zed Editor</td><td class="mono">DeepSeek/deepseek-v4-flash</td><td><span class="tag tag-ok">200</span></td><td class="mono text-right">205ms / 520ms</td><td class="mono text-right">1,840 / 190</td><td class="mono text-right">¥0.0013</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:09:11</td><td>网关 · 未知客户端</td><td class="mono text-muted">gpt-unknown（路由前拒绝）</td><td><span class="tag tag-bad">401 鉴权失败</span></td><td class="mono text-right">— / 1ms</td><td class="mono text-right">0 / 0</td><td class="mono text-right text-faint">—</td></tr>
+                      <tr class="clickable" data-drawer="usage-call"><td class="mono">14:04:19</td><td>服务商探针 · relay.acme.dev</td><td class="mono">gemini-3.2-pro</td><td><span class="tag tag-bad">403 无权限</span></td><td class="mono text-right">118ms / 118ms</td><td class="mono text-right">12 / 0</td><td class="mono text-right">¥0.0000</td></tr>
+                    </tbody>
+                  </table>
+                  <div class="pg-bar" data-pg-bar="usage-calls" data-pg-total="1284" data-pg-size="50" data-pg-page="1">
+                    <span class="pg-summary">显示第 1–50 条，共 1,284 条</span>
+                    <div class="pg-controls">
+                      <div class="pg-sizes"><button class="active" data-pg-size="50">50/页</button><button data-pg-size="100">100/页</button><button data-pg-size="200">200/页</button></div>
+                      <div class="pg-nav"><button disabled data-pg-btn="first">«</button><button disabled data-pg-btn="prev">‹</button><span class="pg-page-num">1 / 26</span><button data-pg-btn="next">›</button><button data-pg-btn="last">»</button></div>
+                    </div>
+                  </div>
+                </div>
                 <div class="row-between fs-2xs text-muted">
                   <span>调用日志保留全部请求（含网关路由前拒绝）；用量统计仅计已路由至服务商的调用</span>
                   <button class="text-accent" data-nav-to="settings" data-set-page="ai/usage">日志保留策略：90 天 ↗</button>

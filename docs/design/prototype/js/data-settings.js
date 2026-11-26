@@ -228,28 +228,98 @@ window.PD = window.PD || {};
     },
     "ai/catalog": {
       group: "模型", title: "模型与价格", changed: 0,
+      sub: "同步模型上下文窗口与单价目录，或手动维护自定义与未收录模型报价。",
       html: () => [
-        sec("同步", row("models.dev · 内置快照", "524个模型、937条报价，自建0个（离线时继续使用本地缓存）。", `<div class="row-center"><span class="fs-xs text-muted">自动同步</span>${sw(false)}<button class="btn btn-sm" data-toast="已从 models.dev 同步完成">立即同步</button></div>`), false),
-        sec("模型", `
-          <div class="row-between"><div class="input-box sunken" style="width:260px"><input data-filter-rows="#catalog-rows tr" placeholder="按名称、ID、厂商或分发商搜索…" /></div><button class="btn btn-sm btn-primary" data-drawer="catalog-model">+ 新增自定义模型</button></div>
-          <table class="kv-table">
-            <thead><tr><th>模型</th><th>上下文</th><th class="text-right">输入 / 1M</th><th class="text-right">输出 / 1M</th></tr></thead>
-            <tbody id="catalog-rows">
-              <tr class="clickable" data-drawer="catalog-model"><td class="mono text-accent">deepseek-v4-pro</td><td class="mono">128K</td><td class="mono text-right">¥2.00</td><td class="mono text-right">¥8.00</td></tr>
-              <tr class="clickable" data-drawer="catalog-model"><td class="mono text-accent">claude-sonnet-5-5</td><td class="mono">200K</td><td class="mono text-right">$3.00</td><td class="mono text-right">$15.00</td></tr>
-              <tr class="clickable" data-drawer="catalog-model"><td class="mono text-accent">deepseek-v4-flash</td><td class="mono">128K</td><td class="mono text-right">¥0.50</td><td class="mono text-right">¥2.00</td></tr>
-              <tr class="clickable" data-drawer="catalog-model"><td class="mono text-accent">kimi-k2.6</td><td class="mono">256K</td><td class="mono text-right">¥4.00</td><td class="mono text-right">¥16.00</td></tr>
-            </tbody>
-          </table>`, false, true),
-        sec("未收录的模型", `
-          <p class="set-row-desc">你的服务商提供、但目录里还没有的 2 个模型；点击行可关联到目录模型或单独定价。</p>
-          <table class="kv-table">
-            <thead><tr><th>服务商</th><th>模型 ID</th><th>价格</th><th style="width:68px">操作</th></tr></thead>
-            <tbody>
-              <tr class="clickable" data-drawer="catalog-unlisted"><td>relay.acme.dev</td><td class="mono text-accent">gemini-4-neon</td><td class="text-muted">无价格</td><td><button class="btn btn-sm" data-drawer="catalog-unlisted">关联…</button></td></tr>
-              <tr class="clickable" data-drawer="catalog-unlisted"><td>relay.acme.dev</td><td class="mono text-accent">deepseek-v4-exp</td><td class="text-muted">无价格</td><td><button class="btn btn-sm" data-drawer="catalog-unlisted">关联…</button></td></tr>
-            </tbody>
-          </table>`, false, true),
+        sec("同步", row(
+          `<span class="dot dot-ok"></span> models.dev · 上次同步 2 小时前`,
+          "2,148个模型、4,812条目录报价，自建 3个（离线时继续使用本地缓存）。",
+          `<div class="row-center" style="gap:8px"><span class="fs-xs text-muted">自动同步</span>${sw(true)}<button class="select-pill" data-toast="同步周期：每 7 天">每 7 天 ▾</button><button class="btn btn-sm" data-toast="已从 models.dev 同步完成（新增 4 · 更新 12 · 无变化 2,132）">立即同步</button></div>`
+        ), false),
+        `<div class="set-section">
+          <div class="set-card">
+            <div class="cat-tab-head">
+              <div class="tabs-row">
+                <button class="tab-btn active" data-cat-tab="catalog">目录价格 (2,148)</button>
+                <button class="tab-btn" data-cat-tab="unlisted">未收录模型 (12)</button>
+              </div>
+              <div class="cat-tab-suffix">
+                <span class="tag tag-warn">9个未定价</span>
+                <button class="btn btn-sm btn-primary" data-drawer="catalog-model">+ 添加自建模型</button>
+              </div>
+            </div>
+
+            <div id="cat-pane-catalog">
+              <div class="set-row-block" style="gap:8px">
+                <div class="row-between" style="gap:10px;flex-wrap:wrap">
+                  <div class="input-box sunken" style="width:320px"><input data-filter-rows="#catalog-rows tr" placeholder="按名称、ID、厂商或分发商搜索…" /></div>
+                  <div class="row-center" style="gap:6px">
+                    <button class="tag" data-toast="切换筛选：只看在用的">⚡ 只看在用的</button>
+                    <button class="tag" data-toast="切换筛选：显示分发商条目">🌐 分发商条目</button>
+                  </div>
+                </div>
+                <div class="row-between" style="gap:8px;flex-wrap:wrap">
+                  <div class="row-center" style="gap:6px;flex-wrap:wrap">
+                    <button class="select-pill" data-toast="筛选厂商：全部厂商">全部厂商 ▾</button>
+                    <button class="select-pill" data-toast="筛选类型：全部类型">全部类型 ▾</button>
+                    <button class="select-pill" data-toast="筛选来源：全部来源">全部来源 ▾</button>
+                    <button class="select-pill" data-toast="筛选计价：全部计价">全部计价 ▾</button>
+                  </div>
+                  <span class="fs-xs text-faint">已显示 50个，共 2,148个</span>
+                </div>
+              </div>
+              <table class="kv-table" style="border:0;border-radius:0">
+                <thead><tr><th>模型 / 能力</th><th>上下文 / 输出</th><th class="text-right">输入 / 1M</th><th class="text-right">输出 / 1M</th><th class="text-right">缓存 读 / 写</th><th class="text-right">计价</th></tr></thead>
+                <tbody id="catalog-rows">
+                  <tr class="clickable" data-drawer="catalog-model"><td><b class="text-accent">Claude Sonnet 5.5</b> <span class="text-faint fs-2xs">Anthropic</span><div class="row-center fs-2xs text-muted" style="gap:4px"><span class="mono">claude-sonnet-5-5</span><span class="tag tag-ok" style="height:17px">在用</span><span class="tag" style="height:17px">推理</span><span class="tag" style="height:17px">视觉</span></div></td><td class="mono">200K / 64K</td><td class="mono text-right">$3.00</td><td class="mono text-right">$15.00</td><td class="mono text-right text-muted">$0.30 / $3.75</td><td class="text-right"><span class="tag">跟随目录</span></td></tr>
+                  <tr class="clickable" data-drawer="catalog-model"><td><b class="text-accent">DeepSeek V4 Pro</b> <span class="text-faint fs-2xs">DeepSeek</span><div class="row-center fs-2xs text-muted" style="gap:4px"><span class="mono">deepseek-v4-pro</span><span class="tag tag-ok" style="height:17px">在用</span><span class="tag tag-warn" style="height:17px">1家另计</span><span class="tag" style="height:17px">推理</span></div></td><td class="mono">128K / 16K</td><td class="mono text-right">¥2.00</td><td class="mono text-right">¥8.00</td><td class="mono text-right text-muted">¥0.50 / —</td><td class="text-right"><span class="tag tag-accent">自定义</span></td></tr>
+                  <tr class="clickable" data-drawer="catalog-model"><td><b class="text-accent">DeepSeek V4 Flash</b> <span class="text-faint fs-2xs">DeepSeek</span><div class="row-center fs-2xs text-muted" style="gap:4px"><span class="mono">deepseek-v4-flash</span><span class="tag tag-ok" style="height:17px">在用</span><span class="tag" style="height:17px">工具</span></div></td><td class="mono">128K / 8K</td><td class="mono text-right">¥0.50</td><td class="mono text-right">¥2.00</td><td class="mono text-right text-muted">¥0.10 / —</td><td class="text-right"><span class="tag">跟随目录</span></td></tr>
+                  <tr class="clickable" data-drawer="catalog-model"><td><b class="text-accent">Kimi K2.6</b> <span class="text-faint fs-2xs">Moonshot</span><div class="row-center fs-2xs text-muted" style="gap:4px"><span class="mono">kimi-k2.6</span><span class="tag tag-ok" style="height:17px">在用</span><span class="tag" style="height:17px">工具</span></div></td><td class="mono">256K / 16K</td><td class="mono text-right">¥4.00</td><td class="mono text-right">¥16.00</td><td class="mono text-right text-muted">¥1.00 / —</td><td class="text-right"><span class="tag">跟随目录</span></td></tr>
+                </tbody>
+              </table>
+              <div class="pg-bar" data-pg-bar="cat-catalog" data-pg-total="2148" data-pg-size="50" data-pg-page="1">
+                <span class="pg-summary">显示第 1–50 条，共 2,148 条</span>
+                <div class="pg-controls">
+                  <div class="pg-sizes"><button class="active" data-pg-size="50">50/页</button><button data-pg-size="100">100/页</button><button data-pg-size="200">200/页</button></div>
+                  <div class="pg-nav"><button disabled data-pg-btn="first">«</button><button disabled data-pg-btn="prev">‹</button><span class="pg-page-num">1 / 43</span><button data-pg-btn="next">›</button><button data-pg-btn="last">»</button></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="cat-pane-unlisted" hidden>
+              <div class="set-row-block">
+                <div class="row-between" style="gap:8px;flex-wrap:wrap">
+                  <div class="row-center" style="gap:8px;flex-wrap:wrap">
+                    <div class="input-box sunken" style="width:270px"><input id="cat-unlisted-search" data-filter-unlisted="1" placeholder="搜索未收录模型 ID 或服务商…" /></div>
+                    <button id="cat-unlisted-prov-btn" class="select-pill" data-popover="cat-unlisted-prov">全部服务商 ▾</button>
+                  </div>
+                  <div class="row-center" style="gap:6px" data-unlisted-status-group>
+                    <button class="tag tag-accent" data-unlisted-status="all">全部 (12)</button>
+                    <button class="tag" data-unlisted-status="unpriced">待定价 (9)</button>
+                    <button class="tag" data-unlisted-status="priced">已定价 (3)</button>
+                  </div>
+                </div>
+              </div>
+              <table class="kv-table" style="border:0;border-radius:0">
+                <thead><tr><th>模型 ID</th><th>所属服务商</th><th>价格</th><th class="text-right" style="width:110px">操作</th></tr></thead>
+                <tbody id="unlisted-rows">
+                  <tr class="clickable" data-drawer="catalog-unlisted" data-prov="relay.acme.dev" data-priced="0"><td class="mono text-accent">gemini-4-neon</td><td>relay.acme.dev</td><td><span class="tag tag-warn">未定价</span></td><td class="text-right"><button class="btn btn-sm" data-drawer="catalog-unlisted">匹配 / 定价</button></td></tr>
+                  <tr class="clickable" data-drawer="catalog-unlisted" data-prov="relay.acme.dev" data-priced="0"><td class="mono text-accent">deepseek-v4-exp</td><td>relay.acme.dev</td><td><span class="tag tag-warn">未定价</span></td><td class="text-right"><button class="btn btn-sm" data-drawer="catalog-unlisted">匹配 / 定价</button></td></tr>
+                  <tr class="clickable" data-drawer="catalog-unlisted" data-prov="relay.acme.dev" data-priced="0"><td class="mono text-accent">custom/gpt-6-luna-preview</td><td>relay.acme.dev</td><td><span class="tag tag-warn">未定价</span></td><td class="text-right"><button class="btn btn-sm" data-drawer="catalog-unlisted">匹配 / 定价</button></td></tr>
+                  <tr class="clickable" data-drawer="catalog-unlisted" data-prov="Company Gateway" data-priced="1"><td class="mono text-accent">internal-coder-32b</td><td>Company Gateway</td><td><span class="mono">$0.40 / $1.20</span> <span class="fs-2xs text-faint">· 手动</span></td><td class="text-right"><button class="btn btn-sm" data-drawer="catalog-unlisted">匹配 / 定价</button></td></tr>
+                  <tr class="clickable" data-drawer="catalog-unlisted" data-prov="Company Gateway" data-priced="1"><td class="mono text-accent">internal-embed-v3</td><td>Company Gateway</td><td><span class="mono">$0.05 / $0.00</span> <span class="fs-2xs text-faint">· 手动</span></td><td class="text-right"><button class="btn btn-sm" data-drawer="catalog-unlisted">匹配 / 定价</button></td></tr>
+                </tbody>
+              </table>
+              <div class="pg-bar" data-pg-bar="cat-unlisted" data-pg-total="12" data-pg-size="50" data-pg-page="1">
+                <span class="pg-summary">显示第 1–12 条，共 12 条</span>
+                <div class="pg-controls">
+                  <div class="pg-sizes"><button class="active" data-pg-size="50">50/页</button><button data-pg-size="100">100/页</button><button data-pg-size="200">200/页</button></div>
+                  <div class="pg-nav"><button disabled data-pg-btn="first">«</button><button disabled data-pg-btn="prev">‹</button><span class="pg-page-num">1 / 1</span><button disabled data-pg-btn="next">›</button><button disabled data-pg-btn="last">»</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p id="cat-tab-footnote" class="fs-xs text-faint" style="padding:0 4px">价格按每百万 token 计（不跨币种换算）；点击任意行编辑默认价、查看分发商报价或设置服务商覆盖。</p>
+        </div>`,
       ].join(""),
     },
     "ai/usage": {

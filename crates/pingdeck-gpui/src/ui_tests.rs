@@ -1964,4 +1964,292 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn catalog_two_tabs_and_provider_pricing_lifecycle(cx: &mut TestAppContext) {
+        use pingdeck_desktop::core::app::{llm_model_save_impl, llm_provider_save_impl};
+        use pingdeck_desktop::core::llm::store::{ModelSource, Provider, ProviderModel};
+        use pingdeck_desktop::core::llm::wire::{AuthStyle, Protocol, ProviderEndpoint};
+
+        use crate::views::providers::{ProviderTab, ProvidersView};
+        use crate::views::settings::catalog::{
+            CatalogSettingsView, CatalogTab, UnlistedPriceFilter,
+        };
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        let cloud = llm_provider_save_impl(
+            rt.state(),
+            Provider {
+                name: "MyRelay".to_owned(),
+                category: "custom".to_owned(),
+                base_url: "https://relay.example.com".to_owned(),
+                auth: AuthStyle::Bearer,
+                endpoints: vec![ProviderEndpoint {
+                    protocol: Protocol::OpenaiChat,
+                    path_prefix: "/v1".to_owned(),
+                    auth: None,
+                    url_mode: Default::default(),
+                    enabled: true,
+                }],
+                ..Provider::default()
+            },
+        )
+        .expect("seed cloud provider");
+        let local = llm_provider_save_impl(
+            rt.state(),
+            Provider {
+                name: "Local Ollama".to_owned(),
+                category: "local".to_owned(),
+                base_url: "http://127.0.0.1:11434".to_owned(),
+                auth: AuthStyle::None,
+                endpoints: vec![ProviderEndpoint {
+                    protocol: Protocol::OpenaiChat,
+                    path_prefix: "/v1".to_owned(),
+                    auth: None,
+                    url_mode: Default::default(),
+                    enabled: true,
+                }],
+                ..Provider::default()
+            },
+        )
+        .expect("seed local provider");
+
+        for (pid, mid) in [
+            (&cloud.id, "gpt-4o"),
+            (&cloud.id, "custom/unlisted-alpha"),
+            (&cloud.id, "custom/unlisted-beta"),
+            (&local.id, "local-free-model"),
+        ] {
+            llm_model_save_impl(
+                rt.state(),
+                ProviderModel {
+                    provider_id: pid.clone(),
+                    model_id: mid.to_owned(),
+                    source: ModelSource::Manual,
+                    enabled: true,
+                    ..ProviderModel::default()
+                },
+            )
+            .expect("seed model");
+        }
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        fn wait_for(
+            visual: &mut gpui_kit::VisualTestContext,
+            pred: impl Fn(&gpui_kit::App) -> bool,
+        ) -> bool {
+            for _ in 0..100 {
+                visual.run_until_parked();
+                if visual.update(|window, cx| {
+                    window.refresh();
+                    pred(cx)
+                }) {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        }
+
+        // 1. Settings › Models & Pricing: two-tab Catalog / Unlisted filtering & paging.
+        let (cat_view, cat_visual) = cx.add_window_view(CatalogSettingsView::new);
+        assert!(
+            wait_for(cat_visual, |cx| {
+                let v = cat_view.read(cx);
+                v.page.is_some() && v.unlisted.len() == 2
+            }),
+            "catalog page and 2 paid unlisted models (excluding local free) must load"
+        );
+
+        cat_visual.update(|window, cx| {
+            cat_view.update(cx, |v, cx| {
+                v.set_tab(CatalogTab::Unlisted, cx);
+                v.unlisted_provider = Some(cloud.id.clone());
+                v.unlisted_price_filter = UnlistedPriceFilter::Unpriced;
+                v.unlisted_page_size = 50;
+                cx.notify();
+            });
+            window.refresh();
+            assert_eq!(cat_view.read(cx).active_tab, CatalogTab::Unlisted);
+
+            cat_view.update(cx, |v, cx| {
+                v.unlisted_search_input
+                    .update(cx, |i, cx| i.set_value("alpha", window, cx));
+                v.unlisted_price_filter = UnlistedPriceFilter::Priced;
+                cx.notify();
+            });
+            window.refresh();
+            cat_view.update(cx, |v, cx| v.clear_unlisted_filters(window, cx));
+            window.refresh();
+            assert!(!cat_view.read(cx).unlisted_has_active_filters(cx));
+        });
+
+        // Cross-view live event sync: saving a model pricing override emits CatalogChanged
+        // and automatically refreshes an already-mounted CatalogSettingsView.
+        {
+            use pingdeck_desktop::core::app::llm_model_pricing_save_impl;
+            use pingdeck_desktop::core::model::model_catalog::{ModelPricing, PricingMode};
+
+            let mut direct = ModelPricing::dynamic(&cloud.id, "custom/unlisted-alpha");
+            direct.mode = PricingMode::Custom;
+            direct.input_per_mtok = Some(1.25);
+            direct.output_per_mtok = Some(3.75);
+            llm_model_pricing_save_impl(rt.state(), direct).expect("save direct unlisted price");
+        }
+        assert!(
+            wait_for(cat_visual, |cx| {
+                cat_view
+                    .read(cx)
+                    .unlisted
+                    .iter()
+                    .any(|u| u.model_id == "custom/unlisted-alpha" && u.effective.is_some())
+            }),
+            "CatalogSettingsView must live-refresh on LlmEvent::CatalogChanged"
+        );
+
+        // 2. Providers › Config & Models: catalog pricing basis + relay multiplier persistence.
+        let (prov_view, prov_visual) = cx.add_window_view(ProvidersView::new);
+        assert!(
+            wait_for(prov_visual, |cx| {
+                let v = prov_view.read(cx);
+                v.providers.len() == 2
+                    && !v.catalog_families.is_empty()
+                    && v.pricing_of(&cloud.id).is_some()
+            }),
+            "providers view must load providers, catalog families, and provider pricing"
+        );
+
+        let sample_family =
+            prov_visual.update(|_window, cx| prov_view.read(cx).catalog_families[0].id.clone());
+
+        prov_visual.update(|window, cx| {
+            prov_view.update(cx, |v, cx| {
+                v.select_provider(cloud.id.clone(), window, cx);
+                v.provider_tab = ProviderTab::Models;
+                cx.notify();
+            });
+            window.refresh();
+            prov_view.update(cx, |v, cx| {
+                v.provider_tab = ProviderTab::Config;
+                cx.notify();
+            });
+            window.refresh();
+
+            let cfg = prov_view
+                .read(cx)
+                .config_form
+                .clone()
+                .expect("config form mounted");
+            cfg.update(cx, |f, cx| {
+                f.save_catalog_basis(Some(sample_family.clone()), cx);
+            });
+        });
+
+        assert!(
+            wait_for(prov_visual, |cx| {
+                prov_view
+                    .read(cx)
+                    .pricing_of(&cloud.id)
+                    .and_then(|pv| pv.catalog_family.as_deref())
+                    == Some(sample_family.as_str())
+            }),
+            "provider catalog pricing basis must persist from Provider › Config"
+        );
+
+        prov_visual.update(|window, cx| {
+            let cfg = prov_view
+                .read(cx)
+                .config_form
+                .clone()
+                .expect("config form mounted");
+            cfg.update(cx, |f, cx| {
+                f.relay_mult_input
+                    .update(cx, |i, cx| i.set_value("0.5", window, cx));
+                f.relay_currency = Some("CNY".to_owned());
+                f.save_relay_pricing_only(cx);
+            });
+            window.refresh();
+        });
+
+        assert!(
+            wait_for(prov_visual, |cx| {
+                prov_view
+                    .read(cx)
+                    .providers
+                    .iter()
+                    .find(|p| p.provider.id == cloud.id)
+                    .and_then(|p| p.provider.quirks.relay_pricing.as_ref())
+                    .is_some_and(|rp| {
+                        (rp.multiplier - 0.5).abs() < 1e-6 && rp.currency.as_deref() == Some("CNY")
+                    })
+            }),
+            "relay pricing multiplier and currency must persist from Provider › Config"
+        );
+
+        // Equivalent float formatting ("0.50" vs saved 0.5) must not report dirty,
+        // and currency-only override with empty multiplier must report dirty cleanly.
+        prov_visual.update(|window, cx| {
+            let cfg = prov_view
+                .read(cx)
+                .config_form
+                .clone()
+                .expect("config form mounted");
+            cfg.update(cx, |f, cx| {
+                f.relay_mult_input
+                    .update(cx, |i, cx| i.set_value("0.50", window, cx));
+                assert!(
+                    !f.relay_dirty(cx),
+                    "0.50 equals saved 0.5 and must not leave Apply/Reset stuck visible"
+                );
+                f.relay_mult_input
+                    .update(cx, |i, cx| i.set_value("", window, cx));
+                assert!(
+                    f.relay_dirty(cx),
+                    "empty multiplier with CNY currency (= 1.0 CNY) differs from 0.5 CNY"
+                );
+            });
+        });
+
+        // Cross-view live event sync: saving a per-model override emits CatalogChanged
+        // and updates ProvidersView.provider_pricing (which notifies ProviderConfigForm).
+        {
+            use pingdeck_desktop::core::app::llm_model_pricing_save_impl;
+            use pingdeck_desktop::core::model::model_catalog::{ModelPricing, PricingMode};
+
+            let mut ovr = ModelPricing::dynamic(&cloud.id, "custom/unlisted-beta");
+            ovr.mode = PricingMode::Custom;
+            ovr.input_per_mtok = Some(2.0);
+            ovr.output_per_mtok = Some(6.0);
+            llm_model_pricing_save_impl(rt.state(), ovr).expect("save second unlisted override");
+        }
+        assert!(
+            wait_for(prov_visual, |cx| {
+                prov_view
+                    .read(cx)
+                    .pricing_of(&cloud.id)
+                    .is_some_and(|pv| pv.overrides >= 2)
+            }),
+            "ProvidersView and ProviderConfigForm must live-refresh on LlmEvent::CatalogChanged"
+        );
+
+        // Local free provider renders the Local · Free pricing card cleanly.
+        prov_visual.update(|window, cx| {
+            prov_view.update(cx, |v, cx| {
+                v.select_provider(local.id.clone(), window, cx);
+                v.provider_tab = ProviderTab::Config;
+                cx.notify();
+            });
+            window.refresh();
+        });
+
+        rt.shutdown_blocking();
+    }
 }

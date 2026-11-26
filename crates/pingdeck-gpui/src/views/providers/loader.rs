@@ -7,9 +7,10 @@ use pingdeck_desktop::core::app::{
     ClientInspectDto, GatewayOverviewDto, GatewayRule, ManagedTool, ProviderModelView,
     ProviderView, llm_client_detect_impl, llm_client_inspect_impl, llm_client_managed_list_impl,
     llm_gateway_client_list_impl, llm_gateway_overview_impl, llm_gateway_rules_impl,
-    llm_key_list_impl, llm_log_list_impl, llm_model_list_view_impl, llm_presets_impl,
-    llm_probe_results_impl, llm_provider_health_impl, llm_provider_list_view_impl,
-    llm_provider_status_list_impl, llm_subscribe_impl, settings_get_impl,
+    llm_key_list_impl, llm_log_list_impl, llm_model_catalog_list_impl, llm_model_list_view_impl,
+    llm_presets_impl, llm_probe_results_impl, llm_provider_health_impl,
+    llm_provider_list_view_impl, llm_provider_pricing_list_impl, llm_provider_status_list_impl,
+    llm_subscribe_impl, settings_get_impl,
 };
 use pingdeck_desktop::core::client_config::{ClientApp, DetectedClient, DetectedSnippetClient};
 use pingdeck_desktop::core::llm::events::LlmEvent;
@@ -18,6 +19,7 @@ use pingdeck_desktop::core::llm::store::{
     GatewayClient, LogFilter, ProbeResult, ProviderKey, RequestLogEntry,
 };
 use pingdeck_desktop::core::model::events::Sequenced;
+use pingdeck_desktop::core::model::model_catalog::ModelCatalogQuery;
 use pingdeck_desktop::core::model::settings::AiGatewaySettings;
 use pingdeck_desktop::streams::channel_sink;
 
@@ -63,6 +65,7 @@ impl ProvidersView {
                             | LlmEvent::ProvidersChanged
                             | LlmEvent::KeysChanged { .. }
                             | LlmEvent::ModelsChanged { .. }
+                            | LlmEvent::CatalogChanged
                             | LlmEvent::ClientsChanged
                             | LlmEvent::GatewayLogBatch { .. }
                             | LlmEvent::Gap { .. }
@@ -180,14 +183,34 @@ impl ProvidersView {
                     Some(pid) => llm_provider_health_impl(&state, &pid).await.ok(),
                     None => None,
                 };
-                (statuses, health)
+                let pricing = llm_provider_pricing_list_impl(&state)
+                    .await
+                    .unwrap_or_default();
+                let families = llm_model_catalog_list_impl(
+                    &state,
+                    ModelCatalogQuery {
+                        limit: Some(1),
+                        ..ModelCatalogQuery::default()
+                    },
+                )
+                .await
+                .map(|pg| pg.families)
+                .unwrap_or_default();
+                (statuses, health, pricing, families)
             },
-            |this, (statuses, health), cx| {
+            |this, (statuses, health, pricing, families), cx| {
                 this.statuses = statuses
                     .into_iter()
                     .map(|s| (s.provider_id.clone(), s))
                     .collect();
                 this.provider_health = health;
+                this.provider_pricing = pricing
+                    .into_iter()
+                    .map(|p| (p.provider_id.clone(), p))
+                    .collect();
+                if !families.is_empty() {
+                    this.catalog_families = families;
+                }
                 cx.notify();
             },
         );

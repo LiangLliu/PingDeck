@@ -307,21 +307,6 @@ pub(super) fn render_extra_cards(
             .child(field_row(
                 crate::ui::tr(cx)
                     .providers()
-                    .prov_detail_config_extra_relay_pricing_multiplier(),
-                Some(SharedString::from(
-                    crate::ui::tr(cx)
-                        .providers()
-                        .prov_detail_config_extra_multiply_official_prices_by_a(),
-                )),
-                h_row()
-                    .gap(px(6.0))
-                    .child(div().w(px(110.0)).child(text_input(&form.relay_mult_input)))
-                    .child(div().w(px(90.0)).child(text_input(&form.relay_curr_input))),
-                cx,
-            ))
-            .child(field_row(
-                crate::ui::tr(cx)
-                    .providers()
                     .prov_detail_config_extra_provider_proxy(),
                 Some(SharedString::from(
                     crate::ui::tr(cx)

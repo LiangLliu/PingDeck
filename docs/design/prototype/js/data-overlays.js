@@ -63,6 +63,23 @@ window.PD.POPOVER_TEMPLATES = {
   "usage-range": () => ["今天", "本月", "上月", "1h", "24h", "7d", "30d", "90d", "全部"].map((r, i) =>
     `<button class="pop-opt${i === 5 ? " active" : ""}" data-pick-range="${r}"><span>${r}</span>${i === 5 ? `<span class="ml-auto">✓</span>` : ""}</button>`
   ).join(""),
+  "prov-pricing-basis": () => `
+    <div class="pop-head"><span>选择目录基准价</span><span class="tag">即时生效</span></div>
+    <button class="pop-opt" data-pick-basis="" data-basis-label="跟随官方价"><span>跟随官方价</span></button>
+    <button class="pop-opt active" data-pick-basis="openrouter" data-basis-label="OpenRouter"><span class="text-accent fw-600">OpenRouter（推荐）</span><span class="ml-auto">✓</span></button>
+    <button class="pop-opt" data-pick-basis="anthropic" data-basis-label="Anthropic"><span>Anthropic (28)</span></button>
+    <button class="pop-opt" data-pick-basis="deepseek" data-basis-label="DeepSeek"><span>DeepSeek (12)</span></button>
+    <button class="pop-opt" data-pick-basis="openai" data-basis-label="OpenAI"><span>OpenAI (64)</span></button>
+    <button class="pop-opt" data-pick-basis="google" data-basis-label="Google"><span>Google (36)</span></button>`,
+  "prov-pricing-curr": () => `
+    <div class="pop-head"><span>结算币种</span></div>
+    <button class="pop-opt" data-pick-curr="" data-curr-label="沿用目录币种"><span>沿用目录币种</span></button>
+    ${["USD", "CNY", "EUR", "GBP", "JPY"].map((c) => `<button class="pop-opt${c === "CNY" ? " active" : ""}" data-pick-curr="${c}" data-curr-label="${c}"><span>${c}</span>${c === "CNY" ? `<span class="ml-auto">✓</span>` : ""}</button>`).join("")}`,
+  "cat-unlisted-prov": () => `
+    <div class="pop-head"><span>按服务商筛选</span></div>
+    <button class="pop-opt active" data-pick-unlisted-prov=""><span>全部服务商</span><span class="ml-auto">✓</span></button>
+    <button class="pop-opt" data-pick-unlisted-prov="relay.acme.dev"><span>relay.acme.dev (8)</span></button>
+    <button class="pop-opt" data-pick-unlisted-prov="Company Gateway"><span>Company Gateway (4)</span></button>`,
 };
 
 window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importTab }) => {
@@ -318,6 +335,62 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
       body: `<p>当前页面的已更改设置项将回到出厂默认值，业务记录不会被删除。确认后 8 秒内可以撤销。</p>`,
       foot: `<button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-undo="已恢复本页默认值">恢复默认值</button>`,
     },
+    "run-monitor": {
+      size: "xl",
+      title: "运行看板 · 任务拓扑与执行瀑布（run_01J9X8）",
+      body: `
+        <div class="rm-canvas">
+          <div class="rm-kpis">
+            <div class="kpi-card"><span class="kpi-label">运行状态</span><span class="kpi-val fs-sm text-warn">● 等待审批</span><span class="kpi-sub">cargo clippy 待批准</span></div>
+            <div class="kpi-card"><span class="kpi-label">任务节点</span><span class="kpi-val fs-sm">4 个</span><span class="kpi-sub">3 完成 · 1 阻塞 · 0 失败</span></div>
+            <div class="kpi-card"><span class="kpi-label">累计耗时</span><span class="kpi-val fs-sm">11.4 s</span><span class="kpi-sub">并行阶段节省 1.7 s</span></div>
+            <div class="kpi-card"><span class="kpi-label">累计 Token / 费用</span><span class="kpi-val fs-sm">28.9K · ¥0.025</span><span class="kpi-sub">主智能体 + 2 子智能体</span></div>
+          </div>
+          <div class="rm-split">
+            <div class="col-stack" style="min-height:0;overflow-y:auto">
+              <div class="rm-topo">
+                <div class="card-panel-head"><span>Agent 执行拓扑（串行阶段 × 并行分支）</span><span class="tag">点击节点查看详情</span></div>
+                <div class="rm-stage">
+                  <span class="rm-stage-lbl">阶段 1</span>
+                  <div class="rm-stage-nodes">
+                    <button class="rm-node selected" data-rm-node="root"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>主智能体 · 拆解任务</b></span><span class="mono fs-2xs text-muted">1.2s</span></div><span class="fs-2xs text-muted">deepseek-v4-pro · 派发 2 个并行子任务</span></button>
+                  </div>
+                </div>
+                <div class="rm-stage">
+                  <span class="rm-stage-lbl">阶段 2 并行</span>
+                  <div class="rm-stage-nodes">
+                    <button class="rm-node" data-rm-node="explore"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>Explore · 检索 router.rs</b></span><span class="mono fs-2xs text-muted">1.8s</span></div><span class="fs-2xs text-muted">deepseek-v4-flash · 只读 · 3.2K tok</span></button>
+                    <button class="rm-node" data-rm-node="search"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>Search · 核对 429 规范</b></span><span class="mono fs-2xs text-muted">1.7s</span></div><span class="fs-2xs text-muted">web_search · 3 个来源 · 1.9K tok</span></button>
+                  </div>
+                </div>
+                <div class="rm-stage">
+                  <span class="rm-stage-lbl">阶段 3 汇合</span>
+                  <div class="rm-stage-nodes">
+                    <button class="rm-node" data-rm-node="edit"><div class="row-between"><span class="status-mark"><span class="dot dot-warn"></span><b>主智能体 · 编辑与验证</b></span><span class="mono fs-2xs text-warn">等待审批</span></div><span class="fs-2xs text-muted">+18 -4 · 14 项测试通过 · 待运行 clippy</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="card-panel">
+                <div class="card-panel-head"><span>执行瀑布时间线</span><span class="mono fs-2xs text-muted">0.0s — 11.4s</span></div>
+                <div class="rm-wf-row"><span class="truncate">主智能体 · 规划</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:0%;width:11%"></div></div><span class="mono text-right text-muted">1.2s</span></div>
+                <div class="rm-wf-row"><span class="truncate">Explore (并行)</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:16%"></div></div><span class="mono text-right text-muted">1.8s</span></div>
+                <div class="rm-wf-row"><span class="truncate">Search (并行)</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:15%"></div></div><span class="mono text-right text-muted">1.7s</span></div>
+                <div class="rm-wf-row"><span class="truncate">编辑 + 单元测试</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:27%;width:63%"></div></div><span class="mono text-right text-muted">7.2s</span></div>
+                <div class="rm-wf-row"><span class="truncate text-warn">clippy 审批闸门</span><div class="rm-wf-track"><div class="rm-wf-bar warn" style="left:90%;width:10%"></div></div><span class="mono text-right text-warn">等待中</span></div>
+              </div>
+            </div>
+            <div id="rm-node-detail" class="card-panel" style="min-height:0;overflow-y:auto">
+              <div class="card-panel-head"><span>主智能体 · 拆解任务</span><span class="tag tag-ok">已完成</span></div>
+              <div class="fs-xs text-muted">模型：<code class="text-ink1">DeepSeek/deepseek-v4-pro</code></div>
+              <div class="fs-xs text-muted">耗时：<b class="mono text-ink1">1.20 s</b> · 消耗 <b class="mono text-ink1">4,210 tok</b></div>
+              <div class="code-box" style="white-space:pre-wrap">并行派生 2 个子智能体：
+1. Explore 定位 router.rs 中 429 与 5xx 熔断分支
+2. Search 核对 DeepSeek Retry-After 响应头格式</div>
+            </div>
+          </div>
+        </div>`,
+      foot: `<span class="dialog-foot-note">实时同步 Agent 拓扑与子任务状态，无需切换页面</span><button class="btn" data-action="close-dialog">关闭</button>`,
+    },
     "reset-all": {
       size: "sm", tone: "danger",
       title: "重置全部 20 页设置？",
@@ -430,21 +503,10 @@ Content-Type: application/json
         </div>
       </div>
       <div class="col-stack-sm">
-        <b class="text-ink1">默认价格</b>
-        <div class="seg" style="align-self:flex-start"><button data-action="seg-pick">自定义</button><button data-action="seg-pick">按次</button><button class="active" data-action="seg-pick">无价格</button></div>
-        <span class="set-row-desc">用于你所有服务商，除非下面另有设置。</span>
-        <div class="inline-banner warn"><span>▲ 没有价格，费用将显示为未知。</span></div>
-      </div>
-      <div class="col-stack-sm">
-        <b class="text-ink1">你的服务商 (1)</b>
-        <div class="list-row" style="background:var(--bg-surface);border-color:var(--border-subtle)">
-          <span class="ws-badge" style="background:var(--bg-sunken);color:var(--ink-1);border:1px solid var(--border-subtle)">R</span>
-          <div class="list-row-col">
-            <span class="list-row-title">relay.acme.dev</span>
-            <span class="list-row-sub mono">gemini-4-neon</span>
-          </div>
-          <button class="select-pill" data-toast="服务商计价：跟随默认">跟随默认 ▾</button>
-        </div>
+        <b class="text-ink1">或直接设置单模型价格</b>
+        <div class="seg" style="align-self:flex-start"><button class="active" data-action="seg-pick">目录</button><button data-action="seg-pick">自定义</button><button data-action="seg-pick">按次</button></div>
+        <span class="set-row-desc">仅作用于 relay.acme.dev 下的 gemini-4-neon；服务商整体基准价与中转倍率请在「服务商 › 配置 › 计价与费率」设置。</span>
+        <div class="inline-banner warn"><span>▲ 尚未关联目录模型且未设置自定义价格，费用将显示为未知。</span></div>
       </div>`,
     foot: `<button class="btn btn-ghost" style="margin-right:auto" data-toast="已恢复默认定价">恢复默认</button><button class="btn" data-action="close-drawer">取消</button><button class="btn btn-primary" data-drawer-done="已保存未收录模型 gemini-4-neon 的关联与定价">保存</button>`,
   },

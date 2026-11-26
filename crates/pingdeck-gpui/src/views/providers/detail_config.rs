@@ -4,7 +4,7 @@
 
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Task, Window, div, px,
+    Styled as _, Subscription, Task, Window, div, px,
 };
 use pingdeck_desktop::core::app::{
     Impact, ProviderView, llm_provider_delete_impl, llm_provider_impact_impl,
@@ -12,39 +12,42 @@ use pingdeck_desktop::core::app::{
 };
 use pingdeck_desktop::core::llm::store::SaveProviderOptions;
 use pingdeck_desktop::core::llm::wire::{AuthStyle, EndpointUrlMode, Protocol, ProviderEndpoint};
-use pingdeck_desktop::core::model::model_catalog::RelayPricing;
 
 use crate::bridge::spawn_blocking_into;
 use crate::ui::{
-    Anchor, InputState, Tone, badge, btn_ghost, card, field_row, h_row, list_row, palette, popover,
-    section_heading, select_pill, text_input, to_hsla, toggle_switch, v_col,
+    Anchor, InputEvent, InputState, Tone, badge, btn_ghost, card, field_row, h_row, list_row,
+    palette, popover, section_heading, select_pill, text_input, to_hsla, toggle_switch, v_col,
 };
 
 use super::ProvidersView;
 use super::detail_config_extra::render_extra_cards;
+use super::detail_config_pricing::render_pricing_card;
 use super::format::{format_auth, format_protocol};
 
 pub struct ProviderConfigForm {
-    parent: Entity<ProvidersView>,
+    pub(super) parent: Entity<ProvidersView>,
     pub view: ProviderView,
     name_input: Entity<InputState>,
     base_url_input: Entity<InputState>,
     notes_input: Entity<InputState>,
     pub(super) models_url_input: Entity<InputState>,
     pub(super) proxy_input: Entity<InputState>,
-    pub(super) relay_mult_input: Entity<InputState>,
-    pub(super) relay_curr_input: Entity<InputState>,
+    pub(crate) relay_mult_input: Entity<InputState>,
+    pub(crate) relay_currency: Option<String>,
     pub(super) anthropic_ver_input: Entity<InputState>,
     pub(super) reasoning_field_input: Entity<InputState>,
     pub(super) new_hdr_name: Entity<InputState>,
     pub(super) new_hdr_val: Entity<InputState>,
     endpoint_prefix_inputs: Vec<(Protocol, Entity<InputState>)>,
     pub(super) saving: bool,
+    pub(super) saving_pricing: bool,
+    pub(super) pricing_flash: Option<(Tone, String)>,
     pub(super) needs_host_confirm: bool,
     pub(super) impact: Option<Impact>,
     pub(super) confirm_delete_open: bool,
     pub(super) flash: Option<(Tone, String)>,
-    _tasks: Vec<Task<()>>,
+    _subscriptions: Vec<Subscription>,
+    pub(super) _tasks: Vec<Task<()>>,
 }
 
 impl ProviderConfigForm {
@@ -79,19 +82,22 @@ impl ProviderConfigForm {
             window,
             cx,
         );
-        let (mult_str, curr_str) = prov
+        let (mult_str, relay_currency) = prov
             .quirks
             .relay_pricing
             .as_ref()
-            .map(|rp| {
-                (
-                    format!("{}", rp.multiplier),
-                    rp.currency.clone().unwrap_or_default(),
-                )
-            })
+            .map(|rp| (format!("{}", rp.multiplier), rp.currency.clone()))
             .unwrap_or_default();
         let relay_mult_input = mk_input(mult_str, "e.g. 0.5 or 1.0", window, cx);
-        let relay_curr_input = mk_input(curr_str, "CNY / USD", window, cx);
+        let mult_sub = cx.subscribe(&relay_mult_input, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                this.pricing_flash = None;
+                cx.notify();
+            }
+        });
+        // Re-render whenever `ProvidersView` finishes reloading provider pricing / catalog families
+        // or reacts to `LlmEvent::CatalogChanged` / `ModelsChanged`.
+        let parent_obs = cx.observe(&parent, |_, _, cx| cx.notify());
         let anthropic_ver_input = mk_input(
             prov.quirks.anthropic_version.clone().unwrap_or_default(),
             "2023-06-01 (Auto)",
@@ -131,17 +137,20 @@ impl ProviderConfigForm {
             models_url_input,
             proxy_input,
             relay_mult_input,
-            relay_curr_input,
+            relay_currency,
             anthropic_ver_input,
             reasoning_field_input,
             new_hdr_name,
             new_hdr_val,
             endpoint_prefix_inputs,
             saving: false,
+            saving_pricing: false,
+            pricing_flash: None,
             needs_host_confirm: false,
             impact: None,
             confirm_delete_open: false,
             flash: None,
+            _subscriptions: vec![mult_sub, parent_obs],
             _tasks: Vec::new(),
         };
         form.load_impact(cx);
@@ -237,33 +246,13 @@ impl ProviderConfigForm {
             .to_owned();
         next.quirks.reasoning_response_field = (!rf.is_empty()).then_some(rf);
 
-        let mult_raw = self.relay_mult_input.read(cx).value().trim().to_owned();
-        let curr_raw = self
-            .relay_curr_input
-            .read(cx)
-            .value()
-            .trim()
-            .to_ascii_uppercase();
-        if mult_raw.is_empty() {
-            next.quirks.relay_pricing = None;
-        } else if let Ok(mult) = mult_raw.parse::<f64>()
-            && mult > 0.0
-            && mult <= 1000.0
-        {
-            next.quirks.relay_pricing = Some(RelayPricing {
-                multiplier: mult,
-                currency: (!curr_raw.is_empty()).then_some(curr_raw),
-            });
-        } else {
-            self.flash = Some((
-                Tone::Danger,
-                crate::ui::tr(cx)
-                    .providers()
-                    .prov_cfg_multiplier_range()
-                    .into(),
-            ));
-            cx.notify();
-            return;
+        match self.parse_relay_pricing(cx) {
+            Ok(relay) => next.quirks.relay_pricing = relay,
+            Err(msg) => {
+                self.flash = Some((Tone::Danger, msg.into()));
+                cx.notify();
+                return;
+            }
         }
 
         for (proto, inp) in &self.endpoint_prefix_inputs {
@@ -566,6 +555,7 @@ impl Render for ProviderConfigForm {
             .gap(px(14.0))
             .child(identity_card)
             .child(endpoints_card)
+            .child(render_pricing_card(self, cx))
             .child(render_extra_cards(self, cx))
     }
 }

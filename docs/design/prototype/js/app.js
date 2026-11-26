@@ -99,7 +99,8 @@
     if (dynEl) {
       dynEl.hidden = def === "appearance";
       if (def !== "appearance") {
-        const hero = def === "about" ? "" : `<div class="set-page-hero"><h2 class="set-page-title">${info.title}</h2><p class="set-page-sub">更改即时自动保存；仅标注「仅这台电脑」的项目不会随同步文件夹导出。</p></div>`;
+        const sub = info.sub || "更改即时自动保存；仅标注「仅这台电脑」的项目不会随同步文件夹导出。";
+        const hero = def === "about" ? "" : `<div class="set-page-hero"><h2 class="set-page-title">${info.title}</h2><p class="set-page-sub">${sub}</p></div>`;
         dynEl.innerHTML = `${hero}${info.html()}`;
       }
     }
@@ -237,7 +238,59 @@
     });
   });
 
+  const catalogUi = { unlistedProv: "", unlistedStatus: "all", savedMult: "0.5", savedCurr: "CNY" };
+
+  function filterUnlistedRows() {
+    const q = (byId("cat-unlisted-search")?.value || "").trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll("#unlisted-rows tr").forEach((tr) => {
+      const okProv = !catalogUi.unlistedProv || tr.dataset.prov === catalogUi.unlistedProv;
+      const okStatus = catalogUi.unlistedStatus === "all"
+        || (catalogUi.unlistedStatus === "unpriced" && tr.dataset.priced === "0")
+        || (catalogUi.unlistedStatus === "priced" && tr.dataset.priced === "1");
+      const okQ = !q || tr.textContent.toLowerCase().includes(q);
+      const vis = okProv && okStatus && okQ;
+      tr.hidden = !vis;
+      if (vis) shown++;
+    });
+    const pg = document.querySelector('[data-pg-bar="cat-unlisted"] .pg-summary');
+    if (pg) pg.textContent = shown ? `显示第 1–${shown} 条，共 ${shown} 条` : "共 0 条";
+  }
+
+  function updateProviderPricingFormula() {
+    const basisBtn = byId("prov-pricing-basis-btn");
+    const currBtn = byId("prov-pricing-curr-btn");
+    const multEl = byId("prov-relay-mult");
+    const formulaEl = byId("prov-pricing-formula");
+    if (!basisBtn || !currBtn || !multEl || !formulaEl) return;
+    const basis = basisBtn.dataset.curBasis || "";
+    const basisName = basis ? basisBtn.textContent.replace(/\s*▾$/, "") : "";
+    const curr = currBtn.dataset.curCurr || "";
+    const multRaw = multEl.value.trim();
+    const multNum = multRaw === "" ? (curr ? 1 : null) : Number(multRaw);
+    const multValid = multNum !== null && Number.isFinite(multNum) && multNum > 0 && multNum <= 1000;
+    const currLabel = curr || "目录原币种";
+    if (basisName && multValid) {
+      formulaEl.textContent = `计费规则：${basisName} 目录价 × ${multNum}（按 ${currLabel} 结算）· 单模型单独定价优先`;
+    } else if (!basisName && multValid) {
+      formulaEl.textContent = `计费规则：官方目录价 × ${multNum}（按 ${currLabel} 结算）· 单模型单独定价优先`;
+    } else if (basisName) {
+      formulaEl.textContent = `计费规则：${basisName} 目录价 · 单模型单独定价优先`;
+    } else {
+      formulaEl.textContent = "计费规则：官方目录价 · 单模型单独定价优先";
+    }
+    const dirty = multRaw !== catalogUi.savedMult || curr !== catalogUi.savedCurr;
+    if (byId("prov-relay-apply")) byId("prov-relay-apply").hidden = !dirty;
+    if (byId("prov-relay-reset")) byId("prov-relay-reset").hidden = !dirty;
+  }
+
+  window.PD.catalogUi = catalogUi;
+  window.PD.filterUnlistedRows = filterUnlistedRows;
+  window.PD.updateProviderPricingFormula = updateProviderPricingFormula;
+
   document.addEventListener("input", (e) => {
+    if (e.target?.dataset?.filterUnlisted) { filterUnlistedRows(); return; }
+    if (e.target?.id === "prov-relay-mult") { updateProviderPricingFormula(); return; }
     const sel = e.target?.dataset?.filterRows;
     if (sel) {
       const q = e.target.value.trim().toLowerCase();
@@ -315,6 +368,70 @@
 
     const flowStep = e.target.closest("[data-flow-step]");
     if (flowStep) { selectFlowStep(flowStep.dataset.flowStep, flowStep); return; }
+
+    const catTab = e.target.closest("[data-cat-tab]");
+    if (catTab) {
+      const which = catTab.dataset.catTab;
+      catTab.parentElement?.querySelectorAll("[data-cat-tab]").forEach((b) => b.classList.toggle("active", b === catTab));
+      if (byId("cat-pane-catalog")) byId("cat-pane-catalog").hidden = which !== "catalog";
+      if (byId("cat-pane-unlisted")) byId("cat-pane-unlisted").hidden = which !== "unlisted";
+      const fn = byId("cat-tab-footnote");
+      if (fn) {
+        fn.textContent = which === "unlisted"
+          ? "显示已启用但尚未匹配到目录的模型（本地免费服务商自动排除）；指认目录模型后将自动归入「目录价格」。"
+          : "价格按每百万 token 计（不跨币种换算）；点击任意行编辑默认价、查看分发商报价或设置服务商覆盖。";
+      }
+      return;
+    }
+
+    const unlStatus = e.target.closest("[data-unlisted-status]");
+    if (unlStatus) {
+      catalogUi.unlistedStatus = unlStatus.dataset.unlistedStatus || "all";
+      unlStatus.closest("[data-unlisted-status-group]")?.querySelectorAll("[data-unlisted-status]").forEach((b) => b.classList.toggle("tag-accent", b === unlStatus));
+      filterUnlistedRows();
+      return;
+    }
+
+    const pgCtrl = e.target.closest("[data-pg-btn], [data-pg-size]");
+    if (pgCtrl) {
+      const bar = pgCtrl.closest("[data-pg-bar]");
+      if (bar) {
+        const total = Number(bar.dataset.pgTotal || 0);
+        let size = Number(bar.dataset.pgSize || 50);
+        let page = Number(bar.dataset.pgPage || 1);
+        if (pgCtrl.dataset.pgSize) {
+          size = Number(pgCtrl.dataset.pgSize);
+          page = 1;
+          bar.querySelectorAll("[data-pg-size]").forEach((b) => b.classList.toggle("active", b === pgCtrl));
+        } else {
+          const pages = Math.max(1, Math.ceil(total / size));
+          const act = pgCtrl.dataset.pgBtn;
+          if (act === "first") page = 1;
+          else if (act === "prev") page = Math.max(1, page - 1);
+          else if (act === "next") page = Math.min(pages, page + 1);
+          else if (act === "last") page = pages;
+        }
+        const pages = Math.max(1, Math.ceil(total / size));
+        page = Math.min(page, pages);
+        bar.dataset.pgSize = String(size);
+        bar.dataset.pgPage = String(page);
+        const start = total ? (page - 1) * size + 1 : 0;
+        const end = Math.min(total, page * size);
+        const sumEl = bar.querySelector(".pg-summary");
+        if (sumEl) sumEl.textContent = `显示第 ${start}–${end} 条，共 ${total.toLocaleString()} 条`;
+        const numEl = bar.querySelector(".pg-page-num");
+        if (numEl) numEl.textContent = `${page} / ${pages}`;
+        const f = bar.querySelector('[data-pg-btn="first"]');
+        const pr = bar.querySelector('[data-pg-btn="prev"]');
+        const nx = bar.querySelector('[data-pg-btn="next"]');
+        const ls = bar.querySelector('[data-pg-btn="last"]');
+        if (f) f.disabled = page <= 1;
+        if (pr) pr.disabled = page <= 1;
+        if (nx) nx.disabled = page >= pages;
+        if (ls) ls.disabled = page >= pages;
+      }
+      return;
+    }
 
     const t = e.target.closest("button, tr[data-usage-view], [data-nav-to], [data-req-mode], [data-prov-view], [data-env-tab], [data-env-pick], [data-usage-view], [data-usage-scope], [data-tab-jump], [data-tab], [data-mock-server], [data-set-page], [data-set-palette], [data-set-mode], [data-set-density], [data-set-platform], [data-action]");
     if (!t) { if (wirePop && !wirePop.hidden && !e.target.closest("#wire-popover")) wirePop.hidden = true; return; }
@@ -480,6 +597,31 @@
         if (byId("chat-gate-card")) byId("chat-gate-card").hidden = false;
         if (byId("chat-gate-resolved")) byId("chat-gate-resolved").hidden = true;
         break;
+      case "toggle-reason": {
+        const body = byId("reason-body");
+        const lbl = byId("reason-toggle-lbl");
+        if (body) {
+          body.hidden = !body.hidden;
+          if (lbl) lbl.textContent = body.hidden ? "展开 ▸" : "收起 ▾";
+        }
+        break;
+      }
+      case "apply-relay-pricing": {
+        catalogUi.savedMult = (byId("prov-relay-mult")?.value || "").trim();
+        catalogUi.savedCurr = byId("prov-pricing-curr-btn")?.dataset.curCurr || "";
+        updateProviderPricingFormula();
+        const fl = byId("prov-pricing-flash");
+        if (fl) { fl.textContent = "已保存倍率与币种"; fl.hidden = false; }
+        ov()?.toast("已保存服务商中转倍率与币种，模型列表生效价已同步更新");
+        break;
+      }
+      case "reset-relay-pricing": {
+        if (byId("prov-relay-mult")) byId("prov-relay-mult").value = catalogUi.savedMult;
+        const cb = byId("prov-pricing-curr-btn");
+        if (cb) { cb.dataset.curCurr = catalogUi.savedCurr; cb.textContent = `${catalogUi.savedCurr || "沿用目录币种"} ▾`; }
+        updateProviderPricingFormula();
+        break;
+      }
     }
   });
 

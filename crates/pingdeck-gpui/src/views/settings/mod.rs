@@ -231,6 +231,11 @@ impl SettingsView {
         {
             about.update(cx, |v, cx| v.refresh(cx));
         }
+        if section == SettingsSection::Catalog
+            && let Some(cat) = &self.catalog_view
+        {
+            cat.update(cx, |v, cx| v.reload_all(cx));
+        }
         if section.group() == SettingsGroup::Agent
             && let Some(ag) = &self.agent_view
         {

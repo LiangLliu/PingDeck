@@ -133,7 +133,7 @@ window.PingDeckOverlays = (() => {
       return;
     }
 
-    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
+    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-rm-node], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
     if (!t) {
       if (!e.target.closest(".pop-box")) closeAllPopovers();
       return;
@@ -240,6 +240,59 @@ window.PingDeckOverlays = (() => {
     if (t.dataset.pickWhich) {
       t.closest(".which-list")?.querySelectorAll(".which-opt").forEach((b) => b.classList.toggle("active", b === t));
       toast(`已关联 gemini-4-neon → ${t.dataset.pickWhich}（仅对 relay.acme.dev 生效）`);
+      return;
+    }
+    if (t.dataset.pickUnlistedProv !== undefined) {
+      const prov = t.dataset.pickUnlistedProv;
+      if (window.PD?.catalogUi) window.PD.catalogUi.unlistedProv = prov;
+      const btn = byId("cat-unlisted-prov-btn");
+      if (btn) btn.textContent = `${prov || "全部服务商"} ▾`;
+      window.PD?.filterUnlistedRows?.();
+      closeAllPopovers();
+      return;
+    }
+    if (t.dataset.pickBasis !== undefined) {
+      const basis = t.dataset.pickBasis;
+      const lbl = t.dataset.basisLabel || (basis || "跟随官方价");
+      const btn = byId("prov-pricing-basis-btn");
+      if (btn) { btn.dataset.curBasis = basis; btn.textContent = `${lbl} ▾`; }
+      const cov = byId("prov-pricing-cov");
+      if (cov) {
+        cov.textContent = basis
+          ? `${lbl} 目录价覆盖 32 / 34 个启用模型，其余按官方价`
+          : "34 个启用模型 · 跟随官方目录价";
+      }
+      const sug = byId("prov-pricing-sug-banner");
+      if (sug) sug.hidden = basis === "openrouter";
+      const fl = byId("prov-pricing-flash");
+      if (fl) { fl.textContent = "已更新目录基准价"; fl.hidden = false; }
+      window.PD?.updateProviderPricingFormula?.();
+      closeAllPopovers();
+      toast(`已将目录基准价切换为「${lbl}」，生效价已重算`);
+      return;
+    }
+    if (t.dataset.pickCurr !== undefined) {
+      const curr = t.dataset.pickCurr;
+      const lbl = t.dataset.currLabel || (curr || "沿用目录币种");
+      const btn = byId("prov-pricing-curr-btn");
+      if (btn) { btn.dataset.curCurr = curr; btn.textContent = `${lbl} ▾`; }
+      window.PD?.updateProviderPricingFormula?.();
+      closeAllPopovers();
+      return;
+    }
+    if (t.dataset.rmNode) {
+      const nodes = {
+        root: { title: "主智能体 · 拆解任务", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-pro", meta: "1.20 s · 4,210 tok", log: "并行派生 2 个子智能体：\n1. Explore 定位 router.rs 中 429 与 5xx 熔断分支\n2. Search 核对 DeepSeek Retry-After 响应头格式" },
+        explore: { title: "Explore · 检索 router.rs", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-flash", meta: "1.80 s · 3,200 tok", log: "read_file crates/pingdeck-core/src/llm/router.rs:205-248\n定位到 match status 中 429 与 500..=599 合并触发 60s 熔断。" },
+        search: { title: "Search · 核对 429 规范", tag: "已完成", tone: "tag-ok", model: "web_search (只读)", meta: "1.70 s · 1,920 tok", log: "检索 3 个来源：确认 Retry-After 秒数头与退避上限 15s 策略。" },
+        edit: { title: "主智能体 · 编辑与验证", tag: "等待审批", tone: "tag-warn", model: "DeepSeek/deepseek-v4-pro", meta: "7.20 s · 19,570 tok", log: "edit_file router.rs (+18 -4)\ncargo test -p pingdeck-core router → 14 passed\n等待用户批准：cargo clippy -p pingdeck-core -- -D warnings" },
+      };
+      const info = nodes[t.dataset.rmNode];
+      t.closest(".rm-topo")?.querySelectorAll("[data-rm-node]").forEach((n) => n.classList.toggle("selected", n === t));
+      const det = byId("rm-node-detail");
+      if (info && det) {
+        det.innerHTML = `<div class="card-panel-head"><span>${info.title}</span><span class="tag ${info.tone}">${info.tag}</span></div><div class="fs-xs text-muted">模型：<code class="text-ink1">${info.model}</code></div><div class="fs-xs text-muted">耗时与消耗：<b class="mono text-ink1">${info.meta}</b></div><div class="code-box" style="white-space:pre-wrap">${info.log}</div>`;
+      }
       return;
     }
 

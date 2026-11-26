@@ -1,20 +1,16 @@
-//! Sync status card, flash banner, and Provider Pricing basis rules for "Models & Pricing".
+//! Compact catalog source sync bar and flash banner for "Models & Pricing".
 
 use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::app::current_time_ms;
-use pingdeck_desktop::core::model::model_catalog::{
-    CatalogOrigin, ModelCatalogFamily, SYNC_INTERVAL_DAYS,
-};
+use pingdeck_desktop::core::model::model_catalog::{CatalogOrigin, SYNC_INTERVAL_DAYS};
 
 use crate::ui::{
-    Anchor, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary,
-    dismissible_banner, h_row, icon_xs, list_row, palette, popover, select_pill,
-    settings_section_flush, settings_section_padded, status_indicator, to_hsla, toggle_switch,
-    v_col,
+    Anchor, StatusShape, Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, dismissible_banner,
+    h_row, icon_xs, list_row, palette, popover, select_pill, settings_section_padded,
+    status_indicator, to_hsla, toggle_switch, v_col,
 };
 
 use super::CatalogSettingsView;
-use super::filters::render_provider_family_picker;
 use super::format::{format_ago, format_next_due, format_sync_error, format_ymd};
 
 pub fn render_flash_banner(
@@ -147,10 +143,11 @@ pub fn render_sync_section(
         h_row()
             .justify_between()
             .gap(px(14.0))
+            .flex_wrap()
             .child(
                 v_col()
                     .flex_1()
-                    .min_w_0()
+                    .min_w(px(240.0))
                     .gap(px(3.0))
                     .child(
                         h_row()
@@ -248,123 +245,4 @@ pub fn render_sync_section(
         box_el,
         cx,
     )
-}
-
-pub fn render_provider_pricing_section(
-    view: &CatalogSettingsView,
-    cx: &mut Context<CatalogSettingsView>,
-) -> impl IntoElement {
-    let p = palette(cx);
-    let families: Vec<ModelCatalogFamily> = view
-        .page
-        .as_ref()
-        .map(|pg| pg.families.clone())
-        .unwrap_or_default();
-
-    let mut rows = v_col();
-    for (idx, pv) in view.provider_pricing.iter().enumerate() {
-        let current_label = pv
-            .catalog_family_name
-            .clone()
-            .or_else(|| pv.catalog_family.clone())
-            .unwrap_or_else(|| {
-                crate::ui::tr(cx)
-                    .settings()
-                    .filters_follow_official_prices()
-                    .into()
-            });
-
-        let coverage = if let Some(fam) = pv
-            .catalog_family_name
-            .as_deref()
-            .or(pv.catalog_family.as_deref())
-        {
-            crate::ui::tr(cx)
-                .settings()
-                .sync_section_of_models_priced_by_rest(pv.matched, pv.models, fam)
-        } else {
-            crate::ui::tr(cx)
-                .settings()
-                .sync_section_enabled_model_s_official_prices(pv.models)
-        };
-
-        let picker = render_provider_family_picker(
-            idx,
-            pv.provider_id.clone(),
-            pv.provider_name.clone(),
-            pv.catalog_family.clone(),
-            pv.suggested_family.clone(),
-            pv.suggested_family_name.clone(),
-            current_label,
-            families.clone(),
-            cx,
-        );
-
-        let mut row = h_row()
-            .justify_between()
-            .gap(px(12.0))
-            .px(px(14.0))
-            .py(px(10.0))
-            .child(
-                v_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(2.0))
-                    .child(
-                        h_row()
-                            .gap(px(6.0))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                    .text_color(to_hsla(p.ink))
-                                    .child(SharedString::from(pv.provider_name.clone())),
-                            )
-                            .children((pv.overrides > 0).then(|| {
-                                badge(
-                                    crate::ui::tr(cx)
-                                        .settings()
-                                        .sync_section_override_s(pv.overrides),
-                                    Tone::Accent,
-                                    cx,
-                                )
-                            })),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .child(SharedString::from(coverage)),
-                    ),
-            )
-            .child(div().flex_shrink_0().child(picker));
-
-        if idx + 1 < view.provider_pricing.len() {
-            row = row
-                .border_b_1()
-                .border_color(to_hsla(p.line.composite_over(p.surface)));
-        }
-        rows = rows.child(row);
-    }
-
-    v_col()
-        .w_full()
-        .gap(px(8.0))
-        .child(settings_section_flush(
-            crate::ui::tr(cx).settings().sec_catalog_providers(),
-            None,
-            rows,
-            cx,
-        ))
-        .child(
-            div()
-                .px(px(4.0))
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(
-                    crate::ui::tr(cx)
-                        .settings()
-                        .sync_section_make_a_provider_follow_one(),
-                ),
-        )
 }

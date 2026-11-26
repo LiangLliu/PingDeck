@@ -1,24 +1,23 @@
-//! Main Models & Pricing table, pagination footer, and Unlisted Models section.
+//! Tab 1 of Models & Pricing: Synced & custom model price catalog with server-side pagination.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    Context, Div, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::model_catalog::{CatalogSource, ModelCatalogRow};
 
 use crate::ui::{
-    DEFAULT_PAGE_SIZES, PaginationBar, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary,
-    btn_secondary, filter_chip, h_row, page_slice, pagination_bar, palette, search_input,
-    settings_section_flush, status_indicator, to_hsla, v_col,
+    DEFAULT_PAGE_SIZES, PaginationBar, StatusShape, Tone, UiIcon, badge, btn_ghost, filter_chip,
+    h_row, pagination_bar, palette, search_input, status_indicator, to_hsla, v_col,
 };
 
 use super::CatalogSettingsView;
 use super::filters::{
     render_kind_filter, render_mode_filter, render_publisher_filter, render_source_filter,
 };
-use super::format::{format_effective_price, format_row_prices, format_tokens};
+use super::format::{format_row_prices, format_tokens};
 
-fn th_bar(cx: &gpui_kit::App) -> gpui_kit::Div {
+pub(super) fn th_bar(cx: &gpui_kit::App) -> Div {
     let p = palette(cx);
     h_row()
         .px(px(14.0))
@@ -32,7 +31,7 @@ fn th_bar(cx: &gpui_kit::App) -> gpui_kit::Div {
         .text_color(to_hsla(p.muted))
 }
 
-fn th_col(width: f32, right: bool, label: &'static str) -> gpui_kit::Div {
+pub(super) fn th_col(width: f32, right: bool, label: &'static str) -> Div {
     if right {
         div().w(px(width)).flex().justify_end().child(label)
     } else {
@@ -40,10 +39,10 @@ fn th_col(width: f32, right: bool, label: &'static str) -> gpui_kit::Div {
     }
 }
 
-pub fn render_models_section(
+pub fn render_catalog_tab(
     view: &CatalogSettingsView,
     cx: &mut Context<CatalogSettingsView>,
-) -> impl IntoElement {
+) -> Div {
     let p = palette(cx);
     let shown = view.page.as_ref().map_or(0, |pg| pg.rows.len());
     let total = view.page.as_ref().map_or(0, |pg| pg.total as usize);
@@ -88,16 +87,6 @@ pub fn render_models_section(
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.distributor_entries = !this.distributor_entries;
                         this.load_page(false, cx);
-                    })),
-                )
-                .child(
-                    btn_primary(
-                        "cat-add-user-model",
-                        crate::ui::tr(cx).settings().models_table_add_custom_model(),
-                    )
-                    .h(px(30.0))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_add_user_model_drawer(window, cx);
                     })),
                 ),
         );
@@ -198,7 +187,7 @@ pub fn render_models_section(
         }
     }
 
-    let mut table_body = v_col()
+    let mut body = v_col()
         .w_full()
         .child(
             v_col()
@@ -214,7 +203,7 @@ pub fn render_models_section(
         .child(tbody);
 
     if total > 0 {
-        table_body = table_body.child(
+        body = body.child(
             div()
                 .px(px(14.0))
                 .py(px(9.0))
@@ -242,26 +231,7 @@ pub fn render_models_section(
         );
     }
 
-    v_col()
-        .w_full()
-        .gap(px(8.0))
-        .child(settings_section_flush(
-            crate::ui::tr(cx).settings().models_table_models(),
-            None,
-            table_body,
-            cx,
-        ))
-        .child(
-            div()
-                .px(px(4.0))
-                .text_xs()
-                .text_color(to_hsla(p.faint))
-                .child(
-                    crate::ui::tr(cx)
-                        .settings()
-                        .models_table_prices_are_per_1m_tokens(),
-                ),
-        )
+    body
 }
 
 fn render_catalog_row(
@@ -425,7 +395,7 @@ fn render_catalog_row(
     el
 }
 
-fn cap_chip(label: &'static str, cx: &gpui_kit::App) -> gpui_kit::Div {
+fn cap_chip(label: &'static str, cx: &gpui_kit::App) -> Div {
     let p = palette(cx);
     div()
         .px(px(5.0))
@@ -437,155 +407,4 @@ fn cap_chip(label: &'static str, cx: &gpui_kit::App) -> gpui_kit::Div {
         .text_size(px(10.5))
         .text_color(to_hsla(p.muted))
         .child(label)
-}
-
-pub fn render_unlisted_section(
-    view: &CatalogSettingsView,
-    cx: &mut Context<CatalogSettingsView>,
-) -> impl IntoElement {
-    let p = palette(cx);
-    let lang = crate::ui::active_language(cx);
-    let s = crate::ui::tr(cx).settings();
-    const UNLISTED_PAGE_SIZE: usize = 20;
-    let count = view.unlisted.len();
-    let (page_items, clamped_page, _) =
-        page_slice(&view.unlisted, view.unlisted_page, UNLISTED_PAGE_SIZE);
-
-    let thead = th_bar(cx)
-        .child(th_col(180.0, false, s.catalog_th_provider()))
-        .child(div().flex_1().child(s.catalog_user_id()))
-        .child(th_col(150.0, false, s.catalog_th_price()))
-        .child(th_col(120.0, true, s.catalog_th_action()));
-
-    let mut tbody = v_col();
-    for (idx, item) in page_items.iter().enumerate() {
-        let price_str = item
-            .effective
-            .as_ref()
-            .map(|e| format_effective_price(e, lang))
-            .unwrap_or_else(|| s.catalog_mode_none().into());
-        let has_price = item.effective.is_some();
-        let item_click = item.clone();
-        let item_btn = item.clone();
-
-        let mut row = div()
-            .id(SharedString::from(format!("cat-unlisted-{idx}")))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(10.0))
-            .px(px(14.0))
-            .py(px(9.0))
-            .cursor_pointer()
-            .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.surface))))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_unlisted_drawer(item_click.clone(), window, cx);
-            }))
-            .child(
-                div()
-                    .w(px(180.0))
-                    .text_xs()
-                    .text_color(to_hsla(p.ink))
-                    .truncate()
-                    .child(SharedString::from(item.provider_name.clone())),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_xs()
-                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                    .text_color(to_hsla(p.accent_ink))
-                    .truncate()
-                    .child(SharedString::from(item.model_id.clone())),
-            )
-            .child(
-                div()
-                    .w(px(150.0))
-                    .text_xs()
-                    .text_color(if has_price {
-                        to_hsla(p.ink)
-                    } else {
-                        to_hsla(p.warn)
-                    })
-                    .child(SharedString::from(price_str)),
-            )
-            .child(
-                div()
-                    .id(SharedString::from(format!("cat-unlisted-act-{idx}")))
-                    .w(px(120.0))
-                    .flex()
-                    .justify_end()
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(
-                        btn_secondary(
-                            SharedString::from(format!("cat-unlisted-btn-{idx}")),
-                            crate::ui::tr(cx).settings().models_table_price_match(),
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.open_unlisted_drawer(item_btn.clone(), window, cx);
-                            },
-                        )),
-                    ),
-            );
-        if idx + 1 < page_items.len() {
-            row = row
-                .border_b_1()
-                .border_color(to_hsla(p.line.composite_over(p.surface)));
-        }
-        tbody = tbody.child(row);
-    }
-
-    let mut section_body = v_col().w_full().child(thead).child(tbody);
-    if count > UNLISTED_PAGE_SIZE {
-        section_body = section_body.child(
-            div()
-                .px(px(14.0))
-                .py(px(8.0))
-                .bg(to_hsla(p.pane))
-                .border_t_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(pagination_bar(
-                    PaginationBar {
-                        id_prefix: "cat-unlisted-pg",
-                        page: clamped_page,
-                        page_size: UNLISTED_PAGE_SIZE,
-                        total: count,
-                        page_sizes: &[],
-                        loading: false,
-                        compact: false,
-                    },
-                    |this: &mut CatalogSettingsView, next_page, cx| {
-                        this.unlisted_page = next_page;
-                        cx.notify();
-                    },
-                    None::<fn(&mut CatalogSettingsView, usize, &mut Context<CatalogSettingsView>)>,
-                    cx,
-                )),
-        );
-    }
-
-    v_col()
-        .w_full()
-        .gap(px(8.0))
-        .child(settings_section_flush(
-            crate::ui::tr(cx)
-                .settings()
-                .models_table_unlisted_models(count),
-            None,
-            section_body,
-            cx,
-        ))
-        .child(
-            div()
-                .px(px(4.0))
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(
-                    crate::ui::tr(cx)
-                        .settings()
-                        .models_table_models_your_providers_serve_that(),
-                ),
-        )
 }
