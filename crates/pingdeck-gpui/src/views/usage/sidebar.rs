@@ -20,7 +20,6 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         crate::ui::Tr(view.lang).usage().usage_sidebar_usage_logs(),
         None,
         None,
-        None,
         cx,
     );
 
@@ -156,11 +155,7 @@ pub fn render_sidebar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                 div()
                     .text_size(px(11.0))
                     .text_color(to_hsla(p.muted))
-                    .child(
-                        crate::ui::tr(cx)
-                            .usage()
-                            .usage_sidebar_provider_s_live(view.providers.len()),
-                    ),
+                    .child(crate::ui::tr(cx).usage().usage_sidebar_live()),
             ),
         None,
         cx,

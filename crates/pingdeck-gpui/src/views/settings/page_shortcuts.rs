@@ -42,15 +42,10 @@ pub fn render_shortcuts(view: &SettingsView, cx: &mut Context<SettingsView>) -> 
             .child(
                 h_row()
                     .gap(px(8.0))
-                    .child(badge(
-                        s.shortcut_summary(SHORTCUT_SPECS.len(), custom_count),
-                        if custom_count > 0 {
-                            Tone::Accent
-                        } else {
-                            Tone::Neutral
-                        },
-                        cx,
-                    ))
+                    .children(
+                        (custom_count > 0)
+                            .then(|| badge(s.shortcut_customized(custom_count), Tone::Accent, cx)),
+                    )
                     .child(
                         btn_secondary("sc-reset-all", s.shortcut_restore_all())
                             .icon(icon_xs(UiIcon::RotateCcw))

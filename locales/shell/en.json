@@ -58,7 +58,6 @@
   "shell.palette.entity.request": "Saved request",
   "shell.palette.entity.request_kw": "request 请求",
   "shell.palette.footer_hint": "↑↓ Navigate · ↵ Open · Esc Close",
-  "shell.palette.items_count": "{count} items",
   "shell.palette.needs_approval": "Needs approval",
   "shell.palette.placeholder": "Search modules, requests, chats, mocks, flows, providers, settings…",
   "shell.palette.placeholder_init": "Search modules, requests, chats, providers, settings, commands…",

@@ -151,7 +151,6 @@
   "prov.detail.mark_reviewed": "标记为已复核",
   "prov.detail.model_list_drift_added_removed": "模型目录飘移提醒：服务商新增 {count}个模型，移除 {count_2}个模型。",
   "prov.detail.models": "模型 ({prov_models_cnt})",
-  "prov.detail.models_keys": "{prov_models_cnt}个模型 · {prov_keys_cnt} 把密钥",
   "prov.detail.no_enabled_api_key_yet": "还没有已启用的 API 密钥，添加密钥后即可刷新模型、探测与路由请求。",
   "prov.detail.re_scan": "重新嗅探…",
   "prov.detail.test_bench": "基准测试…",

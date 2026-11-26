@@ -59,7 +59,6 @@ pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoE
 
     let header = pane_header(
         ch.pane_label(),
-        Some(view.sessions.len()),
         Some(
             h_row()
                 .gap(px(4.0))
@@ -177,7 +176,7 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     if !needs_you.is_empty() {
         list = list.child(group_label(
             crate::ui::tr(cx).chat().sidebar_needs_you(),
-            needs_you.len(),
+            Some(needs_you.len()),
             Some(StatusShape::Warn),
             cx,
         ));
@@ -189,7 +188,7 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     if !pinned.is_empty() {
         list = list.child(group_label(
             crate::ui::tr(cx).chat().sidebar_pinned(),
-            pinned.len(),
+            None,
             None,
             cx,
         ));
@@ -201,7 +200,7 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     if !recent.is_empty() {
         list = list.child(group_label(
             crate::ui::tr(cx).chat().sidebar_recent(),
-            recent.len(),
+            None,
             None,
             cx,
         ));

@@ -6,8 +6,8 @@ use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::state::{SettingsGroup, SettingsSection};
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_secondary, empty_inline, h_row,
-    icon_xs, list_row, palette, search_input, status_indicator, to_hsla, v_col,
+    ScrollableElement as _, StatusShape, UiIcon, btn_secondary, empty_inline, h_row, icon_xs,
+    list_row, palette, search_input, status_indicator, to_hsla, v_col,
 };
 
 use super::state_inputs::section_matches_query;
@@ -45,20 +45,13 @@ pub(super) fn render_settings_sidebar(
         }
         nav_hits += matching.len();
         let mut grp_hdr = h_row()
-            .justify_between()
             .px(px(8.0))
             .pt(px(if group_idx == 0 { 4.0 } else { 10.0 }))
             .pb(px(4.0))
             .text_size(px(11.0))
             .font_weight(gpui_kit::FontWeight::MEDIUM)
             .text_color(to_hsla(p.faint))
-            .child(group.label(lang))
-            .child(
-                div()
-                    .text_size(px(10.5))
-                    .text_color(to_hsla(p.faint))
-                    .child(SharedString::from(matching.len().to_string())),
-            );
+            .child(group.label(lang));
         if group_idx > 0 {
             grp_hdr = grp_hdr
                 .mt(px(8.0))
@@ -151,7 +144,6 @@ pub(super) fn render_settings_sidebar(
                         }),
                     )
                     .w_full()
-                    .justify_between()
                     .gap(px(6.0))
                     .text_color(to_hsla(p.ink_2))
                     .child(
@@ -164,14 +156,7 @@ pub(super) fn render_settings_sidebar(
                                     .font_weight(gpui_kit::FontWeight::MEDIUM)
                                     .child(crate::ui::tr(cx).settings().nav_back()),
                             ),
-                    )
-                    .child(badge(
-                        crate::ui::tr(cx)
-                            .settings()
-                            .nav_pages(SettingsSection::ALL.len()),
-                        Tone::Neutral,
-                        cx,
-                    )),
+                    ),
                 ),
         )
         .child(

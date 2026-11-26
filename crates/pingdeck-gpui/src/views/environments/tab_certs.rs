@@ -20,24 +20,15 @@ pub fn render_certs_tab(view: &EnvironmentsView, cx: &mut Context<EnvironmentsVi
     let bar = toolbar_strip(cx)
         .justify_between()
         .child(
-            h_row()
-                .gap(px(8.0))
+            div()
+                .text_sm()
+                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                .text_color(to_hsla(p.ink))
                 .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .child(
-                            crate::ui::Tr(view.lang)
-                                .environments()
-                                .tab_certs_workspace_tls_certificates_mtls_custom(),
-                        ),
-                )
-                .child(badge(
-                    view.certificates.len().to_string(),
-                    Tone::Neutral,
-                    cx,
-                )),
+                    crate::ui::Tr(view.lang)
+                        .environments()
+                        .tab_certs_workspace_tls_certificates_mtls_custom(),
+                ),
         )
         .child(
             btn_primary(

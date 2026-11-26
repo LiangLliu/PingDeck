@@ -190,11 +190,10 @@
                   <span class="ml-auto row-center" style="gap:4px">
                     <button class="btn-icon" style="width:20px;height:20px" title="运行集合" data-toast="已打开集合运行标签「Billing API」">▶</button>
                     <button class="btn-icon" style="width:20px;height:20px" title="集合设置" data-toast="已打开集合设置「Billing API」">⚙</button>
-                    <span class="text-faint">17</span>
                   </span>
                 </div>
                 <div data-folder-body="col-billing">
-                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-invoices">▾ Invoices <span class="ml-auto text-faint">5</span></div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-invoices">▾ Invoices</div>
                   <div data-folder-body="fold-invoices">
                     <button class="tree-item selected" data-req-mode="http" data-req-primary="http"><span class="tree-m m-get">GET</span><span>List invoices</span></button>
                     <button class="tree-item" data-req-mode="http"><span class="tree-m m-post">POST</span><span class="flex-1">Create invoice</span><span class="dirty-dot" title="未保存"></span></button>
@@ -202,11 +201,11 @@
                     <button class="tree-item" data-req-mode="http"><span class="tree-m m-patch">PATCH</span><span>Finalize draft</span></button>
                     <button class="tree-item" data-req-mode="http"><span class="tree-m m-delete">DELETE</span><span>Void invoice</span></button>
                   </div>
-                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-customers">▸ Customers <span class="ml-auto text-faint">4</span></div>
-                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-refunds">▸ Refunds <span class="ml-auto text-faint">4</span></div>
-                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-webhooks">▸ Webhooks <span class="ml-auto text-faint">4</span></div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-customers">▸ Customers</div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-refunds">▸ Refunds</div>
+                  <div class="tree-folder" style="padding-left:16px" data-toggle-folder="fold-webhooks">▸ Webhooks</div>
                 </div>
-                <div class="list-group-head"><span>AI 调试请求</span><span>1</span></div>
+                <div class="list-group-head"><span>AI 调试请求</span></div>
                 <button class="tree-item" data-req-mode="ai" data-req-primary="ai"><span class="tree-m mono text-accent fw-600 fs-2xs">AI</span><span>Ping test (DeepSeek)</span></button>
               </div>
               <div class="pane-foot">
@@ -834,7 +833,7 @@ currency=USD</div>
                 </div>
               </div>
               <div id="hist-list" class="pane-body" data-select-list="history">
-                <div class="list-group-head"><span>今天</span><span>4 条</span></div>
+                <div class="list-group-head"><span>今天</span></div>
                 <button class="list-row selected">
                   <div class="list-row-col">
                     <div class="row-center"><span class="m-post">POST</span><span class="list-row-title">/refunds</span><span class="mono ml-auto text-bad fs-2xs">202</span></div>
@@ -1226,7 +1225,7 @@ currency=USD</div>
                     <span class="list-row-sub">127.0.0.1:4141 · 3 客户端</span>
                   </div>
                 </button>
-                <div class="list-group-head"><span>已配置服务商</span><span>6</span></div>
+                <div class="list-group-head"><span>已配置服务商</span></div>
                 <button class="list-row" data-prov-view="relay" data-prov-primary="relay">
                   <span class="dot dot-warn"></span>
                   <div class="list-row-col">
@@ -1443,7 +1442,7 @@ currency=USD</div>
                     <span class="list-row-sub">1,284次调用 · 4.82M token</span>
                   </div>
                 </button>
-                <div class="list-group-head"><span>服务商</span><span>3</span></div>
+                <div class="list-group-head"><span>按服务商</span></div>
                 <button class="list-row" data-usage-scope="DeepSeek">
                   <span class="dot dot-ok"></span>
                   <div class="list-row-col">
@@ -1594,7 +1593,6 @@ currency=USD</div>
             <div class="pane">
               <div class="pane-head">
                 <button class="btn btn-sm btn-ghost" data-nav-to="requests">‹ 返回请求</button>
-                <span class="pane-title text-right text-muted" style="font-size:13px">20 页</span>
               </div>
               <div class="pane-search">
                 <div class="input-box sunken">
@@ -1604,18 +1602,18 @@ currency=USD</div>
                 </div>
               </div>
               <div id="set-nav-list" class="pane-body">
-                <div class="list-group-head" data-set-group="general"><span>通用</span><span>3</span></div>
+                <div class="list-group-head" data-set-group="general"><span>通用</span></div>
                 <button class="list-row" data-set-page="general"><span class="list-row-title">通用</span></button>
                 <button class="list-row selected" data-set-page="appearance"><span class="list-row-title">外观</span><span class="tag ml-auto" style="height:18px">已更改 1</span></button>
                 <button class="list-row" data-set-page="shortcuts"><span class="list-row-title">快捷键</span></button>
 
-                <div class="list-group-head" data-set-group="workspace"><span>请求与数据</span><span>4</span></div>
+                <div class="list-group-head" data-set-group="workspace"><span>请求与数据</span></div>
                 <button class="list-row" data-set-page="requests"><span class="list-row-title">请求默认值</span></button>
                 <button class="list-row" data-set-page="network"><span class="list-row-title">网络</span></button>
                 <button class="list-row" data-set-page="mock"><span class="list-row-title">Mock 服务</span></button>
                 <button class="list-row" data-set-page="data"><span class="list-row-title">数据与同步</span></button>
 
-                <div class="list-group-head" data-set-group="agent"><span>智能体</span><span>8</span></div>
+                <div class="list-group-head" data-set-group="agent"><span>智能体</span></div>
                 <button class="list-row" data-set-page="ai/agent"><span class="list-row-title">默认</span></button>
                 <button class="list-row" data-set-page="ai/personalization"><span class="list-row-title">个性化</span></button>
                 <button class="list-row" data-set-page="ai/memory"><span class="list-row-title">项目指令与信任</span></button>
@@ -1625,12 +1623,12 @@ currency=USD</div>
                 <button class="list-row" data-set-page="ai/mcp"><span class="list-row-title">MCP 服务器</span><span class="set-nav-badge"><span class="dot dot-warn"></span>需要处理</span></button>
                 <button class="list-row" data-set-page="ai/skills"><span class="list-row-title">技能</span></button>
 
-                <div class="list-group-head" data-set-group="ai"><span>模型</span><span>3</span></div>
+                <div class="list-group-head" data-set-group="ai"><span>模型</span></div>
                 <button class="list-row" data-set-page="ai/routing"><span class="list-row-title">重试与故障转移</span></button>
                 <button class="list-row" data-set-page="ai/catalog"><span class="list-row-title">模型与价格</span></button>
                 <button class="list-row" data-set-page="ai/usage"><span class="list-row-title">用量统计</span></button>
 
-                <div class="list-group-head" data-set-group="system"><span>系统</span><span>2</span></div>
+                <div class="list-group-head" data-set-group="system"><span>系统</span></div>
                 <button class="list-row" data-set-page="advanced"><span class="list-row-title">高级</span></button>
                 <button class="list-row" data-set-page="about"><span class="list-row-title">关于</span></button>
               </div>

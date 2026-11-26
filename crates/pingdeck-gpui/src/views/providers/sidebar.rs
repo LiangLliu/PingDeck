@@ -185,11 +185,7 @@ pub fn render_sidebar(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> 
             .pt(px(10.0))
             .pb(px(3.0))
             .child(section_heading(
-                format!(
-                    "{} ({})",
-                    crate::ui::tr(cx).providers().prov_sidebar_providers(),
-                    view.providers.len()
-                ),
+                crate::ui::tr(cx).providers().prov_sidebar_providers(),
                 cx,
             )),
     );
@@ -333,12 +329,6 @@ pub fn render_sidebar(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> 
                                         .child(SharedString::from(subline)),
                                 ),
                         ),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.5))
-                        .text_color(to_hsla(p.faint))
-                        .child(SharedString::from(enabled_models.to_string())),
                 ),
             );
         }
@@ -379,7 +369,6 @@ pub fn render_sidebar(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> 
 
     let header = pane_header(
         crate::ui::tr(cx).providers().prov_title(),
-        None,
         Some(
             btn_primary(
                 "prov-add-open",

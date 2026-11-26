@@ -7,8 +7,8 @@ use pingdeck_desktop::core::model::settings::ToolApproval;
 use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, h_row, icon_xs, list_row,
-    palette, pill_btn, popover, progress_bar, search_input, section_heading, to_hsla, v_col,
+    Anchor, ScrollableElement as _, UiIcon, btn_ghost, h_row, icon_xs, list_row, palette, pill_btn,
+    popover, progress_bar, search_input, section_heading, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -367,17 +367,12 @@ pub fn render_model_popover(
                 .pb(px(6.0))
                 .border_b_1()
                 .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
-                .child(
-                    h_row()
-                        .justify_between()
-                        .child(section_heading(
-                            crate::ui::tr(pop_cx)
-                                .chat()
-                                .composer_popovers_select_model(),
-                            pop_cx,
-                        ))
-                        .child(badge(filtered.len().to_string(), Tone::Neutral, pop_cx)),
-                )
+                .child(section_heading(
+                    crate::ui::tr(pop_cx)
+                        .chat()
+                        .composer_popovers_select_model(),
+                    pop_cx,
+                ))
                 .child(search_input(&search_ent, pop_cx));
 
             let body: gpui_kit::AnyElement = if filtered.is_empty() {

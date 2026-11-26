@@ -151,7 +151,6 @@
   "prov.detail.mark_reviewed": "Mark reviewed",
   "prov.detail.model_list_drift_added_removed": "Model list drift: {count} added, {count_2} removed upstream.",
   "prov.detail.models": "Models ({prov_models_cnt})",
-  "prov.detail.models_keys": "{prov_models_cnt} models · {prov_keys_cnt} keys",
   "prov.detail.no_enabled_api_key_yet": "No enabled API key yet. Add a key to refresh models and route traffic.",
   "prov.detail.re_scan": "Re-scan…",
   "prov.detail.test_bench": "Test Bench…",

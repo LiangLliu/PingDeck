@@ -116,7 +116,7 @@
   "usage.sidebar.calls_tok": "{requests} calls · {total_tokens} tok",
   "usage.sidebar.calls_tok_2": "{reqs} calls · {toks} tok",
   "usage.sidebar.no_providers_configured": "No providers configured",
-  "usage.sidebar.provider_s_live": "{count} provider(s) · Live",
+  "usage.sidebar.live": "Live",
   "usage.sidebar.usage_logs": "Usage & Logs",
   "usage.state.direct": "Direct",
   "usage.types.ai_request": "AI Request",

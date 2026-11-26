@@ -116,7 +116,7 @@
   "usage.sidebar.calls_tok": "{requests}次调用 · {total_tokens} token",
   "usage.sidebar.calls_tok_2": "{reqs}次调用 · {toks} token",
   "usage.sidebar.no_providers_configured": "尚未配置服务商",
-  "usage.sidebar.provider_s_live": "{count}个服务商 · 实时同步",
+  "usage.sidebar.live": "实时同步",
   "usage.sidebar.usage_logs": "用量与日志",
   "usage.state.direct": "非网关调用",
   "usage.types.ai_request": "AI 请求",

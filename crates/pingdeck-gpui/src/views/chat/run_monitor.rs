@@ -184,7 +184,7 @@ fn render_run_feed(view: &ChatView, board: &AgentBoard, cx: &mut Context<ChatVie
     if !needs_rows.is_empty() {
         list = list.child(group_label(
             ch.sidebar_board_needs_you(),
-            needs_rows.len(),
+            Some(needs_rows.len()),
             Some(StatusShape::Warn),
             cx,
         ));
@@ -195,7 +195,7 @@ fn render_run_feed(view: &ChatView, board: &AgentBoard, cx: &mut Context<ChatVie
     if !run_rows.is_empty() {
         list = list.child(group_label(
             ch.monitor_group_active(),
-            run_rows.len(),
+            Some(run_rows.len()),
             Some(StatusShape::Run),
             cx,
         ));
@@ -206,7 +206,7 @@ fn render_run_feed(view: &ChatView, board: &AgentBoard, cx: &mut Context<ChatVie
     if !done_rows.is_empty() {
         list = list.child(group_label(
             ch.monitor_group_recent(),
-            done_rows.len(),
+            Some(done_rows.len()),
             None,
             cx,
         ));

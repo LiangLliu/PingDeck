@@ -141,7 +141,6 @@
   "env.tab_cookies.clean_expired": "Clean Expired ({expired_count})",
   "env.tab_cookies.clear_all": "Clear All",
   "env.tab_cookies.cookie_jar_is_empty": "Cookie jar is empty",
-  "env.tab_cookies.cookies": "{count} cookies",
   "env.tab_cookies.deleted_cookie_undo_to_restore": "Deleted cookie — undo to restore.",
   "env.tab_cookies.expired": "Expired",
   "env.tab_cookies.expires": "Expires",

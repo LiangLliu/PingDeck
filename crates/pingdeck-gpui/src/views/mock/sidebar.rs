@@ -58,7 +58,6 @@ pub fn render_sidebar(view: &MockView, cx: &mut Context<MockView>) -> AnyElement
 
     let header = pane_header(
         crate::ui::Tr(view.lang).mock().sidebar_mock_servers(),
-        Some(view.servers.len()),
         Some(header_actions),
         Some(search_input(&view.search_input, cx).into_any_element()),
         cx,

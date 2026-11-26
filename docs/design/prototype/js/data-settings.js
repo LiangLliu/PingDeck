@@ -28,7 +28,6 @@ window.PD = window.PD || {};
       html: () => `
         <div class="row-center">
           <div class="input-box sunken flex-1"><input data-filter-rows="#shortcuts-rows .set-row" placeholder="查找命令或按键…" /></div>
-          <span class="fs-xs text-muted">34 条命令，22 条有快捷键</span>
           <button class="btn btn-sm" data-modal="restore-page">全部恢复</button>
         </div>
         <div id="shortcuts-rows">${sec("全局", [

@@ -58,7 +58,6 @@ pub fn render_env_sidebar(
         crate::ui::Tr(view.lang)
             .environments()
             .sidebar_environments(),
-        Some(view.environments.len()),
         Some(actions),
         Some(search_input(&view.env_search_input, cx).into_any_element()),
         cx,
@@ -233,7 +232,7 @@ pub fn render_env_sidebar(
                     .truncate()
                     .child(label),
             )
-            .child(meta_pill(count.to_string(), cx)),
+            .children((count > 0).then(|| meta_pill(count.to_string(), cx))),
         );
     }
 

@@ -169,7 +169,7 @@ pub fn render_monitor_entry(
 
 pub fn group_label(
     title: &'static str,
-    count: usize,
+    count: Option<usize>,
     shape: Option<StatusShape>,
     cx: &gpui_kit::App,
 ) -> gpui_kit::Div {
@@ -185,12 +185,12 @@ pub fn group_label(
                 .children(shape.map(|s| status_indicator(s, cx)))
                 .child(section_heading(title, cx)),
         )
-        .child(
+        .children(count.map(|c| {
             div()
                 .text_xs()
                 .text_color(to_hsla(p.faint))
-                .child(SharedString::from(count.to_string())),
-        )
+                .child(SharedString::from(c.to_string()))
+        }))
 }
 
 pub fn render_trash_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {

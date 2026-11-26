@@ -8,17 +8,16 @@ use gpui_kit::{
 };
 
 use super::icons::UiIcon;
-use super::primitives::{Tone, badge, h_row, text_input, v_col};
+use super::primitives::{h_row, text_input, v_col};
 use super::theme::{is_compact, palette, to_hsla};
 use crate::ui::InputState;
 
-/// Unified master-pane header (`title + optional count badge` on left, actions on right,
+/// Unified master-pane header (`title` on left, actions on right,
 /// optional search/filter slot below) whose top bar height matches [`toolbar_strip`] so
 /// split-pane horizontal dividers always align cleanly.
 #[must_use]
 pub fn pane_header(
     title: impl Into<SharedString>,
-    count: Option<usize>,
     right_actions: Option<AnyElement>,
     below: Option<AnyElement>,
     cx: &App,
@@ -26,7 +25,7 @@ pub fn pane_header(
     let p = palette(cx);
     let compact = is_compact(cx);
     let top_h = if compact { 40.0 } else { 44.0 };
-    let mut left = h_row().gap(px(6.0)).min_w_0().child(
+    let left = h_row().gap(px(6.0)).min_w_0().child(
         div()
             .text_sm()
             .font_weight(gpui_kit::FontWeight::SEMIBOLD)
@@ -34,9 +33,6 @@ pub fn pane_header(
             .truncate()
             .child(title.into()),
     );
-    if let Some(n) = count {
-        left = left.child(badge(n.to_string(), Tone::Neutral, cx));
-    }
     let mut top = h_row()
         .w_full()
         .h(px(top_h))

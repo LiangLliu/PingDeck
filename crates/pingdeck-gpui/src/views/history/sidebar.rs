@@ -139,7 +139,6 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
 
     let header = pane_header(
         crate::ui::Tr(view.lang).history().sidebar_history(),
-        Some(total_shown as usize),
         Some(right_actions),
         Some(filter_box.into_any_element()),
         cx,

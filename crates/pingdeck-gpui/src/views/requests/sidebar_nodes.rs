@@ -91,17 +91,7 @@ pub(super) fn render_folder_branch(
                             .child(SharedString::from(folder.name.clone())),
                     ),
             )
-            .child(
-                h_row()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(to_hsla(p.faint))
-                            .child(SharedString::from(direct_reqs.len().to_string())),
-                    )
-                    .child(render_folder_menu(fid_menu, col_id_menu, fname_menu, cx)),
-            ),
+            .child(render_folder_menu(fid_menu, col_id_menu, fname_menu, cx)),
     );
 
     if !collapsed && depth < 6 {

@@ -141,7 +141,6 @@
   "env.tab_cookies.clean_expired": "清理过期 ({expired_count})",
   "env.tab_cookies.clear_all": "清空全部",
   "env.tab_cookies.cookie_jar_is_empty": "Cookie 罐为空",
-  "env.tab_cookies.cookies": "共 {count}条",
   "env.tab_cookies.deleted_cookie_undo_to_restore": "已删除 Cookie，可立即撤销恢复。",
   "env.tab_cookies.expired": "已过期",
   "env.tab_cookies.expires": "过期时间",

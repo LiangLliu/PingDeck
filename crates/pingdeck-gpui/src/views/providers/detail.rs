@@ -40,11 +40,6 @@ pub fn render_provider_detail(
         .iter()
         .filter(|m| m.model.provider_id == prov.id)
         .count();
-    let prov_keys_cnt = view
-        .keys
-        .iter()
-        .filter(|k| k.provider_id == prov.id)
-        .count();
 
     let ent = cx.entity().clone();
     let models_tab_lbl = crate::ui::tr(cx)
@@ -135,18 +130,7 @@ pub fn render_provider_detail(
                                         ));
                                         cx.notify();
                                     }),
-                                ))
-                                .child(
-                                    div()
-                                        .text_size(px(11.0))
-                                        .text_color(to_hsla(p.faint))
-                                        .child(SharedString::from(
-                                            crate::ui::tr(cx).providers().prov_detail_models_keys(
-                                                prov_models_cnt,
-                                                prov_keys_cnt,
-                                            ),
-                                        )),
-                                ),
+                                )),
                         ),
                 )
                 .child(

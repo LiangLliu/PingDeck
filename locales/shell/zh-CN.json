@@ -58,7 +58,6 @@
   "shell.palette.entity.request": "已保存请求",
   "shell.palette.entity.request_kw": "request 请求",
   "shell.palette.footer_hint": "↑↓ 选择 · ↵ 打开 · Esc 关闭",
-  "shell.palette.items_count": "{count}项",
   "shell.palette.needs_approval": "等待批准",
   "shell.palette.placeholder": "搜索模块、请求、对话、Mock、流程、服务商、设置…",
   "shell.palette.placeholder_init": "搜索模块、请求、对话、服务商、设置、命令…",

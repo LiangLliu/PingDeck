@@ -29,7 +29,6 @@ pub fn render_sidebar(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEleme
 
     let header = pane_header(
         crate::ui::Tr(view.lang).flows().pane_title(),
-        Some(view.entries.len()),
         Some(
             btn_primary(
                 "flow-new-btn",

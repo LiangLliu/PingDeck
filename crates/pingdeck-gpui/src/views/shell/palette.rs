@@ -262,7 +262,6 @@ impl Render for CommandPaletteView {
             .child(
                 h_row()
                     .w_full()
-                    .justify_between()
                     .px(px(12.0))
                     .py(px(6.0))
                     .border_t_1()
@@ -272,12 +271,6 @@ impl Render for CommandPaletteView {
                             .text_size(px(10.5))
                             .text_color(to_hsla(p.faint))
                             .child(sh.palette_footer_hint()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(to_hsla(p.faint))
-                            .child(sh.palette_items_count(matches.len())),
                     ),
             )
     }

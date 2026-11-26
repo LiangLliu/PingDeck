@@ -8,9 +8,8 @@ use gpui_kit::{
 use crate::ui::{
     PaginationBar, ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger,
     btn_ghost, btn_icon, btn_primary, btn_secondary, card, choice_chip, empty_inline, empty_state,
-    h_row, icon_xs, kv_line, list_row, meta_pill, page_slice, pagination_bar, palette,
-    search_input, section_header, setting_row, text_input, to_hsla, toggle_switch, toolbar_strip,
-    v_col,
+    h_row, icon_xs, kv_line, list_row, page_slice, pagination_bar, palette, search_input,
+    section_header, setting_row, text_input, to_hsla, toggle_switch, toolbar_strip, v_col,
 };
 
 use super::state::{EnvModal, EnvironmentsView};
@@ -41,19 +40,9 @@ pub fn render_cookies_tab(
     let bar = toolbar_strip(cx)
         .justify_between()
         .child(
-            h_row()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .w(px(220.0))
-                        .child(search_input(&view.cookie_search_input, cx)),
-                )
-                .child(meta_pill(
-                    crate::ui::Tr(view.lang)
-                        .environments()
-                        .tab_cookies_cookies(view.cookies.len()),
-                    cx,
-                )),
+            div()
+                .w(px(220.0))
+                .child(search_input(&view.cookie_search_input, cx)),
         )
         .child(
             h_row()

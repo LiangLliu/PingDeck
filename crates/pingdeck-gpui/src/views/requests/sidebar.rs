@@ -138,13 +138,6 @@ pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> im
                     h_row()
                         .gap(px(2.0))
                         .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(to_hsla(p.faint))
-                                .pr(px(2.0))
-                                .child(SharedString::from(col_reqs.len().to_string())),
-                        )
-                        .child(
                             btn_icon(
                                 SharedString::from(format!("col-run-{}", col.id)),
                                 UiIcon::Play,
@@ -230,21 +223,14 @@ pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> im
 
     if !unfiled_http.is_empty() {
         list = list.child(
-            h_row()
-                .justify_between()
+            div()
                 .px(px(8.0))
                 .pt(px(10.0))
                 .pb(px(3.0))
                 .child(section_heading(
                     crate::ui::tr(cx).requests().sidebar_unfiled(),
                     cx,
-                ))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(to_hsla(p.faint))
-                        .child(SharedString::from(unfiled_http.len().to_string())),
-                ),
+                )),
         );
         for req in unfiled_http {
             list = list.child(render_request_row(
@@ -259,21 +245,14 @@ pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> im
 
     if !unfiled_ai.is_empty() {
         list = list.child(
-            h_row()
-                .justify_between()
+            div()
                 .px(px(8.0))
                 .pt(px(10.0))
                 .pb(px(3.0))
                 .child(section_heading(
                     crate::ui::tr(cx).requests().sidebar_ai_requests(),
                     cx,
-                ))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(to_hsla(p.faint))
-                        .child(SharedString::from(unfiled_ai.len().to_string())),
-                ),
+                )),
         );
         for req in unfiled_ai {
             list = list.child(render_request_row(
@@ -386,7 +365,6 @@ pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> im
 
     let header = pane_header(
         crate::ui::tr(cx).requests().title(),
-        Some(req_cnt),
         Some(
             btn_primary(
                 "req-sidebar-new",
