@@ -6,7 +6,7 @@ use pingdeck_desktop::core::agent::model::{
     AgentExportFormat, AgentQuestionAnswer, AgentSessionFilter, AgentSessionPatch,
 };
 use pingdeck_desktop::core::app::{
-    agent_attachment_put_path_impl, agent_board_impl, agent_plan_approve_impl, agent_plan_set_impl,
+    agent_attachment_put_path_impl, agent_plan_approve_impl, agent_plan_set_impl,
     agent_question_answer_impl, agent_queue_add_impl, agent_queue_clear_impl,
     agent_queue_remove_impl, agent_queue_resume_impl, agent_queue_steer_impl, agent_run_steer_impl,
     agent_run_unsubscribe_impl, agent_session_bind_pingdeck_impl, agent_session_delete_impl,
@@ -28,20 +28,17 @@ impl ChatView {
         self.sidebar_mode = mode;
         match mode {
             ChatSidebarMode::Time => self.refresh_catalog(cx),
-            ChatSidebarMode::Board => self.load_board(cx),
+            ChatSidebarMode::Board => {
+                self.load_board(cx);
+                self.start_elapsed_ticker(cx);
+            }
             ChatSidebarMode::Trash => self.load_trash(cx),
         }
         cx.notify();
     }
 
     pub fn load_board(&mut self, cx: &mut Context<Self>) {
-        let task = spawn_blocking_into(cx, agent_board_impl, |this, res, cx| {
-            if let Ok(board) = res {
-                this.board = Some(board);
-            }
-            cx.notify();
-        });
-        self._tasks.push(task);
+        self.refresh_board_and_selection(cx);
     }
 
     pub fn load_trash(&mut self, cx: &mut Context<Self>) {

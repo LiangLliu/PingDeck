@@ -374,6 +374,16 @@ impl ModuleHost {
         view.update(cx, |u, cx| u.open_call_by_request_id(request_id, cx));
     }
 
+    pub fn open_usage_run_id<V: 'static>(
+        &mut self,
+        run_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.open_calls_for_run(run_id, window, cx));
+    }
+
     /// Dismisses an open modal inside the active feature module when pressing `Esc`.
     pub fn dismiss_active_modal<V: 'static>(
         &mut self,

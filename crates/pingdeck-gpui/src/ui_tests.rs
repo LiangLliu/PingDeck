@@ -1346,7 +1346,9 @@ mod gpui_integration {
 
     #[gpui_kit::test]
     fn chat_workbench_modes_gates_and_modals(cx: &mut TestAppContext) {
-        use crate::views::chat::{ChatHandoff, ChatModal, ChatSidebarMode, ChatView, DetailsTab};
+        use crate::views::chat::{
+            ChatHandoff, ChatModal, ChatSidebarMode, ChatView, DetailsTab, MonitorFilter,
+        };
 
         cx.background_executor.allow_parking();
         let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
@@ -1409,6 +1411,9 @@ mod gpui_integration {
                     has_more: false,
                     next_offset: 0,
                 },
+                ChatModal::StopAllConfirm {
+                    active_runs: vec![("r1".into(), "Refactor auth".into())],
+                },
             ] {
                 view.update(cx, |v, cx| {
                     v.active_modal = Some(modal);
@@ -1418,6 +1423,229 @@ mod gpui_integration {
                 assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
                 assert!(view.read(cx).active_modal.is_none());
             }
+
+            // Exercise full-canvas Run Monitor filters & parallel/serial waterfall topology rendering.
+            view.update(cx, |v, cx| {
+                use pingdeck_desktop::core::agent::dto::{
+                    AgentBoard, AgentBoardRow, AgentRunTopology, BoardChanges, BoardLimits,
+                    BoardSubagentCounts, ExecutionWave, TokensToday, TopologySubagent,
+                    TopologyToolStep,
+                };
+                use pingdeck_desktop::core::agent::model::{
+                    AgentRunKind, AgentRunStatus, AgentRunSummary, SubagentRole,
+                };
+                use pingdeck_desktop::core::model::hub::HubUsage;
+
+                let run = AgentRunSummary {
+                    run_id: "r_topo_1".into(),
+                    session_id: "s_topo_1".into(),
+                    kind: AgentRunKind::Main,
+                    parent_run_id: None,
+                    parent_call_id: None,
+                    status: AgentRunStatus::Running,
+                    model_label: "openai/gpt-5".into(),
+                    target: None,
+                    iterations: 3,
+                    usage: HubUsage::default(),
+                    cost_micro_usd: 12_500,
+                    started_at_ms: 10_000,
+                    finished_at_ms: None,
+                    last_event_ms: Some(20_000),
+                    last_step: Some("task".into()),
+                    stop_reason: None,
+                    error_kind: None,
+                    error: None,
+                    prompt_version: 1,
+                    last_seq: 12,
+                    failure: None,
+                    role: None,
+                    cost_currency: Some("USD".into()),
+                    cap_inapplicable: None,
+                    status_detail: None,
+                };
+                let sub_ok = TopologySubagent {
+                    run: AgentRunSummary {
+                        run_id: "r_sub_ok".into(),
+                        session_id: "s_sub_ok".into(),
+                        kind: AgentRunKind::Subagent,
+                        parent_run_id: Some("r_topo_1".into()),
+                        parent_call_id: Some("c_t1".into()),
+                        status: AgentRunStatus::Completed,
+                        started_at_ms: 12_000,
+                        finished_at_ms: Some(16_000),
+                        role: Some(SubagentRole::Fast),
+                        ..run.clone()
+                    },
+                    parent_call_id: "c_t1".into(),
+                    child_session_id: "s_sub_ok".into(),
+                    description: "Audit routes".into(),
+                    subagent_kind: "explore".into(),
+                    resumed: false,
+                    awake_ms: 4_000,
+                    pending_approval: None,
+                    last_answer: Some("Found 3 unguarded handlers".into()),
+                    tool_calls: vec![TopologyToolStep {
+                        call_id: "c_g1".into(),
+                        name: "grep".into(),
+                        class: "read".into(),
+                        summary: "auth_guard".into(),
+                        status: "ok".into(),
+                        started_ms: Some(12_500),
+                        ended_ms: Some(13_100),
+                        duration_ms: Some(600),
+                        exit_code: None,
+                        parallel_safe: true,
+                    }],
+                };
+                let sub_fail = TopologySubagent {
+                    run: AgentRunSummary {
+                        run_id: "r_sub_fail".into(),
+                        session_id: "s_sub_fail".into(),
+                        kind: AgentRunKind::Subagent,
+                        parent_run_id: Some("r_topo_1".into()),
+                        parent_call_id: Some("c_t2".into()),
+                        status: AgentRunStatus::Failed,
+                        started_at_ms: 12_100,
+                        finished_at_ms: Some(15_200),
+                        error: Some("rate limit 429".into()),
+                        role: Some(SubagentRole::Deep),
+                        ..run.clone()
+                    },
+                    parent_call_id: "c_t2".into(),
+                    child_session_id: "s_sub_fail".into(),
+                    description: "Verify OAuth signature".into(),
+                    subagent_kind: "general".into(),
+                    resumed: true,
+                    awake_ms: 3_100,
+                    pending_approval: None,
+                    last_answer: None,
+                    tool_calls: Vec::new(),
+                };
+                let counts = BoardSubagentCounts {
+                    total: 2,
+                    active: 0,
+                    waiting: 0,
+                    completed: 1,
+                    failed: 1,
+                    cancelled: 0,
+                };
+                let topo = AgentRunTopology {
+                    run: run.clone(),
+                    title: "Refactor auth middleware".into(),
+                    folder: Some("/tmp/demo".into()),
+                    awake_ms: 10_000,
+                    snapshot_ms: 20_000,
+                    waiting_for_slot: false,
+                    wait: None,
+                    pending_approval: None,
+                    pending_changes: BoardChanges {
+                        files: 2,
+                        added: 34,
+                        removed: 7,
+                    },
+                    plan_done: 1,
+                    plan_total: 3,
+                    cost_currency: Some("USD".into()),
+                    last_answer: None,
+                    queued_turns: 1,
+                    queue_paused: false,
+                    waves: vec![
+                        ExecutionWave::ParallelSubagents {
+                            wave_index: 1,
+                            started_ms: Some(12_000),
+                            ended_ms: Some(16_000),
+                            subagents: vec![sub_ok, sub_fail],
+                        },
+                        ExecutionWave::SerialTool {
+                            wave_index: 2,
+                            started_ms: Some(16_500),
+                            ended_ms: Some(19_000),
+                            tool: TopologyToolStep {
+                                call_id: "c_sh".into(),
+                                name: "shell".into(),
+                                class: "exec".into(),
+                                summary: "cargo test".into(),
+                                status: "ok".into(),
+                                started_ms: Some(16_500),
+                                ended_ms: Some(19_000),
+                                duration_ms: Some(2_500),
+                                exit_code: Some(0),
+                                parallel_safe: false,
+                            },
+                        },
+                    ],
+                    subagent_counts: counts,
+                };
+                v.board = Some(AgentBoard {
+                    running: vec![AgentBoardRow {
+                        run,
+                        title: "Refactor auth middleware".into(),
+                        folder: Some("/tmp/demo".into()),
+                        awake_ms: 10_000,
+                        waiting_for_slot: false,
+                        wait: None,
+                        pending_approval: None,
+                        inline_allow: false,
+                        plan_done: 1,
+                        plan_total: 3,
+                        cost_currency: Some("USD".into()),
+                        subagents: 2,
+                        subagent_counts: counts,
+                        pending_changes: BoardChanges {
+                            files: 2,
+                            added: 34,
+                            removed: 7,
+                        },
+                        last_answer: None,
+                        approval_timed_out: false,
+                        seen: true,
+                        review: false,
+                    }],
+                    needs_you: Vec::new(),
+                    done: Vec::new(),
+                    limits: BoardLimits {
+                        max_concurrent_runs: 3,
+                        max_subagents: 3,
+                        max_steps: 20,
+                        approval_timeout_s: 600,
+                        queue_messages: 5,
+                        auto_compact_pct: Some(85),
+                    },
+                    cost_today: Vec::new(),
+                    tokens_today: TokensToday {
+                        input: 4_000,
+                        output: 1_200,
+                    },
+                    running_processes: 0,
+                    active_subagents: 1,
+                });
+                v.selected_monitor_run_id = Some("r_topo_1".into());
+                v.selected_topology = Some(topo.clone());
+                v.session_topology = Some(topo);
+                v.expanded_topology_nodes.insert("sub-r_sub_ok".into());
+                v.sidebar_mode = ChatSidebarMode::Board;
+                cx.notify();
+            });
+            for filter in [
+                MonitorFilter::All,
+                MonitorFilter::Waiting,
+                MonitorFilter::Running,
+                MonitorFilter::Failed,
+                MonitorFilter::Done,
+            ] {
+                view.update(cx, |v, cx| {
+                    v.monitor_filter = filter;
+                    cx.notify();
+                });
+                window.refresh();
+            }
+            view.update(cx, |v, cx| {
+                v.sidebar_mode = ChatSidebarMode::Time;
+                v.details_open = true;
+                v.details_tab = DetailsTab::Progress;
+                cx.notify();
+            });
+            window.refresh();
 
             // Exercise 2-row header, simplified 6-item metrics footer, and stick-to-bottom toggle.
             view.update(cx, |v, cx| {

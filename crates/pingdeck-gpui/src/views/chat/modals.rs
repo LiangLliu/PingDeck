@@ -473,5 +473,61 @@ pub fn render_active_modal(
             )
             .into_any_element()
         }
+        ChatModal::StopAllConfirm { active_runs } => {
+            let ch = crate::ui::tr(cx).chat();
+            let count = active_runs.len();
+            let mut list = v_col()
+                .w_full()
+                .gap(px(4.0))
+                .p(px(8.0))
+                .rounded(px(7.0))
+                .bg(to_hsla(p.sunken));
+            for (_, title) in &active_runs {
+                list = list.child(
+                    h_row()
+                        .gap(px(6.0))
+                        .text_xs()
+                        .text_color(to_hsla(p.ink))
+                        .child(icon_xs(UiIcon::Activity))
+                        .child(div().flex_1().min_w_0().truncate().child(title.clone())),
+                );
+            }
+            let body = v_col()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.ink_2))
+                        .child(SharedString::from(ch.monitor_stop_all_body(count))),
+                )
+                .child(list)
+                .into_any_element();
+            let footer = h_row()
+                .gap(px(8.0))
+                .child(
+                    btn_secondary("chat-sa-cancel", crate::ui::tr(cx).common().cancel()).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.active_modal = None;
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .child(
+                    btn_danger("chat-sa-confirm", ch.monitor_stop_all_confirm(count))
+                        .on_click(cx.listener(|this, _, _, cx| this.confirm_stop_all_runs(cx))),
+                )
+                .into_any_element();
+            modal_dialog(
+                "chat-stop-all-modal",
+                ch.monitor_stop_all_title(),
+                460.0,
+                body,
+                footer,
+                window,
+                cx,
+                on_close,
+            )
+            .into_any_element()
+        }
     }
 }

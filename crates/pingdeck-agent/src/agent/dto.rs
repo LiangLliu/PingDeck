@@ -95,6 +95,23 @@ pub struct BoardChanges {
     pub removed: u32,
 }
 
+/// Lifecycle breakdown of sub-agent runs spawned by one parent run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardSubagentCounts {
+    /// Total sub-agent runs spawned by this parent run.
+    pub total: u32,
+    /// Sub-agents currently queued or running.
+    pub active: u32,
+    /// Sub-agents paused waiting for approval.
+    pub waiting: u32,
+    /// Sub-agents finished cleanly.
+    pub completed: u32,
+    /// Sub-agents that failed or were interrupted.
+    pub failed: u32,
+    /// Sub-agents cancelled by the user or parent steer/stop.
+    pub cancelled: u32,
+}
+
 /// One card of the Agent board: a top-level run and everything the card shows.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentBoardRow {
@@ -123,6 +140,9 @@ pub struct AgentBoardRow {
     pub cost_currency: Option<String>,
     /// Sub-agents the run started.
     pub subagents: u32,
+    /// Per-status breakdown of sub-agents spawned by this run.
+    #[serde(default)]
+    pub subagent_counts: BoardSubagentCounts,
     /// File changes still awaiting Keep or Undo.
     pub pending_changes: BoardChanges,
     /// First line of the run's last answer.
@@ -180,6 +200,106 @@ pub struct AgentBoard {
     pub tokens_today: TokensToday,
     /// Background shell processes still running, over all chats.
     pub running_processes: u32,
+    /// Active sub-agent runs across all chats right now.
+    #[serde(default)]
+    pub active_subagents: u32,
+}
+
+/// One tool execution step inside a parent run or child sub-agent run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopologyToolStep {
+    pub call_id: String,
+    pub name: String,
+    pub class: String,
+    pub summary: String,
+    /// Normalized step state (`running`, `waiting_approval`, `ok`, `error`, `denied`, `cancelled`,
+    /// `timed_out`, `superseded`).
+    pub status: String,
+    pub started_ms: Option<i64>,
+    pub ended_ms: Option<i64>,
+    pub duration_ms: Option<u64>,
+    pub exit_code: Option<i32>,
+    pub parallel_safe: bool,
+}
+
+/// One sub-agent run spawned by a parent `task` tool call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TopologySubagent {
+    pub run: AgentRunSummary,
+    pub parent_call_id: String,
+    pub child_session_id: String,
+    /// Task brief (`brief.description`, stored as the child session title).
+    pub description: String,
+    /// `explore` or `general`.
+    pub subagent_kind: String,
+    /// Whether this call resumed an earlier child session (`args.resume`).
+    pub resumed: bool,
+    pub awake_ms: u64,
+    pub pending_approval: Option<PendingApprovalSummary>,
+    /// Concise first line of the child's final report when available.
+    pub last_answer: Option<String>,
+    /// Tool steps executed inside this child sub-agent.
+    pub tool_calls: Vec<TopologyToolStep>,
+}
+
+/// One wave in a run's execution topology.
+///
+/// Waves are ordered serially top-to-bottom along the parent run; branches inside a parallel wave
+/// ran concurrently (fan-out -> join).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExecutionWave {
+    /// Two or more `task` sub-agents dispatched concurrently in the same turn.
+    ParallelSubagents {
+        wave_index: u32,
+        started_ms: Option<i64>,
+        ended_ms: Option<i64>,
+        subagents: Vec<TopologySubagent>,
+    },
+    /// One `task` sub-agent dispatched serially in its turn.
+    SingleSubagent {
+        wave_index: u32,
+        started_ms: Option<i64>,
+        ended_ms: Option<i64>,
+        subagent: Box<TopologySubagent>,
+    },
+    /// Two or more parallel-safe non-`task` tools dispatched concurrently in the same turn.
+    ParallelTools {
+        wave_index: u32,
+        started_ms: Option<i64>,
+        ended_ms: Option<i64>,
+        tools: Vec<TopologyToolStep>,
+    },
+    /// One serial tool barrier (`shell`, `edit_file`, `ask_user`, `submit_plan`, etc.).
+    SerialTool {
+        wave_index: u32,
+        started_ms: Option<i64>,
+        ended_ms: Option<i64>,
+        tool: TopologyToolStep,
+    },
+}
+
+/// Full execution topology and waterfall timeline of one top-level run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentRunTopology {
+    pub run: AgentRunSummary,
+    pub title: String,
+    pub folder: Option<String>,
+    pub awake_ms: u64,
+    /// Reference Unix ms timestamp captured when assembling this snapshot for live waterfall bars.
+    pub snapshot_ms: i64,
+    pub waiting_for_slot: bool,
+    pub wait: Option<BoardWait>,
+    pub pending_approval: Option<PendingApprovalSummary>,
+    pub pending_changes: BoardChanges,
+    pub plan_done: u32,
+    pub plan_total: u32,
+    pub cost_currency: Option<String>,
+    pub last_answer: Option<String>,
+    pub queued_turns: u32,
+    pub queue_paused: bool,
+    pub waves: Vec<ExecutionWave>,
+    pub subagent_counts: BoardSubagentCounts,
 }
 
 /// How the payload is used; it fixes the byte budget.

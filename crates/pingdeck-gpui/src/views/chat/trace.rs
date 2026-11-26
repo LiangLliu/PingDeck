@@ -20,6 +20,7 @@ use crate::ui::{
 use super::ChatView;
 use super::metrics::{extract_inline_thinking, format_duration_ms};
 use super::reasoning::render_reasoning_block;
+use super::run_topology_subagent::render_live_subagent_group;
 
 pub fn render_live_turn(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
@@ -157,18 +158,37 @@ pub fn render_live_turn(view: &ChatView, cx: &mut Context<ChatView>) -> impl Int
     }
 
     if !view.thread.tool_calls.is_empty() {
-        let mut trace_box = v_col()
-            .w_full()
-            .rounded(px(10.0))
-            .overflow_hidden()
-            .bg(to_hsla(p.pane))
-            .border_1()
-            .border_color(to_hsla(p.line.composite_over(p.pane)));
+        let task_calls: Vec<&LiveToolCall> = view
+            .thread
+            .tool_calls
+            .iter()
+            .filter(|c| c.name == "task")
+            .collect();
+        let regular_calls: Vec<&LiveToolCall> = view
+            .thread
+            .tool_calls
+            .iter()
+            .filter(|c| c.name != "task")
+            .collect();
 
-        for call in &view.thread.tool_calls {
-            trace_box = trace_box.child(render_live_tool_step(view, call, cx));
+        if !task_calls.is_empty() {
+            body = body.child(render_live_subagent_group(view, &task_calls, cx));
         }
-        body = body.child(trace_box);
+
+        if !regular_calls.is_empty() {
+            let mut trace_box = v_col()
+                .w_full()
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(to_hsla(p.pane))
+                .border_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)));
+
+            for call in regular_calls {
+                trace_box = trace_box.child(render_live_tool_step(view, call, cx));
+            }
+            body = body.child(trace_box);
+        }
     }
 
     if !visible_text.is_empty() {
@@ -253,9 +273,14 @@ pub fn render_message_tool_traces(
         let cid_click = call_id.to_owned();
         let cid_full = call_id.to_owned();
         let name_full = name.to_owned();
+        let display_name = if name == "task" {
+            crate::ui::tr(cx).chat().trace_subagent_call()
+        } else {
+            name
+        };
         trace_box = trace_box.child(render_trace_step(
             call_id,
-            name,
+            display_name,
             args,
             out_text.as_deref(),
             if is_err {
@@ -448,11 +473,12 @@ fn tool_icon(name: &str) -> UiIcon {
     }
 }
 
-fn summarize_tool_args(args: &str) -> String {
+pub(super) fn summarize_tool_args(args: &str) -> String {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(args)
         && let Some(obj) = val.as_object()
     {
         for key in [
+            "description",
             "cmd",
             "command",
             "path",

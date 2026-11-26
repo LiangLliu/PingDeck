@@ -31,7 +31,7 @@ use super::{StorageError, WorkspaceStore};
 use crate::sqlite::to_i64;
 
 pub use binding::PingDeckBinding;
-pub use board::{BoardRunIds, PendingChanges, RunExtras, UnseenRun};
+pub use board::{BoardRunIds, PendingChanges, RunExtras, SubagentStatusCounts, UnseenRun};
 
 /// The review baseline of an MCP server that arrived through sync or import and was not saved by
 /// the user yet.

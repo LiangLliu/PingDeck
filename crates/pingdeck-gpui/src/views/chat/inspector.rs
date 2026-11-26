@@ -16,6 +16,8 @@ use crate::ui::{
 };
 
 use super::inspector_tabs::{render_context_tab, render_options_tab};
+use super::run_status::{run_status_meta, subagent_kind_label, subagent_role_label};
+use super::run_topology::render_topology;
 use super::{ChatView, DetailsTab};
 
 pub fn render_inspector(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
@@ -100,6 +102,7 @@ pub fn render_inspector(view: &ChatView, cx: &mut Context<ChatView>) -> impl Int
 
 fn render_progress_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit::Div {
     let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
     let todos = &view.thread.todos;
     let total = todos.len();
     let done = todos
@@ -108,40 +111,157 @@ fn render_progress_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit:
         .count();
 
     let mut col = v_col().gap(px(12.0));
+    let focus_run_id = view
+        .session_topology
+        .as_ref()
+        .map(|t| t.run.run_id.clone())
+        .or_else(|| view.thread.active_run.as_ref().map(|r| r.run_id.clone()));
 
-    if let Some(run) = &view.thread.active_run {
-        col =
-            col.child(
-                card(cx).p(px(10.0)).child(
+    col = col.child(
+        h_row()
+            .w_full()
+            .justify_between()
+            .child(section_heading(ch.inspector_active_run(), cx))
+            .child(
+                btn_ghost("chat-insp-open-mon", ch.inspector_open_in_monitor())
+                    .icon(icon_xs(UiIcon::Activity))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_run_monitor(focus_run_id.clone(), cx);
+                    })),
+            ),
+    );
+
+    if let Some(topo) = &view.session_topology {
+        col = col.child(render_topology(view, topo, true, cx));
+    } else if let Some(run) = &view.thread.active_run {
+        let (shape, tone, status_lbl) =
+            run_status_meta(run.status, None, run.status_detail.as_deref(), cx);
+        col = col.child(
+            card(cx).p(px(10.0)).child(
+                v_col()
+                    .gap(px(4.0))
+                    .child(
+                        h_row()
+                            .justify_between()
+                            .child(
+                                h_row()
+                                    .gap(px(6.0))
+                                    .child(status_indicator(shape, cx))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                            .text_color(to_hsla(p.ink))
+                                            .child(SharedString::from(
+                                                view.format_raw_model_label(&run.model_label),
+                                            )),
+                                    ),
+                            )
+                            .child(badge(status_lbl, tone, cx)),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(to_hsla(p.muted))
+                            .child(SharedString::from(ch.monitor_steps_short(run.iterations))),
+                    ),
+            ),
+        );
+    } else {
+        col = col.child(
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(ch.inspector_no_runs_yet()),
+        );
+    }
+
+    if !view.thread.subagents.is_empty() && view.session_topology.is_none() {
+        col = col.child(
+            div()
+                .pt(px(2.0))
+                .child(section_heading(ch.tasks_subagents(), cx)),
+        );
+        for sub in view.thread.subagents.values() {
+            let (shape, tone, status_lbl) = run_status_meta(
+                sub.summary.status,
+                None,
+                sub.summary.status_detail.as_deref(),
+                cx,
+            );
+            let title = if sub.description.is_empty() {
+                view.format_raw_model_label(&sub.summary.model_label)
+            } else {
+                sub.description.clone()
+            };
+            let stop_id = sub.child_run_id.clone();
+            col = col.child(
+                card(cx).p(px(8.0)).child(
                     v_col()
                         .gap(px(4.0))
                         .child(
                             h_row()
                                 .justify_between()
-                                .child(section_heading(
-                                    crate::ui::tr(cx).chat().inspector_active_run(),
-                                    cx,
-                                ))
-                                .child(badge(format!("{:?}", run.status), Tone::Accent, cx)),
+                                .gap(px(6.0))
+                                .child(
+                                    h_row()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .gap(px(6.0))
+                                        .child(status_indicator(shape, cx))
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .text_xs()
+                                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                                .text_color(to_hsla(p.ink))
+                                                .truncate()
+                                                .child(SharedString::from(title)),
+                                        ),
+                                )
+                                .child(badge(status_lbl, tone, cx)),
                         )
-                        .child(div().text_xs().text_color(to_hsla(p.muted)).child(
-                            SharedString::from(format!(
-                                "{} · {} step(s)",
-                                view.format_raw_model_label(&run.model_label),
-                                run.iterations
-                            )),
-                        )),
+                        .child(
+                            h_row()
+                                .justify_between()
+                                .gap(px(4.0))
+                                .child(
+                                    h_row()
+                                        .gap(px(4.0))
+                                        .child(badge(
+                                            subagent_kind_label(&sub.subagent_kind, cx),
+                                            Tone::Neutral,
+                                            cx,
+                                        ))
+                                        .children(sub.summary.role.map(|r| {
+                                            badge(subagent_role_label(r, cx), Tone::Accent, cx)
+                                        })),
+                                )
+                                .children((!sub.finished).then(|| {
+                                    btn_danger(
+                                        SharedString::from(format!(
+                                            "insp-sub-stop-{}",
+                                            sub.child_run_id
+                                        )),
+                                        ch.monitor_stop_subagent(),
+                                    )
+                                    .on_click(cx.listener(
+                                        move |this, _, _, cx| {
+                                            this.stop_run_by_id(stop_id.clone(), cx);
+                                        },
+                                    ))
+                                })),
+                        ),
                 ),
             );
+        }
     }
 
     col = col.child(
         h_row()
             .justify_between()
-            .child(section_heading(
-                crate::ui::tr(cx).chat().inspector_tasks(),
-                cx,
-            ))
+            .child(section_heading(ch.inspector_tasks(), cx))
             .children((total > 0).then(|| badge(format!("{done}/{total}"), Tone::Neutral, cx))),
     );
 
@@ -175,49 +295,11 @@ fn render_progress_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit:
         }
     } else {
         col = col.child(
-            div().text_xs().text_color(to_hsla(p.muted)).child(
-                crate::ui::tr(cx)
-                    .chat()
-                    .inspector_multi_step_task_progress_appears(),
-            ),
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(ch.inspector_multi_step_task_progress_appears()),
         );
-    }
-
-    if !view.thread.subagents.is_empty() {
-        col = col.child(div().pt(px(4.0)).child(section_heading(
-            crate::ui::tr(cx).chat().tasks_subagents(),
-            cx,
-        )));
-        for sub in view.thread.subagents.values() {
-            col = col.child(
-                card(cx).p(px(8.0)).child(
-                    h_row()
-                        .justify_between()
-                        .child(
-                            h_row()
-                                .gap(px(6.0))
-                                .child(status_indicator(
-                                    if sub.finished {
-                                        StatusShape::Ok
-                                    } else {
-                                        StatusShape::Run
-                                    },
-                                    cx,
-                                ))
-                                .child(div().text_xs().text_color(to_hsla(p.ink)).child(
-                                    SharedString::from(
-                                        view.format_raw_model_label(&sub.summary.model_label),
-                                    ),
-                                )),
-                        )
-                        .child(badge(
-                            format!("{} tools", sub.active_tools),
-                            Tone::Neutral,
-                            cx,
-                        )),
-                ),
-            );
-        }
     }
 
     if !view.processes.is_empty() {

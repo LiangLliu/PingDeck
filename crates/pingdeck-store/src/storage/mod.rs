@@ -29,7 +29,8 @@ mod tree;
 mod vault;
 
 pub use agent::{
-    BoardRunIds, MCP_REVIEW_PENDING, PendingChanges, PingDeckBinding, RunExtras, UnseenRun,
+    BoardRunIds, MCP_REVIEW_PENDING, PendingChanges, PingDeckBinding, RunExtras,
+    SubagentStatusCounts, UnseenRun,
 };
 pub use cookies::{COOKIE_JAR_MAX_ROWS, COOKIE_MAX_BYTES};
 pub use data_usage::{CaptureUsage, ChatUsage, ClearableAttachment};

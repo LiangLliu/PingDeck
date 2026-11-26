@@ -1,91 +1,95 @@
-//! Left thread-list sidebar for AI Chat: Time / Running Board / Trash switcher,
-//! live search, archived toggle, multi-chat attention lanes, and quick row actions.
+//! Left thread-list sidebar for AI Chat: live Run Monitor status entry bar, live search,
+//! archived & trash toggles, multi-chat attention/failure status indicators, and quick row actions.
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     Styled as _, div, px,
 };
-use pingdeck_desktop::core::agent::model::{AgentSessionPatch, AgentSessionSummary};
+use pingdeck_desktop::core::agent::model::{
+    AgentRunStatus, AgentSessionPatch, AgentSessionSummary,
+};
 use pingdeck_desktop::core::app::current_time_ms;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon, btn_primary,
-    choice_chip, empty_inline, h_row, icon_xs, list_row, master_pane, menu_item, palette,
+    Anchor, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon,
+    btn_primary, empty_inline, h_row, icon_xs, list_row, master_pane, menu_item, palette,
     pane_header, popover, search_input, status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
-use super::sidebar_board::{group_label, render_board_list, render_trash_list};
+use super::run_status::format_tokens_compact;
+use super::sidebar_board::{group_label, render_monitor_entry, render_trash_list};
 use super::types::{ChatModal, ChatSidebarMode};
 
 pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
-    let attention_n = view.pending_attention_count();
+    let ch = crate::ui::tr(cx).chat();
+    let monitor_open = view.sidebar_mode == ChatSidebarMode::Board;
+    let in_trash = view.sidebar_mode == ChatSidebarMode::Trash;
 
-    let mode_strip = h_row()
-        .gap(px(4.0))
-        .child(
-            choice_chip(
-                "chat-mode-time",
-                crate::ui::tr(cx).chat().sidebar_time(),
-                view.sidebar_mode == ChatSidebarMode::Time,
-                cx,
-            )
-            .on_click(
-                cx.listener(|this, _, _, cx| this.set_sidebar_mode(ChatSidebarMode::Time, cx)),
-            ),
-        )
-        .child(
-            choice_chip(
-                "chat-mode-board",
-                if attention_n > 0 {
-                    crate::ui::tr(cx).chat().sidebar_board(attention_n)
-                } else {
-                    crate::ui::tr(cx).chat().sidebar_board_2().to_owned()
-                },
-                view.sidebar_mode == ChatSidebarMode::Board,
-                cx,
-            )
-            .on_click(
-                cx.listener(|this, _, _, cx| this.set_sidebar_mode(ChatSidebarMode::Board, cx)),
-            ),
-        )
-        .child(
-            choice_chip(
-                "chat-mode-trash",
-                crate::ui::tr(cx).chat().sidebar_trash(),
-                view.sidebar_mode == ChatSidebarMode::Trash,
-                cx,
-            )
-            .on_click(
-                cx.listener(|this, _, _, cx| this.set_sidebar_mode(ChatSidebarMode::Trash, cx)),
-            ),
-        );
+    let monitor_entry = render_monitor_entry(view, monitor_open, cx);
 
-    let below = v_col()
-        .w_full()
-        .gap(px(6.0))
-        .child(mode_strip)
-        .child(search_input(&view.search_input, cx));
+    let below = if in_trash {
+        v_col().w_full().gap(px(6.0)).child(monitor_entry).child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink_2))
+                        .child(ch.sidebar_trash()),
+                )
+                .child(
+                    btn_ghost("chat-back-chats", ch.sidebar_back_to_chats())
+                        .icon(icon_xs(UiIcon::ArrowLeft))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.set_sidebar_mode(ChatSidebarMode::Time, cx);
+                        })),
+                ),
+        )
+    } else {
+        v_col()
+            .w_full()
+            .gap(px(6.0))
+            .child(monitor_entry)
+            .child(search_input(&view.search_input, cx))
+    };
 
     let header = pane_header(
-        crate::ui::tr(cx).chat().pane_label(),
+        ch.pane_label(),
         Some(view.sessions.len()),
         Some(
             h_row()
                 .gap(px(4.0))
                 .child(
                     btn_icon("chat-toggle-arch", UiIcon::Archive)
-                        .tooltip(crate::ui::tr(cx).chat().sidebar_toggle_archived())
+                        .tooltip(ch.sidebar_toggle_archived())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.show_archived = !this.show_archived;
                             this.reload_sessions(cx);
                         })),
                 )
                 .child(
-                    btn_primary("chat-new", crate::ui::tr(cx).chat().inspector_new())
+                    btn_icon("chat-toggle-trash", UiIcon::Trash)
+                        .tooltip(ch.sidebar_trash())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let next = if in_trash {
+                                ChatSidebarMode::Time
+                            } else {
+                                ChatSidebarMode::Trash
+                            };
+                            this.set_sidebar_mode(next, cx);
+                        })),
+                )
+                .child(
+                    btn_primary("chat-new", ch.inspector_new())
                         .icon(icon_xs(UiIcon::MessageSquarePlus))
-                        .on_click(cx.listener(|this, _, _, cx| this.create_session(cx))),
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.sidebar_mode = ChatSidebarMode::Time;
+                            this.create_session(cx);
+                        })),
                 )
                 .into_any_element(),
         ),
@@ -93,10 +97,10 @@ pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoE
         cx,
     );
 
-    let list_body = match view.sidebar_mode {
-        ChatSidebarMode::Time => render_time_list(view, cx),
-        ChatSidebarMode::Board => render_board_list(view, cx),
-        ChatSidebarMode::Trash => render_trash_list(view, cx),
+    let list_body = if in_trash {
+        render_trash_list(view, cx)
+    } else {
+        render_time_list(view, cx)
     };
 
     let footer = view.board.as_ref().map(|b| {
@@ -117,7 +121,7 @@ pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoE
             .py(px(6.0))
             .text_xs()
             .text_color(to_hsla(p.muted))
-            .child(crate::ui::tr(cx).chat().sidebar_today_tok(tok_total))
+            .child(ch.sidebar_today_tok(format_tokens_compact(tok_total)))
             .child(cost_txt)
             .into_any_element()
     });
@@ -128,16 +132,20 @@ pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoE
 fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
     let query = view.search_input.read(cx).value().trim().to_lowercase();
     let now_ms = current_time_ms();
-    let needs_ids: std::collections::HashSet<&str> = view
-        .board
-        .as_ref()
-        .map(|b| {
-            b.needs_you
-                .iter()
-                .map(|r| r.run.session_id.as_str())
-                .collect()
-        })
-        .unwrap_or_default();
+    let mut needs_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut failed_unseen_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    if let Some(b) = &view.board {
+        for r in &b.needs_you {
+            if matches!(
+                r.run.status,
+                AgentRunStatus::Failed | AgentRunStatus::Interrupted
+            ) {
+                failed_unseen_ids.insert(r.run.session_id.as_str());
+            } else {
+                needs_ids.insert(r.run.session_id.as_str());
+            }
+        }
+    }
 
     let filtered: Vec<&AgentSessionSummary> = view
         .sessions
@@ -174,7 +182,8 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
             cx,
         ));
         for s in needs_you {
-            list = list.child(render_session_row(view, s, now_ms, true, cx));
+            let failed = failed_unseen_ids.contains(s.id.as_str());
+            list = list.child(render_session_row(view, s, now_ms, true, failed, cx));
         }
     }
     if !pinned.is_empty() {
@@ -185,7 +194,8 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
             cx,
         ));
         for s in pinned {
-            list = list.child(render_session_row(view, s, now_ms, false, cx));
+            let failed = failed_unseen_ids.contains(s.id.as_str());
+            list = list.child(render_session_row(view, s, now_ms, false, failed, cx));
         }
     }
     if !recent.is_empty() {
@@ -196,7 +206,8 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
             cx,
         ));
         for s in recent {
-            list = list.child(render_session_row(view, s, now_ms, false, cx));
+            let failed = failed_unseen_ids.contains(s.id.as_str());
+            list = list.child(render_session_row(view, s, now_ms, false, failed, cx));
         }
     }
     if view.sessions.is_empty() {
@@ -222,11 +233,12 @@ fn render_session_row(
     s: &AgentSessionSummary,
     now_ms: i64,
     needs_approval: bool,
+    failed_unseen: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
     let id = s.id.clone();
-    let sel = view.thread.session_id == s.id;
+    let sel = view.sidebar_mode != ChatSidebarMode::Board && view.thread.session_id == s.id;
     let title = if s.title.trim().is_empty() {
         crate::ui::tr(cx).chat().header_new_chat().to_owned()
     } else {
@@ -361,7 +373,7 @@ fn render_session_row(
         SharedString::from(format!("chat-s-{id}")),
         sel,
         cx,
-        cx.listener(move |this, _, _, cx| this.open_session(id.clone(), cx)),
+        cx.listener(move |this, _, _, cx| this.open_session_from_monitor(id.clone(), cx)),
     )
     .items_center()
     .py(px(6.0))
@@ -375,6 +387,8 @@ fn render_session_row(
                 Some(status_indicator(StatusShape::Warn, cx))
             } else if s.running {
                 Some(status_indicator(StatusShape::Run, cx))
+            } else if failed_unseen {
+                Some(status_indicator(StatusShape::Bad, cx))
             } else {
                 None
             })

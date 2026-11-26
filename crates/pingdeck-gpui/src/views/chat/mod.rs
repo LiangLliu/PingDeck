@@ -13,6 +13,12 @@ pub mod metrics;
 pub mod modals;
 pub mod reasoning;
 pub mod reasoning_diag;
+pub mod run_actions;
+pub mod run_monitor;
+pub mod run_monitor_detail;
+pub mod run_status;
+pub mod run_topology;
+pub mod run_topology_subagent;
 pub mod session_sync;
 pub mod sidebar;
 pub mod sidebar_board;
@@ -30,7 +36,7 @@ use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle,
     Styled as _, Subscription, Task, Window, div, px,
 };
-use pingdeck_desktop::core::agent::dto::AgentBoard;
+use pingdeck_desktop::core::agent::dto::{AgentBoard, AgentRunTopology};
 use pingdeck_desktop::core::agent::model::{
     AgentRunStatus, AgentSession, AgentSessionSummary, AgentSkill, AgentTarget,
     AgentToolCallRecord, FileChange,
@@ -48,8 +54,8 @@ use crate::ui::{
 };
 
 pub use types::{
-    ChatHandoff, ChatModal, ChatSidebarMode, DetailsTab, ModelOption, PendingAttachment,
-    ProviderChatMeta,
+    ChatHandoff, ChatModal, ChatSidebarMode, DetailsTab, ModelOption, MonitorFilter,
+    PendingAttachment, ProviderChatMeta,
 };
 
 pub struct ChatView {
@@ -57,6 +63,12 @@ pub struct ChatView {
     pub sessions: Vec<AgentSessionSummary>,
     pub trash_sessions: Vec<AgentSessionSummary>,
     pub board: Option<AgentBoard>,
+    pub monitor_search_input: Entity<InputState>,
+    pub monitor_filter: MonitorFilter,
+    pub selected_monitor_run_id: Option<String>,
+    pub selected_topology: Option<AgentRunTopology>,
+    pub session_topology: Option<AgentRunTopology>,
+    pub expanded_topology_nodes: HashSet<String>,
     pub search_input: Entity<InputState>,
     pub model_search_input: Entity<InputState>,
     pub question_other_input: Entity<InputState>,
@@ -105,6 +117,8 @@ pub struct ChatView {
     pub(super) active_sub_id: Option<u64>,
     pub(super) subscribed_session_id: Option<String>,
     pub(super) stream_task: Option<Task<()>>,
+    pub(super) attention_sub_id: Option<u64>,
+    pub(super) attention_task: Option<Task<()>>,
     pub(super) tick_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
     pub(super) _tasks: Vec<Task<()>>,
@@ -116,6 +130,8 @@ impl ChatView {
         let drafts = rt.load_chat_drafts();
         let ch = crate::ui::tr(cx).chat();
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_search()));
+        let monitor_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(ch.monitor_search_ph()));
         let model_search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_filter_models()));
         let question_other_input =
@@ -154,6 +170,12 @@ impl ChatView {
                 cx.notify();
             }
         });
+        let monitor_search_sub =
+            cx.subscribe(&monitor_search_input, |_, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    cx.notify();
+                }
+            });
         let model_search_sub = cx.subscribe(&model_search_input, |_, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
                 cx.notify();
@@ -165,6 +187,12 @@ impl ChatView {
             sessions: Vec::new(),
             trash_sessions: Vec::new(),
             board: None,
+            monitor_search_input,
+            monitor_filter: MonitorFilter::All,
+            selected_monitor_run_id: None,
+            selected_topology: None,
+            session_topology: None,
+            expanded_topology_nodes: HashSet::new(),
             search_input,
             model_search_input,
             question_other_input,
@@ -211,10 +239,13 @@ impl ChatView {
             active_sub_id: None,
             subscribed_session_id: None,
             stream_task: None,
+            attention_sub_id: None,
+            attention_task: None,
             tick_task: None,
-            _subscriptions: vec![enter_sub, search_sub, model_search_sub],
+            _subscriptions: vec![enter_sub, search_sub, monitor_search_sub, model_search_sub],
             _tasks: Vec::new(),
         };
+        view.subscribe_attention(cx);
         view.reload_sessions(cx);
         view
     }
@@ -241,6 +272,12 @@ impl ChatView {
             return;
         }
         self.scroll_handle.scroll_to_bottom();
+    }
+
+    pub fn has_any_active_board_run(&self) -> bool {
+        self.board.as_ref().is_some_and(|b| {
+            !b.running.is_empty() || b.needs_you.iter().any(|r| r.run.status.is_active())
+        })
     }
 
     pub fn is_run_active(&self) -> bool {
@@ -350,13 +387,19 @@ impl Render for ChatView {
         }
         let p = palette(cx);
 
-        let center = v_col()
-            .size_full()
-            .min_w_0()
-            .bg(to_hsla(p.surface))
-            .child(thread_header::render_header(self, cx))
-            .child(thread::render_messages(self, cx))
-            .child(composer::render_dock(self, cx));
+        let monitor_open = self.sidebar_mode == ChatSidebarMode::Board;
+        let center: gpui_kit::AnyElement = if monitor_open {
+            run_monitor::render_run_monitor(self, cx)
+        } else {
+            v_col()
+                .size_full()
+                .min_w_0()
+                .bg(to_hsla(p.surface))
+                .child(thread_header::render_header(self, cx))
+                .child(thread::render_messages(self, cx))
+                .child(composer::render_dock(self, cx))
+                .into_any_element()
+        };
 
         let mut split = h_resizable("chat-split-layout")
             .child(
@@ -367,7 +410,7 @@ impl Render for ChatView {
             )
             .child(resizable_panel().child(center));
 
-        if self.details_open {
+        if self.details_open && !monitor_open {
             split = split.child(
                 resizable_panel()
                     .size(px(316.0))

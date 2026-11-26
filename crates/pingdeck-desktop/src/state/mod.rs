@@ -6,7 +6,8 @@ pub mod palette;
 pub mod shell;
 
 pub use chat_reducer::{
-    ChatThreadState, LiveApproval, LiveCostPause, LiveFileChange, LiveSubagent, LiveToolCall,
+    ChatThreadState, LiveApproval, LiveCostPause, LiveFileChange, LiveSubagent, LiveSubagentTool,
+    LiveToolCall,
 };
 pub use palette::{
     PaletteAction, PaletteCategory, PaletteDynamicItems, PaletteEngine, PaletteItem,

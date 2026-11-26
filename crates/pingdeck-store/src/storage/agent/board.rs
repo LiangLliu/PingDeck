@@ -57,6 +57,17 @@ pub struct PendingChanges {
     pub removed: u32,
 }
 
+/// Lifecycle breakdown of sub-agent runs spawned by one parent run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SubagentStatusCounts {
+    pub total: u32,
+    pub active: u32,
+    pub waiting: u32,
+    pub completed: u32,
+    pub failed: u32,
+    pub cancelled: u32,
+}
+
 /// First non-empty line of the text parts in `parts_json`, cut to `max_chars`.
 fn first_line_of(parts_json: &str, max_chars: usize) -> Option<String> {
     let parts: Vec<HubPart> = serde_json::from_str(parts_json).ok()?;
@@ -222,6 +233,43 @@ impl WorkspaceStore {
             Ok((row.get::<_, String>(0)?, to_u32(row.get(1)?)))
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    /// Lifecycle status breakdown of sub-agent runs per parent run id.
+    pub fn agent_subagent_status_counts(
+        &self,
+        run_ids: &[String],
+    ) -> Result<HashMap<String, SubagentStatusCounts>, StorageError> {
+        if run_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let mut statement = self.connection.prepare_cached(
+            "SELECT parent_run_id, status, COUNT(*) FROM agent_runs
+             WHERE parent_run_id IN (SELECT value FROM json_each(?1))
+             GROUP BY parent_run_id, status",
+        )?;
+        let rows = statement.query_map(params![serde_json::to_string(run_ids)?], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                to_u32(row.get(2)?),
+            ))
+        })?;
+        let mut map: HashMap<String, SubagentStatusCounts> = HashMap::new();
+        for row in rows {
+            let (parent_id, status, n) = row?;
+            let entry = map.entry(parent_id).or_default();
+            entry.total = entry.total.saturating_add(n);
+            match status.as_str() {
+                "queued" | "running" => entry.active = entry.active.saturating_add(n),
+                "waiting_approval" => entry.waiting = entry.waiting.saturating_add(n),
+                "completed" => entry.completed = entry.completed.saturating_add(n),
+                "failed" | "interrupted" => entry.failed = entry.failed.saturating_add(n),
+                "cancelled" => entry.cancelled = entry.cancelled.saturating_add(n),
+                _ => {}
+            }
+        }
+        Ok(map)
     }
 
     /// The pending (or conflicting) file changes of `run_id` and of its sub-agents.

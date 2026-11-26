@@ -170,6 +170,23 @@ impl WorkspaceStore {
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
+    /// Tool calls across `run_ids` in the order they were first recorded.
+    pub fn list_runs_tool_calls(
+        &self,
+        run_ids: &[String],
+    ) -> Result<Vec<AgentToolCallRecord>, StorageError> {
+        if run_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = self.connection.prepare_cached(&format!(
+            "SELECT {CALL_COLUMNS} FROM agent_tool_calls
+             WHERE run_id IN (SELECT value FROM json_each(?1))
+             ORDER BY rowid"
+        ))?;
+        let rows = statement.query_map(params![serde_json::to_string(run_ids)?], call_from_row)?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
     /// The newest `limit` calls refused by a Block or a hard block (`decided_by` starts with
     /// `block:` or `hard_block:`), newest first, across chats.
     pub fn recent_blocked_calls(

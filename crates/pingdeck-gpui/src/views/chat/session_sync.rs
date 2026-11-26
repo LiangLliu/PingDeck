@@ -3,24 +3,50 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::Context;
+use pingdeck_desktop::core::agent::attention::AgentAttention;
 use pingdeck_desktop::core::agent::dto::AgentSubscribeTarget;
 use pingdeck_desktop::core::agent::model::{AgentEvent, AgentSessionFilter};
 use pingdeck_desktop::core::app::{
-    AgentPageRequest, agent_board_impl, agent_changes_list_impl, agent_process_list_impl,
-    agent_queue_list_impl, agent_run_subscribe_impl, agent_run_unsubscribe_impl,
-    agent_session_generate_title_impl, agent_session_get_impl, agent_session_list_impl,
-    agent_skill_list_impl, agent_workspace_info_impl, environment_list_impl, workspace_list_impl,
+    AgentPageRequest, agent_attention_subscribe_impl, agent_board_impl, agent_changes_list_impl,
+    agent_process_list_impl, agent_queue_list_impl, agent_run_subscribe_impl,
+    agent_run_unsubscribe_impl, agent_session_generate_title_impl, agent_session_get_impl,
+    agent_session_latest_topology_impl, agent_session_list_impl, agent_skill_list_impl,
+    agent_workspace_info_impl, environment_list_impl, workspace_list_impl,
 };
 use pingdeck_desktop::core::logging::{LogLevel, log_line};
+use pingdeck_desktop::core::model::events::Sequenced;
 use pingdeck_desktop::state::ChatThreadState;
-use pingdeck_desktop::streams::coalesced_agent_sink;
+use pingdeck_desktop::streams::{channel_sink, coalesced_agent_sink};
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 
 use super::actions::load_model_options;
+use super::types::ChatSidebarMode;
 use super::{ChatView, reasoning};
 
 impl ChatView {
+    /// Subscribes to the global [`AgentAttention`] feed so the Run Monitor, sidebar status pill,
+    /// and execution topology stay synchronized in real time across all concurrent chats.
+    pub(super) fn subscribe_attention(&mut self, cx: &mut Context<Self>) {
+        if self.attention_task.is_some() {
+            return;
+        }
+        let rt = runtime(cx);
+        let (sink, rx) = channel_sink::<Sequenced<AgentAttention>>();
+        if let Ok(sub_id) = agent_attention_subscribe_impl(rt.state(), None, sink) {
+            self.attention_sub_id = Some(sub_id);
+            self.attention_task = Some(subscribe_stream_into(cx, rx, 16, |this, batch, cx| {
+                if batch.is_empty() {
+                    return;
+                }
+                this.load_board(cx);
+                if this.details_open && !this.thread.session_id.is_empty() {
+                    this.load_session_topology(cx);
+                }
+            }));
+        }
+    }
+
     pub(super) fn start_elapsed_ticker(&mut self, cx: &mut Context<Self>) {
         if self.tick_task.is_some() {
             return;
@@ -30,7 +56,9 @@ impl ChatView {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 let keep_going = weak
                     .update(cx, |this, cx| {
-                        let active = this.is_run_active();
+                        let active = this.is_run_active()
+                            || (this.sidebar_mode == ChatSidebarMode::Board
+                                && this.has_any_active_board_run());
                         if !active {
                             this.tick_task = None;
                         }
@@ -139,6 +167,7 @@ impl ChatView {
                     let mut got_run_started = false;
                     let mut got_title: Option<(String, String)> = None;
                     let mut got_finished = false;
+                    let mut got_topology_event = false;
                     let mut got_scroll_worthy = false;
                     let mut auto_expand_reasoning_ids: Vec<String> = Vec::new();
 
@@ -199,6 +228,12 @@ impl ChatView {
                             | AgentEvent::GateOpened { .. } => {
                                 got_scroll_worthy = true;
                             }
+                            AgentEvent::SubagentStarted { .. }
+                            | AgentEvent::SubagentFinished { .. }
+                            | AgentEvent::ToolResult { .. } => {
+                                got_topology_event = true;
+                                got_scroll_worthy = true;
+                            }
                             AgentEvent::SessionTitleUpdated { session_id, title } => {
                                 got_title = Some((session_id.clone(), title.clone()));
                             }
@@ -235,10 +270,22 @@ impl ChatView {
                             this.refresh_catalog(cx);
                         }
                     }
+                    if got_topology_event {
+                        if this.details_open {
+                            this.load_session_topology(cx);
+                        }
+                        if this.sidebar_mode == ChatSidebarMode::Board {
+                            this.load_selected_topology(cx);
+                        }
+                    }
                     if got_finished {
                         this.submitting = false;
                         this.run_started_at = None;
-                        this.tick_task = None;
+                        if !(this.sidebar_mode == ChatSidebarMode::Board
+                            && this.has_any_active_board_run())
+                        {
+                            this.tick_task = None;
+                        }
                         this.pending_user_text = None;
                         this.refresh_after_turn(cx);
                     }
@@ -339,15 +386,19 @@ impl ChatView {
                 let changes = agent_changes_list_impl(state, &sid).unwrap_or_default();
                 let procs = agent_process_list_impl(state, Some(&sid)).unwrap_or_default();
                 let queue = agent_queue_list_impl(state, &sid).unwrap_or_default();
-                (detail, changes, procs, queue)
+                let topo = agent_session_latest_topology_impl(state, &sid)
+                    .ok()
+                    .flatten();
+                (detail, changes, procs, queue, topo)
             },
-            move |this, (res, changes, procs, queue), cx| {
+            move |this, (res, changes, procs, queue, topo), cx| {
                 if this.thread.session_id != sid_check {
                     return;
                 }
                 this.persisted_changes = changes;
                 this.processes = procs;
                 this.thread.queued_turns = queue;
+                this.session_topology = topo;
                 if let Ok(detail) = res {
                     this.audit_tool_calls = detail.tool_calls;
                     this.plan_mode = detail.plan_mode.unwrap_or(false);
@@ -391,6 +442,7 @@ impl ChatView {
 
         self.thread = ChatThreadState::new(session_id.clone(), "");
         self.session = None;
+        self.session_topology = None;
         self.plan_mode = false;
         self.audit_tool_calls.clear();
         self.persisted_changes.clear();
@@ -416,6 +468,9 @@ impl ChatView {
                 let changes = agent_changes_list_impl(state, &sid_load).unwrap_or_default();
                 let procs = agent_process_list_impl(state, Some(&sid_load)).unwrap_or_default();
                 let queue = agent_queue_list_impl(state, &sid_load).unwrap_or_default();
+                let topo = agent_session_latest_topology_impl(state, &sid_load)
+                    .ok()
+                    .flatten();
                 let (ws_info, envs, skills) = match &detail {
                     Ok(d) => {
                         let wi = d
@@ -435,14 +490,15 @@ impl ChatView {
                     }
                     Err(_) => (None, Vec::new(), Vec::new()),
                 };
-                (detail, changes, procs, queue, ws_info, envs, skills)
+                (detail, changes, procs, queue, topo, ws_info, envs, skills)
             },
-            move |this, (res, changes, procs, queue, ws_info, envs, skills), cx| {
+            move |this, (res, changes, procs, queue, topo, ws_info, envs, skills), cx| {
                 if this.thread.session_id != sid_check {
                     return;
                 }
                 this.persisted_changes = changes;
                 this.processes = procs;
+                this.session_topology = topo;
                 this.workspace_info = ws_info;
                 this.environments = envs;
                 this.available_skills = skills;

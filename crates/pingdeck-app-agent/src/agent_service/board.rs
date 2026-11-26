@@ -13,11 +13,11 @@ use std::collections::{HashMap, HashSet};
 
 use crate::agent::attention::PendingApprovalSummary;
 use crate::agent::dto::{
-    AgentBoard, AgentBoardRow, AgentSubscribeTarget, BoardChanges, BoardLimits, BoardWait,
-    TokensToday,
+    AgentBoard, AgentBoardRow, AgentSubscribeTarget, BoardChanges, BoardLimits,
+    BoardSubagentCounts, BoardWait, TokensToday,
 };
 use crate::agent::limits::QUEUE_MESSAGES;
-use crate::agent::model::{AgentRunStatus, AgentRunSummary, AgentTodoStatus};
+use crate::agent::model::{AgentRunKind, AgentRunStatus, AgentRunSummary, AgentTodoStatus};
 use crate::error::AppError;
 use crate::llm::store as llm_store;
 use crate::llm::usage::{UsageQuery, UsageSource};
@@ -118,7 +118,7 @@ fn row(
     run_id: &str,
     approvals: &HashMap<String, Vec<PendingApprovalSummary>>,
     extras: &HashMap<String, crate::workspace::storage::RunExtras>,
-    subagents: &HashMap<String, u32>,
+    subagents: &HashMap<String, BoardSubagentCounts>,
 ) -> Option<AgentBoardRow> {
     let live = state.agent.runs.get(run_id);
     let store = state.store();
@@ -161,6 +161,7 @@ fn row(
     });
     let changes = store.agent_pending_changes(run_id).unwrap_or_default();
     let seen = active || extra.seen_at_ms.is_some();
+    let subagent_counts = subagents.get(run_id).copied().unwrap_or_default();
     Some(AgentBoardRow {
         inline_allow: pending_approval
             .as_ref()
@@ -176,7 +177,8 @@ fn row(
         plan_done,
         plan_total,
         cost_currency: extra.cost_currency,
-        subagents: subagents.get(run_id).copied().unwrap_or(0),
+        subagents: subagent_counts.total,
+        subagent_counts,
         pending_changes: BoardChanges {
             files: changes.files,
             added: changes.added,
@@ -261,13 +263,41 @@ pub fn agent_board_impl(state: &AppState) -> Result<AgentBoard, AppError> {
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    let (extras, subagents) = {
+    let (extras, stored_subagents) = {
         let store = state.store();
         (
             store.agent_run_extras(&every).map_err(command_error)?,
-            store.agent_subagent_counts(&every).map_err(command_error)?,
+            store
+                .agent_subagent_status_counts(&every)
+                .map_err(command_error)?,
         )
     };
+    let subagents: HashMap<String, BoardSubagentCounts> = stored_subagents
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                BoardSubagentCounts {
+                    total: v.total,
+                    active: v.active,
+                    waiting: v.waiting,
+                    completed: v.completed,
+                    failed: v.failed,
+                    cancelled: v.cancelled,
+                },
+            )
+        })
+        .collect();
+    let active_subagents = u32::try_from(
+        state
+            .agent
+            .runs
+            .active_runs()
+            .into_iter()
+            .filter(|run| run.kind == AgentRunKind::Subagent && run.status().is_active())
+            .count(),
+    )
+    .unwrap_or(u32::MAX);
     let cards = |run_ids: &[String]| -> Vec<AgentBoardRow> {
         run_ids
             .iter()
@@ -308,6 +338,7 @@ pub fn agent_board_impl(state: &AppState) -> Result<AgentBoard, AppError> {
         cost_today,
         tokens_today,
         running_processes: super::work::running_process_count(state),
+        active_subagents,
     })
 }
 

@@ -1,17 +1,170 @@
-//! Running Board (`运行看板`) and Recently Deleted (`最近删除`) sidebar views for AI Chat.
+//! Shared sidebar section heading (`group_label`) and Recently Deleted (`最近删除`) list.
+//!
+//! The Run Monitor itself moved to the full-canvas center view (`run_monitor.rs`).
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
-    Styled as _, div, px,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use pingdeck_desktop::core::agent::dto::AgentBoardRow;
+use pingdeck_desktop::core::agent::model::AgentRunStatus;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, btn_ghost, empty_inline, h_row, list_row, palette,
-    section_heading, status_indicator, to_hsla, v_col,
+    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, empty_inline, h_row,
+    icon_xs, palette, section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
+use super::types::ChatSidebarMode;
+
+/// Compact Run Monitor status entry bar pinned at the top of the Chat sidebar.
+pub fn render_monitor_entry(
+    view: &ChatView,
+    active: bool,
+    cx: &mut Context<ChatView>,
+) -> impl IntoElement {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let (running_n, max_slots, waiting_n, unseen_fail_n, recent_n) =
+        view.board.as_ref().map_or((0, 3, 0, 0, 0), |b| {
+            let run_n = b.running.len();
+            let max_s = usize::from(b.limits.max_concurrent_runs.max(1));
+            let wait_n = b
+                .needs_you
+                .iter()
+                .filter(|r| r.run.status.is_active() || r.approval_timed_out)
+                .count();
+            let fail_n = b
+                .needs_you
+                .iter()
+                .filter(|r| {
+                    matches!(
+                        r.run.status,
+                        AgentRunStatus::Failed | AgentRunStatus::Interrupted
+                    )
+                })
+                .count();
+            (
+                run_n,
+                max_s,
+                wait_n,
+                fail_n,
+                b.done.len() + b.needs_you.len(),
+            )
+        });
+
+    let lead_shape = if waiting_n > 0 {
+        Some(StatusShape::Warn)
+    } else if unseen_fail_n > 0 {
+        Some(StatusShape::Bad)
+    } else if running_n > 0 {
+        Some(StatusShape::Run)
+    } else {
+        None
+    };
+
+    let bg = if active {
+        to_hsla(p.accent_soft)
+    } else {
+        to_hsla(p.surface)
+    };
+    let border = if active {
+        to_hsla(p.accent_line.composite_over(p.accent_soft))
+    } else if waiting_n > 0 {
+        to_hsla(p.warn_line.composite_over(p.surface))
+    } else if unseen_fail_n > 0 {
+        to_hsla(p.bad_line.composite_over(p.surface))
+    } else {
+        to_hsla(p.line.composite_over(p.surface))
+    };
+
+    let mut pills = h_row().gap(px(4.0)).flex_wrap();
+    if running_n > 0 {
+        pills = pills.child(badge(
+            ch.sidebar_monitor_live(running_n, max_slots),
+            Tone::Accent,
+            cx,
+        ));
+    }
+    if waiting_n > 0 {
+        pills = pills.child(badge(ch.sidebar_monitor_attn(waiting_n), Tone::Warning, cx));
+    }
+    if unseen_fail_n > 0 {
+        pills = pills.child(badge(
+            ch.sidebar_monitor_fail(unseen_fail_n),
+            Tone::Danger,
+            cx,
+        ));
+    }
+    if running_n == 0 && waiting_n == 0 && unseen_fail_n == 0 {
+        pills = pills.child(
+            div()
+                .text_size(px(11.0))
+                .text_color(to_hsla(p.muted))
+                .child(SharedString::from(ch.sidebar_monitor_idle(recent_n))),
+        );
+    }
+
+    div()
+        .id("chat-open-monitor")
+        .w_full()
+        .px(px(9.0))
+        .py(px(7.0))
+        .rounded(px(8.0))
+        .bg(bg)
+        .border_1()
+        .border_color(border)
+        .cursor_pointer()
+        .hover(|s| {
+            if active {
+                s
+            } else {
+                s.bg(to_hsla(p.hover.composite_over(p.surface)))
+            }
+        })
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if active {
+                this.set_sidebar_mode(ChatSidebarMode::Time, cx);
+            } else {
+                this.open_run_monitor(None, cx);
+            }
+        }))
+        .child(
+            v_col()
+                .w_full()
+                .gap(px(4.0))
+                .child(
+                    h_row()
+                        .w_full()
+                        .justify_between()
+                        .child(
+                            h_row()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .text_color(to_hsla(if active {
+                                            p.accent
+                                        } else {
+                                            p.ink_2
+                                        }))
+                                        .child(icon_xs(UiIcon::Activity)),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                        .text_color(to_hsla(if active {
+                                            p.accent_ink
+                                        } else {
+                                            p.ink
+                                        }))
+                                        .child(ch.monitor_title()),
+                                ),
+                        )
+                        .children(lead_shape.map(|s| status_indicator(s, cx))),
+                )
+                .child(pills),
+        )
+}
 
 pub fn group_label(
     title: &'static str,
@@ -37,135 +190,6 @@ pub fn group_label(
                 .text_color(to_hsla(p.faint))
                 .child(SharedString::from(count.to_string())),
         )
-}
-
-pub fn render_board_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
-    let mut list = v_col().w_full().gap(px(4.0)).p(px(8.0));
-    let Some(board) = &view.board else {
-        return empty_inline(
-            crate::ui::tr(cx).chat().sidebar_board_loading_board(),
-            None,
-            None,
-            cx,
-        )
-        .into_any_element();
-    };
-    if !board.needs_you.is_empty() {
-        list = list.child(group_label(
-            crate::ui::tr(cx).chat().sidebar_board_needs_you(),
-            board.needs_you.len(),
-            Some(StatusShape::Warn),
-            cx,
-        ));
-        for row in &board.needs_you {
-            list = list.child(render_board_row(view, row, StatusShape::Warn, cx));
-        }
-    }
-    if !board.running.is_empty() {
-        list = list.child(group_label(
-            crate::ui::tr(cx).chat().pane_state_running(),
-            board.running.len(),
-            Some(StatusShape::Run),
-            cx,
-        ));
-        for row in &board.running {
-            list = list.child(render_board_row(view, row, StatusShape::Run, cx));
-        }
-    }
-    if !board.done.is_empty() {
-        list = list.child(group_label(
-            crate::ui::tr(cx).chat().sidebar_board_done_24h(),
-            board.done.len(),
-            Some(StatusShape::Ok),
-            cx,
-        ));
-        for row in &board.done {
-            list = list.child(render_board_row(view, row, StatusShape::Ok, cx));
-        }
-    }
-    if board.needs_you.is_empty() && board.running.is_empty() && board.done.is_empty() {
-        list = list.child(empty_inline(
-            crate::ui::tr(cx)
-                .chat()
-                .sidebar_board_no_active_or_recent_runs(),
-            None,
-            None,
-            cx,
-        ));
-    }
-    div()
-        .id("chat-board-scroll")
-        .size_full()
-        .overflow_y_scrollbar()
-        .child(list)
-        .into_any_element()
-}
-
-fn render_board_row(
-    view: &ChatView,
-    row: &AgentBoardRow,
-    shape: StatusShape,
-    cx: &mut Context<ChatView>,
-) -> AnyElement {
-    let p = palette(cx);
-    let sid = row.run.session_id.clone();
-    let sel = view.thread.session_id == sid;
-    let sub = row
-        .pending_approval
-        .as_ref()
-        .map(|a| a.summary.clone())
-        .or_else(|| row.run.status_detail.clone())
-        .unwrap_or_else(|| view.format_raw_model_label(&row.run.model_label));
-
-    list_row(
-        SharedString::from(format!("chat-b-{}", row.run.run_id)),
-        sel,
-        cx,
-        cx.listener(move |this, _, _, cx| this.open_session(sid.clone(), cx)),
-    )
-    .items_start()
-    .py(px(7.0))
-    .child(
-        v_col()
-            .flex_1()
-            .min_w_0()
-            .gap(px(2.0))
-            .child(
-                h_row()
-                    .gap(px(5.0))
-                    .child(status_indicator(shape, cx))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_xs()
-                            .font_weight(gpui_kit::FontWeight::MEDIUM)
-                            .text_color(to_hsla(p.ink))
-                            .truncate()
-                            .child(row.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(to_hsla(p.faint))
-                            .child(format!("{}s", row.awake_ms / 1000)),
-                    ),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(to_hsla(p.muted))
-                    .truncate()
-                    .child(sub),
-            )
-            .children((row.plan_total > 0).then(|| {
-                div().text_xs().text_color(to_hsla(p.accent_ink)).child(
-                    crate::ui::tr(cx)
-                        .chat()
-                        .sidebar_board_plan(row.plan_done, row.plan_total),
-                )
-            })),
-    )
-    .into_any_element()
 }
 
 pub fn render_trash_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {

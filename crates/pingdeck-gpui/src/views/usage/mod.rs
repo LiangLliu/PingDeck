@@ -119,6 +119,21 @@ impl UsageView {
         cx.notify();
     }
 
+    pub fn open_calls_for_run(
+        &mut self,
+        run_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.active_tab = UsageViewTab::Calls;
+        self.scope_provider_id = None;
+        self.calls_quick = CallsQuickFilter::All;
+        self.calls_search_input
+            .update(cx, |s, cx| s.set_value(format!("run:{run_id}"), window, cx));
+        self.reload_all(cx);
+        cx.notify();
+    }
+
     pub fn open_call_by_request_id(&mut self, request_id: String, cx: &mut Context<Self>) {
         self.active_tab = UsageViewTab::Calls;
         if let Some(id) = self

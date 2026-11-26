@@ -70,15 +70,32 @@ pub struct LiveCostPause {
     pub is_tokens: bool,
 }
 
+/// Compact tool step record observed inside a live sub-agent stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveSubagentTool {
+    pub call_id: String,
+    pub name: String,
+    pub status: Option<ToolCallStatus>,
+    pub duration_ms: Option<u64>,
+    pub exit_code: Option<i32>,
+}
+
 /// Live sub-agent progress nested under a parent `task` tool call.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LiveSubagent {
     pub parent_call_id: String,
     pub child_run_id: String,
     pub child_session_id: String,
+    pub description: String,
+    pub subagent_kind: String,
+    pub resumed: bool,
     pub summary: AgentRunSummary,
     pub streaming_text: String,
     pub active_tools: usize,
+    pub total_tools: usize,
+    pub current_tool: Option<String>,
+    pub waiting_approval: bool,
+    pub tool_steps: Vec<LiveSubagentTool>,
     pub finished: bool,
 }
 
@@ -270,6 +287,7 @@ impl ChatThreadState {
                 self.streaming_text.clear();
                 self.streaming_reasoning.clear();
                 self.tool_calls.clear();
+                self.subagents.clear();
             }
             AgentEvent::QueuedUpdated { queued, paused, .. } => {
                 self.queued_turns = queued;
@@ -423,6 +441,12 @@ impl ChatThreadState {
                 child_run,
                 child_session_id,
             } => {
+                let (description, subagent_kind, resumed) = self
+                    .tool_calls
+                    .iter()
+                    .find(|c| c.call_id == parent_call_id)
+                    .map(|c| parse_task_brief_meta(&c.arguments))
+                    .unwrap_or_else(|| (String::new(), "general".to_owned(), false));
                 let id = child_run.run_id.clone();
                 self.subagents.insert(
                     id.clone(),
@@ -430,9 +454,16 @@ impl ChatThreadState {
                         parent_call_id,
                         child_run_id: id,
                         child_session_id,
+                        description,
+                        subagent_kind,
+                        resumed,
                         summary: *child_run,
                         streaming_text: String::new(),
                         active_tools: 0,
+                        total_tools: 0,
+                        current_tool: None,
+                        waiting_approval: false,
+                        tool_steps: Vec::new(),
                         finished: false,
                     },
                 );
@@ -447,14 +478,43 @@ impl ChatThreadState {
                         sub.streaming_text.push_str(&text);
                     }
                 }
-                AgentEvent::ToolCallStarted { .. } => {
+                AgentEvent::ToolCallStarted { call_id, name, .. } => {
                     if let Some(sub) = self.subagents.get_mut(&child_run_id) {
                         sub.active_tools = sub.active_tools.saturating_add(1);
+                        sub.total_tools = sub.total_tools.saturating_add(1);
+                        sub.current_tool = Some(name.clone());
+                        if !sub.tool_steps.iter().any(|t| t.call_id == call_id) {
+                            sub.tool_steps.push(LiveSubagentTool {
+                                call_id,
+                                name,
+                                status: None,
+                                duration_ms: None,
+                                exit_code: None,
+                            });
+                        }
                     }
                 }
-                AgentEvent::ToolResult { .. } => {
+                AgentEvent::ToolResult {
+                    call_id,
+                    status,
+                    duration_ms,
+                    exit_code,
+                    ..
+                } => {
                     if let Some(sub) = self.subagents.get_mut(&child_run_id) {
                         sub.active_tools = sub.active_tools.saturating_sub(1);
+                        if let Some(step) = sub.tool_steps.iter_mut().find(|t| t.call_id == call_id)
+                        {
+                            step.status = Some(status);
+                            step.duration_ms = Some(duration_ms);
+                            step.exit_code = exit_code;
+                        }
+                        sub.current_tool = sub
+                            .tool_steps
+                            .iter()
+                            .rev()
+                            .find(|t| t.status.is_none())
+                            .map(|t| t.name.clone());
                     }
                 }
                 AgentEvent::ToolApprovalRequired {
@@ -471,6 +531,10 @@ impl ChatThreadState {
                     card,
                     ..
                 } => {
+                    if let Some(sub) = self.subagents.get_mut(&child_run_id) {
+                        sub.waiting_approval = true;
+                        sub.summary.status = AgentRunStatus::WaitingApproval;
+                    }
                     // Surface sub-agent approval cards into the parent chat dock so the user can
                     // approve/deny instead of deadlocking while the parent chat is focused.
                     self.pending_approvals.retain(|a| a.call_id != call_id);
@@ -515,11 +579,23 @@ impl ChatThreadState {
                     scope: ApprovalScope::Once,
                     timed_out: true,
                 } => {
+                    if let Some(sub) = self.subagents.get_mut(&child_run_id) {
+                        sub.waiting_approval = false;
+                        if sub.summary.status == AgentRunStatus::WaitingApproval {
+                            sub.summary.status = AgentRunStatus::Running;
+                        }
+                    }
                     self.pending_approvals.retain(|a| a.call_id != call_id);
                     self.notices
                         .push(format!("Sub-agent tool approval timed out ({call_id})"));
                 }
                 AgentEvent::ToolApprovalResolved { call_id, .. } => {
+                    if let Some(sub) = self.subagents.get_mut(&child_run_id) {
+                        sub.waiting_approval = false;
+                        if sub.summary.status == AgentRunStatus::WaitingApproval {
+                            sub.summary.status = AgentRunStatus::Running;
+                        }
+                    }
                     self.pending_approvals.retain(|a| a.call_id != call_id);
                 }
                 AgentEvent::CostLimitReached {
@@ -569,6 +645,8 @@ impl ChatThreadState {
                     sub.summary = *child_run;
                     sub.finished = true;
                     sub.active_tools = 0;
+                    sub.waiting_approval = false;
+                    sub.current_tool = None;
                 }
                 self.pending_approvals
                     .retain(|a| a.run_id != finished_run_id);
@@ -661,6 +739,28 @@ impl ChatThreadState {
             self.messages.push(msg);
         }
     }
+}
+
+fn parse_task_brief_meta(raw: &str) -> (String, String, bool) {
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return (String::new(), "general".to_owned(), false);
+    };
+    let desc = val
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_owned();
+    let kind = val
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("general")
+        .to_owned();
+    let resumed = val
+        .get("resume")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty());
+    (desc, kind, resumed)
 }
 
 #[cfg(test)]
@@ -859,5 +959,107 @@ mod tests {
         assert!(state.cost_pause.is_none());
         assert!(state.pending_approvals.is_empty());
         assert!(state.subagents["r_child"].finished);
+        assert!(!state.subagents["r_child"].waiting_approval);
+    }
+
+    #[test]
+    fn subagent_captures_brief_metadata_and_tool_steps_from_parent_call() {
+        use pingdeck_core::agent::model::{AgentRunKind, AgentRunSummary, AgentTarget};
+
+        let mut state = ChatThreadState::new("s_p", "Parent");
+        state.apply(env(
+            1,
+            AgentEvent::ToolCallStarted {
+                call_id: "tc_1".into(),
+                name: "task".into(),
+                source: ToolSource::Builtin,
+            },
+        ));
+        state.apply(env(
+            2,
+            AgentEvent::ToolCallArgsDelta {
+                call_id: "tc_1".into(),
+                arguments: r#"{"description":"Audit auth routes","kind":"explore","resume":"as_0"}"#
+                    .into(),
+            },
+        ));
+        let child_run = AgentRunSummary {
+            run_id: "r_c1".into(),
+            session_id: "s_c1".into(),
+            kind: AgentRunKind::Subagent,
+            parent_run_id: Some("r1".into()),
+            parent_call_id: Some("tc_1".into()),
+            status: AgentRunStatus::Running,
+            model_label: "openai/gpt-5-mini".into(),
+            target: Some(AgentTarget::Named {
+                name: "fast".into(),
+            }),
+            iterations: 0,
+            usage: Default::default(),
+            cost_micro_usd: 0,
+            started_at_ms: 2000,
+            finished_at_ms: None,
+            last_event_ms: None,
+            last_step: None,
+            stop_reason: None,
+            error_kind: None,
+            error: None,
+            prompt_version: 1,
+            last_seq: 0,
+            failure: None,
+            role: None,
+            cost_currency: None,
+            cap_inapplicable: None,
+            status_detail: None,
+        };
+        state.apply(env(
+            3,
+            AgentEvent::SubagentStarted {
+                parent_call_id: "tc_1".into(),
+                child_session_id: "s_c1".into(),
+                child_run: Box::new(child_run),
+            },
+        ));
+        state.apply(env(
+            4,
+            AgentEvent::SubagentEvent {
+                parent_call_id: "tc_1".into(),
+                child_run_id: "r_c1".into(),
+                event: Box::new(AgentEvent::ToolCallStarted {
+                    call_id: "c_grep".into(),
+                    name: "grep".into(),
+                    source: ToolSource::Builtin,
+                }),
+            },
+        ));
+        let sub = &state.subagents["r_c1"];
+        assert_eq!(sub.description, "Audit auth routes");
+        assert_eq!(sub.subagent_kind, "explore");
+        assert!(sub.resumed);
+        assert_eq!(sub.active_tools, 1);
+        assert_eq!(sub.total_tools, 1);
+        assert_eq!(sub.current_tool.as_deref(), Some("grep"));
+
+        state.apply(env(
+            5,
+            AgentEvent::SubagentEvent {
+                parent_call_id: "tc_1".into(),
+                child_run_id: "r_c1".into(),
+                event: Box::new(AgentEvent::ToolResult {
+                    call_id: "c_grep".into(),
+                    name: "grep".into(),
+                    status: ToolCallStatus::Ok,
+                    parts: Vec::new(),
+                    duration_ms: 85,
+                    meta: None,
+                    exit_code: None,
+                }),
+            },
+        ));
+        let sub = &state.subagents["r_c1"];
+        assert_eq!(sub.active_tools, 0);
+        assert_eq!(sub.current_tool, None);
+        assert_eq!(sub.tool_steps.len(), 1);
+        assert_eq!(sub.tool_steps[0].duration_ms, Some(85));
     }
 }

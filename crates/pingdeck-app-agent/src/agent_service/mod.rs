@@ -33,6 +33,7 @@ mod tests;
 mod title;
 mod tool_output;
 mod tools;
+mod topology;
 mod trust;
 mod untracked;
 mod work;
@@ -102,6 +103,9 @@ pub(crate) use subagent::run_subagent;
 pub use title::agent_session_generate_title_impl;
 pub(crate) use tool_output::agent_tool_output_read_all_impl;
 pub use tool_output::{agent_tool_output_delete_impl, agent_tool_output_read_impl};
+pub use topology::{
+    agent_run_topology_impl, agent_session_latest_topology_impl, agent_session_runs_impl,
+};
 pub use trust::{
     agent_folder_trust_get_impl, agent_folder_trust_list_impl, agent_folder_trust_revoke_impl,
     agent_folder_trust_set_impl,

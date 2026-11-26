@@ -5,13 +5,24 @@ use pingdeck_desktop::core::agent::model::AgentTarget;
 use pingdeck_desktop::core::llm::wire::{Protocol, ReasoningStyle};
 use pingdeck_desktop::state::{LiveApproval, SettingsSection};
 
-/// Sidebar view mode in Chat (`时间` / `运行看板` / `最近删除`).
+/// Sidebar / center canvas mode in Chat (`Chats`, full-canvas `Run Monitor`, or `Trash`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChatSidebarMode {
     #[default]
     Time,
     Board,
     Trash,
+}
+
+/// Filter pill active inside the full-canvas Run Monitor feed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MonitorFilter {
+    #[default]
+    All,
+    Waiting,
+    Running,
+    Failed,
+    Done,
 }
 
 /// Active tab inside the right-hand Chat Details inspector.
@@ -51,6 +62,7 @@ impl DetailsTab {
 pub enum ChatHandoff {
     OpenSettings(SettingsSection),
     OpenProviders,
+    OpenUsageRun(String),
 }
 
 /// Staged file attachment waiting to be sent with the next prompt.
@@ -91,6 +103,9 @@ pub enum ChatModal {
     },
     EditMessage {
         message_id: String,
+    },
+    StopAllConfirm {
+        active_runs: Vec<(String, String)>,
     },
 }
 

@@ -423,6 +423,10 @@ impl AppShell {
             match handoff {
                 ChatHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),
                 ChatHandoff::OpenProviders => self.navigate(NavModule::Providers, cx),
+                ChatHandoff::OpenUsageRun(run_id) => {
+                    self.navigate(NavModule::Usage, cx);
+                    self.modules.open_usage_run_id(run_id, window, cx);
+                }
             }
         }
     }

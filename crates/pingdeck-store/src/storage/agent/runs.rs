@@ -222,6 +222,49 @@ impl WorkspaceStore {
         rows.map(|row| row?.into_domain()).collect()
     }
 
+    /// Lists a chat's top-level (`main`) runs, newest start first, at most `limit`.
+    pub fn list_session_main_runs(
+        &self,
+        session_id: &str,
+        limit: u32,
+    ) -> Result<Vec<AgentRunSummary>, StorageError> {
+        let mut statement = self.connection.prepare_cached(&format!(
+            "SELECT {RUN_COLUMNS} FROM agent_runs
+             WHERE session_id = ?1 AND kind = 'main'
+             ORDER BY started_at_ms DESC, id
+             LIMIT ?2"
+        ))?;
+        let rows = statement.query_map(params![session_id, limit], run_from_row)?;
+        rows.map(|row| row?.into_domain()).collect()
+    }
+
+    /// Lists all child (`subagent`) runs spawned by `parent_run_id`, oldest start first, paired
+    /// with the child session's title (the `task` tool's `description`).
+    pub fn list_child_agent_runs(
+        &self,
+        parent_run_id: &str,
+    ) -> Result<Vec<(AgentRunSummary, String)>, StorageError> {
+        let mut statement = self.connection.prepare_cached(
+            "SELECT r.id, r.session_id, r.parent_run_id, r.status, r.model_label, r.iterations, \
+                    r.usage_json, r.cost_micro_usd, r.started_at_ms, r.finished_at_ms, r.error, \
+                    r.parent_call_id, r.kind, r.last_event_ms, r.stop_reason, r.error_kind, \
+                    r.target_json, r.prompt_version, r.last_step, r.failure_json, r.role, \
+                    r.cost_currency, COALESCE(s.title, '') \
+             FROM agent_runs r \
+             LEFT JOIN agent_sessions s ON s.id = r.session_id \
+             WHERE r.parent_run_id = ?1 \
+             ORDER BY r.started_at_ms ASC, r.id ASC",
+        )?;
+        let rows = statement.query_map(params![parent_run_id], |row| {
+            Ok((run_from_row(row)?, row.get::<_, String>(22)?))
+        })?;
+        rows.map(|row| {
+            let (raw, title) = row?;
+            Ok((raw.into_domain()?, title))
+        })
+        .collect()
+    }
+
     /// Whether `session_id` has a queued, running or approval-waiting run.
     pub fn has_active_agent_run(&self, session_id: &str) -> Result<bool, StorageError> {
         Ok(self.connection.query_row(
