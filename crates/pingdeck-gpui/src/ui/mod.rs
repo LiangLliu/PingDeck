@@ -11,6 +11,7 @@ pub mod i18n;
 pub mod icons;
 pub mod layout;
 pub mod menus;
+pub mod pagination;
 pub mod primitives;
 pub mod theme;
 pub mod widgets;
@@ -52,6 +53,10 @@ pub use layout::{
     settings_sub_well, subtab_strip, toolbar_strip,
 };
 pub use menus::{menu_divider, menu_item, method_color, method_pill, popover_header};
+pub use pagination::{
+    CursorPaginationBar, DEFAULT_PAGE_SIZES, PaginationBar, cursor_pagination_bar, page_slice,
+    pagination_bar,
+};
 pub use primitives::{
     Tone, app_title_bar, badge, btn_danger, btn_ghost, btn_icon, btn_primary, btn_secondary, card,
     code_editor, field_row, h_row, kbd_chip, list_row, markdown_view, method_badge,

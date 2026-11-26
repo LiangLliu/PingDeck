@@ -7,9 +7,10 @@ use gpui_kit::{
 use pingdeck_desktop::core::model::items::{MockLogOutcome, MockTransactionLog};
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary, card,
-    choice_chip, empty_inline, empty_state, h_row, icon_xs, kv_line, list_row, meta_pill,
-    method_badge, palette, search_input, section_header, to_hsla, toolbar_strip, v_col,
+    PaginationBar, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_primary,
+    btn_secondary, card, choice_chip, empty_inline, empty_state, h_row, icon_xs, kv_line, list_row,
+    meta_pill, method_badge, page_slice, pagination_bar, palette, search_input, section_header,
+    to_hsla, toolbar_strip, v_col,
 };
 
 use super::state::{MockView, TrafficFilter};
@@ -87,6 +88,7 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.traffic_filter = f;
+                this.traffic_page = 0;
                 cx.notify();
             })),
         );
@@ -127,7 +129,9 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
         );
     }
 
-    // Left list of log entries
+    // Left list of log entries (bounded 50/page to keep live traffic smooth)
+    const TRAFFIC_PAGE_SIZE: usize = 50;
+    let (page_rows, clamped_page, _) = page_slice(&filtered, view.traffic_page, TRAFFIC_PAGE_SIZE);
     let mut rows_col = v_col().w_full().p(px(8.0)).gap(px(4.0));
     if filtered.is_empty() {
         rows_col = rows_col.child(empty_inline(
@@ -149,7 +153,7 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
             cx,
         ));
     } else {
-        for row in &filtered {
+        for row in page_rows {
             let lid = row.id.clone();
             let active = view.selected_log_id.as_deref() == Some(row.id.as_str());
             let tone = if row.status_code >= 500 {
@@ -190,7 +194,7 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
         .selected_log_id
         .as_deref()
         .and_then(|id| view.logs.iter().find(|l| l.id == id))
-        .or_else(|| filtered.first().copied());
+        .or_else(|| page_rows.first().copied());
 
     let detail = if let Some(log) = selected_log {
         render_log_inspector(view, log, cx)
@@ -208,6 +212,49 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
         .into_any_element()
     };
 
+    let mut left_pane = v_col()
+        .w(px(340.0))
+        .flex_shrink_0()
+        .h_full()
+        .bg(to_hsla(p.pane))
+        .border_r_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .child(
+            div()
+                .id("mock-traffic-list-scroll")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scrollbar()
+                .child(rows_col),
+        );
+    if filtered.len() > TRAFFIC_PAGE_SIZE {
+        left_pane = left_pane.child(
+            div()
+                .flex_shrink_0()
+                .px(px(10.0))
+                .py(px(7.0))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "mock-tf-pg",
+                        page: clamped_page,
+                        page_size: TRAFFIC_PAGE_SIZE,
+                        total: filtered.len(),
+                        page_sizes: &[],
+                        loading: false,
+                        compact: true,
+                    },
+                    |this: &mut MockView, next_page, cx| {
+                        this.traffic_page = next_page;
+                        cx.notify();
+                    },
+                    None::<fn(&mut MockView, usize, &mut Context<MockView>)>,
+                    cx,
+                )),
+        );
+    }
+
     v_col()
         .size_full()
         .min_h_0()
@@ -216,18 +263,7 @@ pub fn render_traffic_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyEle
             h_row()
                 .flex_1()
                 .min_h_0()
-                .child(
-                    div()
-                        .id("mock-traffic-list-scroll")
-                        .w(px(340.0))
-                        .flex_shrink_0()
-                        .h_full()
-                        .bg(to_hsla(p.pane))
-                        .border_r_1()
-                        .border_color(to_hsla(p.line.composite_over(p.pane)))
-                        .overflow_y_scrollbar()
-                        .child(rows_col),
-                )
+                .child(left_pane)
                 .child(div().flex_1().min_w_0().h_full().child(detail)),
         )
         .into_any_element()

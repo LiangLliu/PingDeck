@@ -75,15 +75,18 @@ impl ChatView {
 
     pub fn refresh_catalog(&mut self, cx: &mut Context<Self>) {
         let include_archived = self.show_archived;
+        let query_raw = self.search_input.read(cx).value().trim().to_owned();
+        let query = (!query_raw.is_empty()).then_some(query_raw);
         let dir = self.session.as_ref().and_then(|s| s.workspace_dir.clone());
         let task = spawn_blocking_into(
             cx,
             move |state| {
                 let filter = AgentSessionFilter {
                     include_archived,
+                    query,
                     ..AgentSessionFilter::default()
                 };
-                let page = agent_session_list_impl(state, Some(filter), Some(150), None);
+                let page = agent_session_list_impl(state, Some(filter), Some(50), None);
                 let catalog = load_model_options(state);
                 let board = agent_board_impl(state).ok();
                 let workspaces = workspace_list_impl(state).unwrap_or_default();
@@ -98,6 +101,8 @@ impl ChatView {
                 this.available_skills = skills;
                 if let Ok(page) = res {
                     this.sessions = page.sessions;
+                    this.sessions_next_cursor = page.next_cursor;
+                    this.sessions_loading_more = false;
                 }
                 cx.notify();
             },
@@ -107,14 +112,17 @@ impl ChatView {
 
     pub fn reload_sessions(&mut self, cx: &mut Context<Self>) {
         let include_archived = self.show_archived;
+        let query_raw = self.search_input.read(cx).value().trim().to_owned();
+        let query = (!query_raw.is_empty()).then_some(query_raw);
         let task = spawn_blocking_into(
             cx,
             move |state| {
                 let filter = AgentSessionFilter {
                     include_archived,
+                    query,
                     ..AgentSessionFilter::default()
                 };
-                let page = agent_session_list_impl(state, Some(filter), Some(150), None);
+                let page = agent_session_list_impl(state, Some(filter), Some(50), None);
                 let catalog = load_model_options(state);
                 let board = agent_board_impl(state).ok();
                 let workspaces = workspace_list_impl(state).unwrap_or_default();
@@ -130,6 +138,8 @@ impl ChatView {
                 if let Ok(page) = res {
                     let first_id = page.sessions.first().map(|s| s.id.clone());
                     this.sessions = page.sessions;
+                    this.sessions_next_cursor = page.next_cursor;
+                    this.sessions_loading_more = false;
                     if this.thread.session_id.is_empty()
                         && !this.submitting
                         && let Some(id) = first_id
@@ -400,7 +410,15 @@ impl ChatView {
                 this.thread.queued_turns = queue;
                 this.session_topology = topo;
                 if let Ok(detail) = res {
-                    this.audit_tool_calls = detail.tool_calls;
+                    for tc in detail.tool_calls {
+                        if !this
+                            .audit_tool_calls
+                            .iter()
+                            .any(|existing| existing.call_id == tc.call_id)
+                        {
+                            this.audit_tool_calls.push(tc);
+                        }
+                    }
                     this.plan_mode = detail.plan_mode.unwrap_or(false);
                     this.thread.queue_paused = detail.queue_paused.unwrap_or(false);
                     this.thread.todos = detail.session.todos.clone();
@@ -416,10 +434,14 @@ impl ChatView {
                         session.title = this.thread.title.clone();
                         session.title_locked = true;
                     }
-                    if !this.is_run_active() && detail.messages.len() >= this.thread.messages.len()
-                    {
+                    if !this.is_run_active() {
+                        let first_latest_seq = detail.messages.first().map(|m| m.seq);
+                        let prev_earliest_seq = this.thread.messages.first().map(|m| m.seq);
                         this.thread
-                            .replace_snapshot(session.title.clone(), detail.messages);
+                            .merge_latest_snapshot(session.title.clone(), detail.messages);
+                        if prev_earliest_seq.is_none() || prev_earliest_seq == first_latest_seq {
+                            this.has_earlier_messages = detail.has_more;
+                        }
                     }
                     if session.title_locked {
                         this.title_generated_sessions.insert(session.id.clone());
@@ -444,6 +466,8 @@ impl ChatView {
         self.session = None;
         self.session_topology = None;
         self.plan_mode = false;
+        self.has_earlier_messages = false;
+        self.loading_earlier_messages = false;
         self.audit_tool_calls.clear();
         self.persisted_changes.clear();
         self.processes.clear();
@@ -506,6 +530,8 @@ impl ChatView {
                 if let Ok(detail) = res {
                     this.plan_mode = detail.plan_mode.unwrap_or(false);
                     this.thread.queue_paused = detail.queue_paused.unwrap_or(false);
+                    this.has_earlier_messages = detail.has_more;
+                    this.loading_earlier_messages = false;
                     if !this.submitting && !this.is_run_active() {
                         this.thread
                             .replace_snapshot(detail.session.title.clone(), detail.messages);

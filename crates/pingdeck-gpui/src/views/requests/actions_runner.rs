@@ -70,6 +70,7 @@ impl RequestsView {
             cancel_token: None,
             live_items: Vec::new(),
             result: None,
+            results_page: 0,
             error: None,
         };
         self.tabs.push(OpenTab::Runner(Box::new(state)));
@@ -99,6 +100,7 @@ impl RequestsView {
         run.cancel_token = Some(cancel_id.clone());
         run.live_items.clear();
         run.result = None;
+        run.results_page = 0;
         run.error = None;
 
         let req_ids = if run.selected_request_ids.is_empty() {

@@ -58,6 +58,7 @@ pub struct AgentSettingsView {
     pub tools: Vec<AgentToolEntry>,
     pub trusted_folders: Vec<TrustedFolderRow>,
     pub permission_rules: Vec<PermissionRuleView>,
+    pub rules_page: usize,
     pub blocked_rules: Vec<BlockedRule>,
     pub skill_entries: Vec<AgentSkillEntry>,
     pub skill_folders: Vec<SkillFolderDto>,
@@ -234,6 +235,7 @@ impl AgentSettingsView {
             tools: Vec::new(),
             trusted_folders: Vec::new(),
             permission_rules: Vec::new(),
+            rules_page: 0,
             blocked_rules: Vec::new(),
             skill_entries: Vec::new(),
             skill_folders: Vec::new(),
@@ -295,6 +297,7 @@ impl AgentSettingsView {
             self.flash = None;
             self.mcp_confirm_start_id = None;
             self.mcp_confirm_delete_id = None;
+            self.rules_page = 0;
         }
         self.reload_all(cx);
     }

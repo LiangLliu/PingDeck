@@ -409,7 +409,6 @@
   "set.models_table.distributor_entries": "Distributor entries",
   "set.models_table.in_use": "In use",
   "set.models_table.in_use_only": "In use only",
-  "set.models_table.load_more_left": "Load {step} more ({remaining} left)",
   "set.models_table.loading_model_catalog": "Loading model catalog…",
   "set.models_table.models": "Models",
   "set.models_table.models_your_providers_serve_that": "Models your providers serve that are not in the catalog; click a row to match to a catalog model or set a price.",

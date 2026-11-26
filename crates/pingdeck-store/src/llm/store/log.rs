@@ -11,14 +11,15 @@ use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 use super::captures::{DELETE_BATCH_ROWS, get_capture, insert_capture};
 use super::usage::{add_rollup_latency, upsert_minute, upsert_rollup};
 use super::{
-    ClearReport, LOG_SOURCES, LogDetail, LogFilter, LogPage, MAX_LOG_PAGE, RequestLogEntry, atomic,
-    db, derive_log_reason, flag, json_text, to_i64, to_u64,
+    ClearReport, LOG_SOURCES, LogDetail, LogFilter, LogPage, LogPageResult, MAX_LOG_PAGE,
+    RequestLogEntry, atomic, db, derive_log_reason, flag, json_text, to_i64, to_u64,
 };
 use crate::llm::capture_record::CapturedExchange;
 use crate::llm::failure::FailureKind;
 use crate::llm::usage::RollupDelta;
-use crate::sqlite::i64_from_usize;
+use crate::sqlite::{escape_like, i64_from_usize};
 use pingdeck_base::error::AppError;
+use pingdeck_llm_domain::llm::records::StatusClass;
 
 mod retention;
 
@@ -71,28 +72,126 @@ pub struct LogWrite<'a> {
     pub rollup: Option<&'a RollupDelta>,
 }
 
-/// `WHERE` terms of a [`LogFilter`] over `?1..?5`; every term is true when its value is NULL.
-const FILTER_SQL: &str = "(?1 IS NULL OR source = ?1) AND (?2 IS NULL OR provider_id = ?2) \
-     AND (?3 IS NULL OR client_id = ?3) AND (?4 IS NULL OR ts_ms >= ?4) \
-     AND (?5 IS NULL \
-          OR (?5 = 'success' AND status BETWEEN 200 AND 299 AND outcome <> 'canceled') \
-          OR (?5 = 'client_error' AND status BETWEEN 400 AND 499) \
-          OR (?5 = 'server_error' AND status BETWEEN 500 AND 599) \
-          OR (?5 = 'failed_over' AND CASE WHEN json_valid(attempts_json) \
-                  THEN json_array_length(attempts_json) ELSE 0 END > 1) \
-          OR (?5 = 'canceled' AND outcome = 'canceled'))";
+/// Dynamic `WHERE` predicate and bound parameter list for [`LogFilter`].
+///
+/// Queries using this helper MUST call `connection.prepare` (not `prepare_cached`) because the
+/// number of filter combinations can exceed the per-connection statement cache capacity.
+fn build_filter_clause(filter: &LogFilter) -> Result<(String, Vec<Value>), AppError> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut values: Vec<Value> = Vec::new();
+    let push_val = |values: &mut Vec<Value>, value: Value| -> usize {
+        values.push(value);
+        values.len()
+    };
 
-fn filter_values(filter: &LogFilter) -> [Value; 5] {
-    let text = |value: &Option<String>| value.clone().map_or(Value::Null, Value::Text);
-    [
-        text(&filter.source),
-        text(&filter.provider_id),
-        text(&filter.client_id),
-        filter.since_ms.map_or(Value::Null, Value::Integer),
-        filter
-            .status_class
-            .map_or(Value::Null, |class| Value::Text(class.as_str().to_owned())),
-    ]
+    if let Some(source) = &filter.source {
+        let idx = push_val(&mut values, Value::Text(source.clone()));
+        clauses.push(format!("source = ?{idx}"));
+    }
+    if let Some(provider_id) = &filter.provider_id {
+        let idx = push_val(&mut values, Value::Text(provider_id.clone()));
+        clauses.push(format!("provider_id = ?{idx}"));
+    }
+    if let Some(client_id) = &filter.client_id {
+        let idx = push_val(&mut values, Value::Text(client_id.clone()));
+        clauses.push(format!("client_id = ?{idx}"));
+    }
+    if let Some(key_id) = &filter.key_id {
+        let idx = push_val(&mut values, Value::Text(key_id.clone()));
+        clauses.push(format!("key_id = ?{idx}"));
+    }
+    if let Some(since_ms) = filter.since_ms {
+        let idx = push_val(&mut values, Value::Integer(since_ms));
+        clauses.push(format!("ts_ms >= ?{idx}"));
+    }
+    if let Some(until_ms) = filter.until_ms {
+        let idx = push_val(&mut values, Value::Integer(until_ms));
+        clauses.push(format!("ts_ms <= ?{idx}"));
+    }
+    if let Some(model) = &filter.model {
+        let idx = push_val(&mut values, Value::Text(model.clone()));
+        clauses.push(format!(
+            "(requested_model = ?{idx} OR upstream_model = ?{idx})"
+        ));
+    }
+    if let Some(pattern) = filter
+        .model_contains
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let like = format!("%{}%", escape_like(&pattern.to_ascii_lowercase()));
+        let idx = push_val(&mut values, Value::Text(like));
+        clauses.push(format!(
+            "(lower(requested_model) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(COALESCE(upstream_model, '')) LIKE ?{idx} ESCAPE '\\')"
+        ));
+    }
+    if let Some(run_pat) = filter
+        .run_id_contains
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let like = format!("%{}%", escape_like(&run_pat.to_ascii_lowercase()));
+        let idx = push_val(&mut values, Value::Text(like));
+        clauses.push(format!(
+            "lower(COALESCE(run_id, '')) LIKE ?{idx} ESCAPE '\\'"
+        ));
+    }
+    if filter.failed_only {
+        clauses.push("(outcome = 'failure' OR status >= 400)".to_owned());
+    }
+    if filter.with_tools {
+        clauses.push("(finish_reason = 'tool_calls' OR purpose = 'tool')".to_owned());
+    }
+    if let Some(class) = filter.status_class {
+        let sql = match class {
+            StatusClass::Success => "(status BETWEEN 200 AND 299 AND outcome <> 'canceled')",
+            StatusClass::ClientError => "(status BETWEEN 400 AND 499)",
+            StatusClass::ServerError => "(status BETWEEN 500 AND 599)",
+            StatusClass::FailedOver => {
+                "(CASE WHEN json_valid(attempts_json) THEN json_array_length(attempts_json) ELSE 0 END > 1)"
+            }
+            StatusClass::Canceled => "(outcome = 'canceled')",
+        };
+        clauses.push(sql.to_owned());
+    }
+    for term in filter
+        .search_terms
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .take(16)
+    {
+        let like = format!("%{}%", escape_like(&term.to_ascii_lowercase()));
+        let idx = push_val(&mut values, Value::Text(like));
+        clauses.push(format!(
+            "(CAST(id AS TEXT) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(requested_model) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(COALESCE(upstream_model, '')) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(COALESCE(provider_name, '')) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(COALESCE(client_name, '')) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(source) LIKE ?{idx} ESCAPE '\\' \
+             OR lower(COALESCE(error, '')) LIKE ?{idx} ESCAPE '\\')"
+        ));
+    }
+    if let Some(ids) = &filter.ids {
+        if ids.is_empty() {
+            clauses.push("0 = 1".to_owned());
+        } else {
+            let json_ids = json_text(ids)?;
+            let idx = push_val(&mut values, Value::Text(json_ids));
+            clauses.push(format!("id IN (SELECT value FROM json_each(?{idx}))"));
+        }
+    }
+
+    let where_sql = if clauses.is_empty() {
+        "1 = 1".to_owned()
+    } else {
+        clauses.join(" AND ")
+    };
+    Ok((where_sql, values))
 }
 
 fn entry_from_row(row: &Row<'_>) -> rusqlite::Result<RequestLogEntry> {
@@ -318,17 +417,76 @@ pub fn log_id_for_request_id(
         .map_err(db)
 }
 
+/// One filtered page of rows, newest first (`ORDER BY id DESC`), together with the total number
+/// of matching rows across the table.
+///
+/// Uses `connection.prepare` (not `prepare_cached`) because dynamic [`LogFilter`] combinations
+/// outnumber the per-connection statement cache.
+///
+/// # Errors
+/// [`AppError::Database`] on SQLite failure, [`AppError::Internal`] on parameter encoding failure.
+pub fn query_log_page(
+    connection: &Connection,
+    filter: &LogFilter,
+    offset: u64,
+    limit: usize,
+) -> Result<LogPageResult, AppError> {
+    let limit = limit.clamp(1, MAX_LOG_PAGE);
+    let (where_sql, mut values) = build_filter_clause(filter)?;
+    let count_sql = format!("SELECT COUNT(*) FROM llm_request_log WHERE {where_sql}");
+    let total = {
+        let mut count_stmt = connection.prepare(&count_sql).map_err(db)?;
+        let count: i64 = count_stmt
+            .query_row(params_from_iter(values.iter()), |row| row.get(0))
+            .map_err(db)?;
+        to_u64(count)
+    };
+    if total == 0 || offset >= total {
+        return Ok(LogPageResult {
+            entries: Vec::new(),
+            total,
+            offset,
+            limit,
+        });
+    }
+    values.push(Value::Integer(i64_from_usize(limit)));
+    let limit_param = values.len();
+    values.push(Value::Integer(i64::try_from(offset).unwrap_or(i64::MAX)));
+    let offset_param = values.len();
+    let select_sql = format!(
+        concat!(
+            "SELECT id, ",
+            log_insert_columns!(),
+            " FROM llm_request_log WHERE {} ORDER BY id DESC LIMIT ?{} OFFSET ?{}"
+        ),
+        where_sql, limit_param, offset_param
+    );
+    let mut statement = connection.prepare(&select_sql).map_err(db)?;
+    let rows = statement
+        .query_map(params_from_iter(values.iter()), entry_from_row)
+        .map_err(db)?;
+    let entries = rows.collect::<Result<Vec<_>, _>>().map_err(db)?;
+    Ok(LogPageResult {
+        entries,
+        total,
+        offset,
+        limit,
+    })
+}
+
 /// How many rows `filter` selects.
 ///
 /// # Errors
 /// [`AppError::Database`] on SQLite failure.
 pub fn count_log(connection: &Connection, filter: &LogFilter) -> Result<u64, AppError> {
-    let count: i64 = connection
-        .query_row(
-            &format!("SELECT COUNT(*) FROM llm_request_log WHERE {FILTER_SQL}"),
-            params_from_iter(filter_values(filter)),
-            |row| row.get(0),
-        )
+    let (where_sql, values) = build_filter_clause(filter)?;
+    let mut statement = connection
+        .prepare(&format!(
+            "SELECT COUNT(*) FROM llm_request_log WHERE {where_sql}"
+        ))
+        .map_err(db)?;
+    let count: i64 = statement
+        .query_row(params_from_iter(values.iter()), |row| row.get(0))
         .map_err(db)?;
     Ok(to_u64(count))
 }
@@ -359,49 +517,53 @@ fn clear_batch(
     transaction: &Connection,
     filter: &LogFilter,
 ) -> Result<Option<(usize, i64)>, AppError> {
-    // `?6` is the batch size here and the batch's newest id in the statements below.
-    let mut values = filter_values(filter).to_vec();
+    let (where_sql, mut values) = build_filter_clause(filter)?;
     values.push(Value::Integer(DELETE_BATCH_ROWS));
-    let last: Option<i64> = transaction
-        .query_row(
-            &format!(
-                "SELECT MAX(id) FROM (SELECT id FROM llm_request_log WHERE {FILTER_SQL} \
-                 ORDER BY id LIMIT ?6)"
-            ),
-            params_from_iter(&values),
-            |row| row.get(0),
-        )
-        .map_err(db)?;
+    let tail_param = values.len();
+    let last: Option<i64> = {
+        let mut stmt = transaction
+            .prepare(&format!(
+                "SELECT MAX(id) FROM (SELECT id FROM llm_request_log WHERE {where_sql} \
+                 ORDER BY id LIMIT ?{tail_param})"
+            ))
+            .map_err(db)?;
+        stmt.query_row(params_from_iter(values.iter()), |row| row.get(0))
+            .map_err(db)?
+    };
     let Some(last) = last else {
         return Ok(None);
     };
-    values[5] = Value::Integer(last);
-    let capture_bytes: i64 = transaction
-        .query_row(
-            &format!(
+    if let Some(slot) = values.last_mut() {
+        *slot = Value::Integer(last);
+    }
+    let capture_bytes: i64 = {
+        let mut stmt = transaction
+            .prepare(&format!(
                 "SELECT COALESCE(SUM(bytes_total), 0) FROM llm_debug_captures \
                  WHERE request_log_id IN \
-                 (SELECT id FROM llm_request_log WHERE {FILTER_SQL} AND id <= ?6)"
-            ),
-            params_from_iter(&values),
-            |row| row.get(0),
-        )
-        .map_err(db)?;
-    transaction
-        .execute(
-            &format!(
+                 (SELECT id FROM llm_request_log WHERE {where_sql} AND id <= ?{tail_param})"
+            ))
+            .map_err(db)?;
+        stmt.query_row(params_from_iter(values.iter()), |row| row.get(0))
+            .map_err(db)?
+    };
+    {
+        let mut stmt = transaction
+            .prepare(&format!(
                 "DELETE FROM llm_debug_captures WHERE request_log_id IN \
-                 (SELECT id FROM llm_request_log WHERE {FILTER_SQL} AND id <= ?6)"
-            ),
-            params_from_iter(&values),
-        )
-        .map_err(db)?;
-    let deleted = transaction
-        .execute(
-            &format!("DELETE FROM llm_request_log WHERE {FILTER_SQL} AND id <= ?6"),
-            params_from_iter(&values),
-        )
-        .map_err(db)?;
+                 (SELECT id FROM llm_request_log WHERE {where_sql} AND id <= ?{tail_param})"
+            ))
+            .map_err(db)?;
+        stmt.execute(params_from_iter(values.iter())).map_err(db)?;
+    }
+    let deleted = {
+        let mut stmt = transaction
+            .prepare(&format!(
+                "DELETE FROM llm_request_log WHERE {where_sql} AND id <= ?{tail_param}"
+            ))
+            .map_err(db)?;
+        stmt.execute(params_from_iter(values.iter())).map_err(db)?
+    };
     Ok(Some((deleted, capture_bytes)))
 }
 

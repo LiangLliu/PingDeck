@@ -89,6 +89,8 @@ pub struct HistoryView {
     pub workspace_id: Option<String>,
     pub lang: Language,
     pub entries: Vec<ExecutionHistoryEntry>,
+    pub page_cursors: Vec<Option<String>>,
+    pub page_index: usize,
     pub next_cursor: Option<String>,
     pub total: Option<u64>,
     pub workspace_total: Option<u64>,
@@ -104,6 +106,9 @@ pub struct HistoryView {
     pub selected_id: Option<String>,
     pub selected_entry: Option<ExecutionHistoryEntry>,
     pub run_children: Vec<ExecutionHistoryEntry>,
+    pub run_children_next_cursor: Option<String>,
+    pub run_children_total: Option<u64>,
+    pub run_children_loading: bool,
     pub detail_tab: HistoryDetailTab,
     pub body_pretty: bool,
 

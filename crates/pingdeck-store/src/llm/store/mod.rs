@@ -49,10 +49,11 @@ pub use pingdeck_llm_domain::llm::records::{
     Alias, AliasTarget, BulkEnableReport, CaptureStats, ClearReport, ClientHashEntry, ClientInput,
     ClientLimits, ClientPolicyInput, ClientWithToken, DEFAULT_LOG_PAGE, FactColumns, FactSource,
     GatewayClient, KeyRunState, KeyRuntime, KeyTest, KeyVerdict, LOG_ROWS_PER_SOURCE, LOG_SOURCES,
-    LogDetail, LogFilter, LogPage, MAX_ALLOW_ENTRIES, MAX_CLIENTS, MAX_LOG_PAGE, MAX_NAME_CHARS,
-    MIGRATED_CLIENT_ID, MintedToken, ModelRef, ModelSource, ModelsListing, ModelsListingState,
-    ProbeApplyRecord, ProviderKey, ProviderModel, RequestLogEntry, StatusClass, TOUCH_INTERVAL_MS,
-    TokenLookup, UndoReport, book_entry, derive_log_reason, match_token, mint_token, token_tag,
+    LogDetail, LogFilter, LogPage, LogPageResult, MAX_ALLOW_ENTRIES, MAX_CLIENTS, MAX_LOG_PAGE,
+    MAX_NAME_CHARS, MIGRATED_CLIENT_ID, MintedToken, ModelRef, ModelSource, ModelsListing,
+    ModelsListingState, ProbeApplyRecord, ProviderKey, ProviderModel, RequestLogEntry, StatusClass,
+    TOUCH_INTERVAL_MS, TokenLookup, UndoReport, book_entry, derive_log_reason, match_token,
+    mint_token, token_tag,
 };
 
 pub use bulk_enable::{EnabledChange, set_models_enabled, set_models_enabled_bulk, undo_bulk};
@@ -93,7 +94,7 @@ pub use ledger::{
 };
 pub use log::{
     LogWrite, PruneLimits, PruneReport, clear_log, count_log, get_log, insert_log, list_log,
-    log_id_for_request_id, new_request_id, prune_log,
+    log_id_for_request_id, new_request_id, prune_log, query_log_page,
 };
 pub use model_capabilities::{
     record_measured, record_measured_context, set_model_capabilities_override,

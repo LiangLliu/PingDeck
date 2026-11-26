@@ -201,7 +201,7 @@ impl ProvidersView {
         self.adding_key_open = false;
         self.adding_model_open = false;
         self.revealed_provider_key = None;
-        self.models_page_limit = 80;
+        self.models_page = 0;
         self.ensure_config_form(&id, window, cx);
         self.reload_all(cx);
     }

@@ -42,6 +42,7 @@ impl ChatView {
     }
 
     pub fn load_trash(&mut self, cx: &mut Context<Self>) {
+        self.trash_loading_more = false;
         let task = spawn_blocking_into(
             cx,
             |state| {
@@ -49,11 +50,12 @@ impl ChatView {
                     deleted_only: true,
                     ..AgentSessionFilter::default()
                 };
-                agent_session_list_impl(state, Some(filter), Some(100), None)
+                agent_session_list_impl(state, Some(filter), Some(50), None)
             },
             |this, res, cx| {
                 if let Ok(page) = res {
                     this.trash_sessions = page.sessions;
+                    this.trash_next_cursor = page.next_cursor;
                 }
                 cx.notify();
             },

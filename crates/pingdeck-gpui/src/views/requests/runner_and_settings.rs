@@ -6,9 +6,10 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge, btn_danger,
-    btn_primary, card, checkbox, data_row, h_row, icon_xs, kv_chip, method_badge, palette,
-    progress_bar, section_heading, status_indicator, text_input, to_hsla, toggle_switch, v_col,
+    PaginationBar, ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge,
+    btn_danger, btn_primary, card, checkbox, data_row, h_row, icon_xs, kv_chip, method_badge,
+    page_slice, pagination_bar, palette, progress_bar, section_heading, status_indicator,
+    text_input, to_hsla, toggle_switch, v_col,
 };
 
 use super::RequestsView;
@@ -239,7 +240,11 @@ pub fn render_runner_tab(
             )
             .child(progress_bar("runner-prog", pct));
 
-        for (idx, item) in items.iter().enumerate() {
+        const RUNNER_PAGE_SIZE: usize = 50;
+        let (page_items, clamped_page, _) = page_slice(items, run.results_page, RUNNER_PAGE_SIZE);
+        let page_offset = clamped_page.saturating_mul(RUNNER_PAGE_SIZE);
+        for (idx, item) in page_items.iter().enumerate() {
+            let abs_idx = page_offset + idx;
             let status_s = item
                 .status_code
                 .map(|c| format!("{c} {}", item.status_text))
@@ -247,7 +252,7 @@ pub fn render_runner_tab(
             let req_id_open = item.request_id.clone();
             res_box = res_box.child(
                 div()
-                    .id(SharedString::from(format!("run-res-{idx}")))
+                    .id(SharedString::from(format!("run-res-{abs_idx}")))
                     .cursor_pointer()
                     .px(px(10.0))
                     .py(px(6.0))
@@ -300,6 +305,33 @@ pub fn render_runner_tab(
                                     )),
                             ),
                     ),
+            );
+        }
+        if items.len() > RUNNER_PAGE_SIZE {
+            res_box = res_box.child(
+                div()
+                    .pt(px(8.0))
+                    .border_t_1()
+                    .border_color(to_hsla(p.line.composite_over(p.surface)))
+                    .child(pagination_bar(
+                        PaginationBar {
+                            id_prefix: "runner-res-pg",
+                            page: clamped_page,
+                            page_size: RUNNER_PAGE_SIZE,
+                            total: items.len(),
+                            page_sizes: &[],
+                            loading: false,
+                            compact: false,
+                        },
+                        |this: &mut RequestsView, next_page, cx| {
+                            if let Some(OpenTab::Runner(r)) = this.active_tab_mut() {
+                                r.results_page = next_page;
+                            }
+                            cx.notify();
+                        },
+                        None::<fn(&mut RequestsView, usize, &mut Context<RequestsView>)>,
+                        cx,
+                    )),
             );
         }
         root = root.child(card(cx).p(px(12.0)).child(res_box));

@@ -269,6 +269,7 @@ impl RequestsView {
             modal_text_input,
             console_open: false,
             console_entries: Vec::new(),
+            console_page: 0,
             status_msg: None,
             pending_handoff: Cell::new(None),
             pending_hydrate: false,

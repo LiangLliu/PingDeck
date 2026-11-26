@@ -5,8 +5,9 @@ use gpui_kit::{Context, Div, ParentElement as _, SharedString, Styled as _, div,
 use pingdeck_desktop::core::llm::store::GatewayClient;
 
 use crate::ui::{
-    Tone, badge, btn_ghost, btn_primary, btn_secondary, card, choice_chip, h_row, palette,
-    section_heading, text_input, to_hsla, toggle_switch, v_col,
+    PaginationBar, Tone, badge, btn_ghost, btn_primary, btn_secondary, card, choice_chip, h_row,
+    page_slice, pagination_bar, palette, section_heading, text_input, to_hsla, toggle_switch,
+    v_col,
 };
 
 use super::ProvidersView;
@@ -83,14 +84,15 @@ pub fn render_client_policy_editor(
         );
 
     if !cur_allow_all {
+        const CLIENT_MODELS_PAGE_SIZE: usize = 40;
+        let enabled_models: Vec<_> = view.models.iter().filter(|m| m.model.enabled).collect();
+        let (page_models, clamped_page, _) = page_slice(
+            &enabled_models,
+            view.client_models_page,
+            CLIENT_MODELS_PAGE_SIZE,
+        );
         let mut chips = h_row().gap(px(4.0)).flex_wrap();
-        for (i, mv) in view
-            .models
-            .iter()
-            .filter(|m| m.model.enabled)
-            .take(40)
-            .enumerate()
-        {
+        for (i, mv) in page_models.iter().enumerate() {
             let mref = format!("{}/{}", mv.model.provider_id, mv.model.model_id);
             let disp = format!(
                 "{}/{}",
@@ -101,7 +103,7 @@ pub fn render_client_policy_editor(
             let cid_m = cid.clone();
             chips = chips.child(
                 choice_chip(
-                    SharedString::from(format!("cl-am-{cid}-{i}")),
+                    SharedString::from(format!("cl-am-{cid}-{clamped_page}-{i}")),
                     disp,
                     active,
                     cx,
@@ -111,18 +113,36 @@ pub fn render_client_policy_editor(
                 })),
             );
         }
-        box_el = box_el.child(
-            v_col()
-                .gap(px(4.0))
-                .child(
-                    div().text_xs().text_color(to_hsla(p.muted)).child(
-                        crate::ui::tr(cx)
-                            .providers()
-                            .prov_gateway_backups_allowed_models_for_this_client(),
-                    ),
-                )
-                .child(chips),
-        );
+        let mut section = v_col()
+            .gap(px(4.0))
+            .child(
+                div().text_xs().text_color(to_hsla(p.muted)).child(
+                    crate::ui::tr(cx)
+                        .providers()
+                        .prov_gateway_backups_allowed_models_for_this_client(),
+                ),
+            )
+            .child(chips);
+        if enabled_models.len() > CLIENT_MODELS_PAGE_SIZE {
+            section = section.child(div().pt(px(4.0)).child(pagination_bar(
+                PaginationBar {
+                    id_prefix: "cl-am-pg",
+                    page: clamped_page,
+                    page_size: CLIENT_MODELS_PAGE_SIZE,
+                    total: enabled_models.len(),
+                    page_sizes: &[],
+                    loading: false,
+                    compact: false,
+                },
+                |this: &mut ProvidersView, next_page, cx| {
+                    this.client_models_page = next_page;
+                    cx.notify();
+                },
+                None::<fn(&mut ProvidersView, usize, &mut Context<ProvidersView>)>,
+                cx,
+            )));
+        }
+        box_el = box_el.child(section);
     }
 
     box_el.child(

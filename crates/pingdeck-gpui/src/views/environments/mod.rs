@@ -96,13 +96,29 @@ impl EnvironmentsView {
                 }
             }),
         );
-        for f in [&env_search_input, &var_filter_input, &cookie_search_input] {
-            subs.push(cx.subscribe(f, |_, _, ev: &InputEvent, cx| {
+        subs.push(
+            cx.subscribe(&env_search_input, |_, _, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
                 }
-            }));
-        }
+            }),
+        );
+        subs.push(
+            cx.subscribe(&var_filter_input, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    this.vars_page = 0;
+                    cx.notify();
+                }
+            }),
+        );
+        subs.push(
+            cx.subscribe(&cookie_search_input, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    this.cookies_page = 0;
+                    cx.notify();
+                }
+            }),
+        );
 
         let mut view = Self {
             workspace_id: workspace_id.clone(),
@@ -133,6 +149,8 @@ impl EnvironmentsView {
             cookies: Vec::new(),
             selected_cookie_id: None,
             deleted_cookies_undo: None,
+            cookies_page: 0,
+            vars_page: 0,
             certificates: Vec::new(),
             env_search_input,
             new_env_name_input,
@@ -190,6 +208,8 @@ impl EnvironmentsView {
         self.cookies.clear();
         self.selected_cookie_id = None;
         self.deleted_cookies_undo = None;
+        self.cookies_page = 0;
+        self.vars_page = 0;
         self.certificates.clear();
         self.active_modal = None;
         if let Some(ws) = workspace_id {

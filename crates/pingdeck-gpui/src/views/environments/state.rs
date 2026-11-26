@@ -211,6 +211,8 @@ pub struct EnvironmentsView {
     pub cookies: Vec<CookieJarEntry>,
     pub selected_cookie_id: Option<String>,
     pub deleted_cookies_undo: Option<Vec<CookieJarEntry>>,
+    pub cookies_page: usize,
+    pub vars_page: usize,
 
     // Certificates
     pub certificates: Vec<TlsCertificateDto>,
@@ -259,6 +261,7 @@ impl EnvironmentsView {
         self.env_draft_hosts = env.declared_hosts.clone();
         self.env_draft_revision = Some(env.revision.clone());
         self.env_dirty = false;
+        self.vars_page = 0;
         self.pending_sync = true;
     }
 

@@ -4,6 +4,7 @@ use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     Styled as _, div, px,
 };
+use pingdeck_desktop::core::app::misc_logic_service::HISTORY_PAGE_SIZE;
 use pingdeck_desktop::core::app::{current_time_ms, settings_get_impl};
 use pingdeck_desktop::core::model::HistorySource;
 use pingdeck_desktop::time::{date_bucket, format_local_time};
@@ -11,9 +12,9 @@ use pingdeck_desktop::time::{date_bucket, format_local_time};
 use crate::bridge::runtime;
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary, choice_chip,
-    empty_inline, h_row, list_row, master_pane, meta_pill, method_badge, palette, pane_footer,
-    pane_header, search_input, section_heading, to_hsla, v_col,
+    CursorPaginationBar, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon,
+    choice_chip, cursor_pagination_bar, empty_inline, h_row, list_row, master_pane, meta_pill,
+    method_badge, palette, pane_footer, pane_header, search_input, section_heading, to_hsla, v_col,
 };
 
 use super::state::{HistoryModal, HistoryView};
@@ -286,43 +287,38 @@ pub fn render_sidebar(view: &HistoryView, cx: &mut Context<HistoryView>) -> AnyE
                 ),
             );
         }
-
-        if view.next_cursor.is_some() {
-            list = list.child(
-                div().w_full().pt(px(6.0)).flex().justify_center().child(
-                    btn_secondary(
-                        "hist-load-more",
-                        if view.loading {
-                            crate::ui::Tr(view.lang).common().loading()
-                        } else {
-                            crate::ui::Tr(view.lang).history().sidebar_load_more()
-                        },
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| this.reload_page(false, cx))),
-                ),
-            );
-        }
     }
 
     let cap = settings_get_impl(runtime(cx).state())
         .data
         .history_retention;
     let footer = pane_footer(
-        div()
-            .text_size(px(11.0))
-            .text_color(to_hsla(p.muted))
+        v_col()
+            .w_full()
+            .gap(px(4.0))
+            .child(cursor_pagination_bar(
+                CursorPaginationBar {
+                    id_prefix: "hist-pg",
+                    page: view.page_index,
+                    page_size: HISTORY_PAGE_SIZE as usize,
+                    shown: view.entries.len(),
+                    total: view.total,
+                    has_next: view.next_cursor.is_some(),
+                    loading: view.loading,
+                    compact: true,
+                },
+                |this, cx| this.go_first_page(cx),
+                |this, cx| this.go_prev_page(cx),
+                |this, cx| this.go_next_page(cx),
+                cx,
+            ))
             .child(
-                crate::ui::tr(cx)
-                    .history()
-                    .sidebar_loaded_total(view.entries.len(), total_shown),
+                div()
+                    .text_size(px(10.5))
+                    .text_color(to_hsla(p.faint))
+                    .child(crate::ui::tr(cx).history().sidebar_cap(cap)),
             ),
-        Some(
-            div()
-                .text_size(px(10.5))
-                .text_color(to_hsla(p.faint))
-                .child(crate::ui::tr(cx).history().sidebar_cap(cap))
-                .into_any_element(),
-        ),
+        None,
         cx,
     );
 

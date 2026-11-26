@@ -255,6 +255,7 @@ impl ProvidersView {
                 self.client_conc_input
                     .update(cx, |i, cx| i.set_value(conc, window, cx));
             }
+            self.client_models_page = 0;
             self.editing_client_policy = Some(cid);
         }
         cx.notify();

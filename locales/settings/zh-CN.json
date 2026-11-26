@@ -409,7 +409,6 @@
   "set.models_table.distributor_entries": "分发商自有条目",
   "set.models_table.in_use": "在用",
   "set.models_table.in_use_only": "只看在用的",
-  "set.models_table.load_more_left": "再加载 {step}个（剩余 {remaining}个）",
   "set.models_table.loading_model_catalog": "正在加载模型目录…",
   "set.models_table.models": "模型目录",
   "set.models_table.models_your_providers_serve_that": "你的服务商提供、目录里还没有的模型；点击行可关联到目录模型或单独定价。",

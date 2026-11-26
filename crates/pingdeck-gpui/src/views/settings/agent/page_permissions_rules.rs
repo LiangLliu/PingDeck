@@ -6,7 +6,10 @@ use pingdeck_desktop::core::agent::sandbox::SandboxKind;
 use pingdeck_desktop::core::app::{RuleInactive, SandboxSelftest, current_time_ms};
 use pingdeck_desktop::core::model::settings::Language;
 
-use crate::ui::{StatusShape, Tone, badge, btn_danger, h_row, palette, to_hsla, v_col};
+use crate::ui::{
+    PaginationBar, StatusShape, Tone, badge, btn_danger, h_row, page_slice, pagination_bar,
+    palette, to_hsla, v_col,
+};
 
 use super::AgentSettingsView;
 use super::widgets::{format_ago_short, section_card_flush, section_card_padded};
@@ -49,9 +52,12 @@ pub(super) fn render_remembered_rules(
             .child(desc);
     }
 
+    const RULES_PAGE_SIZE: usize = 20;
     let mut list = v_col();
     let total = view.permission_rules.len();
-    for (idx, rv) in view.permission_rules.iter().enumerate() {
+    let (page_rules, clamped_page, _) =
+        page_slice(&view.permission_rules, view.rules_page, RULES_PAGE_SIZE);
+    for (idx, rv) in page_rules.iter().enumerate() {
         let r = &rv.rule;
         let rid = r.id.clone();
         let summary = match &r.arg_pattern {
@@ -138,12 +144,39 @@ pub(super) fn render_remembered_rules(
                     this.delete_permission_rule(rid.clone(), cx);
                 })),
             );
-        if idx + 1 < total {
+        if idx + 1 < page_rules.len() {
             row = row
                 .border_b_1()
                 .border_color(to_hsla(p.line.composite_over(p.surface)));
         }
         list = list.child(row);
+    }
+    if total > RULES_PAGE_SIZE {
+        list = list.child(
+            div()
+                .px(px(12.0))
+                .py(px(8.0))
+                .bg(to_hsla(p.pane))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "perm-rules-pg",
+                        page: clamped_page,
+                        page_size: RULES_PAGE_SIZE,
+                        total,
+                        page_sizes: &[],
+                        loading: false,
+                        compact: false,
+                    },
+                    |this: &mut AgentSettingsView, next_page, cx| {
+                        this.rules_page = next_page;
+                        cx.notify();
+                    },
+                    None::<fn(&mut AgentSettingsView, usize, &mut Context<AgentSettingsView>)>,
+                    cx,
+                )),
+        );
     }
 
     v_col()

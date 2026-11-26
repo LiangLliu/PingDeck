@@ -6,10 +6,11 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger, btn_ghost, btn_icon,
-    btn_primary, btn_secondary, card, choice_chip, empty_inline, empty_state, h_row, icon_xs,
-    kv_line, list_row, meta_pill, palette, search_input, section_header, setting_row, text_input,
-    to_hsla, toggle_switch, toolbar_strip, v_col,
+    PaginationBar, ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger,
+    btn_ghost, btn_icon, btn_primary, btn_secondary, card, choice_chip, empty_inline, empty_state,
+    h_row, icon_xs, kv_line, list_row, meta_pill, page_slice, pagination_bar, palette,
+    search_input, section_header, setting_row, text_input, to_hsla, toggle_switch, toolbar_strip,
+    v_col,
 };
 
 use super::state::{EnvModal, EnvironmentsView};
@@ -117,6 +118,8 @@ pub fn render_cookies_tab(
                 ),
         );
 
+    const COOKIES_PAGE_SIZE: usize = 50;
+    let (page_rows, clamped_page, _) = page_slice(&filtered, view.cookies_page, COOKIES_PAGE_SIZE);
     let mut list = v_col().w_full().p(px(8.0)).gap(px(4.0));
     if filtered.is_empty() {
         list = list.child(empty_inline(
@@ -132,7 +135,7 @@ pub fn render_cookies_tab(
             cx,
         ));
     } else {
-        for ck in &filtered {
+        for ck in page_rows {
             let cid = ck.id.as_str().to_owned();
             let active = view.selected_cookie_id.as_deref() == Some(ck.id.as_str());
             list = list.child(
@@ -392,22 +395,54 @@ pub fn render_cookies_tab(
         );
     }
 
+    let mut left_pane = v_col()
+        .w(px(300.0))
+        .flex_shrink_0()
+        .h_full()
+        .bg(to_hsla(p.pane))
+        .border_r_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .child(
+            div()
+                .id("ck-list-scroll")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scrollbar()
+                .child(list),
+        );
+    if filtered.len() > COOKIES_PAGE_SIZE {
+        left_pane = left_pane.child(
+            div()
+                .flex_shrink_0()
+                .px(px(10.0))
+                .py(px(7.0))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "ck-pg",
+                        page: clamped_page,
+                        page_size: COOKIES_PAGE_SIZE,
+                        total: filtered.len(),
+                        page_sizes: &[],
+                        loading: false,
+                        compact: true,
+                    },
+                    |this: &mut EnvironmentsView, next_page, cx| {
+                        this.cookies_page = next_page;
+                        cx.notify();
+                    },
+                    None::<fn(&mut EnvironmentsView, usize, &mut Context<EnvironmentsView>)>,
+                    cx,
+                )),
+        );
+    }
+
     page.child(
         h_row()
             .flex_1()
             .min_h_0()
-            .child(
-                div()
-                    .id("ck-list-scroll")
-                    .w(px(300.0))
-                    .flex_shrink_0()
-                    .h_full()
-                    .bg(to_hsla(p.pane))
-                    .border_r_1()
-                    .border_color(to_hsla(p.line.composite_over(p.pane)))
-                    .overflow_y_scrollbar()
-                    .child(list),
-            )
+            .child(left_pane)
             .child(div().flex_1().min_w_0().h_full().child(detail)),
     )
     .into_any_element()

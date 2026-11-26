@@ -6,7 +6,7 @@ use gpui_kit::{AppContext as _, Context, ParentElement as _, Styled as _, Window
 use pingdeck_desktop::core::app::{
     current_time_ms, llm_gateway_client_list_impl, llm_key_list_impl, llm_log_capture_stats_impl,
     llm_log_clear_impl, llm_log_count_impl, llm_log_delete_captures_impl, llm_log_get_impl,
-    llm_log_list_impl, llm_log_search_bodies_impl, llm_model_list_impl, llm_provider_list_impl,
+    llm_log_page_impl, llm_log_search_bodies_impl, llm_model_list_impl, llm_provider_list_impl,
     llm_provider_status_list_impl, llm_subscribe_impl, llm_unsubscribe_impl,
     llm_usage_failures_impl, llm_usage_latency_impl, llm_usage_latency_modes_impl,
     llm_usage_set_tz_offset_impl, llm_usage_summary_impl, settings_get_impl,
@@ -41,17 +41,11 @@ impl UsageView {
             self.llm_sub_id = Some(sub_id);
             self.llm_stream_task = Some(subscribe_stream_into(cx, rx, 24, |this, batch, cx| {
                 let mut need_summary_refresh = false;
-                let mut added_rows = false;
+                let mut incoming_logs = 0u64;
                 for seq in batch {
                     match seq.event {
                         LlmEvent::GatewayLogBatch { entries } => {
-                            for entry in entries {
-                                if !this.logs.iter().any(|r| r.id == entry.id) {
-                                    this.logs.insert(0, entry);
-                                    added_rows = true;
-                                }
-                            }
-                            this.logs.truncate(500);
+                            incoming_logs = incoming_logs.saturating_add(entries.len() as u64);
                             need_summary_refresh = true;
                         }
                         LlmEvent::ProvidersChanged
@@ -66,8 +60,14 @@ impl UsageView {
                         _ => {}
                     }
                 }
-                if added_rows {
+                if incoming_logs > 0 {
                     this.updated_at_ms = current_time_ms();
+                    if this.calls_page == 0 && !this.body_searching {
+                        this.reload_logs_page(false, cx);
+                    } else {
+                        this.pending_live_logs =
+                            this.pending_live_logs.saturating_add(incoming_logs);
+                    }
                 }
                 if need_summary_refresh {
                     this.reload_analytics_only(cx);
@@ -88,10 +88,9 @@ impl UsageView {
         let settings = settings_get_impl(runtime(cx).state());
         self.lang = settings.general.language;
         self.retention_days = settings.ai.providers.usage_retention_days;
+        self.breakdown_page = 0;
         let _ = llm_usage_set_tz_offset_impl(runtime(cx).state(), local_tz_offset_minutes());
 
-        let scope_pid = self.scope_provider_id.clone();
-        let filter_src = self.filter_source.map(|s| s.as_str().to_owned());
         let t_cat = spawn_blocking_into(
             cx,
             move |state| {
@@ -99,33 +98,21 @@ impl UsageView {
                 let keys = llm_key_list_impl(state, None).unwrap_or_default();
                 let models = llm_model_list_impl(state, None).unwrap_or_default();
                 let clients = llm_gateway_client_list_impl(state).unwrap_or_default();
-                let logs = llm_log_list_impl(
-                    state,
-                    Some(LogFilter {
-                        source: filter_src,
-                        provider_id: scope_pid,
-                        ..LogFilter::default()
-                    }),
-                    Some(200),
-                    None,
-                )
-                .unwrap_or_default();
-                Ok::<_, AppError>((providers, keys, models, clients, logs))
+                Ok::<_, AppError>((providers, keys, models, clients))
             },
             |this, res, cx| {
-                if let Ok((providers, keys, models, clients, logs)) = res {
+                if let Ok((providers, keys, models, clients)) = res {
                     this.providers = providers;
                     this.keys = keys;
                     this.models = models;
                     this.clients = clients;
-                    this.logs_has_more = logs.len() >= 200;
-                    this.logs = logs;
                     this.updated_at_ms = current_time_ms();
                 }
                 cx.notify();
             },
         );
         self._tasks.push(t_cat);
+        self.reload_logs_page(true, cx);
         self.reload_analytics_only(cx);
     }
 
@@ -232,31 +219,70 @@ impl UsageView {
         self._tasks.push(t);
     }
 
-    pub fn load_more_logs(&mut self, cx: &mut Context<Self>) {
-        let Some(last_id) = self.logs.last().map(|r| r.id) else {
-            return;
-        };
-        let filter = LogFilter {
-            source: self.filter_source.map(|s| s.as_str().to_owned()),
-            provider_id: self.scope_provider_id.clone(),
-            ..LogFilter::default()
-        };
+    pub fn reload_logs_page(&mut self, reset_page: bool, cx: &mut Context<Self>) {
+        if reset_page {
+            self.calls_page = 0;
+        }
+        if self.calls_page == 0 {
+            self.pending_live_logs = 0;
+        }
+        let search_raw = self.calls_search_input.read(cx).value().to_string();
+        let filter = self.build_calls_log_filter(&search_raw);
+        let page_size = self.calls_page_size.clamp(10, 500);
+        let req_page = self.calls_page;
+        let offset = (req_page as u64).saturating_mul(page_size as u64);
+        self.calls_loading = true;
+        cx.notify();
+
         let task = spawn_blocking_into(
             cx,
-            move |state| llm_log_list_impl(state, Some(filter), Some(200), Some(last_id)),
-            |this, res, cx| {
-                if let Ok(more) = res {
-                    this.logs_has_more = more.len() >= 200;
-                    for row in more {
-                        if !this.logs.iter().any(|existing| existing.id == row.id) {
-                            this.logs.push(row);
+            move |state| llm_log_page_impl(state, Some(filter), offset, Some(page_size as u32)),
+            move |this, res, cx| {
+                this.calls_loading = false;
+                match res {
+                    Ok(page) => {
+                        this.calls_total = page.total;
+                        let max_page = (page.total as usize)
+                            .div_ceil(this.calls_page_size.max(1))
+                            .saturating_sub(1);
+                        if page.entries.is_empty() && page.total > 0 && req_page > max_page {
+                            this.calls_page = max_page;
+                            this.reload_logs_page(false, cx);
+                            return;
                         }
+                        this.logs = page.entries;
+                        this.updated_at_ms = current_time_ms();
                     }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
                 cx.notify();
             },
         );
         self._tasks.push(task);
+    }
+
+    pub fn set_calls_page(&mut self, page: usize, cx: &mut Context<Self>) {
+        let total_pages = (self.calls_total as usize)
+            .div_ceil(self.calls_page_size.max(1))
+            .max(1);
+        let next = page.min(total_pages - 1);
+        if next == self.calls_page && self.pending_live_logs == 0 {
+            return;
+        }
+        self.calls_page = next;
+        if next == 0 {
+            self.pending_live_logs = 0;
+        }
+        self.reload_logs_page(false, cx);
+    }
+
+    pub fn set_calls_page_size(&mut self, size: usize, cx: &mut Context<Self>) {
+        let clamped = size.clamp(10, 500);
+        if clamped == self.calls_page_size {
+            return;
+        }
+        self.calls_page_size = clamped;
+        self.reload_logs_page(true, cx);
     }
 
     pub fn handle_calls_search_changed(&mut self, cx: &mut Context<Self>) {
@@ -268,6 +294,8 @@ impl UsageView {
         match body_term {
             Some(term) if !term.is_empty() => {
                 self.body_searching = true;
+                self.calls_page = 0;
+                cx.notify();
                 let task = spawn_async_into(
                     cx,
                     move |state| async move { llm_log_search_bodies_impl(&state, &term).await },
@@ -276,7 +304,7 @@ impl UsageView {
                         if let Ok(ids) = res {
                             this.body_match_ids = Some(ids.into_iter().collect::<HashSet<_>>());
                         }
-                        cx.notify();
+                        this.reload_logs_page(true, cx);
                     },
                 );
                 self._tasks.push(task);
@@ -284,7 +312,7 @@ impl UsageView {
             _ => {
                 self.body_match_ids = None;
                 self.body_searching = false;
-                cx.notify();
+                self.reload_logs_page(true, cx);
             }
         }
     }
@@ -339,7 +367,7 @@ impl UsageView {
     }
 
     pub fn open_clear_logs_modal(&mut self, cx: &mut Context<Self>) {
-        let filter = self.active_log_filter();
+        let filter = self.active_log_filter(cx);
         let task = spawn_blocking_into(
             cx,
             move |state| llm_log_count_impl(state, Some(filter)),
@@ -357,7 +385,7 @@ impl UsageView {
     }
 
     pub fn confirm_clear_logs(&mut self, cx: &mut Context<Self>) {
-        let filter = self.active_log_filter();
+        let filter = self.active_log_filter(cx);
         let task = spawn_async_into(
             cx,
             move |state| async move { llm_log_clear_impl(&state, Some(filter)).await },
@@ -435,62 +463,78 @@ impl UsageView {
             return;
         };
 
-        let mut csv = String::from(
-            "id,time,source,client,provider,requested_model,upstream_model,status,outcome,ttft_ms,latency_ms,input_tokens,output_tokens,cached_tokens,cost,currency\n",
+        let filter = self.active_log_filter(cx);
+        let path_for_msg = path.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                const MAX_EXPORT: u64 = 5_000;
+                const CHUNK: u32 = 500;
+                let mut csv = String::from(
+                    "id,time,source,client,provider,requested_model,upstream_model,status,outcome,ttft_ms,latency_ms,input_tokens,output_tokens,cached_tokens,cost,currency\n",
+                );
+                let mut offset = 0u64;
+                while offset < MAX_EXPORT {
+                    let page = llm_log_page_impl(state, Some(filter.clone()), offset, Some(CHUNK))?;
+                    if page.entries.is_empty() {
+                        break;
+                    }
+                    for r in &page.entries {
+                        let cost = r
+                            .cost_micro_usd
+                            .map(|m| fmt_cost_micro(m, &r.cost_currency))
+                            .unwrap_or_default();
+                        let line = format!(
+                            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                            r.id,
+                            csv_cell(&format_local_datetime(r.ts_ms)),
+                            csv_cell(&r.source),
+                            csv_cell(r.client_name.as_deref().unwrap_or("")),
+                            csv_cell(r.provider_name.as_deref().unwrap_or("")),
+                            csv_cell(&r.requested_model),
+                            csv_cell(r.upstream_model.as_deref().unwrap_or("")),
+                            r.status,
+                            csv_cell(&r.outcome),
+                            r.ttft_ms.map_or(String::new(), |v| v.to_string()),
+                            r.latency_ms,
+                            r.input_tokens.unwrap_or(0),
+                            r.output_tokens.unwrap_or(0),
+                            r.cached_tokens.unwrap_or(0),
+                            csv_cell(&cost),
+                            csv_cell(&r.cost_currency),
+                        );
+                        csv.push_str(&line);
+                    }
+                    offset = offset.saturating_add(page.entries.len() as u64);
+                    if offset >= page.total {
+                        break;
+                    }
+                }
+                std::fs::write(&path, csv)
+                    .map_err(|e| AppError::io(format!("CSV write failed: {e}")))?;
+                Ok::<_, AppError>(())
+            },
+            move |this, res, cx| {
+                match res {
+                    Ok(()) => {
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::Tr(this.lang)
+                                .usage()
+                                .usage_actions_exported_csv_to(path_for_msg.display()),
+                        ));
+                    }
+                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
         );
-        let search = self.calls_search_input.read(cx).value().to_string();
-        let rows = self.filtered_logs(&search);
-        for r in rows {
-            let cost = r
-                .cost_micro_usd
-                .map(|m| fmt_cost_micro(m, &r.cost_currency))
-                .unwrap_or_default();
-            let line = format!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
-                r.id,
-                csv_cell(&format_local_datetime(r.ts_ms)),
-                csv_cell(&r.source),
-                csv_cell(r.client_name.as_deref().unwrap_or("")),
-                csv_cell(r.provider_name.as_deref().unwrap_or("")),
-                csv_cell(&r.requested_model),
-                csv_cell(r.upstream_model.as_deref().unwrap_or("")),
-                r.status,
-                csv_cell(&r.outcome),
-                r.ttft_ms.map_or(String::new(), |v| v.to_string()),
-                r.latency_ms,
-                r.input_tokens.unwrap_or(0),
-                r.output_tokens.unwrap_or(0),
-                r.cached_tokens.unwrap_or(0),
-                csv_cell(&cost),
-                csv_cell(&r.cost_currency),
-            );
-            csv.push_str(&line);
-        }
-
-        match std::fs::write(&path, csv) {
-            Ok(()) => {
-                self.status_msg = Some((
-                    Tone::Success,
-                    crate::ui::Tr(self.lang)
-                        .usage()
-                        .usage_actions_exported_csv_to(path.display()),
-                ));
-            }
-            Err(e) => {
-                self.status_msg = Some((Tone::Danger, e.to_string()));
-            }
-        }
-        cx.notify();
+        self._tasks.push(task);
     }
 
-    fn active_log_filter(&self) -> LogFilter {
-        LogFilter {
-            source: self.filter_source.map(|s| s.as_str().to_owned()),
-            provider_id: self.scope_provider_id.clone(),
-            client_id: self.filter_client_id.clone(),
-            status_class: None,
-            since_ms: None,
-        }
+    fn active_log_filter(&self, cx: &gpui_kit::App) -> LogFilter {
+        let search_raw = self.calls_search_input.read(cx).value().to_string();
+        self.build_calls_log_filter(&search_raw)
     }
 
     #[must_use]

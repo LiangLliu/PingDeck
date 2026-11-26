@@ -80,6 +80,7 @@ impl MockView {
         self.selected_callback_id = None;
         self.selected_log_id = None;
         self.logs.clear();
+        self.traffic_page = 0;
         self.live_data = None;
         self.try_it_busy = false;
         self.try_it_result = None;

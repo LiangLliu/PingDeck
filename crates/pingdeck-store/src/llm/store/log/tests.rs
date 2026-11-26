@@ -620,3 +620,138 @@ fn clearing_walks_every_batch() {
     );
     assert_eq!(rows(&c), 0);
 }
+
+#[test]
+fn query_log_page_filters_and_paginates_across_all_fields() {
+    let c = connection();
+    let mut r1 = entry("gpt-4o");
+    r1.ts_ms = 1_000;
+    r1.provider_id = Some("p1".into());
+    r1.provider_name = Some("OpenAI".into());
+    r1.key_id = Some("k1".into());
+    r1.upstream_model = Some("gpt-4o-2026".into());
+    r1.status = 200;
+    r1.outcome = "success".into();
+    r1.finish_reason = Some("tool_calls".into());
+    r1.run_id = Some("run_alpha_1".into());
+    r1.source = "agent".into();
+    let id1 = insert_log(&c, &write(&r1, None, None)).unwrap();
+
+    let mut r2 = entry("claude-3-7");
+    r2.ts_ms = 2_000;
+    r2.provider_id = Some("p2".into());
+    r2.provider_name = Some("Anthropic".into());
+    r2.key_id = Some("k2".into());
+    r2.upstream_model = Some("claude-3-7-sonnet".into());
+    r2.status = 429;
+    r2.outcome = "failure".into();
+    r2.error = Some("rate_limit 100%".into());
+    r2.run_id = Some("run_beta_2".into());
+    r2.source = "gateway".into();
+    let id2 = insert_log(&c, &write(&r2, None, None)).unwrap();
+
+    let mut r3 = entry("deepseek-v3");
+    r3.ts_ms = 3_000;
+    r3.provider_id = Some("p1".into());
+    r3.provider_name = Some("DeepSeek".into());
+    r3.key_id = Some("k1".into());
+    r3.upstream_model = Some("deepseek-chat".into());
+    r3.status = 200;
+    r3.outcome = "success".into();
+    r3.source = "gateway".into();
+    let id3 = insert_log(&c, &write(&r3, None, None)).unwrap();
+
+    // Unfiltered offset pagination (newest first).
+    let p0 = query_log_page(&c, &LogFilter::default(), 0, 2).unwrap();
+    assert_eq!(p0.total, 3);
+    assert_eq!(
+        p0.entries.iter().map(|e| e.id).collect::<Vec<_>>(),
+        [id3, id2]
+    );
+    let p1 = query_log_page(&c, &LogFilter::default(), 2, 2).unwrap();
+    assert_eq!(p1.total, 3);
+    assert_eq!(p1.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [id1]);
+    let past = query_log_page(&c, &LogFilter::default(), 10, 2).unwrap();
+    assert_eq!(past.total, 3);
+    assert!(past.entries.is_empty());
+
+    // Time window, key_id, model exact/substring, run_id, failed_only, with_tools.
+    let ids_of = |f: LogFilter| -> Vec<i64> {
+        let res = query_log_page(&c, &f, 0, 10).unwrap();
+        assert_eq!(res.total, res.entries.len() as u64);
+        res.entries.into_iter().map(|e| e.id).collect()
+    };
+    assert_eq!(
+        ids_of(LogFilter {
+            since_ms: Some(1_500),
+            until_ms: Some(2_500),
+            ..LogFilter::default()
+        }),
+        [id2]
+    );
+    assert_eq!(
+        ids_of(LogFilter {
+            key_id: Some("k1".into()),
+            ..LogFilter::default()
+        }),
+        [id3, id1]
+    );
+    assert_eq!(
+        ids_of(LogFilter {
+            model: Some("gpt-4o-2026".into()),
+            ..LogFilter::default()
+        }),
+        [id1]
+    );
+    assert_eq!(
+        ids_of(LogFilter {
+            model_contains: Some("SONNET".into()),
+            ..LogFilter::default()
+        }),
+        [id2]
+    );
+    assert_eq!(
+        ids_of(LogFilter {
+            run_id_contains: Some("alpha".into()),
+            ..LogFilter::default()
+        }),
+        [id1]
+    );
+    assert_eq!(
+        ids_of(LogFilter {
+            failed_only: true,
+            ..LogFilter::default()
+        }),
+        [id2]
+    );
+    assert_eq!(
+        ids_of(LogFilter {
+            with_tools: true,
+            ..LogFilter::default()
+        }),
+        [id1]
+    );
+    // LIKE wildcard escaping in search_terms ("100%" only matches r2's literal error).
+    assert_eq!(
+        ids_of(LogFilter {
+            search_terms: vec!["100%".into()],
+            ..LogFilter::default()
+        }),
+        [id2]
+    );
+    // Explicit id allowlist via json_each, including empty allowlist short-circuit.
+    assert_eq!(
+        ids_of(LogFilter {
+            ids: Some(vec![id1, id3]),
+            ..LogFilter::default()
+        }),
+        [id3, id1]
+    );
+    assert!(
+        ids_of(LogFilter {
+            ids: Some(Vec::new()),
+            ..LogFilter::default()
+        })
+        .is_empty()
+    );
+}

@@ -2,11 +2,13 @@
 //! File Changes Diff/Keep/Undo, Background Process kill, and Context Compact.
 
 use gpui_kit::Context;
+use pingdeck_desktop::core::agent::model::AgentSessionFilter;
 use pingdeck_desktop::core::app::{
-    agent_change_diff_impl, agent_change_keep_impl, agent_change_undo_impl,
+    AgentPageRequest, agent_change_diff_impl, agent_change_keep_impl, agent_change_undo_impl,
     agent_changes_list_impl, agent_context_compact_impl, agent_message_edit_impl,
     agent_message_retry_impl, agent_process_kill_impl, agent_process_list_impl,
-    agent_session_branch_impl, agent_session_delete_message_impl, agent_tool_output_read_impl,
+    agent_session_branch_impl, agent_session_delete_message_impl, agent_session_get_impl,
+    agent_session_list_impl, agent_tool_output_read_impl,
 };
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
@@ -239,6 +241,134 @@ impl ChatView {
                         this.refresh_after_turn(cx);
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn load_more_sessions(&mut self, cx: &mut Context<Self>) {
+        if self.sessions_loading_more {
+            return;
+        }
+        let Some(cursor) = self.sessions_next_cursor.clone() else {
+            return;
+        };
+        let include_archived = self.show_archived;
+        let query_raw = self.search_input.read(cx).value().trim().to_owned();
+        let query = (!query_raw.is_empty()).then_some(query_raw);
+        self.sessions_loading_more = true;
+        cx.notify();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let filter = AgentSessionFilter {
+                    include_archived,
+                    query,
+                    ..AgentSessionFilter::default()
+                };
+                agent_session_list_impl(state, Some(filter), Some(50), Some(cursor))
+            },
+            |this, res, cx| {
+                this.sessions_loading_more = false;
+                if let Ok(page) = res {
+                    for s in page.sessions {
+                        if !this.sessions.iter().any(|existing| existing.id == s.id) {
+                            this.sessions.push(s);
+                        }
+                    }
+                    this.sessions_next_cursor = page.next_cursor;
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn load_earlier_messages(&mut self, cx: &mut Context<Self>) {
+        if self.loading_earlier_messages || !self.has_earlier_messages {
+            return;
+        }
+        let sid = self.thread.session_id.clone();
+        let Some(before_seq) = self.thread.messages.first().map(|m| m.seq) else {
+            return;
+        };
+        if sid.is_empty() {
+            return;
+        }
+        let sid_check = sid.clone();
+        self.loading_earlier_messages = true;
+        self.stick_to_bottom = false;
+        cx.notify();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                agent_session_get_impl(
+                    state,
+                    &sid,
+                    AgentPageRequest {
+                        before_seq: Some(before_seq),
+                        limit: Some(50),
+                        ..AgentPageRequest::default()
+                    },
+                )
+            },
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
+                this.loading_earlier_messages = false;
+                if let Ok(detail) = res {
+                    this.thread.prepend_earlier_messages(detail.messages);
+                    for tc in detail.tool_calls {
+                        if !this
+                            .audit_tool_calls
+                            .iter()
+                            .any(|existing| existing.call_id == tc.call_id)
+                        {
+                            this.audit_tool_calls.push(tc);
+                        }
+                    }
+                    this.has_earlier_messages = detail.has_more;
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn load_more_trash(&mut self, cx: &mut Context<Self>) {
+        if self.trash_loading_more {
+            return;
+        }
+        let Some(cursor) = self.trash_next_cursor.clone() else {
+            return;
+        };
+        self.trash_loading_more = true;
+        cx.notify();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let filter = AgentSessionFilter {
+                    deleted_only: true,
+                    ..AgentSessionFilter::default()
+                };
+                agent_session_list_impl(state, Some(filter), Some(50), Some(cursor))
+            },
+            |this, res, cx| {
+                this.trash_loading_more = false;
+                if let Ok(page) = res {
+                    for s in page.sessions {
+                        if !this
+                            .trash_sessions
+                            .iter()
+                            .any(|existing| existing.id == s.id)
+                        {
+                            this.trash_sessions.push(s);
+                        }
+                    }
+                    this.trash_next_cursor = page.next_cursor;
                 }
                 cx.notify();
             },

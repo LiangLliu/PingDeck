@@ -60,7 +60,13 @@ pub use types::{
 pub struct ChatView {
     pub sidebar_mode: ChatSidebarMode,
     pub sessions: Vec<AgentSessionSummary>,
+    pub sessions_next_cursor: Option<String>,
+    pub sessions_loading_more: bool,
     pub trash_sessions: Vec<AgentSessionSummary>,
+    pub trash_next_cursor: Option<String>,
+    pub trash_loading_more: bool,
+    pub has_earlier_messages: bool,
+    pub loading_earlier_messages: bool,
     pub board: Option<AgentBoard>,
     pub monitor_search_input: Entity<InputState>,
     pub monitor_filter: MonitorFilter,
@@ -164,9 +170,9 @@ impl ChatView {
             }
             _ => {}
         });
-        let search_sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
-            if matches!(ev, InputEvent::Change) {
-                cx.notify();
+        let search_sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change | InputEvent::PressEnter { .. }) {
+                this.refresh_catalog(cx);
             }
         });
         let monitor_search_sub =
@@ -184,7 +190,13 @@ impl ChatView {
         let mut view = Self {
             sidebar_mode: ChatSidebarMode::Time,
             sessions: Vec::new(),
+            sessions_next_cursor: None,
+            sessions_loading_more: false,
             trash_sessions: Vec::new(),
+            trash_next_cursor: None,
+            trash_loading_more: false,
+            has_earlier_messages: false,
+            loading_earlier_messages: false,
             board: None,
             monitor_search_input,
             monitor_filter: MonitorFilter::All,

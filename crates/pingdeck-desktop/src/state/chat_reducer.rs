@@ -147,6 +147,43 @@ impl ChatThreadState {
         self.needs_reload = false;
     }
 
+    /// Prepends an older page of messages before the currently loaded slice, skipping duplicates
+    /// by message id so earlier history loads idempotently.
+    pub fn prepend_earlier_messages(&mut self, earlier: Vec<AgentMessage>) {
+        if earlier.is_empty() {
+            return;
+        }
+        let existing_ids: std::collections::HashSet<&str> =
+            self.messages.iter().map(|m| m.id.as_str()).collect();
+        let mut prefix: Vec<AgentMessage> = earlier
+            .into_iter()
+            .filter(|m| !existing_ids.contains(m.id.as_str()))
+            .collect();
+        if prefix.is_empty() {
+            return;
+        }
+        prefix.append(&mut self.messages);
+        self.messages = prefix;
+    }
+
+    /// Merges the newest page snapshot after a turn finishes without discarding earlier pages that
+    /// the user previously loaded into `self.messages`.
+    pub fn merge_latest_snapshot(&mut self, title: String, latest: Vec<AgentMessage>) {
+        self.title = title;
+        self.needs_reload = false;
+        let Some(first_latest_seq) = latest.first().map(|m| m.seq) else {
+            return;
+        };
+        let mut merged: Vec<AgentMessage> = self
+            .messages
+            .iter()
+            .filter(|m| m.seq < first_latest_seq)
+            .cloned()
+            .collect();
+        merged.extend(latest);
+        self.messages = merged;
+    }
+
     /// Hydrates live unfinished stream parts, tool calls, pending approvals, open gates, and cost
     /// pause from an atomic `LiveRunSnapshot` returned by `agent_session_get_impl`.
     pub fn hydrate_live(&mut self, live: &LiveRunSnapshot) {
@@ -1061,5 +1098,48 @@ mod tests {
         assert_eq!(sub.current_tool, None);
         assert_eq!(sub.tool_steps.len(), 1);
         assert_eq!(sub.tool_steps[0].duration_ms, Some(85));
+    }
+
+    #[test]
+    fn prepend_earlier_and_merge_latest_snapshot_preserve_loaded_history() {
+        use pingdeck_core::agent::model::AgentRole;
+
+        let mk = |id: &str, seq: i64| AgentMessage {
+            id: id.into(),
+            session_id: "s1".into(),
+            seq,
+            role: AgentRole::User,
+            parts: Vec::new(),
+            usage: None,
+            model: None,
+            error: None,
+            run_id: None,
+            parent_id: None,
+            branch_index: 0,
+            partial: false,
+            cost_micro_usd: 0,
+            cost_currency: None,
+            meta: Default::default(),
+            branch_siblings: Vec::new(),
+            attachments: Vec::new(),
+            created_at_ms: seq * 1000,
+        };
+
+        let mut state = ChatThreadState::new("s1", "Init");
+        state.replace_snapshot("Init".into(), vec![mk("m3", 3), mk("m4", 4)]);
+
+        // Prepending earlier messages deduplicates overlap and preserves chronological order.
+        state.prepend_earlier_messages(vec![mk("m1", 1), mk("m2", 2), mk("m3", 3)]);
+        let ids: Vec<&str> = state.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["m1", "m2", "m3", "m4"]);
+
+        // Merging a refreshed latest tail keeps earlier loaded turns (< first_latest_seq) intact.
+        state.merge_latest_snapshot(
+            "Renamed".into(),
+            vec![mk("m3", 3), mk("m4", 4), mk("m5", 5)],
+        );
+        assert_eq!(state.title, "Renamed");
+        let ids: Vec<&str> = state.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["m1", "m2", "m3", "m4", "m5"]);
     }
 }

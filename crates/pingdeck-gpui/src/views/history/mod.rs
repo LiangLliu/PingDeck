@@ -47,6 +47,8 @@ impl HistoryView {
             workspace_id: workspace_id.clone(),
             lang,
             entries: Vec::new(),
+            page_cursors: vec![None],
+            page_index: 0,
             next_cursor: None,
             total: None,
             workspace_total: None,
@@ -58,6 +60,9 @@ impl HistoryView {
             selected_id: None,
             selected_entry: None,
             run_children: Vec::new(),
+            run_children_next_cursor: None,
+            run_children_total: None,
+            run_children_loading: false,
             detail_tab: HistoryDetailTab::Body,
             body_pretty: true,
             last_undo: None,
@@ -79,6 +84,8 @@ impl HistoryView {
         }
         self.workspace_id = workspace_id.clone();
         self.entries.clear();
+        self.page_cursors = vec![None];
+        self.page_index = 0;
         self.next_cursor = None;
         self.total = None;
         self.workspace_total = None;
@@ -88,6 +95,9 @@ impl HistoryView {
         self.selected_id = None;
         self.selected_entry = None;
         self.run_children.clear();
+        self.run_children_next_cursor = None;
+        self.run_children_total = None;
+        self.run_children_loading = false;
         self.last_undo = None;
         self.active_modal = None;
         if workspace_id.is_some() {

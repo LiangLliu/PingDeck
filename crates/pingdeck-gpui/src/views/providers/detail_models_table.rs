@@ -12,35 +12,30 @@ use pingdeck_desktop::core::llm::probe::listing::Presence;
 use pingdeck_desktop::core::llm::store::ProbeResult;
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_icon, btn_secondary, card, checkbox, h_row,
-    palette, to_hsla, toggle_switch, v_col,
+    DEFAULT_PAGE_SIZES, PaginationBar, ScrollableElement as _, Tone, UiIcon, badge, btn_icon, card,
+    checkbox, h_row, page_slice, pagination_bar, palette, to_hsla, toggle_switch, v_col,
 };
 
 use super::ProvidersView;
 use super::format::{format_price_state, format_probe_status, format_tokens};
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn render_models_table(
     view: &ProvidersView,
     prov_id: &str,
     filtered: &[&ProviderModelView],
     latest_probe: &HashMap<&str, &ProbeResult>,
     total_cnt: usize,
-    shown_limit: usize,
     cx: &mut Context<ProvidersView>,
 ) -> Div {
     let p = palette(cx);
-    let visible_cnt = filtered.len().min(shown_limit);
+    let (page_rows, clamped_page, _) =
+        page_slice(filtered, view.models_page, view.models_page_size);
+    let visible_cnt = page_rows.len();
     let all_visible_selected = visible_cnt > 0
-        && filtered
+        && page_rows
             .iter()
-            .take(shown_limit)
             .all(|m| view.selected_models.contains(&m.model.model_id));
-    let visible_ids: Vec<String> = filtered
-        .iter()
-        .take(shown_limit)
-        .map(|m| m.model.model_id.clone())
-        .collect();
+    let visible_ids: Vec<String> = page_rows.iter().map(|m| m.model.model_id.clone()).collect();
 
     let thead = h_row()
         .flex_shrink_0()
@@ -63,7 +58,9 @@ pub(super) fn render_models_table(
                     checkbox("pm-sel-all", all_visible_selected).on_click(cx.listener(
                         move |this, _, _, cx| {
                             if all_visible_selected {
-                                this.selected_models.clear();
+                                for id in &visible_ids {
+                                    this.selected_models.remove(id);
+                                }
                             } else {
                                 for id in &visible_ids {
                                     this.selected_models.insert(id.clone());
@@ -129,7 +126,7 @@ pub(super) fn render_models_table(
             ),
         );
     } else {
-        for (idx, mv) in filtered.iter().take(shown_limit).enumerate() {
+        for (idx, mv) in page_rows.iter().enumerate() {
             let m = &mv.model;
             let mid = m.model_id.clone();
             let mid_chk = mid.clone();
@@ -329,32 +326,9 @@ pub(super) fn render_models_table(
             }
             tbody = tbody.child(row_el);
         }
-
-        if filtered.len() > visible_cnt {
-            let rem = filtered.len() - visible_cnt;
-            tbody = tbody.child(
-                h_row()
-                    .justify_center()
-                    .py(px(10.0))
-                    .border_t_1()
-                    .border_color(to_hsla(p.line.composite_over(p.surface)))
-                    .child(
-                        btn_secondary(
-                            "pm-load-more",
-                            crate::ui::tr(cx)
-                                .providers()
-                                .prov_detail_models_table_show_80_more_left(rem),
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.models_page_limit += 80;
-                            cx.notify();
-                        })),
-                    ),
-            );
-        }
     }
 
-    card(cx)
+    let mut table_card = card(cx)
         .size_full()
         .flex()
         .flex_col()
@@ -367,7 +341,42 @@ pub(super) fn render_models_table(
                 .overflow_y_scrollbar()
                 .id(SharedString::from(format!("pm-scroll-{prov_id}")))
                 .child(tbody),
-        )
+        );
+
+    if !filtered.is_empty() {
+        table_card = table_card.child(
+            div()
+                .flex_shrink_0()
+                .px(px(12.0))
+                .py(px(8.0))
+                .bg(to_hsla(p.pane))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "pm-pg",
+                        page: clamped_page,
+                        page_size: view.models_page_size,
+                        total: filtered.len(),
+                        page_sizes: DEFAULT_PAGE_SIZES,
+                        loading: false,
+                        compact: false,
+                    },
+                    |this: &mut ProvidersView, next_page, cx| {
+                        this.models_page = next_page;
+                        cx.notify();
+                    },
+                    Some(|this: &mut ProvidersView, next_size, cx| {
+                        this.models_page_size = next_size;
+                        this.models_page = 0;
+                        cx.notify();
+                    }),
+                    cx,
+                )),
+        );
+    }
+
+    table_card
 }
 
 fn cap_tag(text: &'static str, cx: &gpui_kit::App) -> Div {

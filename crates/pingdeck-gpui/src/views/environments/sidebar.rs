@@ -208,6 +208,8 @@ pub fn render_env_sidebar(
                 cx,
                 cx.listener(move |this, _, _, cx| {
                     this.resource_tab = tab;
+                    this.vars_page = 0;
+                    this.cookies_page = 0;
                     if let Some(ws) = this.workspace_id.clone() {
                         match tab {
                             EnvResourceTab::Globals => this.reload_globals(ws, cx),

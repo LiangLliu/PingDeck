@@ -9,13 +9,42 @@ use gpui_kit::{
 use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_ghost, card, data_row, empty_inline, h_row, icon_xs, palette,
-    tab_bar_underline, tab_item, table_header, to_hsla, v_col,
+    PaginationBar, Tone, UiIcon, badge, btn_ghost, card, data_row, empty_inline, h_row, icon_xs,
+    page_slice, pagination_bar, palette, tab_bar_underline, tab_item, table_header, to_hsla, v_col,
 };
 
 use super::state::{
     BreakdownDim, UsageHandoff, UsageView, fmt_compact, fmt_cost_map, fmt_latency, source_label,
 };
+
+const BREAKDOWN_PAGE_SIZE: usize = 20;
+
+fn breakdown_pager(
+    id_prefix: &'static str,
+    page: usize,
+    total: usize,
+    cx: &mut Context<UsageView>,
+) -> Option<gpui_kit::Div> {
+    (total > BREAKDOWN_PAGE_SIZE).then(|| {
+        div().pt(px(6.0)).child(pagination_bar(
+            PaginationBar {
+                id_prefix,
+                page,
+                page_size: BREAKDOWN_PAGE_SIZE,
+                total,
+                page_sizes: &[],
+                loading: false,
+                compact: false,
+            },
+            |this, next_page, cx| {
+                this.breakdown_page = next_page;
+                cx.notify();
+            },
+            None::<fn(&mut UsageView, usize, &mut Context<UsageView>)>,
+            cx,
+        ))
+    })
+}
 
 pub fn render_breakdown_card(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
@@ -25,6 +54,7 @@ pub fn render_breakdown_card(view: &UsageView, cx: &mut Context<UsageView>) -> A
         .selected_index(view.breakdown_dim.index())
         .on_click(cx.listener(|this, idx: &usize, _, cx| {
             this.breakdown_dim = BreakdownDim::from_index(*idx);
+            this.breakdown_page = 0;
             this.reload_analytics_only(cx);
         }));
     for dim in BreakdownDim::ALL {
@@ -121,7 +151,8 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         cx,
     ));
 
-    for (idx, row) in rows.iter().enumerate() {
+    let (page_rows, clamped_page, _) = page_slice(rows, view.breakdown_page, BREAKDOWN_PAGE_SIZE);
+    for (idx, row) in page_rows.iter().enumerate() {
         let model_click = row.model.clone();
         let avg_lat = view
             .latency_by_model
@@ -135,7 +166,7 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         };
         list = list.child(
             div()
-                .id(SharedString::from(format!("u-dim-m-{idx}")))
+                .id(SharedString::from(format!("u-dim-m-{clamped_page}-{idx}")))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.drill_down(BreakdownDim::Model, model_click.clone(), window, cx);
@@ -202,7 +233,8 @@ fn render_model_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                 ),
         );
     }
-    list.into_any_element()
+    list.children(breakdown_pager("u-dim-m-pg", clamped_page, rows.len(), cx))
+        .into_any_element()
 }
 
 fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
@@ -250,7 +282,9 @@ fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         cx,
     ));
 
-    for (idx, b) in groups.iter().enumerate() {
+    let (page_groups, clamped_page, _) =
+        page_slice(groups, view.breakdown_page, BREAKDOWN_PAGE_SIZE);
+    for (idx, b) in page_groups.iter().enumerate() {
         let raw_key = b.key.first().cloned().unwrap_or_default();
         let display = match dim {
             BreakdownDim::Provider => view.provider_name(&raw_key),
@@ -261,7 +295,7 @@ fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
         };
         list = list.child(
             div()
-                .id(SharedString::from(format!("u-dim-g-{idx}")))
+                .id(SharedString::from(format!("u-dim-g-{clamped_page}-{idx}")))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.drill_down(dim, raw_key.clone(), window, cx);
@@ -320,7 +354,13 @@ fn render_group_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyEleme
                 ),
         );
     }
-    list.into_any_element()
+    list.children(breakdown_pager(
+        "u-dim-g-pg",
+        clamped_page,
+        groups.len(),
+        cx,
+    ))
+    .into_any_element()
 }
 
 fn render_failure_table(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {

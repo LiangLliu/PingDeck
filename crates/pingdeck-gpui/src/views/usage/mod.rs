@@ -77,7 +77,12 @@ impl UsageView {
             latency_by_model: HashMap::new(),
             failures: Vec::new(),
             logs: Vec::new(),
-            logs_has_more: false,
+            calls_page: 0,
+            calls_page_size: 50,
+            calls_total: 0,
+            calls_loading: false,
+            pending_live_logs: 0,
+            breakdown_page: 0,
             capture_stats: None,
             retention_days: settings.ai.providers.usage_retention_days,
             updated_at_ms: current_time_ms(),
@@ -146,16 +151,10 @@ impl UsageView {
             cx.notify();
             return;
         }
-        if let Ok(rows) = pingdeck_desktop::core::app::llm_log_list_impl(
+        if let Ok(Some(id)) = pingdeck_desktop::core::app::llm_log_id_for_request_id_impl(
             runtime(cx).state(),
-            None,
-            Some(200),
-            None,
-        ) && let Some(id) = rows
-            .iter()
-            .find(|r| r.request_id.as_deref() == Some(request_id.as_str()))
-            .map(|r| r.id)
-        {
+            &request_id,
+        ) {
             self.pending_open_call_id = Some(id);
         }
         cx.notify();
@@ -206,7 +205,9 @@ impl Render for UsageView {
                 crate::ui::Tr(self.lang).usage().usage_usage_overview(),
             ))
             .child(tab_item(
-                crate::ui::tr(cx).usage().usage_usage_calls(self.logs.len()),
+                crate::ui::tr(cx)
+                    .usage()
+                    .usage_usage_calls(self.calls_total as usize),
             ));
 
         let updated_lbl = crate::ui::tr(cx)

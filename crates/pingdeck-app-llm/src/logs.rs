@@ -27,8 +27,8 @@ use crate::llm::capture::{
 use crate::llm::capture_record::{CapturedBody, CapturedExchange, CapturedFrames, TimingJson};
 use crate::llm::gateway::replay::{ReplayEvent, ReplayMode, ReplayRequest, replay};
 use crate::llm::store::{
-    self, ClearReport, DEFAULT_LOG_PAGE, LogDetail, LogFilter, LogPage, MAX_LOG_PAGE,
-    RequestLogEntry,
+    self, ClearReport, DEFAULT_LOG_PAGE, LogDetail, LogFilter, LogPage, LogPageResult,
+    MAX_LOG_PAGE, RequestLogEntry,
 };
 use crate::llm::wire::Protocol;
 
@@ -123,6 +123,37 @@ pub fn llm_log_list_impl(
                 provider_id: filter.provider_id,
             },
         )
+    })
+}
+
+/// One filtered page of rows, newest first, together with the total matching count across the
+/// database. Honours every field of [`LogFilter`].
+///
+/// # Errors
+/// [`AppError::Database`] on failure.
+pub fn llm_log_page_impl(
+    state: &AppState,
+    filter: Option<LogFilter>,
+    offset: u64,
+    limit: Option<u32>,
+) -> Result<LogPageResult, AppError> {
+    let filter = filter.unwrap_or_default();
+    let limit = limit.map_or(DEFAULT_LOG_PAGE, |limit| limit as usize);
+    with_connection(state, |connection| {
+        store::query_log_page(connection, &filter, offset, limit)
+    })
+}
+
+/// Resolves a `request_id` (`rq_<16 hex>`) to its `llm_request_log.id` using the unique index.
+///
+/// # Errors
+/// [`AppError::Database`] on failure.
+pub fn llm_log_id_for_request_id_impl(
+    state: &AppState,
+    request_id: &str,
+) -> Result<Option<i64>, AppError> {
+    with_connection(state, |connection| {
+        store::log_id_for_request_id(connection, request_id)
     })
 }
 

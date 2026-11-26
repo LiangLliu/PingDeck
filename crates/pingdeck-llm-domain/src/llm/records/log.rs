@@ -277,8 +277,21 @@ impl StatusClass {
     }
 }
 
-/// Which rows `count_log` and `clear_log` act on: all the set fields must match. The default
-/// (every field `None`) selects every row.
+/// One paged slice of `llm_request_log` together with the total matching row count.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LogPageResult {
+    /// Rows on the requested page, newest first (`ORDER BY id DESC`).
+    pub entries: Vec<RequestLogEntry>,
+    /// Total rows matching the active [`LogFilter`] across the database.
+    pub total: u64,
+    /// Zero-based row offset used for this page.
+    pub offset: u64,
+    /// Effective page size used for this page.
+    pub limit: usize,
+}
+
+/// Which rows `query_log_page`, `count_log` and `clear_log` act on: all the set fields must
+/// match. The default (every field unset) selects every row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LogFilter {
@@ -288,6 +301,25 @@ pub struct LogFilter {
     pub status_class: Option<StatusClass>,
     /// Only rows at or after this time (Unix ms).
     pub since_ms: Option<i64>,
+    /// Only rows at or before this time (Unix ms).
+    pub until_ms: Option<i64>,
+    /// Only rows served by this provider key.
+    pub key_id: Option<String>,
+    /// Exact match against `requested_model` or `upstream_model`.
+    pub model: Option<String>,
+    /// Case-insensitive substring match against `requested_model` or `upstream_model`.
+    pub model_contains: Option<String>,
+    /// Case-insensitive substring match against `run_id`.
+    pub run_id_contains: Option<String>,
+    /// Only rows where `outcome = 'failure'` or `status >= 400`.
+    pub failed_only: bool,
+    /// Only rows with tool calls (`finish_reason = 'tool_calls'` or `purpose = 'tool'`).
+    pub with_tools: bool,
+    /// Free-text search tokens; every token must match at least one searchable column.
+    pub search_terms: Vec<String>,
+    /// Restrict results to a set of row ids (for example from `body:` capture search).
+    /// `Some(empty)` matches zero rows.
+    pub ids: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -43,6 +43,8 @@ pub struct BenchView {
     pub(super) concurrency: u8,
     pub(super) include_disabled: bool,
     pub(super) filter: BenchFilter,
+    pub(super) bench_page: usize,
+    pub(super) bench_page_size: usize,
     pub(super) search_input: Entity<InputState>,
     pub(super) selected_models: BTreeSet<String>,
     /// `(model_id, test_name) -> ProbeCellDto` for the active or loaded run.
@@ -76,8 +78,9 @@ impl BenchView {
             InputState::new(window, cx)
                 .placeholder(crate::ui::tr(cx).providers().prov_bench_search_models())
         });
-        let sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
+        let sub = cx.subscribe(&search_input, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
+                this.bench_page = 0;
                 cx.notify();
             }
         });
@@ -92,6 +95,8 @@ impl BenchView {
             concurrency: 4,
             include_disabled: false,
             filter: BenchFilter::All,
+            bench_page: 0,
+            bench_page_size: 50,
             search_input,
             selected_models: initial_models.into_iter().collect(),
             cells: BTreeMap::new(),
@@ -124,6 +129,7 @@ impl BenchView {
         if let Some(pid) = provider_id {
             self.selected_provider_id = Some(pid);
             self.selected_key_id = None;
+            self.bench_page = 0;
         }
         if !models.is_empty() {
             self.selected_models = models.into_iter().collect();

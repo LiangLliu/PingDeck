@@ -167,6 +167,7 @@ pub struct RequestsView {
     // Console & feedback
     pub console_open: bool,
     pub console_entries: Vec<ConsoleRecord>,
+    pub console_page: usize,
     pub status_msg: Option<(Tone, String)>,
     pub(crate) pending_handoff: Cell<Option<RequestsHandoff>>,
     pub(super) pending_hydrate: bool,

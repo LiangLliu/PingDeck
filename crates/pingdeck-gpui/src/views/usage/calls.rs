@@ -8,8 +8,9 @@ use pingdeck_desktop::state::SettingsSection;
 use pingdeck_desktop::time::format_local_time;
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_secondary, choice_chip, data_row,
-    empty_state, h_row, icon_xs, palette, search_input, table_header, to_hsla, v_col,
+    DEFAULT_PAGE_SIZES, PaginationBar, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost,
+    btn_secondary, choice_chip, data_row, empty_state, h_row, icon_xs, pagination_bar, palette,
+    search_input, table_header, to_hsla, v_col,
 };
 
 use super::state::{
@@ -19,8 +20,7 @@ use super::state::{
 
 pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let p = palette(cx);
-    let search_raw = view.calls_search_input.read(cx).value().to_string();
-    let rows = view.filtered_logs(&search_raw);
+    let rows = &view.logs;
 
     let mut pills = h_row().gap(px(4.0)).flex_shrink_0();
     for q in CallsQuickFilter::ALL {
@@ -33,7 +33,7 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.calls_quick = q;
-                cx.notify();
+                this.reload_logs_page(true, cx);
             })),
         );
     }
@@ -113,7 +113,7 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
             cx,
         ));
     } else {
-        for row in &rows {
+        for row in rows {
             let rid = row.id;
             let src_text = match &row.client_name {
                 Some(c) if !c.is_empty() => {
@@ -245,20 +245,49 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
         }
     }
 
-    let load_more = view.logs_has_more.then(|| {
-        h_row().w_full().justify_center().pt(px(6.0)).child(
+    let new_logs_banner = (view.pending_live_logs > 0).then(|| {
+        h_row().w_full().justify_center().child(
             btn_secondary(
-                "usage-load-more",
-                crate::ui::Tr(view.lang).usage().usage_calls_load_more(),
+                "usage-new-logs-jump",
+                crate::ui::tr(cx)
+                    .usage()
+                    .usage_calls_new_logs_jump(view.pending_live_logs),
             )
-            .on_click(cx.listener(|this, _, _, cx| this.load_more_logs(cx))),
+            .icon(icon_xs(UiIcon::Refresh))
+            .on_click(cx.listener(|this, _, _, cx| this.set_calls_page(0, cx))),
         )
+    });
+
+    let pager = (view.calls_total > 0).then(|| {
+        div()
+            .w_full()
+            .pt(px(8.0))
+            .border_t_1()
+            .border_color(to_hsla(p.line.composite_over(p.surface)))
+            .child(pagination_bar(
+                PaginationBar {
+                    id_prefix: "usage-calls-pg",
+                    page: view.calls_page,
+                    page_size: view.calls_page_size,
+                    total: view.calls_total as usize,
+                    page_sizes: DEFAULT_PAGE_SIZES,
+                    loading: view.calls_loading || view.body_searching,
+                    compact: false,
+                },
+                |this, next_page, cx| this.set_calls_page(next_page, cx),
+                Some(
+                    |this: &mut UsageView, next_size, cx: &mut Context<UsageView>| {
+                        this.set_calls_page_size(next_size, cx);
+                    },
+                ),
+                cx,
+            ))
     });
 
     let footer_bar = h_row()
         .w_full()
         .justify_between()
-        .pt(px(8.0))
+        .pt(px(4.0))
         .child(
             div()
                 .text_size(px(11.0))
@@ -288,8 +317,9 @@ pub fn render_calls(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement
         .p(px(18.0))
         .gap(px(12.0))
         .child(filter_bar)
+        .children(new_logs_banner)
         .child(table)
-        .children(load_more)
+        .children(pager)
         .child(footer_bar);
 
     div()

@@ -68,7 +68,6 @@
   "hist.sidebar.failed": "Failed",
   "hist.sidebar.history": "History",
   "hist.sidebar.load_more": "Load More",
-  "hist.sidebar.loaded_total": "Loaded {count} / {total_shown} total",
   "hist.sidebar.no_entries_match_this_filter": "No entries match this filter",
   "hist.sidebar.no_requests_recorded_yet": "No requests recorded yet",
   "hist.sidebar.refresh_history": "Refresh history",

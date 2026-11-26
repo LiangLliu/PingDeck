@@ -136,6 +136,7 @@ pub struct MockView {
     pub logs: Vec<MockTransactionLog>,
     pub selected_log_id: Option<String>,
     pub traffic_filter: TrafficFilter,
+    pub traffic_page: usize,
     pub log_sub_id: Option<u64>,
     pub log_stream_task: Option<Task<()>>,
     pub live_data: Option<MockLiveDataDto>,

@@ -152,13 +152,21 @@ impl MockView {
                 }
             }));
         }
-        for filter_inp in [&search_input, &route_search_input, &traffic_search_input] {
+        for filter_inp in [&search_input, &route_search_input] {
             subs.push(cx.subscribe(filter_inp, |_, _, ev: &InputEvent, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
                 }
             }));
         }
+        subs.push(
+            cx.subscribe(&traffic_search_input, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    this.traffic_page = 0;
+                    cx.notify();
+                }
+            }),
+        );
 
         let mut view = Self {
             workspace_id: workspace_id.clone(),
@@ -177,6 +185,7 @@ impl MockView {
             logs: Vec::new(),
             selected_log_id: None,
             traffic_filter: TrafficFilter::All,
+            traffic_page: 0,
             log_sub_id: None,
             log_stream_task: None,
             live_data: None,
@@ -247,6 +256,7 @@ impl MockView {
         self.draft = None;
         self.dirty = false;
         self.logs.clear();
+        self.traffic_page = 0;
         self.live_data = None;
         self.try_it_busy = false;
         self.try_it_result = None;

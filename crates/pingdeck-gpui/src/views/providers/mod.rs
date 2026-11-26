@@ -211,7 +211,9 @@ pub struct ProvidersView {
     pub refreshing_models: bool,
     pub adding_model_open: bool,
     pub model_filter: ModelFilterKind,
-    pub models_page_limit: usize,
+    pub models_page: usize,
+    pub models_page_size: usize,
+    pub client_models_page: usize,
     pub selected_models: BTreeSet<String>,
     pub last_bulk_undo: Option<(String, String)>,
 
@@ -353,8 +355,9 @@ impl ProvidersView {
                 cx.notify();
             }
         });
-        let sub_m = cx.subscribe(&model_search_input, |_, _, ev: &InputEvent, cx| {
+        let sub_m = cx.subscribe(&model_search_input, |this, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
+                this.models_page = 0;
                 cx.notify();
             }
         });
@@ -413,7 +416,9 @@ impl ProvidersView {
             refreshing_models: false,
             adding_model_open: false,
             model_filter: ModelFilterKind::All,
-            models_page_limit: 80,
+            models_page: 0,
+            models_page_size: 50,
+            client_models_page: 0,
             selected_models: BTreeSet::new(),
             last_bulk_undo: None,
             config_form: None,

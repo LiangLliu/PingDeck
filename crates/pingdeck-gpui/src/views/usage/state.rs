@@ -8,8 +8,8 @@ use pingdeck_desktop::core::app::current_time_ms;
 use pingdeck_desktop::core::llm::capture::ApiClientDraft;
 use pingdeck_desktop::core::llm::status::ProviderStatusDto;
 use pingdeck_desktop::core::llm::store::{
-    CaptureStats, GatewayClient, Provider, ProviderKey, ProviderModel, RequestLogEntry,
-    UsageFailure,
+    CaptureStats, GatewayClient, LogFilter, Provider, ProviderKey, ProviderModel, RequestLogEntry,
+    StatusClass, UsageFailure,
 };
 use pingdeck_desktop::core::llm::usage::{
     UsageGroup, UsageLatencyMode, UsageQuery, UsageRow, UsageSource, UsageSummary,
@@ -71,7 +71,12 @@ pub struct UsageView {
     pub latency_by_model: HashMap<(String, String), (u64, u64)>,
     pub failures: Vec<UsageFailure>,
     pub logs: Vec<RequestLogEntry>,
-    pub logs_has_more: bool,
+    pub calls_page: usize,
+    pub calls_page_size: usize,
+    pub calls_total: u64,
+    pub calls_loading: bool,
+    pub pending_live_logs: u64,
+    pub breakdown_page: usize,
     pub capture_stats: Option<CaptureStats>,
     pub retention_days: u16,
     pub updated_at_ms: i64,
@@ -151,125 +156,69 @@ impl UsageView {
             .unwrap_or_else(|| "USD".to_owned())
     }
 
+    /// Builds a server-side [`LogFilter`] matching every active Calls filter, time range,
+    /// quick-filter chip, search token, and asynchronous `body:` match set.
     #[must_use]
-    pub fn filtered_logs(&self, search_raw: &str) -> Vec<&RequestLogEntry> {
-        let tokens: Vec<String> = search_raw
-            .split_whitespace()
-            .map(|t| t.to_ascii_lowercase())
-            .collect();
-        let (from_ms, to_ms, _) = self.range.bounds(current_time_ms());
+    pub fn build_calls_log_filter(&self, search_raw: &str) -> LogFilter {
+        let mut filter = LogFilter {
+            source: self.filter_source.map(|s| s.as_str().to_owned()),
+            provider_id: self.scope_provider_id.clone(),
+            client_id: self.filter_client_id.clone(),
+            key_id: self.filter_key_id.clone(),
+            model: self.filter_model.clone(),
+            ..LogFilter::default()
+        };
 
-        self.logs
-            .iter()
-            .filter(|row| {
-                if self.range != RangePreset::All && (row.ts_ms < from_ms || row.ts_ms > to_ms) {
-                    return false;
-                }
-                if let Some(pid) = &self.scope_provider_id
-                    && row.provider_id.as_deref() != Some(pid.as_str())
-                {
-                    return false;
-                }
-                if let Some(src) = self.filter_source
-                    && row.source != src.as_str()
-                {
-                    return false;
-                }
-                if let Some(model) = &self.filter_model
-                    && row.requested_model != *model
-                    && row.upstream_model.as_deref() != Some(model.as_str())
-                {
-                    return false;
-                }
-                if let Some(kid) = &self.filter_key_id
-                    && row.key_id.as_deref() != Some(kid.as_str())
-                {
-                    return false;
-                }
-                if let Some(cid) = &self.filter_client_id
-                    && row.client_id.as_deref() != Some(cid.as_str())
-                {
-                    return false;
-                }
-                match self.calls_quick {
-                    CallsQuickFilter::All => {}
-                    CallsQuickFilter::FailedOnly => {
-                        if row.outcome != "failure" && row.status < 400 {
-                            return false;
-                        }
-                    }
-                    CallsQuickFilter::FailedOver => {
-                        if !is_failed_over(row) {
-                            return false;
-                        }
-                    }
-                    CallsQuickFilter::WithTools => {
-                        if row.finish_reason.as_deref() != Some("tool_calls")
-                            && row.purpose.as_deref() != Some("tool")
-                        {
-                            return false;
-                        }
-                    }
-                }
-                if let Some(ids) = &self.body_match_ids
-                    && !ids.contains(&row.id)
-                {
-                    return false;
-                }
-                for tok in &tokens {
-                    if tok == "is:failed" {
-                        if row.outcome != "failure" && row.status < 400 {
-                            return false;
-                        }
-                    } else if tok == "is:failover" {
-                        if !is_failed_over(row) {
-                            return false;
-                        }
-                    } else if let Some(v) = tok.strip_prefix("source:") {
-                        if !row.source.eq_ignore_ascii_case(v) {
-                            return false;
-                        }
-                    } else if let Some(v) = tok.strip_prefix("model:") {
-                        let m1 = row.requested_model.to_ascii_lowercase();
-                        let m2 = row
-                            .upstream_model
-                            .as_deref()
-                            .unwrap_or("")
-                            .to_ascii_lowercase();
-                        if !m1.contains(v) && !m2.contains(v) {
-                            return false;
-                        }
-                    } else if let Some(v) = tok.strip_prefix("run:") {
-                        if !row
-                            .run_id
-                            .as_deref()
-                            .unwrap_or("")
-                            .to_ascii_lowercase()
-                            .contains(v)
-                        {
-                            return false;
-                        }
-                    } else if tok.starts_with("body:") {
-                        // Handled asynchronously via `body_match_ids`.
+        if self.range != RangePreset::All {
+            let (from_ms, to_ms, _) = self.range.bounds(current_time_ms());
+            filter.since_ms = Some(from_ms);
+            filter.until_ms = Some(to_ms);
+        }
+
+        match self.calls_quick {
+            CallsQuickFilter::All => {}
+            CallsQuickFilter::FailedOnly => filter.failed_only = true,
+            CallsQuickFilter::FailedOver => filter.status_class = Some(StatusClass::FailedOver),
+            CallsQuickFilter::WithTools => filter.with_tools = true,
+        }
+
+        if let Some(ids) = &self.body_match_ids {
+            let mut list: Vec<i64> = ids.iter().copied().collect();
+            list.sort_unstable();
+            filter.ids = Some(list);
+        }
+
+        for raw_tok in search_raw.split_whitespace() {
+            let tok = raw_tok.to_ascii_lowercase();
+            if tok == "is:failed" {
+                filter.failed_only = true;
+            } else if tok == "is:failover" {
+                filter.status_class = Some(StatusClass::FailedOver);
+            } else if let Some(v) = tok.strip_prefix("source:") {
+                if !v.is_empty() {
+                    if let Some(existing) = &filter.source
+                        && !existing.eq_ignore_ascii_case(v)
+                    {
+                        filter.ids = Some(Vec::new());
                     } else {
-                        let hay = format!(
-                            "{} {} {} {} {} {} {}",
-                            row.id,
-                            row.requested_model,
-                            row.upstream_model.as_deref().unwrap_or(""),
-                            row.provider_name.as_deref().unwrap_or(""),
-                            row.client_name.as_deref().unwrap_or(""),
-                            row.source,
-                            row.error.as_deref().unwrap_or(""),
-                        )
-                        .to_ascii_lowercase();
-                        if !hay.contains(tok) {
-                            return false;
-                        }
+                        filter.source = Some(v.to_owned());
                     }
                 }
-                true
-            })
-            .collect()
+            } else if let Some(v) = tok.strip_prefix("model:") {
+                if !v.is_empty() {
+                    filter.model_contains = Some(v.to_owned());
+                }
+            } else if let Some(v) = tok.strip_prefix("run:") {
+                if !v.is_empty() {
+                    filter.run_id_contains = Some(v.to_owned());
+                }
+            } else if tok.starts_with("body:") {
+                // Handled asynchronously via `body_match_ids` -> `filter.ids`.
+            } else {
+                filter.search_terms.push(tok);
+            }
+        }
+
+        filter
     }
 }

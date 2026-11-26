@@ -9,8 +9,9 @@ use gpui_kit::{
 use pingdeck_desktop::core::agent::model::AgentRunStatus;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, empty_inline, h_row,
-    icon_xs, palette, section_heading, status_indicator, to_hsla, v_col,
+    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost,
+    btn_secondary, empty_inline, h_row, icon_xs, palette, section_heading, status_indicator,
+    to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -231,6 +232,22 @@ pub fn render_trash_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElem
                             this.restore_session(sid.clone(), cx);
                         })),
                     ),
+            );
+        }
+        if view.trash_next_cursor.is_some() {
+            list = list.child(
+                h_row().w_full().justify_center().pt(px(6.0)).child(
+                    btn_secondary(
+                        "chat-trash-load-more",
+                        if view.trash_loading_more {
+                            crate::ui::tr(cx).common().loading()
+                        } else {
+                            crate::ui::tr(cx).chat().sidebar_board_load_more_trash()
+                        },
+                    )
+                    .disabled(view.trash_loading_more)
+                    .on_click(cx.listener(|this, _, _, cx| this.load_more_trash(cx))),
+                ),
             );
         }
     }

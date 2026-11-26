@@ -11,9 +11,9 @@ use pingdeck_desktop::core::agent::model::{
 use pingdeck_desktop::core::app::current_time_ms;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon,
-    btn_primary, empty_inline, h_row, icon_xs, list_row, master_pane, menu_item, palette,
-    pane_header, popover, search_input, status_indicator, to_hsla, v_col,
+    Anchor, Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost,
+    btn_icon, btn_primary, btn_secondary, empty_inline, h_row, icon_xs, list_row, master_pane,
+    menu_item, palette, pane_header, popover, search_input, status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -219,6 +219,21 @@ fn render_time_list(view: &ChatView, cx: &mut Context<ChatView>) -> AnyElement {
             None,
             cx,
         ));
+    } else if view.sessions_next_cursor.is_some() {
+        list = list.child(
+            h_row().w_full().justify_center().pt(px(6.0)).child(
+                btn_secondary(
+                    "chat-sessions-load-more",
+                    if view.sessions_loading_more {
+                        crate::ui::tr(cx).common().loading()
+                    } else {
+                        crate::ui::tr(cx).chat().sidebar_load_more()
+                    },
+                )
+                .disabled(view.sessions_loading_more)
+                .on_click(cx.listener(|this, _, _, cx| this.load_more_sessions(cx))),
+            ),
+        );
     }
     div()
         .id("chat-time-scroll")

@@ -7,7 +7,7 @@ use pingdeck_desktop::core::llm::probe::listing::{ModelKind, Presence};
 
 use crate::ui::{
     UiIcon, btn_ghost, btn_icon, btn_primary, btn_secondary, card, filter_chip, h_row, icon_xs,
-    palette, search_input, text_input, to_hsla, v_col,
+    page_slice, palette, search_input, text_input, to_hsla, v_col,
 };
 
 use super::detail_models_table::render_models_table;
@@ -87,8 +87,8 @@ pub fn render_models_tab(
 
     let enabled_cnt = all_prov_models.iter().filter(|m| m.model.enabled).count();
     let total_cnt = all_prov_models.len();
-    let shown_limit = view.models_page_limit.max(80);
-    let visible_cnt = filtered.len().min(shown_limit);
+    let (page_rows, _, _) = page_slice(&filtered, view.models_page, view.models_page_size);
+    let visible_cnt = page_rows.len();
     let pid_ref = prov_id.clone();
 
     // Pinned top toolbar: search + refresh + add manual model.
@@ -196,6 +196,7 @@ pub fn render_models_tab(
             .h(px(26.0))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.model_filter = kind;
+                this.models_page = 0;
                 cx.notify();
             })),
         );
@@ -275,7 +276,6 @@ pub fn render_models_tab(
             &filtered,
             &latest_probe,
             total_cnt,
-            shown_limit,
             cx,
         ));
 

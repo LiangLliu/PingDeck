@@ -24,6 +24,42 @@ use super::state::{HistoryHandoff, HistoryView};
 
 impl HistoryView {
     pub fn reload_page(&mut self, reset: bool, cx: &mut Context<Self>) {
+        if reset {
+            self.page_cursors = vec![None];
+            self.page_index = 0;
+        }
+        self.load_current_page(reset, cx);
+    }
+
+    pub fn go_first_page(&mut self, cx: &mut Context<Self>) {
+        if self.page_index == 0 {
+            return;
+        }
+        self.page_cursors.truncate(1);
+        self.page_index = 0;
+        self.load_current_page(false, cx);
+    }
+
+    pub fn go_prev_page(&mut self, cx: &mut Context<Self>) {
+        if self.page_index == 0 {
+            return;
+        }
+        self.page_index -= 1;
+        self.load_current_page(false, cx);
+    }
+
+    pub fn go_next_page(&mut self, cx: &mut Context<Self>) {
+        let Some(next) = self.next_cursor.clone() else {
+            return;
+        };
+        let next_idx = self.page_index + 1;
+        self.page_cursors.truncate(next_idx);
+        self.page_cursors.push(Some(next));
+        self.page_index = next_idx;
+        self.load_current_page(false, cx);
+    }
+
+    fn load_current_page(&mut self, refresh_envs: bool, cx: &mut Context<Self>) {
         let Some(ws_id) = self.workspace_id.clone() else {
             return;
         };
@@ -31,11 +67,8 @@ impl HistoryView {
         let query = self.search_input.read(cx).value().trim().to_owned();
         self.filter.query = query;
         let filter = self.filter.clone();
-        let cursor = if reset {
-            None
-        } else {
-            self.next_cursor.clone()
-        };
+        let cursor = self.page_cursors.get(self.page_index).cloned().flatten();
+        let req_page = self.page_index;
         self.loading = true;
         cx.notify();
 
@@ -49,7 +82,7 @@ impl HistoryView {
                     Some(HISTORY_PAGE_SIZE),
                     cursor,
                 )?;
-                let envs = if reset {
+                let envs = if refresh_envs {
                     Some(environment_list_impl(state, ws_id).unwrap_or_default())
                 } else {
                     None
@@ -57,38 +90,42 @@ impl HistoryView {
                 Ok::<_, AppError>((page, envs))
             },
             move |this, res, cx| {
+                if this.page_index != req_page {
+                    return;
+                }
                 this.loading = false;
                 match res {
                     Ok::<_, AppError>((page, envs)) => {
                         if let Some(e) = envs {
                             this.environments = e;
                         }
-                        if reset {
-                            this.entries = page.entries;
+                        if page.total.is_some() {
                             this.total = page.total;
+                        }
+                        if page.workspace_total.is_some() {
                             this.workspace_total = page.workspace_total;
+                        }
+                        if page.mock_dropped.is_some() {
                             this.mock_dropped = page.mock_dropped;
-                            let sel_ok = this
-                                .selected_id
-                                .as_deref()
-                                .is_some_and(|id| this.entries.iter().any(|e| e.id.as_str() == id));
-                            if !sel_ok {
-                                let first = this.entries.first().map(|e| e.id.as_str().to_owned());
-                                this.selected_id = first.clone();
-                                this.selected_entry = None;
-                                this.run_children.clear();
-                                if let Some(id) = first {
-                                    this.fetch_entry_detail(id, cx);
-                                }
-                            }
-                        } else {
-                            for row in page.entries {
-                                if !this.entries.iter().any(|e| e.id == row.id) {
-                                    this.entries.push(row);
-                                }
+                        }
+                        this.entries = page.entries;
+                        this.next_cursor = page.next_cursor;
+
+                        let sel_ok = this
+                            .selected_id
+                            .as_deref()
+                            .is_some_and(|id| this.entries.iter().any(|e| e.id.as_str() == id));
+                        if !sel_ok {
+                            let first = this.entries.first().map(|e| e.id.as_str().to_owned());
+                            this.selected_id = first.clone();
+                            this.selected_entry = None;
+                            this.run_children.clear();
+                            this.run_children_next_cursor = None;
+                            this.run_children_total = None;
+                            if let Some(id) = first {
+                                this.fetch_entry_detail(id, cx);
                             }
                         }
-                        this.next_cursor = page.next_cursor;
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -106,6 +143,9 @@ impl HistoryView {
             .find(|e| e.id.as_str() == id.as_str())
             .cloned();
         self.run_children.clear();
+        self.run_children_next_cursor = None;
+        self.run_children_total = None;
+        self.run_children_loading = false;
         self.fetch_entry_detail(id, cx);
         cx.notify();
     }
@@ -119,24 +159,75 @@ impl HistoryView {
             cx,
             move |state| {
                 let entry = history_get_impl(state, ws_id.clone(), id)?;
-                let children = if let Some(run_id) = entry.run_id.clone() {
+                let children_page = if let Some(run_id) = entry.run_id.clone() {
                     history_run_children_impl(state, ws_id, run_id, HistoryFilter::default(), None)
-                        .map(|p| p.entries)
-                        .unwrap_or_default()
+                        .ok()
                 } else {
-                    Vec::new()
+                    None
                 };
-                Ok::<_, AppError>((entry, children))
+                Ok::<_, AppError>((entry, children_page))
             },
             move |this, res, cx| {
                 if this.selected_id.as_deref() != Some(id_match.as_str()) {
                     return;
                 }
-                if let Ok((entry, children)) = res {
+                if let Ok((entry, children_page)) = res {
                     this.selected_entry = Some(entry);
-                    this.run_children = children;
+                    if let Some(pg) = children_page {
+                        this.run_children = pg.entries;
+                        this.run_children_next_cursor = pg.next_cursor;
+                        this.run_children_total = pg.total;
+                    } else {
+                        this.run_children.clear();
+                        this.run_children_next_cursor = None;
+                        this.run_children_total = None;
+                    }
                     cx.notify();
                 }
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn load_more_run_children(&mut self, cx: &mut Context<Self>) {
+        if self.run_children_loading {
+            return;
+        }
+        let (Some(ws_id), Some(run_id), Some(cursor)) = (
+            self.workspace_id.clone(),
+            self.active_entry().and_then(|e| e.run_id.clone()),
+            self.run_children_next_cursor.clone(),
+        ) else {
+            return;
+        };
+        let expected_sel = self.selected_id.clone();
+        self.run_children_loading = true;
+        cx.notify();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                history_run_children_impl(
+                    state,
+                    ws_id,
+                    run_id,
+                    HistoryFilter::default(),
+                    Some(cursor),
+                )
+            },
+            move |this, res, cx| {
+                this.run_children_loading = false;
+                if this.selected_id != expected_sel {
+                    return;
+                }
+                if let Ok(pg) = res {
+                    for row in pg.entries {
+                        if !this.run_children.iter().any(|c| c.id == row.id) {
+                            this.run_children.push(row);
+                        }
+                    }
+                    this.run_children_next_cursor = pg.next_cursor;
+                }
+                cx.notify();
             },
         );
         self._tasks.push(task);

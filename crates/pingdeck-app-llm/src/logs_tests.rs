@@ -9,7 +9,8 @@ use super::uc_support::Fx;
 use super::{
     llm_gateway_overview_impl, llm_log_capture_stats_impl, llm_log_clear_impl, llm_log_count_impl,
     llm_log_curl_impl, llm_log_delete_capture_impl, llm_log_delete_captures_impl, llm_log_get_impl,
-    llm_log_list_impl, llm_log_open_in_api_client_impl, llm_log_search_bodies_impl,
+    llm_log_id_for_request_id_impl, llm_log_list_impl, llm_log_open_in_api_client_impl,
+    llm_log_page_impl, llm_log_search_bodies_impl,
 };
 
 use crate::error::AppError;
@@ -221,4 +222,56 @@ async fn search_clear_and_capture_deletion_preserve_rollups_and_escape_wildcards
             .requests,
         7
     );
+}
+
+#[test]
+fn filtered_log_page_and_request_id_lookup() {
+    let fx = Fx::new();
+    let mut e1 = entry("gateway", 200, NOW);
+    e1.request_id = Some("rq_aaaa0001".to_owned());
+    let mut e2 = entry("gateway", 500, NOW + 10);
+    e2.request_id = Some("rq_aaaa0002".to_owned());
+    let mut e3 = entry("agent", 502, NOW + 20);
+    e3.request_id = Some("rq_aaaa0003".to_owned());
+
+    let id1 = put(&fx, &e1, None);
+    let id2 = put(&fx, &e2, None);
+    let id3 = put(&fx, &e3, None);
+
+    assert_eq!(
+        llm_log_id_for_request_id_impl(&fx.state, "rq_aaaa0002").unwrap(),
+        Some(id2)
+    );
+    assert_eq!(
+        llm_log_id_for_request_id_impl(&fx.state, "rq_missing").unwrap(),
+        None
+    );
+
+    let failed_p0 = llm_log_page_impl(
+        &fx.state,
+        Some(LogFilter {
+            failed_only: true,
+            ..LogFilter::default()
+        }),
+        0,
+        Some(1),
+    )
+    .unwrap();
+    assert_eq!(failed_p0.total, 2);
+    assert_eq!(failed_p0.entries.len(), 1);
+    assert_eq!(failed_p0.entries[0].id, id3);
+
+    let failed_p1 = llm_log_page_impl(
+        &fx.state,
+        Some(LogFilter {
+            failed_only: true,
+            ..LogFilter::default()
+        }),
+        1,
+        Some(1),
+    )
+    .unwrap();
+    assert_eq!(failed_p1.total, 2);
+    assert_eq!(failed_p1.entries[0].id, id2);
+    assert_ne!(id1, id2);
 }

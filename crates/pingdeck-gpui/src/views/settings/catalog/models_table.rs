@@ -7,9 +7,9 @@ use gpui_kit::{
 use pingdeck_desktop::core::model::model_catalog::{CatalogSource, ModelCatalogRow};
 
 use crate::ui::{
-    Disableable as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary,
-    filter_chip, h_row, palette, search_input, settings_section_flush, status_indicator, to_hsla,
-    v_col,
+    DEFAULT_PAGE_SIZES, PaginationBar, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_primary,
+    btn_secondary, filter_chip, h_row, page_slice, pagination_bar, palette, search_input,
+    settings_section_flush, status_indicator, to_hsla, v_col,
 };
 
 use super::CatalogSettingsView;
@@ -213,33 +213,32 @@ pub fn render_models_section(
         .child(thead)
         .child(tbody);
 
-    if total > shown {
-        let remaining = total - shown;
-        let step = remaining.min(80);
+    if total > 0 {
         table_body = table_body.child(
-            h_row()
-                .justify_center()
-                .py(px(10.0))
+            div()
+                .px(px(14.0))
+                .py(px(9.0))
+                .bg(to_hsla(p.pane))
                 .border_t_1()
-                .border_color(to_hsla(p.line.composite_over(p.surface)))
-                .child(
-                    btn_secondary(
-                        "cat-load-more",
-                        if view.loading_more {
-                            crate::ui::tr(cx).common().loading().into()
-                        } else {
-                            crate::ui::tr(cx)
-                                .settings()
-                                .models_table_load_more_left(step, remaining)
-                        },
-                    )
-                    .disabled(view.loading_more)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if !this.loading_more {
-                            this.load_page(true, cx);
-                        }
-                    })),
-                ),
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "cat-pg",
+                        page: view.page_index,
+                        page_size: view.page_size as usize,
+                        total,
+                        page_sizes: DEFAULT_PAGE_SIZES,
+                        loading: view.loading_page,
+                        compact: false,
+                    },
+                    |this: &mut CatalogSettingsView, next_page, cx| {
+                        this.set_page(next_page, cx);
+                    },
+                    Some(|this: &mut CatalogSettingsView, next_size, cx| {
+                        this.set_page_size(next_size, cx);
+                    }),
+                    cx,
+                )),
         );
     }
 
@@ -447,7 +446,10 @@ pub fn render_unlisted_section(
     let p = palette(cx);
     let lang = crate::ui::active_language(cx);
     let s = crate::ui::tr(cx).settings();
+    const UNLISTED_PAGE_SIZE: usize = 20;
     let count = view.unlisted.len();
+    let (page_items, clamped_page, _) =
+        page_slice(&view.unlisted, view.unlisted_page, UNLISTED_PAGE_SIZE);
 
     let thead = th_bar(cx)
         .child(th_col(180.0, false, s.catalog_th_provider()))
@@ -456,7 +458,7 @@ pub fn render_unlisted_section(
         .child(th_col(120.0, true, s.catalog_th_action()));
 
     let mut tbody = v_col();
-    for (idx, item) in view.unlisted.iter().enumerate() {
+    for (idx, item) in page_items.iter().enumerate() {
         let price_str = item
             .effective
             .as_ref()
@@ -527,12 +529,41 @@ pub fn render_unlisted_section(
                         )),
                     ),
             );
-        if idx + 1 < count {
+        if idx + 1 < page_items.len() {
             row = row
                 .border_b_1()
                 .border_color(to_hsla(p.line.composite_over(p.surface)));
         }
         tbody = tbody.child(row);
+    }
+
+    let mut section_body = v_col().w_full().child(thead).child(tbody);
+    if count > UNLISTED_PAGE_SIZE {
+        section_body = section_body.child(
+            div()
+                .px(px(14.0))
+                .py(px(8.0))
+                .bg(to_hsla(p.pane))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "cat-unlisted-pg",
+                        page: clamped_page,
+                        page_size: UNLISTED_PAGE_SIZE,
+                        total: count,
+                        page_sizes: &[],
+                        loading: false,
+                        compact: false,
+                    },
+                    |this: &mut CatalogSettingsView, next_page, cx| {
+                        this.unlisted_page = next_page;
+                        cx.notify();
+                    },
+                    None::<fn(&mut CatalogSettingsView, usize, &mut Context<CatalogSettingsView>)>,
+                    cx,
+                )),
+        );
     }
 
     v_col()
@@ -543,7 +574,7 @@ pub fn render_unlisted_section(
                 .settings()
                 .models_table_unlisted_models(count),
             None,
-            v_col().w_full().child(thead).child(tbody),
+            section_body,
             cx,
         ))
         .child(

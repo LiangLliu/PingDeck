@@ -33,7 +33,7 @@ use crate::ui::{InputEvent, InputState, Tone, WindowExt as _, v_col};
 
 use drawer::CatalogDrawer;
 
-const PAGE_SIZE: u32 = 80;
+const DEFAULT_PAGE_SIZE: u32 = 50;
 
 pub struct CatalogSettingsView {
     pub status: Option<ModelCatalogStatus>,
@@ -43,9 +43,11 @@ pub struct CatalogSettingsView {
     pub sync_error: Option<String>,
     pub provider_pricing: Vec<ProviderPricingView>,
     pub unlisted: Vec<UnlistedModel>,
+    pub unlisted_page: usize,
     pub page: Option<ModelCatalogPage>,
+    pub page_index: usize,
+    pub page_size: u32,
     pub loading_page: bool,
-    pub loading_more: bool,
     pub search_input: Entity<InputState>,
     pub publisher: Option<String>,
     pub kind: Option<CatalogKind>,
@@ -83,9 +85,11 @@ impl CatalogSettingsView {
             sync_error: None,
             provider_pricing: Vec::new(),
             unlisted: Vec::new(),
+            unlisted_page: 0,
             page: None,
+            page_index: 0,
+            page_size: DEFAULT_PAGE_SIZE,
             loading_page: true,
-            loading_more: false,
             search_input,
             publisher: None,
             kind: None,
@@ -168,6 +172,7 @@ impl CatalogSettingsView {
                 }
                 if let Ok(rows) = unlisted {
                     this.unlisted = rows;
+                    this.unlisted_page = 0;
                 }
                 cx.notify();
             },
@@ -190,38 +195,51 @@ impl CatalogSettingsView {
             in_use: self.in_use.then_some(true),
             distributor_entries: self.distributor_entries.then_some(true),
             offset: Some(offset),
-            limit: Some(PAGE_SIZE),
+            limit: Some(self.page_size),
         }
     }
 
-    pub fn load_page(&mut self, append: bool, cx: &mut Context<Self>) {
-        let offset = if append {
-            self.page.as_ref().map_or(0, |p| p.rows.len() as u32)
-        } else {
-            0
-        };
-        if append {
-            self.loading_more = true;
-        } else {
-            self.loading_page = true;
+    pub fn set_page(&mut self, page: usize, cx: &mut Context<Self>) {
+        if self.page_index == page && !self.loading_page {
+            return;
         }
+        self.page_index = page;
+        self.load_page(true, cx);
+    }
+
+    pub fn set_page_size(&mut self, size: usize, cx: &mut Context<Self>) {
+        let clamped = (size as u32).clamp(10, 500);
+        if self.page_size == clamped {
+            return;
+        }
+        self.page_size = clamped;
+        self.page_index = 0;
+        self.load_page(false, cx);
+    }
+
+    pub fn load_page(&mut self, keep_page: bool, cx: &mut Context<Self>) {
+        if !keep_page {
+            self.page_index = 0;
+        }
+        let offset = (self.page_index as u32).saturating_mul(self.page_size);
+        self.loading_page = true;
         let query = self.build_query(offset, cx);
         let task = spawn_async_into(
             cx,
             move |state| async move { llm_model_catalog_list_impl(&state, query).await },
             move |this, res, cx| {
                 this.loading_page = false;
-                this.loading_more = false;
                 match res {
-                    Ok(mut next_page) => {
-                        if append && let Some(prev) = &mut this.page {
-                            prev.rows.append(&mut next_page.rows);
-                            prev.total = next_page.total;
-                            prev.families = next_page.families;
-                            prev.publishers = next_page.publishers;
-                        } else {
-                            this.page = Some(next_page);
+                    Ok(next_page) => {
+                        let total_pages = (next_page.total as usize)
+                            .div_ceil(this.page_size.max(1) as usize)
+                            .max(1);
+                        if this.page_index >= total_pages {
+                            this.page_index = total_pages - 1;
+                            this.load_page(true, cx);
+                            return;
                         }
+                        this.page = Some(next_page);
                     }
                     Err(err) => {
                         this.flash_msg = Some((Tone::Danger, err.message().to_owned()));

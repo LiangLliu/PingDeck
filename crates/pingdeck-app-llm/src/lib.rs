@@ -99,9 +99,9 @@ pub use impact::{
 pub use logs::{
     Availability, DiagnosticsBundleInput, LogDetailDto, ReplayStarted, llm_log_capture_stats_impl,
     llm_log_clear_impl, llm_log_count_impl, llm_log_curl_impl, llm_log_delete_capture_impl,
-    llm_log_delete_captures_impl, llm_log_get_impl, llm_log_list_impl,
-    llm_log_open_in_api_client_impl, llm_log_replay_cancel_impl, llm_log_replay_impl,
-    llm_log_search_bodies_impl,
+    llm_log_delete_captures_impl, llm_log_get_impl, llm_log_id_for_request_id_impl,
+    llm_log_list_impl, llm_log_open_in_api_client_impl, llm_log_page_impl,
+    llm_log_replay_cancel_impl, llm_log_replay_impl, llm_log_search_bodies_impl,
 };
 pub use model_catalog::{
     llm_model_alias_delete_impl, llm_model_alias_save_impl, llm_model_catalog_config_save_impl,

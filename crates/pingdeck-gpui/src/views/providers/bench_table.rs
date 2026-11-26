@@ -11,9 +11,10 @@ use pingdeck_desktop::core::llm::probe::ProbeStatus;
 use pingdeck_desktop::core::llm::probe::plan::CheckSet;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_primary, btn_secondary,
-    card, checkbox, filter_chip, h_row, icon_xs, list_row, palette, popover, search_input,
-    select_pill, tab_bar_segmented, tab_item, to_hsla, v_col,
+    Anchor, DEFAULT_PAGE_SIZES, PaginationBar, ScrollableElement as _, Tone, UiIcon, badge,
+    btn_ghost, btn_primary, btn_secondary, card, checkbox, filter_chip, h_row, icon_xs, list_row,
+    page_slice, pagination_bar, palette, popover, search_input, select_pill, tab_bar_segmented,
+    tab_item, to_hsla, v_col,
 };
 
 use super::bench::{BenchFilter, BenchView};
@@ -65,6 +66,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                                 this.selected_provider_id = Some(pid.clone());
                                 this.selected_key_id = None;
                                 this.selected_models.clear();
+                                this.bench_page = 0;
                                 this.reload(cx);
                             });
                             pop_h.update(cx, |s, cx| s.dismiss(window, cx));
@@ -269,6 +271,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                     .h(px(26.0))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.filter = BenchFilter::All;
+                        this.bench_page = 0;
                         cx.notify();
                     })),
                 )
@@ -283,6 +286,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                     .h(px(26.0))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.filter = BenchFilter::Failed;
+                        this.bench_page = 0;
                         cx.notify();
                     })),
                 )
@@ -297,6 +301,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                     .h(px(26.0))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.filter = BenchFilter::Slow;
+                        this.bench_page = 0;
                         cx.notify();
                     })),
                 )
@@ -313,6 +318,7 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                     .h(px(26.0))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.include_disabled = !this.include_disabled;
+                        this.bench_page = 0;
                         this.recompute_estimate(cx);
                         cx.notify();
                     })),
@@ -364,6 +370,8 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
         thead = thead.child(div().w(px(82.0)).flex().justify_center().child(title));
     }
 
+    let (page_rows, clamped_page, _) =
+        page_slice(&prov_models, view.bench_page, view.bench_page_size);
     let mut tbody = v_col();
     if prov_models.is_empty() {
         tbody = tbody.child(
@@ -378,8 +386,8 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
                 ),
         );
     } else {
-        let shown = prov_models.len().min(60);
-        for (ri, m) in prov_models.iter().take(shown).enumerate() {
+        let shown = page_rows.len();
+        for (ri, m) in page_rows.iter().enumerate() {
             let mid = m.model_id.clone();
             let mid_chk = mid.clone();
             let checked = view.selected_models.contains(&mid);
@@ -469,40 +477,60 @@ pub(super) fn render_bench(view: &BenchView, cx: &mut Context<BenchView>) -> Div
             }
             tbody = tbody.child(row);
         }
-        if prov_models.len() > shown {
-            tbody = tbody.child(
-                div()
-                    .px(px(12.0))
-                    .py(px(8.0))
-                    .text_size(px(11.0))
-                    .text_color(to_hsla(p.faint))
-                    .border_t_1()
-                    .border_color(to_hsla(p.line.composite_over(p.surface)))
-                    .child(SharedString::from(
-                        crate::ui::tr(cx)
-                            .providers()
-                            .prov_bench_table_showing_first_of_models_use(shown, prov_models.len()),
-                    )),
-            );
-        }
     }
 
-    let table_card = div().flex_1().min_h_0().px(px(20.0)).pb(px(14.0)).child(
-        card(cx)
-            .size_full()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .child(thead)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scrollbar()
-                    .id(SharedString::from(format!("bench-scroll-{pid}")))
-                    .child(tbody),
-            ),
-    );
+    let mut inner_card = card(cx)
+        .size_full()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .child(thead)
+        .child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scrollbar()
+                .id(SharedString::from(format!("bench-scroll-{pid}")))
+                .child(tbody),
+        );
+    if !prov_models.is_empty() {
+        inner_card = inner_card.child(
+            div()
+                .flex_shrink_0()
+                .px(px(12.0))
+                .py(px(8.0))
+                .bg(to_hsla(p.pane))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.pane)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: "bench-pg",
+                        page: clamped_page,
+                        page_size: view.bench_page_size,
+                        total: prov_models.len(),
+                        page_sizes: DEFAULT_PAGE_SIZES,
+                        loading: false,
+                        compact: false,
+                    },
+                    |this: &mut BenchView, next_page, cx| {
+                        this.bench_page = next_page;
+                        cx.notify();
+                    },
+                    Some(|this: &mut BenchView, next_size, cx| {
+                        this.bench_page_size = next_size;
+                        this.bench_page = 0;
+                        cx.notify();
+                    }),
+                    cx,
+                )),
+        );
+    }
+    let table_card = div()
+        .flex_1()
+        .min_h_0()
+        .px(px(20.0))
+        .pb(px(14.0))
+        .child(inner_card);
 
     let mut root = v_col()
         .size_full()

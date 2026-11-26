@@ -68,7 +68,6 @@
   "hist.sidebar.failed": "仅失败",
   "hist.sidebar.history": "执行历史",
   "hist.sidebar.load_more": "加载更多",
-  "hist.sidebar.loaded_total": "已载入 {count} / 共 {total_shown}条",
   "hist.sidebar.no_entries_match_this_filter": "当前筛选条件下没有记录",
   "hist.sidebar.no_requests_recorded_yet": "工作区暂无执行记录",
   "hist.sidebar.refresh_history": "刷新历史",

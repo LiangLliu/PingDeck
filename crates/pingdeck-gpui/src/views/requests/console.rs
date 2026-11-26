@@ -7,8 +7,8 @@ use gpui_kit::{
 use pingdeck_desktop::core::model::script_result::ConsoleLevel;
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, kbd_chip,
-    palette, to_hsla, v_col,
+    PaginationBar, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, h_row,
+    icon_xs, kbd_chip, pagination_bar, palette, to_hsla, v_col,
 };
 
 use super::model::{OpenTab, format_time_hms};
@@ -22,7 +22,11 @@ pub fn render_console_drawer(
         return None;
     }
     let p = palette(cx);
+    const CONSOLE_PAGE_SIZE: usize = 50;
     let total = view.console_entries.len();
+    let total_pages = total.div_ceil(CONSOLE_PAGE_SIZE).max(1);
+    let clamped_page = view.console_page.min(total_pages - 1);
+    let skip = clamped_page.saturating_mul(CONSOLE_PAGE_SIZE);
 
     let mut rows = v_col()
         .flex_1()
@@ -46,7 +50,13 @@ pub fn render_console_drawer(
                 ),
         );
     } else {
-        for entry in view.console_entries.iter().rev().take(200) {
+        for entry in view
+            .console_entries
+            .iter()
+            .rev()
+            .skip(skip)
+            .take(CONSOLE_PAGE_SIZE)
+        {
             let tone = match entry.level {
                 ConsoleLevel::Error => Tone::Danger,
                 ConsoleLevel::Warn => Tone::Warning,
@@ -135,6 +145,7 @@ pub fn render_console_drawer(
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.console_entries.clear();
+                                        this.console_page = 0;
                                         cx.notify();
                                     },
                                 )),
@@ -147,7 +158,33 @@ pub fn render_console_drawer(
                             )),
                     ),
             )
-            .child(rows),
+            .child(rows)
+            .children((total > CONSOLE_PAGE_SIZE).then(|| {
+                div()
+                    .flex_shrink_0()
+                    .px(px(12.0))
+                    .py(px(4.0))
+                    .bg(to_hsla(p.pane))
+                    .border_t_1()
+                    .border_color(to_hsla(p.line.composite_over(p.pane)))
+                    .child(pagination_bar(
+                        PaginationBar {
+                            id_prefix: "req-console-pg",
+                            page: clamped_page,
+                            page_size: CONSOLE_PAGE_SIZE,
+                            total,
+                            page_sizes: &[],
+                            loading: false,
+                            compact: true,
+                        },
+                        |this: &mut RequestsView, next_page, cx| {
+                            this.console_page = next_page;
+                            cx.notify();
+                        },
+                        None::<fn(&mut RequestsView, usize, &mut Context<RequestsView>)>,
+                        cx,
+                    ))
+            })),
     )
 }
 

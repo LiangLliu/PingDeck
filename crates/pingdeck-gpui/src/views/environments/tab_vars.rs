@@ -6,9 +6,10 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_icon, btn_primary,
-    btn_secondary, card, checkbox, choice_chip, data_row, empty_inline, h_row, icon_xs, meta_pill,
-    palette, search_input, section_header, table_header, text_input, to_hsla, v_col,
+    PaginationBar, ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_icon,
+    btn_primary, btn_secondary, card, checkbox, choice_chip, data_row, empty_inline, h_row,
+    icon_xs, meta_pill, page_slice, pagination_bar, palette, search_input, section_header,
+    table_header, text_input, to_hsla, v_col,
 };
 
 use super::state::{EditableVarRow, EnvDetailTab, EnvModal, EnvironmentsView};
@@ -106,19 +107,22 @@ pub fn render_variables_panel(
         cx,
     ));
 
-    let mut visible_count = 0usize;
-    for (idx, row) in rows.iter().enumerate() {
-        if !q.is_empty()
-            && !row.key.to_lowercase().contains(&q)
-            && !row.note.to_lowercase().contains(&q)
-            && !row
-                .value
-                .as_deref()
-                .is_some_and(|v| v.to_lowercase().contains(&q))
-        {
-            continue;
-        }
-        visible_count += 1;
+    const VARS_PAGE_SIZE: usize = 50;
+    let filtered: Vec<(usize, &EditableVarRow)> = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| {
+            q.is_empty()
+                || row.key.to_lowercase().contains(&q)
+                || row.note.to_lowercase().contains(&q)
+                || row
+                    .value
+                    .as_deref()
+                    .is_some_and(|v| v.to_lowercase().contains(&q))
+        })
+        .collect();
+    let (page_rows, clamped_page, _) = page_slice(&filtered, view.vars_page, VARS_PAGE_SIZE);
+    for &(idx, row) in page_rows {
         let val_display = if row.is_secret {
             if let Some(new_v) = &row.value
                 && !new_v.is_empty()
@@ -318,7 +322,7 @@ pub fn render_variables_panel(
         );
     }
 
-    if visible_count == 0 {
+    if filtered.is_empty() {
         tbl = tbl.child(empty_inline(
             crate::ui::Tr(view.lang)
                 .environments()
@@ -331,6 +335,34 @@ pub fn render_variables_panel(
             None,
             cx,
         ));
+    } else if filtered.len() > VARS_PAGE_SIZE {
+        tbl = tbl.child(
+            div()
+                .pt(px(8.0))
+                .border_t_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
+                .child(pagination_bar(
+                    PaginationBar {
+                        id_prefix: if is_global {
+                            "glob-var-pg"
+                        } else {
+                            "env-var-pg"
+                        },
+                        page: clamped_page,
+                        page_size: VARS_PAGE_SIZE,
+                        total: filtered.len(),
+                        page_sizes: &[],
+                        loading: false,
+                        compact: false,
+                    },
+                    |this: &mut EnvironmentsView, next_page, cx| {
+                        this.vars_page = next_page;
+                        cx.notify();
+                    },
+                    None::<fn(&mut EnvironmentsView, usize, &mut Context<EnvironmentsView>)>,
+                    cx,
+                )),
+        );
     }
 
     // Add new variable strip

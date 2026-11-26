@@ -246,6 +246,7 @@ pub struct RunnerTabState {
     pub cancel_token: Option<String>,
     pub live_items: Vec<RunnerItem>,
     pub result: Option<RunnerResult>,
+    pub results_page: usize,
     pub error: Option<String>,
 }
 

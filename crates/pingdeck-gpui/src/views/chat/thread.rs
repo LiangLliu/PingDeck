@@ -13,8 +13,9 @@ use pingdeck_desktop::core::model::hub::HubPart;
 use pingdeck_desktop::services::clipboard;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon, btn_secondary, h_row,
-    icon_xs, kv_chip, markdown_view, palette, status_indicator, to_hsla, v_col,
+    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon,
+    btn_secondary, h_row, icon_xs, kv_chip, markdown_view, palette, status_indicator, to_hsla,
+    v_col,
 };
 
 use super::ChatView;
@@ -43,6 +44,22 @@ pub fn render_messages(view: &ChatView, cx: &mut Context<ChatView>) -> impl Into
     if view.thread.messages.is_empty() && !has_live && !has_pending_user {
         col = col.child(render_welcome_empty(cx));
     } else {
+        if view.has_earlier_messages {
+            col = col.child(
+                h_row().w_full().justify_center().child(
+                    btn_secondary(
+                        "chat-load-earlier",
+                        if view.loading_earlier_messages {
+                            crate::ui::tr(cx).common().loading()
+                        } else {
+                            crate::ui::tr(cx).chat().thread_load_earlier()
+                        },
+                    )
+                    .disabled(view.loading_earlier_messages)
+                    .on_click(cx.listener(|this, _, _, cx| this.load_earlier_messages(cx))),
+                ),
+            );
+        }
         let mut tool_results: HashMap<&str, (&[HubPart], bool)> = HashMap::new();
         for msg in &view.thread.messages {
             for part in &msg.parts {

@@ -8,8 +8,8 @@ use pingdeck_desktop::core::model::models::PhaseTiming;
 use pingdeck_desktop::core::model::phase::PhaseValue;
 
 use crate::ui::{
-    Tone, badge, card, data_row, empty_inline, h_row, kv_line, list_row, meta_pill, method_badge,
-    palette, progress_bar, section_header, to_hsla, v_col,
+    Disableable as _, Tone, badge, btn_secondary, card, data_row, empty_inline, h_row, kv_line,
+    list_row, meta_pill, method_badge, palette, progress_bar, section_header, to_hsla, v_col,
 };
 
 use super::state::HistoryView;
@@ -310,10 +310,13 @@ pub fn render_checks_tab(
     }
 
     if !view.run_children.is_empty() {
+        let total_steps = view
+            .run_children_total
+            .map_or(view.run_children.len(), |t| t as usize);
         let mut run_card = card(cx).p(px(12.0)).gap(px(5.0)).child(section_header(
             crate::ui::Tr(view.lang)
                 .history()
-                .detail_trace_sibling_run_steps(view.run_children.len()),
+                .detail_trace_sibling_run_steps(total_steps),
             (!entry.source_name.is_empty())
                 .then(|| meta_pill(entry.source_name.clone(), cx).into_any_element()),
             cx,
@@ -351,6 +354,22 @@ pub fn render_checks_tab(
                         .child(child.request_name.clone()),
                 )
                 .child(meta_pill(format!("{} ms", child.elapsed_ms), cx)),
+            );
+        }
+        if view.run_children_next_cursor.is_some() {
+            run_card = run_card.child(
+                h_row().w_full().justify_center().pt(px(4.0)).child(
+                    btn_secondary(
+                        "hist-children-more",
+                        if view.run_children_loading {
+                            crate::ui::Tr(view.lang).common().loading()
+                        } else {
+                            crate::ui::Tr(view.lang).history().sidebar_load_more()
+                        },
+                    )
+                    .disabled(view.run_children_loading)
+                    .on_click(cx.listener(|this, _, _, cx| this.load_more_run_children(cx))),
+                ),
             );
         }
         col = col.child(run_card);

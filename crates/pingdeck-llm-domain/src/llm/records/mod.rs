@@ -23,7 +23,7 @@ pub use keys::{
 };
 pub use log::{
     CaptureStats, ClearReport, DEFAULT_LOG_PAGE, LOG_ROWS_PER_SOURCE, LOG_SOURCES, LogDetail,
-    LogFilter, LogPage, MAX_LOG_PAGE, RequestLogEntry, StatusClass, book_entry,
+    LogFilter, LogPage, LogPageResult, MAX_LOG_PAGE, RequestLogEntry, StatusClass, book_entry,
 };
 pub use log_reason::derive_log_reason;
 pub use models::{
