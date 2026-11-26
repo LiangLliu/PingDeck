@@ -12,7 +12,6 @@ pub mod inspector_tabs;
 pub mod metrics;
 pub mod modals;
 pub mod reasoning;
-pub mod reasoning_diag;
 pub mod run_actions;
 pub mod run_monitor;
 pub mod run_monitor_detail;

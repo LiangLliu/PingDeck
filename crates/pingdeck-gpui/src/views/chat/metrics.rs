@@ -143,6 +143,7 @@ pub fn render_message_footer(
     msg: &AgentMessage,
     context_limit_tokens: Option<u64>,
     fallback_currency: Option<&str>,
+    sealed_reasoning: bool,
     cx: &gpui_kit::App,
 ) -> Option<gpui_kit::Div> {
     let mut chips: Vec<gpui_kit::AnyElement> = Vec::new();
@@ -236,6 +237,43 @@ pub fn render_message_footer(
                 .into_any_element(),
             );
         }
+    }
+
+    let r_tok = msg
+        .usage
+        .as_ref()
+        .and_then(|u| u.reasoning_tokens)
+        .filter(|&n| n > 0);
+    if let Some(rt) = r_tok {
+        let ch = crate::ui::tr(cx).chat();
+        let tip = if sealed_reasoning {
+            ch.metrics_reasoning_tokens_sealed(format_tokens_int(rt))
+        } else {
+            ch.metrics_reasoning_tokens(format_tokens_int(rt))
+        };
+        datums.push(
+            metric_datum(
+                SharedString::from(format!("stat-reason-{mid}")),
+                UiIcon::Brain,
+                format_tokens_compact(rt),
+                tip,
+                Tone::Neutral,
+                cx,
+            )
+            .into_any_element(),
+        );
+    } else if sealed_reasoning {
+        datums.push(
+            metric_datum(
+                SharedString::from(format!("stat-reason-{mid}")),
+                UiIcon::Brain,
+                "—",
+                crate::ui::tr(cx).chat().metrics_reasoning_sealed_no_tok(),
+                Tone::Neutral,
+                cx,
+            )
+            .into_any_element(),
+        );
     }
 
     let total_ms = match (msg.meta.ttft_ms, msg.meta.stream_ms) {

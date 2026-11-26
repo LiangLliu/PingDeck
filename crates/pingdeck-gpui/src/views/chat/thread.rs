@@ -19,10 +19,7 @@ use crate::ui::{
 
 use super::ChatView;
 use super::metrics::{format_effort_short, render_message_footer};
-use super::reasoning::{
-    ReasoningKind, extract_message_reasoning, render_no_reasoning_panel, render_reasoning_block,
-    render_reasoning_header_chip, render_sealed_reasoning_card,
-};
+use super::reasoning::{ReasoningKind, extract_message_reasoning, render_reasoning_block};
 use super::trace::{render_live_turn, render_message_tool_traces};
 use super::types::ChatModal;
 use super::welcome::render_welcome_empty;
@@ -338,38 +335,22 @@ fn render_assistant_message(
                     Tone::Accent,
                     cx,
                 )
-            }))
-            .child(render_reasoning_header_chip(
-                &msg.id,
-                &r_info,
-                reason_open,
-                cx,
-            )),
+            })),
     );
 
-    match r_info.kind {
-        ReasoningKind::Plaintext => {
-            let k_click = r_key.clone();
-            body = body.child(render_reasoning_block(
-                r_key,
-                reason_open,
-                false,
-                r_info.text,
-                r_info.duration_ms,
-                r_info.reasoning_tokens,
-                cx.listener(move |this, _, _, cx| this.toggle_reasoning(k_click.clone(), cx)),
-                cx,
-            ));
-        }
-        ReasoningKind::Sealed => {
-            body = body.child(render_sealed_reasoning_card(msg, &r_info, reason_open, cx));
-        }
-        ReasoningKind::NoneReturned => {
-            if reason_open {
-                let pmeta = view.provider_meta_for_raw(raw_model);
-                body = body.child(render_no_reasoning_panel(view, msg, &model, pmeta, cx));
-            }
-        }
+    let sealed_reasoning = r_info.kind == ReasoningKind::Sealed;
+    if r_info.kind == ReasoningKind::Plaintext {
+        let k_click = r_key.clone();
+        body = body.child(render_reasoning_block(
+            r_key,
+            reason_open,
+            false,
+            r_info.text,
+            r_info.duration_ms,
+            r_info.reasoning_tokens,
+            cx.listener(move |this, _, _, cx| this.toggle_reasoning(k_click.clone(), cx)),
+            cx,
+        ));
     }
 
     if !tool_calls.is_empty() {
@@ -461,6 +442,7 @@ fn render_assistant_message(
         msg,
         view.thread.context_limit_tokens,
         view.thread.cost_currency.as_deref(),
+        sealed_reasoning,
         cx,
     ) {
         body = body.child(footer);

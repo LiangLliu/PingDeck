@@ -1,16 +1,15 @@
 //! Historical and live reasoning / thinking process extraction & collapsible cards for AI Chat.
 //!
-//! Handles plaintext reasoning (`HubPart::Reasoning.text` and inline `<think>` blocks), sealed
-//! reasoning (`signature` / `encrypted` / `id` / `reasoning_tokens`), and clickable header chips
-//! so users can inspect thinking on any completed or live turn. Sealed & no-reasoning diagnostic
-//! cards live in [`super::reasoning_diag`].
+//! Handles plaintext reasoning (`HubPart::Reasoning.text` and inline `<think>` blocks) as a single
+//! collapsible card per turn, and detects sealed reasoning (`signature` / `encrypted` / `id` /
+//! `reasoning_tokens`) so the message statistics footer can surface it compactly without cluttering
+//! the thread stream.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::agent::model::AgentMessage;
-use pingdeck_desktop::core::llm::wire::Protocol;
 use pingdeck_desktop::core::model::hub::HubPart;
 
 use crate::ui::{
@@ -18,10 +17,7 @@ use crate::ui::{
     status_indicator, streaming_markdown_view, to_hsla, v_col,
 };
 
-use super::ChatView;
 use super::metrics::{extract_inline_thinking, format_duration_ms, format_tokens_int};
-
-pub use super::reasoning_diag::{render_no_reasoning_panel, render_sealed_reasoning_card};
 
 /// High-level reasoning availability for a stored assistant message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,10 +36,6 @@ pub enum ReasoningKind {
 pub struct MessageReasoningInfo {
     pub kind: ReasoningKind,
     pub text: String,
-    pub has_signature: bool,
-    pub has_encrypted: bool,
-    pub has_item_id: bool,
-    pub origin: Option<Protocol>,
     pub reasoning_tokens: Option<u64>,
     pub duration_ms: Option<u64>,
 }
@@ -56,10 +48,7 @@ pub fn extract_message_reasoning(
 ) -> (MessageReasoningInfo, Vec<String>) {
     let mut reasoning_chunks: Vec<String> = Vec::new();
     let mut text_chunks: Vec<String> = Vec::new();
-    let mut has_signature = false;
-    let mut has_encrypted = false;
-    let mut has_item_id = false;
-    let mut origin: Option<Protocol> = None;
+    let mut has_sealed_signal = false;
 
     for part in &msg.parts {
         match part {
@@ -68,22 +57,16 @@ pub fn extract_message_reasoning(
                 signature,
                 encrypted,
                 id,
-                origin: part_origin,
+                ..
             } => {
-                if origin.is_none() {
-                    origin = *part_origin;
-                }
                 if !text.trim().is_empty() {
                     reasoning_chunks.push(text.clone());
                 }
-                if signature.as_deref().is_some_and(|s| !s.is_empty()) {
-                    has_signature = true;
-                }
-                if encrypted.as_deref().is_some_and(|s| !s.is_empty()) {
-                    has_encrypted = true;
-                }
-                if id.as_deref().is_some_and(|s| !s.is_empty()) {
-                    has_item_id = true;
+                if signature.as_deref().is_some_and(|s| !s.is_empty())
+                    || encrypted.as_deref().is_some_and(|s| !s.is_empty())
+                    || id.as_deref().is_some_and(|s| !s.is_empty())
+                {
+                    has_sealed_signal = true;
                 }
             }
             HubPart::Text { text, .. } if !text.is_empty() => {
@@ -105,7 +88,7 @@ pub fn extract_message_reasoning(
     let text = reasoning_chunks.join("\n\n");
     let kind = if !text.is_empty() {
         ReasoningKind::Plaintext
-    } else if has_signature || has_encrypted || has_item_id || reasoning_tokens.is_some() {
+    } else if has_sealed_signal || reasoning_tokens.is_some() {
         ReasoningKind::Sealed
     } else {
         ReasoningKind::NoneReturned
@@ -115,10 +98,6 @@ pub fn extract_message_reasoning(
         MessageReasoningInfo {
             kind,
             text,
-            has_signature,
-            has_encrypted,
-            has_item_id,
-            origin,
             reasoning_tokens,
             duration_ms,
         },
@@ -126,89 +105,10 @@ pub fn extract_message_reasoning(
     )
 }
 
-/// Returns true if a message carries plaintext or sealed reasoning (eligible for bulk toggle).
+/// Returns true if a message carries collapsible plaintext thinking (eligible for bulk toggle).
 #[must_use]
 pub fn message_has_reasoning(msg: &AgentMessage) -> bool {
-    extract_message_reasoning(msg, None).0.kind != ReasoningKind::NoneReturned
-}
-
-/// Compact clickable chip placed in the assistant message header row so the user can toggle the
-/// thinking / process view of any completed turn directly from the header.
-pub fn render_reasoning_header_chip(
-    msg_id: &str,
-    info: &MessageReasoningInfo,
-    open: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
-    let p = palette(cx);
-    let r_key = format!("reason-{msg_id}");
-    let ch = crate::ui::tr(cx).chat();
-    let label = match info.kind {
-        ReasoningKind::Plaintext => {
-            let chars = info.text.chars().count();
-            match info.duration_ms {
-                Some(ms) => ch.reason_chip_thought_ms(format_duration_ms(ms), chars),
-                None => ch.reason_chip_thinking(chars),
-            }
-        }
-        ReasoningKind::Sealed => match info.reasoning_tokens {
-            Some(tok) => ch.reason_chip_sealed_tok(format_tokens_int(tok)),
-            None => ch.reason_chip_sealed_hidden().to_owned(),
-        },
-        ReasoningKind::NoneReturned => ch.reasoning_no_thinking().to_owned(),
-    };
-
-    let is_present = info.kind != ReasoningKind::NoneReturned;
-    let bg = if open {
-        to_hsla(p.accent_soft)
-    } else if is_present {
-        to_hsla(p.pane)
-    } else {
-        gpui_kit::transparent_black()
-    };
-    let fg = if open {
-        to_hsla(p.accent_ink)
-    } else if is_present {
-        to_hsla(p.muted)
-    } else {
-        to_hsla(p.faint)
-    };
-    let border = if open {
-        to_hsla(p.accent_line.composite_over(p.accent_soft))
-    } else if is_present {
-        to_hsla(p.line.composite_over(p.pane))
-    } else {
-        gpui_kit::transparent_black()
-    };
-
-    div()
-        .id(SharedString::from(format!("hdr-chip-reason-{msg_id}")))
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(4.0))
-        .px(px(7.0))
-        .py(px(2.0))
-        .rounded(px(6.0))
-        .bg(bg)
-        .border_1()
-        .border_color(border)
-        .cursor_pointer()
-        .text_size(px(11.0))
-        .font_weight(gpui_kit::FontWeight::MEDIUM)
-        .text_color(fg)
-        .hover(|s| {
-            s.bg(to_hsla(p.hover.composite_over(p.pane)))
-                .text_color(to_hsla(p.ink_2))
-        })
-        .on_click(cx.listener(move |this, _, _, cx| this.toggle_reasoning(r_key.clone(), cx)))
-        .child(icon_xs(UiIcon::Brain))
-        .child(SharedString::from(label))
-        .child(icon_xs(if open {
-            UiIcon::ChevronDown
-        } else {
-            UiIcon::ChevronRight
-        }))
+    extract_message_reasoning(msg, None).0.kind == ReasoningKind::Plaintext
 }
 
 /// Collapsible reasoning card for live streaming and completed plaintext thinking.
