@@ -313,7 +313,7 @@ impl ProviderConfigForm {
             move |this, res, cx| match res {
                 Ok(()) => {
                     parent.update(cx, |p, cx| {
-                        p.selection = super::LeftSelection::Gateway;
+                        p.selection = super::LeftSelection::Empty;
                         p.status_msg = Some((
                             Tone::Neutral,
                             crate::ui::tr(cx)

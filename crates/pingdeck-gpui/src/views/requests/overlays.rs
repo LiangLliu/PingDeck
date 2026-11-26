@@ -16,7 +16,7 @@ use super::model::{ActiveModal, NewItemKind};
 use super::overlays_create::{
     render_code_snippets, render_move_request, render_new_item, render_save_as,
 };
-use super::overlays_dialogs::{render_compare_modal, render_extract_var, render_import_export};
+use super::overlays_dialogs::{render_compare_modal, render_extract_var};
 
 impl RequestsView {
     /// Opens the New Item modal, pre-selects defaults, and focuses the name input immediately.
@@ -181,25 +181,6 @@ pub fn render_active_modal(
             target_folder_id,
         } => render_new_item(view, kind, target_collection_id, target_folder_id, cx),
         ActiveModal::CodeSnippets { values_mode } => render_code_snippets(view, values_mode, cx),
-        ActiveModal::ImportExport {
-            tab,
-            format,
-            preview,
-            conflict,
-            export_collection_id,
-            export_include_secrets,
-            export_ack_secrets,
-        } => render_import_export(
-            view,
-            tab,
-            format,
-            preview,
-            conflict,
-            export_collection_id,
-            export_include_secrets,
-            export_ack_secrets,
-            cx,
-        ),
         ActiveModal::SaveAs {
             target_collection_id,
             target_folder_id,

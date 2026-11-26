@@ -19,9 +19,6 @@
   "common.kv.enabled": "启用",
   "common.list.clearFilter": "清除筛选",
   "common.loading": "加载中…",
-  "common.no": "否",
-  "common.off": "关闭",
-  "common.on": "开启",
   "common.page.compact": "{page}/{total_pages} 页 · 共 {total}条",
   "common.page.first": "首页",
   "common.page.last": "末页",
@@ -32,8 +29,6 @@
   "common.page.total": "共 {total}条",
   "common.refresh": "刷新",
   "common.retry": "重试",
-  "common.run": "运行",
-  "common.running": "运行中…",
   "common.save": "保存",
   "common.save.saved": "已保存",
   "common.secret.valuePlaceholder": "值",
@@ -52,6 +47,5 @@
   "common.time.today": "今天 {time}",
   "common.time.yesterday": "昨天 {time}",
   "common.undo": "撤销",
-  "common.wire.queue": "排队",
-  "common.yes": "是"
+  "common.wire.queue": "排队"
 }

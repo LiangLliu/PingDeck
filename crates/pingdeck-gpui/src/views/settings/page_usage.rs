@@ -1,5 +1,6 @@
 //! Settings › Usage & Logging page: usage rollup retention, balance auto-refresh interval,
-//! gateway body capture mode, and read-only retention constants from `settings_registry_get`.
+//! read-only gateway body capture summary (configured in Local Gateway › Access),
+//! and read-only retention constants from `settings_registry_get`.
 
 use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, px};
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
@@ -8,9 +9,8 @@ use pingdeck_desktop::core::model::settings::registry::RegistryConstant;
 use pingdeck_desktop::state::{NavModule, SettingsSection};
 
 use crate::ui::{
-    Tone, UiIcon, alert_banner, btn_ghost, btn_secondary, choice_chip, h_row, icon_xs, kv_line,
-    number_field, setting_row, settings_section, settings_section_padded, tab_bar_segmented,
-    tab_item, v_col,
+    Tone, UiIcon, alert_banner, badge, btn_ghost, btn_secondary, choice_chip, h_row, icon_xs,
+    kv_line, number_field, setting_row, settings_section, settings_section_padded, v_col,
 };
 
 use super::SettingsView;
@@ -20,12 +20,17 @@ pub fn render_usage(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui
     let prov = &view.settings.ai.providers;
     let gw = &view.settings.ai.gateway;
 
-    let capture_idx = match gw.capture_mode {
-        CaptureMode::Off => 0,
-        CaptureMode::ErrorsOnly => 1,
-        CaptureMode::All => 2,
+    let (capture_label, capture_tone) = match gw.capture_mode {
+        CaptureMode::Off => (crate::ui::tr(cx).settings().notify_off(), Tone::Neutral),
+        CaptureMode::ErrorsOnly => (
+            crate::ui::tr(cx).settings().page_usage_errors_only(),
+            Tone::Accent,
+        ),
+        CaptureMode::All => (
+            crate::ui::tr(cx).settings().page_usage_all_requests(),
+            Tone::Warning,
+        ),
     };
-    let ent_cap = cx.entity().clone();
 
     let reg_num = |key: &str, fallback: i64| -> i64 {
         match view.registry.constants.get(key) {
@@ -53,7 +58,6 @@ pub fn render_usage(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui
                                     [
                                         "providers.usage_retention_days",
                                         "providers.balance_refresh_min",
-                                        "gateway.capture_mode",
                                     ]
                                     .into_iter()
                                     .map(str::to_owned)
@@ -199,29 +203,21 @@ pub fn render_usage(view: &SettingsView, cx: &mut Context<SettingsView>) -> gpui
                     .settings()
                     .page_usage_store_request_response_payloads_locally(),
             )),
-            tab_bar_segmented("usage-capture-seg")
-                .selected_index(capture_idx)
-                .child(tab_item(crate::ui::tr(cx).settings().notify_off()))
-                .child(tab_item(
-                    crate::ui::tr(cx).settings().page_usage_errors_only(),
-                ))
-                .child(tab_item(
-                    crate::ui::tr(cx).settings().page_usage_all_requests(),
-                ))
-                .on_click(move |idx, _, cx| {
-                    let mode = match *idx {
-                        1 => "errors_only",
-                        2 => "all",
-                        _ => "off",
-                    };
-                    ent_cap.update(cx, |this, cx| {
-                        this.patch_section(
-                            CoreSection::Ai,
-                            serde_json::json!({ "gateway": { "capture_mode": mode } }),
-                            cx,
-                        );
-                    });
-                }),
+            h_row()
+                .gap(px(8.0))
+                .child(badge(capture_label, capture_tone, cx))
+                .child(
+                    btn_secondary(
+                        "usage-jump-gateway",
+                        crate::ui::tr(cx)
+                            .settings()
+                            .page_usage_configure_in_gateway(),
+                    )
+                    .icon(icon_xs(UiIcon::ExternalLink))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.jump_to_module(NavModule::Gateway, cx);
+                    })),
+                ),
             cx,
         ),
         cx,

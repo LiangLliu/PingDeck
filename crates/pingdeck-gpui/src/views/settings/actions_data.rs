@@ -5,9 +5,8 @@ use gpui_kit::Context;
 use pingdeck_desktop::core::app::{
     ClearAttachmentsOptions, chat_retention_apply_impl, chat_retention_preview_impl,
     clear_attachments_impl, clear_captured_bodies_impl, current_time_ms, data_backup_impl,
-    data_compact_impl, inspect_sync_folder_impl, llm_gateway_reset_circuits_impl,
-    llm_gateway_status_impl, llm_usage_retention_preview_impl, reveal_path_impl,
-    storage_usage_impl, sync_status_impl,
+    data_compact_impl, inspect_sync_folder_impl, llm_gateway_status_impl,
+    llm_usage_retention_preview_impl, reveal_path_impl, storage_usage_impl, sync_status_impl,
 };
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 use pingdeck_desktop::services::{FileFilter, HostDialog as _, RfdDialog, SaveFileSpec};
@@ -63,19 +62,6 @@ impl SettingsView {
                 cx.notify();
             },
         );
-        self._tasks.push(task);
-    }
-
-    pub fn reset_gateway_circuits(&mut self, cx: &mut Context<Self>) {
-        let task = spawn_blocking_into(cx, llm_gateway_reset_circuits_impl, move |this, (), cx| {
-            this.set_flash(
-                Tone::Success,
-                crate::ui::tr(cx)
-                    .settings()
-                    .actions_data_all_open_route_circuits_reset(),
-                cx,
-            );
-        });
         self._tasks.push(task);
     }
 

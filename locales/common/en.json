@@ -19,9 +19,6 @@
   "common.kv.enabled": "Enabled",
   "common.list.clearFilter": "Clear filter",
   "common.loading": "Loading…",
-  "common.no": "NO",
-  "common.off": "OFF",
-  "common.on": "ON",
   "common.page.compact": "{page}/{total_pages} · {total}",
   "common.page.first": "First page",
   "common.page.last": "Last page",
@@ -32,8 +29,6 @@
   "common.page.total": "{total} items",
   "common.refresh": "Refresh",
   "common.retry": "Retry",
-  "common.run": "Run",
-  "common.running": "Running…",
   "common.save": "Save",
   "common.save.saved": "Saved",
   "common.secret.valuePlaceholder": "Value",
@@ -52,6 +47,5 @@
   "common.time.today": "Today {time}",
   "common.time.yesterday": "Yesterday {time}",
   "common.undo": "Undo",
-  "common.wire.queue": "Queue",
-  "common.yes": "YES"
+  "common.wire.queue": "Queue"
 }

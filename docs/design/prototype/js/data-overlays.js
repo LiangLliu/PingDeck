@@ -20,6 +20,7 @@ window.PD.POPOVER_TEMPLATES = {
   running: () => `
     <div class="pop-head"><span>后台工作与需要关注</span><span class="tag">实时</span></div>
     <button class="pop-opt" data-nav-to="chat"><span class="dot dot-warn"></span><div class="pop-opt-col"><span>等待你批准 · cargo clippy</span><span class="pop-opt-sub">对话：429s from the gateway</span></div><span class="tag tag-warn">去处理</span></button>
+    <button class="pop-opt" data-nav-to="gateway"><span class="dot dot-live"></span><div class="pop-opt-col"><span>本地网关运行中</span><span class="pop-opt-sub">http://127.0.0.1:4141</span></div><span class="mono">:4141</span></button>
     <button class="pop-opt" data-nav-to="mock"><span class="dot dot-live"></span><div class="pop-opt-col"><span>Mock 服务运行中</span><span class="pop-opt-sub">Billing stub (:4010)、Webhook sink (:4011)</span></div><span class="mono">2</span></button>
     <button class="pop-opt" data-nav-to="providers" data-sub-view="relay"><span class="dot dot-warn"></span><div class="pop-opt-col"><span>需要关注的服务商</span><span class="pop-opt-sub">relay.acme.dev · 2/34 模型测试失败</span></div><span class="mono">1</span></button>
     <div class="pop-sep"></div>

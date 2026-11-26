@@ -1,5 +1,5 @@
-//! Settings › Routing & Failover page: AI gateway retries, timeouts, circuit breaker,
-//! provider probing settings, read-only failover status codes, and local gateway runtime controls.
+//! Settings › Routing & Failover page: shared AI retries, timeouts, circuit breaker thresholds,
+//! provider probing settings, read-only failover status codes, and link to Local Gateway runtime.
 
 use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
@@ -8,8 +8,7 @@ use pingdeck_desktop::state::NavModule;
 
 use crate::ui::{
     StatusShape, Tone, UiIcon, badge, btn_ghost, btn_secondary, h_row, icon_xs, number_field,
-    palette, setting_row, settings_section, status_indicator, text_input, to_hsla, toggle_switch,
-    v_col,
+    palette, setting_row, settings_section, status_indicator, text_input, to_hsla, v_col,
 };
 
 use super::SettingsView;
@@ -108,12 +107,12 @@ pub fn render_routing(view: &SettingsView, cx: &mut Context<SettingsView>) -> gp
                 )
                 .child(
                     btn_secondary(
-                        "route-jump-providers",
-                        crate::ui::tr(cx).settings().page_routing_open_providers(),
+                        "route-jump-gateway",
+                        crate::ui::tr(cx).settings().page_routing_open_gateway(),
                     )
                     .icon(icon_xs(UiIcon::ExternalLink))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.jump_to_module(NavModule::Providers, cx);
+                        this.jump_to_module(NavModule::Gateway, cx);
                     })),
                 ),
         );
@@ -133,8 +132,6 @@ pub fn render_routing(view: &SettingsView, cx: &mut Context<SettingsView>) -> gp
                     CoreSection::Ai,
                     Some(
                         [
-                            "gateway.enabled_on_start",
-                            "gateway.port",
                             "gateway.max_retries",
                             "gateway.first_byte_timeout_s",
                             "gateway.idle_timeout_s",
@@ -149,56 +146,6 @@ pub fn render_routing(view: &SettingsView, cx: &mut Context<SettingsView>) -> gp
         ),
         v_col()
             .w_full()
-            .child(setting_row(
-                crate::ui::tr(cx)
-                    .settings()
-                    .page_routing_autostart_local_gateway_on_launch(),
-                None,
-                Some(SharedString::from(
-                    crate::ui::tr(cx)
-                        .settings()
-                        .page_routing_automatically_start_the_local_ai(),
-                )),
-                toggle_switch("gw-autostart", gw.enabled_on_start).on_change(cx.listener(
-                    |this, checked: &bool, _, cx| {
-                        this.patch_section(
-                            CoreSection::Ai,
-                            serde_json::json!({ "gateway": { "enabled_on_start": *checked } }),
-                            cx,
-                        );
-                    },
-                )),
-                cx,
-            ))
-            .child(setting_row(
-                crate::ui::tr(cx).settings().page_routing_gateway_port(),
-                Some(SharedString::from(
-                    crate::ui::tr(cx).settings().page_routing_restart_gateway(),
-                )),
-                Some(SharedString::from(
-                    crate::ui::tr(cx)
-                        .settings()
-                        .page_routing_port_the_local_gateway_binds(),
-                )),
-                h_row()
-                    .gap(px(6.0))
-                    .child(number_field(&view.inputs.gw_port, None, 88.0, cx))
-                    .child(
-                        btn_secondary("gw-save-port", crate::ui::tr(cx).common().kv_bulk_apply())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                let v = this.inputs.gw_port.read(cx).value().to_string();
-                                this.commit_u64(
-                                    &v,
-                                    1024,
-                                    65_535,
-                                    CoreSection::Ai,
-                                    |n| serde_json::json!({ "gateway": { "port": n } }),
-                                    cx,
-                                );
-                            })),
-                    ),
-                cx,
-            ))
             .child(setting_row(
                 crate::ui::tr(cx)
                     .settings()
@@ -320,36 +267,28 @@ pub fn render_routing(view: &SettingsView, cx: &mut Context<SettingsView>) -> gp
     let circuit_sec = settings_section(
         crate::ui::tr(cx).settings().page_routing_circuit_breaker(),
         Some(
-            h_row()
-                .gap(px(6.0))
-                .child(
-                    btn_secondary(
-                        "route-reset-circuits",
-                        crate::ui::tr(cx).settings().page_routing_reset_circuits(),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| this.reset_gateway_circuits(cx))),
-                )
-                .child(
-                    btn_ghost("route-reset-cb", crate::ui::tr(cx).settings().page_defaults_reset())
-                        .icon(icon_xs(UiIcon::RotateCcw))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.reset_keys(
-                                CoreSection::Ai,
-                                Some(
-                                    [
-                                        "gateway.circuit_failure_threshold",
-                                        "gateway.circuit_window_s",
-                                        "gateway.circuit_open_s",
-                                        "gateway.circuit_open_max_s",
-                                    ]
-                                    .map(str::to_owned)
-                                    .to_vec(),
-                                ),
-                                cx,
-                            );
-                        })),
-                )
-                .into_any_element(),
+            btn_ghost(
+                "route-reset-cb",
+                crate::ui::tr(cx).settings().page_defaults_reset(),
+            )
+            .icon(icon_xs(UiIcon::RotateCcw))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.reset_keys(
+                    CoreSection::Ai,
+                    Some(
+                        [
+                            "gateway.circuit_failure_threshold",
+                            "gateway.circuit_window_s",
+                            "gateway.circuit_open_s",
+                            "gateway.circuit_open_max_s",
+                        ]
+                        .map(str::to_owned)
+                        .to_vec(),
+                    ),
+                    cx,
+                );
+            }))
+            .into_any_element(),
         ),
         v_col()
             .w_full()

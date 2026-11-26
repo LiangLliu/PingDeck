@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use pingdeck_desktop::core::app::request_model_service::EffectiveAuth;
 use pingdeck_desktop::core::app::{
-    AiCompareEstimateDto, AiCompareResultDto, AiCompareRow, EnvironmentVariableDto, ImportConflict,
-    ImportPreviewDto, RunnerItem, RunnerResult, SaveRequestInput, TokenInfoDto,
+    AiCompareEstimateDto, AiCompareResultDto, AiCompareRow, EnvironmentVariableDto, RunnerItem,
+    RunnerResult, SaveRequestInput, TokenInfoDto,
 };
 use pingdeck_desktop::core::executor::ExecutionResult;
 use pingdeck_desktop::core::llm::ai_run::AiResultDto;
@@ -368,6 +368,9 @@ pub enum RequestsHandoff {
     OpenEnvironments,
     OpenHistory,
     OpenUsageCall(String),
+    OpenImportExport {
+        export_collection_id: Option<String>,
+    },
     AskAgent {
         title: String,
         context_markdown: String,
@@ -381,13 +384,6 @@ pub enum TreeItemKind {
     Request,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ImportExportTab {
-    #[default]
-    Import,
-    Export,
-}
-
 /// Active modal dialog owned by `RequestsView`.
 #[derive(Debug, Clone)]
 pub enum ActiveModal {
@@ -398,15 +394,6 @@ pub enum ActiveModal {
     },
     CodeSnippets {
         values_mode: bool,
-    },
-    ImportExport {
-        tab: ImportExportTab,
-        format: String,
-        preview: Option<ImportPreviewDto>,
-        conflict: ImportConflict,
-        export_collection_id: Option<String>,
-        export_include_secrets: bool,
-        export_ack_secrets: bool,
     },
     SaveAs {
         target_collection_id: Option<String>,

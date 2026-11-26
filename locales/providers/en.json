@@ -346,8 +346,10 @@
   "prov.gateway.gateway_start_error": "Gateway start error: {err}",
   "prov.gateway.gateway_url_copied": "Gateway URL copied",
   "prov.gateway.in_out_cache": "In {today_in} · Out {today_out} · Cache {today_cached}",
-  "prov.gateway.listening": "Listening",
   "prov.gateway.local_gateway": "Local Gateway",
+  "prov.gateway.add_provider_btn": "Add Provider →",
+  "prov.gateway.no_providers_banner": "No AI providers configured yet. Add at least one upstream provider before routing traffic.",
+  "prov.gateway.routing_settings_link": "Retry & circuit settings ↗",
   "prov.gateway.logs": "Logs ↗",
   "prov.gateway.ok_failed_cost": "{today_ok} ok · {today_fail} failed · Cost {today_cost}",
   "prov.gateway.providers_rules": "{count} providers · {count_2} rules",
@@ -470,7 +472,6 @@
   "prov.providers.new_secret_empty_keep": "New secret (empty = keep)",
   "prov.providers.notes": "Notes",
   "prov.side.balance_from": "From {src} · {ago}",
-  "prov.sidebar.127_0_0_1_clients": "127.0.0.1:{gw_port} · {active_clients} clients",
   "prov.sidebar.clear": "Clear",
   "prov.sidebar.click_add_to_configure_a": "Click Add to configure a provider",
   "prov.sidebar.down": "{bad_n} down",
@@ -482,7 +483,6 @@
   "prov.sidebar.paste_any_base_url_to": "Paste any Base URL to auto-detect protocols, models, and balance.",
   "prov.sidebar.providers": "Providers",
   "prov.sidebar.review": "Review",
-  "prov.sidebar.stopped_clients": "Stopped · {active_clients} clients",
   "prov.sidebar.test_bench": "Test Bench",
   "prov.sidebar.unverified": "{unv_n} unverified",
   "prov.sidebar.warn": "{warn_n} warn",
@@ -564,6 +564,5 @@
   "sniff.key.none": "No key",
   "sniff.picker.label": "All presets",
   "sniff.picker.official": "Official",
-  "sniff.proto.primary": "Primary",
-  "strip.state.stopped": "Gateway stopped"
+  "sniff.proto.primary": "Primary"
 }

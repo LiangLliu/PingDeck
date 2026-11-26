@@ -10,12 +10,15 @@ use pingdeck_desktop::core::app::{
     request_list_impl,
 };
 use pingdeck_desktop::core::llm::status::ProviderStatus;
-use pingdeck_desktop::state::{NavModule, PaletteAction, PaletteDynamicItems, ToastKind};
+use pingdeck_desktop::state::{
+    EnvironmentResourceTarget, NavModule, PaletteAction, PaletteDynamicItems, ToastKind,
+};
 
 use crate::bridge::{runtime, spawn_async_into};
 use crate::views::{
-    chat::ChatHandoff, flows::FlowsHandoff, history::HistoryHandoff, mock::MockHandoff,
-    providers::ProvidersHandoff, requests::RequestsHandoff, usage::UsageHandoff,
+    chat::ChatHandoff, environments::state::EnvResourceTab, flows::FlowsHandoff,
+    gateway::GatewayHandoff, history::HistoryHandoff, mock::MockHandoff,
+    providers::ProvidersHandoff, requests::RequestsHandoff, usage::UsageHandoff, utility::IoTab,
 };
 
 use super::AppShell;
@@ -58,6 +61,12 @@ impl ModuleHost {
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
 
+    pub fn poll_gateway_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<GatewayHandoff> {
+        self.gateway
+            .as_ref()
+            .and_then(|v| v.read(cx).take_pending_handoff())
+    }
+
     pub fn poll_chat_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<ChatHandoff> {
         self.chat
             .as_ref()
@@ -68,6 +77,115 @@ impl ModuleHost {
         self.environments
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_active_env())
+    }
+
+    /// Reloads mounted workspace-scoped views after an Import/Export modal commits changes.
+    pub fn refresh_workspace_after_import<V: 'static>(&mut self, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.refresh_catalog(cx));
+        }
+        if let Some(v) = &self.environments {
+            v.update(cx, |e, cx| e.refresh_catalog(cx));
+        }
+        if let Some(v) = &self.mock {
+            v.update(cx, |m, cx| m.refresh_catalog(cx));
+        }
+    }
+
+    /// Deep-links into Environments › Globals / Cookies / TLS Certificates.
+    pub fn open_environment_resource<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        active_env_id: Option<String>,
+        target: EnvironmentResourceTarget,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_environments(workspace_id, active_env_id, window, cx);
+        let tab = match target {
+            EnvironmentResourceTarget::Globals => EnvResourceTab::Globals,
+            EnvironmentResourceTarget::Cookies => EnvResourceTab::Cookies,
+            EnvironmentResourceTarget::Certificates => EnvResourceTab::Certificates,
+        };
+        view.update(cx, |e, cx| e.open_resource_tab(tab, cx));
+    }
+
+    /// Deep-links into Requests › Collection Runner for the first workspace collection.
+    pub fn open_first_collection_runner<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        active_env_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_requests(workspace_id, active_env_id, window, cx);
+        view.update(cx, |r, cx| r.open_first_collection_runner(window, cx));
+    }
+
+    pub fn open_provider_by_id<V: 'static>(
+        &mut self,
+        provider_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_providers(window, cx);
+        view.update(cx, |p, cx| p.select_provider(provider_id, window, cx));
+    }
+
+    pub fn open_sniff_wizard<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        let view = self.ensure_providers(window, cx);
+        view.update(cx, |p, cx| {
+            p.open_sniff_sheet(None, None, None, window, cx);
+        });
+    }
+
+    pub fn open_connect_client_wizard<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_gateway(window, cx);
+        view.update(cx, |g, cx| g.open_connect_sheet(None, window, cx));
+    }
+
+    pub fn open_usage_provider<V: 'static>(
+        &mut self,
+        provider_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.select_provider_scope(provider_id, false, cx));
+    }
+
+    pub fn open_usage_call_id<V: 'static>(
+        &mut self,
+        call_id: i64,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.open_call_by_id(call_id, cx));
+    }
+
+    pub fn open_usage_call_request_id<V: 'static>(
+        &mut self,
+        request_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.open_call_by_request_id(request_id, cx));
+    }
+
+    pub fn open_usage_run_id<V: 'static>(
+        &mut self,
+        run_id: String,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.open_calls_for_run(run_id, window, cx));
     }
 }
 
@@ -146,10 +264,21 @@ impl AppShell {
         self.state.palette_open = false;
 
         let ws_id = self.state.active_workspace_id.clone();
+        let active_env_id = self.state.active_environment_id.clone();
         match action {
             PaletteAction::Navigate(m) => self.navigate(m, cx),
             PaletteAction::OpenSettings(s) => self.open_settings_section(s, cx),
             PaletteAction::OpenUtility(u) => self.open_utility(u, window, cx),
+            PaletteAction::OpenEnvironmentResource(target) => {
+                self.navigate(NavModule::Environments, cx);
+                self.modules
+                    .open_environment_resource(ws_id, active_env_id, target, window, cx);
+            }
+            PaletteAction::OpenCollectionRunner => {
+                self.navigate(NavModule::Requests, cx);
+                self.modules
+                    .open_first_collection_runner(ws_id, active_env_id, window, cx);
+            }
             PaletteAction::SwitchWorkspace(id) => self.switch_workspace(id, cx),
             PaletteAction::OpenChatSession(sid) => {
                 self.navigate(NavModule::Chat, cx);
@@ -172,16 +301,13 @@ impl AppShell {
                 self.navigate(NavModule::Providers, cx);
                 self.modules.open_provider_by_id(pid, window, cx);
             }
-            PaletteAction::OpenGateway => {
-                self.navigate(NavModule::Providers, cx);
-                self.modules.open_providers_gateway(window, cx);
-            }
+            PaletteAction::OpenGateway => self.navigate(NavModule::Gateway, cx),
             PaletteAction::OpenSniffWizard => {
                 self.navigate(NavModule::Providers, cx);
                 self.modules.open_sniff_wizard(window, cx);
             }
             PaletteAction::OpenConnectClientWizard => {
-                self.navigate(NavModule::Providers, cx);
+                self.navigate(NavModule::Gateway, cx);
                 self.modules.open_connect_client_wizard(window, cx);
             }
             PaletteAction::ToggleSidebar => self.toggle_sidebar(cx),
@@ -320,6 +446,16 @@ impl AppShell {
                     self.navigate(NavModule::Usage, cx);
                     self.modules.open_usage_call_request_id(req_id, window, cx);
                 }
+                RequestsHandoff::OpenImportExport {
+                    export_collection_id,
+                } => {
+                    let tab = if export_collection_id.is_some() {
+                        IoTab::SanitizedExport
+                    } else {
+                        IoTab::Import
+                    };
+                    self.open_import_export(tab, export_collection_id, window, cx);
+                }
                 RequestsHandoff::AskAgent {
                     title,
                     context_markdown,
@@ -418,7 +554,19 @@ impl AppShell {
             }
         }
 
-        // 9. Chat handoffs
+        // 9. Local Gateway handoffs
+        if let Some(handoff) = self.modules.poll_gateway_handoff(cx) {
+            match handoff {
+                GatewayHandoff::OpenProviders => self.navigate(NavModule::Providers, cx),
+                GatewayHandoff::OpenUsageProvider(pid) => {
+                    self.navigate(NavModule::Usage, cx);
+                    self.modules.open_usage_provider(pid, window, cx);
+                }
+                GatewayHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),
+            }
+        }
+
+        // 10. Chat handoffs
         if let Some(handoff) = self.modules.poll_chat_handoff(cx) {
             match handoff {
                 ChatHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),

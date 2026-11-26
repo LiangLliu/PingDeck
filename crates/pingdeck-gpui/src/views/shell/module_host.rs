@@ -1,4 +1,4 @@
-//! Lazy module host mounting and keeping all 9 PingDeck feature views alive across navigation.
+//! Lazy module host mounting and keeping all 10 PingDeck feature views alive across navigation.
 //!
 //! Switching modules never drops mounted module entities or cancels active streams, matching the
 //! run/view separation contract.
@@ -13,12 +13,12 @@ use pingdeck_desktop::state::{NavModule, SettingsSection};
 use pingdeck_desktop::theme::PaletteId;
 
 use crate::views::{
-    chat::ChatView, environments::EnvironmentsView, flows::FlowsView, history::HistoryView,
-    mock::MockView, providers::ProvidersView, requests::RequestsView, settings::SettingsView,
-    usage::UsageView,
+    chat::ChatView, environments::EnvironmentsView, flows::FlowsView, gateway::GatewayView,
+    history::HistoryView, mock::MockView, providers::ProvidersView, requests::RequestsView,
+    settings::SettingsView, usage::UsageView,
 };
 
-/// Owns lazily-mounted GPUI entities for all 9 navigation destinations.
+/// Owns lazily-mounted GPUI entities for all 10 navigation destinations.
 #[derive(Default)]
 pub struct ModuleHost {
     pub(super) requests: Option<Entity<RequestsView>>,
@@ -28,6 +28,7 @@ pub struct ModuleHost {
     pub(super) environments: Option<Entity<EnvironmentsView>>,
     pub(super) chat: Option<Entity<ChatView>>,
     pub(super) providers: Option<Entity<ProvidersView>>,
+    pub(super) gateway: Option<Entity<GatewayView>>,
     pub(super) usage: Option<Entity<UsageView>>,
     pub(super) settings: Option<Entity<SettingsView>>,
     _subscriptions: Vec<Subscription>,
@@ -115,7 +116,7 @@ impl ModuleHost {
         }
     }
 
-    fn ensure_requests<V: 'static>(
+    pub(super) fn ensure_requests<V: 'static>(
         &mut self,
         workspace_id: Option<String>,
         active_env_id: Option<String>,
@@ -137,7 +138,7 @@ impl ModuleHost {
         )
     }
 
-    fn ensure_chat<V: 'static>(
+    pub(super) fn ensure_chat<V: 'static>(
         &mut self,
         window: &mut Window,
         cx: &mut Context<V>,
@@ -151,7 +152,29 @@ impl ModuleHost {
         )
     }
 
-    fn ensure_providers<V: 'static>(
+    pub(super) fn ensure_environments<V: 'static>(
+        &mut self,
+        workspace_id: Option<String>,
+        active_env_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<EnvironmentsView> {
+        ensure_watched(
+            &mut self.environments,
+            &mut self._subscriptions,
+            |cx| {
+                let mut v = EnvironmentsView::new(workspace_id, window, cx);
+                if active_env_id.is_some() {
+                    v.set_active_environment(active_env_id, cx);
+                }
+                v
+            },
+            |v| cell_has(&v.pending_active_env),
+            cx,
+        )
+    }
+
+    pub(super) fn ensure_providers<V: 'static>(
         &mut self,
         window: &mut Window,
         cx: &mut Context<V>,
@@ -165,7 +188,21 @@ impl ModuleHost {
         )
     }
 
-    fn ensure_usage<V: 'static>(
+    pub(super) fn ensure_gateway<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<GatewayView> {
+        ensure_watched(
+            &mut self.gateway,
+            &mut self._subscriptions,
+            |cx| GatewayView::new(window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        )
+    }
+
+    pub(super) fn ensure_usage<V: 'static>(
         &mut self,
         window: &mut Window,
         cx: &mut Context<V>,
@@ -226,6 +263,11 @@ impl ModuleHost {
             NavModule::Providers => {
                 if let Some(v) = &self.providers {
                     v.update(cx, |p, cx| p.reload_all(cx));
+                }
+            }
+            NavModule::Gateway => {
+                if let Some(v) = &self.gateway {
+                    v.update(cx, |g, cx| g.reload_all(cx));
                 }
             }
             NavModule::Usage => {
@@ -311,79 +353,6 @@ impl ModuleHost {
         view.update(cx, |f, cx| f.select_flow(flow_id, cx));
     }
 
-    /// Navigates `ProvidersView` to Local Gateway or a specific provider, or opens a wizard sheet.
-    pub fn open_providers_gateway<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
-        let view = self.ensure_providers(window, cx);
-        view.update(cx, |p, cx| p.select_gateway(cx));
-    }
-
-    pub fn open_provider_by_id<V: 'static>(
-        &mut self,
-        provider_id: String,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) {
-        let view = self.ensure_providers(window, cx);
-        view.update(cx, |p, cx| p.select_provider(provider_id, window, cx));
-    }
-
-    pub fn open_sniff_wizard<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
-        let view = self.ensure_providers(window, cx);
-        view.update(cx, |p, cx| {
-            p.open_sniff_sheet(None, None, None, window, cx);
-        });
-    }
-
-    pub fn open_connect_client_wizard<V: 'static>(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) {
-        let view = self.ensure_providers(window, cx);
-        view.update(cx, |p, cx| p.open_connect_sheet(None, window, cx));
-    }
-
-    /// Deep-links into `UsageView` scoped to a provider or opening a specific call detail sheet.
-    pub fn open_usage_provider<V: 'static>(
-        &mut self,
-        provider_id: Option<String>,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) {
-        let view = self.ensure_usage(window, cx);
-        view.update(cx, |u, cx| u.select_provider_scope(provider_id, false, cx));
-    }
-
-    pub fn open_usage_call_id<V: 'static>(
-        &mut self,
-        call_id: i64,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) {
-        let view = self.ensure_usage(window, cx);
-        view.update(cx, |u, cx| u.open_call_by_id(call_id, cx));
-    }
-
-    pub fn open_usage_call_request_id<V: 'static>(
-        &mut self,
-        request_id: String,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) {
-        let view = self.ensure_usage(window, cx);
-        view.update(cx, |u, cx| u.open_call_by_request_id(request_id, cx));
-    }
-
-    pub fn open_usage_run_id<V: 'static>(
-        &mut self,
-        run_id: String,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) {
-        let view = self.ensure_usage(window, cx);
-        view.update(cx, |u, cx| u.open_calls_for_run(run_id, window, cx));
-    }
-
     /// Dismisses an open modal inside the active feature module when pressing `Esc`.
     pub fn dismiss_active_modal<V: 'static>(
         &mut self,
@@ -419,6 +388,10 @@ impl ModuleHost {
                 .providers
                 .as_ref()
                 .is_some_and(|v| v.update(cx, |p, cx| p.dismiss_modal_if_open(cx))),
+            NavModule::Gateway => self
+                .gateway
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |g, cx| g.dismiss_modal_if_open(cx))),
             NavModule::Usage => self
                 .usage
                 .as_ref()
@@ -537,22 +510,12 @@ impl ModuleHost {
                 cx,
             )
             .into_any_element(),
-            NavModule::Environments => ensure_watched(
-                &mut self.environments,
-                &mut self._subscriptions,
-                |cx| {
-                    let mut v = EnvironmentsView::new(workspace_id, window, cx);
-                    if active_env_id.is_some() {
-                        v.set_active_environment(active_env_id, cx);
-                    }
-                    v
-                },
-                |v| cell_has(&v.pending_active_env),
-                cx,
-            )
-            .into_any_element(),
+            NavModule::Environments => self
+                .ensure_environments(workspace_id, active_env_id, window, cx)
+                .into_any_element(),
             NavModule::Chat => self.ensure_chat(window, cx).into_any_element(),
             NavModule::Providers => self.ensure_providers(window, cx).into_any_element(),
+            NavModule::Gateway => self.ensure_gateway(window, cx).into_any_element(),
             NavModule::Usage => self.ensure_usage(window, cx).into_any_element(),
             NavModule::Settings => ensure_watched(
                 &mut self.settings,

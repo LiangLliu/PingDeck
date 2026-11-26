@@ -10,12 +10,12 @@ use crate::ui::{
     v_col,
 };
 
-use super::ProvidersView;
+use super::GatewayView;
 
 pub fn render_client_policy_editor(
-    view: &ProvidersView,
+    view: &GatewayView,
     client: &GatewayClient,
-    cx: &mut Context<ProvidersView>,
+    cx: &mut Context<GatewayView>,
 ) -> Div {
     let p = palette(cx);
     let cid = client.id.clone();
@@ -134,11 +134,11 @@ pub fn render_client_policy_editor(
                     loading: false,
                     compact: false,
                 },
-                |this: &mut ProvidersView, next_page, cx| {
+                |this: &mut GatewayView, next_page, cx| {
                     this.client_models_page = next_page;
                     cx.notify();
                 },
-                None::<fn(&mut ProvidersView, usize, &mut Context<ProvidersView>)>,
+                None::<fn(&mut GatewayView, usize, &mut Context<GatewayView>)>,
                 cx,
             )));
         }
@@ -179,10 +179,7 @@ pub fn render_client_policy_editor(
     )
 }
 
-pub fn render_managed_backups(
-    view: &ProvidersView,
-    cx: &mut Context<ProvidersView>,
-) -> Option<Div> {
+pub fn render_managed_backups(view: &GatewayView, cx: &mut Context<GatewayView>) -> Option<Div> {
     if view.managed_tools.is_empty() {
         return None;
     }

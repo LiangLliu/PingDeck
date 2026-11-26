@@ -1,17 +1,109 @@
 //! Shell overlays: startup notice banner, command palette modal, utility modal, and toast stack.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, ParentElement as _, SharedString,
-    StatefulInteractiveElement as _, Styled as _, div, px,
+    AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
-use pingdeck_desktop::state::ToastKind;
+use pingdeck_desktop::state::{NavModule, ToastKind, UtilityDialog};
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, btn_icon, dismissible_banner, h_row, icon_xs, palette,
-    status_indicator, to_hsla, v_col,
+    StatusShape, Tone, UiIcon, WindowExt as _, btn_icon, dismissible_banner, h_row, icon_xs,
+    palette, status_indicator, to_hsla, tr, v_col,
 };
+use crate::views::utility::{ImportExportOutcome, IoTab};
 
 use super::AppShell;
+
+impl AppShell {
+    /// Opens the unified workspace Import / Export modal dialog.
+    pub fn open_import_export(
+        &mut self,
+        initial_tab: IoTab,
+        preselect_col_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.palette_open = false;
+        self.workspace_menu_open = false;
+        self.state.active_utility = Some(UtilityDialog::ImportExport);
+        let ws_id = self.state.active_workspace_id.clone();
+        let ws_name = self
+            .state
+            .workspaces
+            .iter()
+            .find(|w| self.state.active_workspace_id.as_deref() == Some(w.id.as_str()))
+            .map_or_else(String::new, |w| w.name.clone());
+        let active_env_id = self.state.active_environment_id.clone();
+        self.import_export_view.update(cx, |modal, cx| {
+            modal.open(
+                ws_id,
+                ws_name,
+                active_env_id,
+                initial_tab,
+                preselect_col_id,
+                window,
+                cx,
+            );
+        });
+        cx.notify();
+    }
+
+    /// Opens the native 620px right-hand Diagnostics & Logs slide-over sheet.
+    pub fn open_diagnostics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.palette_open = false;
+        self.state.active_utility = None;
+        self.workspace_menu_open = false;
+        self.diagnostics_view
+            .update(cx, |diag, cx| diag.reload_diagnostics(cx));
+        let diag_ent = self.diagnostics_view.clone();
+        window.open_sheet(cx, move |sheet, _, cx| {
+            sheet
+                .size(px(620.0))
+                .title(tr(cx).shell().util_console())
+                .child(diag_ent.clone())
+        });
+        cx.notify();
+    }
+
+    /// Dispatches a `UtilityDialog` target (Import/Export modal or Diagnostics slide-over sheet).
+    pub fn open_utility(
+        &mut self,
+        dialog: UtilityDialog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match dialog {
+            UtilityDialog::ImportExport => self.open_import_export(IoTab::Import, None, window, cx),
+            UtilityDialog::Diagnostics => self.open_diagnostics(window, cx),
+        }
+    }
+
+    pub(super) fn handle_import_export_outcome(
+        &mut self,
+        outcome: ImportExportOutcome,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match outcome {
+            ImportExportOutcome::OpenCurlDraft { request, message } => {
+                self.state.active_utility = None;
+                let ws_id = self.state.active_workspace_id.clone();
+                self.navigate(NavModule::Requests, cx);
+                self.modules
+                    .open_request_in_requests(ws_id, *request, window, cx);
+                self.push_toast_auto(ToastKind::Success, message, None, cx);
+            }
+            ImportExportOutcome::WorkspaceImported { message, .. } => {
+                self.modules.refresh_workspace_after_import(cx);
+                self.refresh_running_work(cx);
+                self.push_toast_auto(ToastKind::Success, message, None, cx);
+            }
+            ImportExportOutcome::Exported { message } => {
+                self.push_toast_auto(ToastKind::Success, message, None, cx);
+            }
+        }
+    }
+}
 
 pub fn render_startup_banner(
     shell: &AppShell,
@@ -66,38 +158,13 @@ pub fn render_palette_overlay(
     )
 }
 
-pub fn render_utility_overlay(
-    shell: &AppShell,
-    cx: &mut Context<AppShell>,
-) -> Option<gpui_kit::Stateful<gpui_kit::Div>> {
-    shell.state.active_utility?;
-    let p = palette(cx);
-    Some(
-        div()
-            .id("utility-backdrop")
-            .absolute()
-            .inset_0()
-            .bg(to_hsla(p.scrim))
-            .flex()
-            .items_center()
-            .justify_center()
-            .p(px(32.0))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.state.active_utility = None;
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .id("utility-modal-card")
-                    .w(px(940.0))
-                    .h(px(660.0))
-                    .max_w_full()
-                    .max_h_full()
-                    .shadow_lg()
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(shell.utility_view.clone()),
-            ),
-    )
+pub fn render_utility_overlay(shell: &AppShell, _cx: &mut Context<AppShell>) -> Option<AnyElement> {
+    match shell.state.active_utility {
+        Some(UtilityDialog::ImportExport) => {
+            Some(shell.import_export_view.clone().into_any_element())
+        }
+        _ => None,
+    }
 }
 
 pub fn render_toast_stack(shell: &AppShell, cx: &mut Context<AppShell>) -> Option<gpui_kit::Div> {

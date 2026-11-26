@@ -9,9 +9,9 @@ use crate::ui::{
     section_heading, tab_bar_segmented, tab_item, text_input, to_hsla, toggle_switch, v_col,
 };
 
-use super::ProvidersView;
+use super::GatewayView;
 
-pub fn render_access_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
+pub fn render_access_tab(view: &GatewayView, cx: &mut Context<GatewayView>) -> gpui_kit::Div {
     let p = palette(cx);
     let gw = &view.gateway_settings;
     let ent = cx.entity().clone();

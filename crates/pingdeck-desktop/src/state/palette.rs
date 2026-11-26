@@ -6,7 +6,7 @@ use pingdeck_core::model::settings::Language;
 
 use crate::i18n::tr;
 
-use super::shell::{NavModule, SettingsSection, UtilityDialog};
+use super::shell::{EnvironmentResourceTarget, NavModule, SettingsSection, UtilityDialog};
 
 /// Visual category in the command palette list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +44,8 @@ pub enum PaletteAction {
     Navigate(NavModule),
     OpenSettings(SettingsSection),
     OpenUtility(UtilityDialog),
+    OpenEnvironmentResource(EnvironmentResourceTarget),
+    OpenCollectionRunner,
     SwitchWorkspace(String),
     OpenChatSession(String),
     OpenRequestById(String),
@@ -165,13 +167,13 @@ impl PaletteEngine {
             let zh_label = module.label(Language::ZhCn);
             let en_label = module.label(Language::En);
             items.push(PaletteItem {
-                id: format!("nav:{}", module.shortcut_digit()),
+                id: format!("nav:{}", module.id_slug()),
                 category: PaletteCategory::Navigation,
                 title: module.label(lang).into(),
                 subtitle: Some(module.label(other_lang).into()),
                 badge_label: None,
                 keywords: format!("{zh_label} {en_label}"),
-                shortcut: Some(format!("⌘{}", module.shortcut_digit())),
+                shortcut: Some(module.shortcut_label().into()),
                 action: PaletteAction::Navigate(module),
             });
         }
@@ -272,6 +274,66 @@ impl PaletteEngine {
                 action: PaletteAction::OpenUtility(utility),
             });
         }
+
+        // Canonical deep-links for workspace tools previously duplicated inside UtilityPanel.
+        let zh_sh = tr(Language::ZhCn).shell();
+        let en_sh = tr(Language::En).shell();
+        items.push(PaletteItem {
+            id: "deep:cookies".into(),
+            category: PaletteCategory::Utility,
+            title: sh.util_cookies().into(),
+            subtitle: Some(sh.palette_deep_cookies_sub().into()),
+            badge_label: None,
+            keywords: format!(
+                "{} {} cookie jar",
+                zh_sh.util_cookies(),
+                en_sh.util_cookies()
+            ),
+            shortcut: None,
+            action: PaletteAction::OpenEnvironmentResource(EnvironmentResourceTarget::Cookies),
+        });
+        items.push(PaletteItem {
+            id: "deep:certificates".into(),
+            category: PaletteCategory::Utility,
+            title: sh.util_certificates().into(),
+            subtitle: Some(sh.palette_deep_certs_sub().into()),
+            badge_label: None,
+            keywords: format!(
+                "{} {} tls mtls ca cert",
+                zh_sh.util_certificates(),
+                en_sh.util_certificates()
+            ),
+            shortcut: None,
+            action: PaletteAction::OpenEnvironmentResource(EnvironmentResourceTarget::Certificates),
+        });
+        items.push(PaletteItem {
+            id: "deep:sync".into(),
+            category: PaletteCategory::Utility,
+            title: sh.util_sync().into(),
+            subtitle: Some(sh.palette_deep_sync_sub().into()),
+            badge_label: None,
+            keywords: format!(
+                "{} {} sync git folder",
+                zh_sh.util_sync(),
+                en_sh.util_sync()
+            ),
+            shortcut: None,
+            action: PaletteAction::OpenSettings(SettingsSection::Data),
+        });
+        items.push(PaletteItem {
+            id: "deep:runner".into(),
+            category: PaletteCategory::Utility,
+            title: sh.util_runner().into(),
+            subtitle: Some(sh.palette_deep_runner_sub().into()),
+            badge_label: None,
+            keywords: format!(
+                "{} {} collection run batch",
+                zh_sh.util_runner(),
+                en_sh.util_runner()
+            ),
+            shortcut: None,
+            action: PaletteAction::OpenCollectionRunner,
+        });
 
         for section in SettingsSection::ALL {
             let zh_label = section.label(Language::ZhCn);

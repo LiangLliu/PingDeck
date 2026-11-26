@@ -1,5 +1,5 @@
-//! Shell navigation, settings taxonomy (all 20 pages), utility dialogs (all 6 tools),
-//! toast notifications, and shell-level ViewModel state.
+//! Shell navigation, settings taxonomy (all 20 pages), shell-level utility overlays
+//! (Import/Export modal & Diagnostics slide-over), toast notifications, and shell-level ViewModel.
 
 use pingdeck_core::{
     agent::attention::AgentAttention,
@@ -23,7 +23,7 @@ pub enum NavGroup {
     Footer,
 }
 
-/// All 9 top-level navigation modules of PingDeck.
+/// All 10 top-level navigation modules of PingDeck.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NavModule {
@@ -35,6 +35,7 @@ pub enum NavModule {
     Environments,
     Chat,
     Providers,
+    Gateway,
     Usage,
     Settings,
 }
@@ -50,9 +51,9 @@ impl NavModule {
     ];
 
     /// Shared AI workbench modules (middle sidebar section).
-    pub const AI_MODULES: [Self; 3] = [Self::Chat, Self::Providers, Self::Usage];
+    pub const AI_MODULES: [Self; 4] = [Self::Chat, Self::Providers, Self::Gateway, Self::Usage];
 
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Requests,
         Self::Mock,
         Self::Flows,
@@ -60,6 +61,7 @@ impl NavModule {
         Self::Environments,
         Self::Chat,
         Self::Providers,
+        Self::Gateway,
         Self::Usage,
         Self::Settings,
     ];
@@ -70,23 +72,56 @@ impl NavModule {
             Self::Requests | Self::Mock | Self::Flows | Self::History | Self::Environments => {
                 NavGroup::Workspace
             }
-            Self::Chat | Self::Providers | Self::Usage => NavGroup::AiShared,
+            Self::Chat | Self::Providers | Self::Gateway | Self::Usage => NavGroup::AiShared,
             Self::Settings => NavGroup::Footer,
         }
     }
 
     #[must_use]
-    pub const fn shortcut_digit(self) -> u8 {
+    pub const fn id_slug(self) -> &'static str {
         match self {
-            Self::Requests => 1,
-            Self::Mock => 2,
-            Self::Flows => 3,
-            Self::History => 4,
-            Self::Environments => 5,
-            Self::Chat => 6,
-            Self::Providers => 7,
-            Self::Usage => 8,
-            Self::Settings => 9,
+            Self::Requests => "requests",
+            Self::Mock => "mock",
+            Self::Flows => "flows",
+            Self::History => "history",
+            Self::Environments => "environments",
+            Self::Chat => "chat",
+            Self::Providers => "providers",
+            Self::Gateway => "gateway",
+            Self::Usage => "usage",
+            Self::Settings => "settings",
+        }
+    }
+
+    #[must_use]
+    pub const fn shortcut_digit(self) -> Option<u8> {
+        match self {
+            Self::Requests => Some(1),
+            Self::Mock => Some(2),
+            Self::Flows => Some(3),
+            Self::History => Some(4),
+            Self::Environments => Some(5),
+            Self::Chat => Some(6),
+            Self::Providers => Some(7),
+            Self::Gateway => Some(8),
+            Self::Usage => Some(9),
+            Self::Settings => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn shortcut_label(self) -> &'static str {
+        match self {
+            Self::Requests => "⌘1",
+            Self::Mock => "⌘2",
+            Self::Flows => "⌘3",
+            Self::History => "⌘4",
+            Self::Environments => "⌘5",
+            Self::Chat => "⌘6",
+            Self::Providers => "⌘7",
+            Self::Gateway => "⌘8",
+            Self::Usage => "⌘9",
+            Self::Settings => "⌘,",
         }
     }
 
@@ -100,8 +135,8 @@ impl NavModule {
             5 => Some(Self::Environments),
             6 => Some(Self::Chat),
             7 => Some(Self::Providers),
-            8 => Some(Self::Usage),
-            9 => Some(Self::Settings),
+            8 => Some(Self::Gateway),
+            9 => Some(Self::Usage),
             _ => None,
         }
     }
@@ -118,43 +153,41 @@ impl NavModule {
             Self::Environments => sh.nav_environments(),
             Self::Chat => sh.nav_chat(),
             Self::Providers => sh.nav_providers(),
+            Self::Gateway => sh.nav_gateway(),
             Self::Usage => sh.nav_usage_short(),
             Self::Settings => sh.nav_settings(),
         }
     }
 }
 
-/// All 6 utility dialogs / drawers outside the 9 primary navigation modules.
+/// Deep-link target tabs inside the Environments module (`Globals`, `Cookies`, `TLS Certificates`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EnvironmentResourceTarget {
+    Globals,
+    Cookies,
+    Certificates,
+}
+
+/// Focused shell-level utility overlays outside the 10 primary navigation modules.
+///
+/// Cookies, TLS Certificates, Folder Sync, and Collection Runner live exclusively in their
+/// canonical modules (`Environments`, `Settings › Data & Sync`, `Requests`) and are reached
+/// via direct `⌘K` deep links rather than duplicate utility tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UtilityDialog {
     ImportExport,
-    Sync,
-    Cookies,
-    Certificates,
-    Console,
-    Runner,
+    Diagnostics,
 }
 
 impl UtilityDialog {
-    pub const ALL: [Self; 6] = [
-        Self::ImportExport,
-        Self::Sync,
-        Self::Cookies,
-        Self::Certificates,
-        Self::Console,
-        Self::Runner,
-    ];
+    pub const ALL: [Self; 2] = [Self::ImportExport, Self::Diagnostics];
 
     #[must_use]
     pub const fn label(self, lang: Language) -> &'static str {
         let sh = tr(lang).shell();
         match self {
             Self::ImportExport => sh.util_import_export(),
-            Self::Sync => sh.util_sync(),
-            Self::Cookies => sh.util_cookies(),
-            Self::Certificates => sh.util_certificates(),
-            Self::Console => sh.util_console(),
-            Self::Runner => sh.util_runner(),
+            Self::Diagnostics => sh.util_console(),
         }
     }
 }
@@ -435,9 +468,9 @@ mod tests {
     }
 
     #[test]
-    fn exposes_all_20_settings_sections_and_9_modules() {
-        assert_eq!(NavModule::ALL.len(), 9);
+    fn exposes_all_20_settings_sections_and_10_modules() {
+        assert_eq!(NavModule::ALL.len(), 10);
         assert_eq!(SettingsSection::ALL.len(), 20);
-        assert_eq!(UtilityDialog::ALL.len(), 6);
+        assert_eq!(UtilityDialog::ALL.len(), 2);
     }
 }

@@ -15,7 +15,7 @@ use crate::ui::{
 };
 
 use super::RequestsView;
-use super::model::{ImportExportTab, NewItemKind, method_str};
+use super::model::{NewItemKind, RequestsHandoff, method_str};
 use super::sidebar_nodes::{render_collection_menu, render_folder_branch, render_request_row};
 
 pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> impl IntoElement {
@@ -301,13 +301,12 @@ pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> im
                             crate::ui::tr(cx).requests().state_empty_tree_import(),
                         )
                         .icon(icon_xs(UiIcon::Upload))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_import_export_modal(
-                                ImportExportTab::Import,
-                                None,
-                                window,
-                                cx,
-                            );
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.pending_handoff
+                                .set(Some(RequestsHandoff::OpenImportExport {
+                                    export_collection_id: None,
+                                }));
+                            cx.notify();
                         })),
                     )
                     .into_any_element(),
@@ -393,8 +392,12 @@ pub fn render_sidebar(view: &RequestsView, cx: &mut Context<RequestsView>) -> im
                 .text_size(px(11.5))
                 .font_weight(gpui_kit::FontWeight::MEDIUM)
                 .text_color(to_hsla(p.accent_ink))
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.open_import_export_modal(ImportExportTab::Import, None, window, cx);
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.pending_handoff
+                        .set(Some(RequestsHandoff::OpenImportExport {
+                            export_collection_id: None,
+                        }));
+                    cx.notify();
                 }))
                 .child(crate::ui::tr(cx).requests().sidebar_import_export())
                 .into_any_element(),

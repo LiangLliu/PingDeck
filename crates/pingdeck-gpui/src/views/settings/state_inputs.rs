@@ -89,7 +89,6 @@ pub struct SettingsInputs {
     pub history_retention: Entity<InputState>,
     pub sync_secrets_confirm: Entity<InputState>,
 
-    pub gw_port: Entity<InputState>,
     pub gw_max_retries: Entity<InputState>,
     pub gw_first_byte_s: Entity<InputState>,
     pub gw_idle_s: Entity<InputState>,
@@ -218,7 +217,6 @@ impl SettingsInputs {
             ),
             history_retention: new_input(data.history_retention.to_string(), "2000", window, cx),
             sync_secrets_confirm: new_input(String::new(), "INCLUDE SECRETS", window, cx),
-            gw_port: new_input(gw.port.to_string(), "4141", window, cx),
             gw_max_retries: new_input(gw.max_retries.to_string(), "4", window, cx),
             gw_first_byte_s: new_input(gw.first_byte_timeout_s.to_string(), "30", window, cx),
             gw_idle_s: new_input(gw.idle_timeout_s.to_string(), "60", window, cx),
@@ -375,7 +373,6 @@ impl SettingsInputs {
             cx,
         );
 
-        set(&self.gw_port, gw.port.to_string(), window, cx);
         set(&self.gw_max_retries, gw.max_retries.to_string(), window, cx);
         set(
             &self.gw_first_byte_s,

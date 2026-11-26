@@ -123,11 +123,6 @@ impl RequestsView {
 
         let snippet_editor = mk_ed("bash", "", window, cx);
         let modal_name_input = mk_in(r.ph_modal_name(), window, cx);
-        let modal_text_input = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .placeholder(r.ph_modal_import())
-                .rows(8)
-        });
 
         let mut subs = Vec::new();
         subs.push(cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
@@ -266,7 +261,6 @@ impl RequestsView {
             snippet_lang: SnippetLanguage::Curl,
             snippet_editor,
             modal_name_input,
-            modal_text_input,
             console_open: false,
             console_entries: Vec::new(),
             console_page: 0,

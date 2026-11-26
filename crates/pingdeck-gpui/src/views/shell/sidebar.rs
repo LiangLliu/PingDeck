@@ -25,6 +25,7 @@ fn module_icon(module: NavModule) -> UiIcon {
         NavModule::Environments => UiIcon::Layers,
         NavModule::Chat => UiIcon::Chat,
         NavModule::Providers => UiIcon::Cpu,
+        NavModule::Gateway => UiIcon::Zap,
         NavModule::Usage => UiIcon::Usage,
         NavModule::Settings => UiIcon::Settings,
     }
@@ -127,13 +128,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
         + work.flow_runs
         + work.collection_runs
         + work.mock_servers;
-    let gw_running = shell.state.gateway_port.is_some();
-    let gw_port_label = shell.state.gateway_port.map(|port| format!(":{port}"));
-    let gw_text = if gw_running {
-        sh.sidebar_gateway_live()
-    } else {
-        sh.sidebar_gateway_off()
-    };
     let work_text = if shell.state.attention.waiting_approval > 0 {
         sh.sidebar_work_waiting(shell.state.attention.waiting_approval, active_jobs)
     } else if active_jobs == 0 {
@@ -160,53 +154,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                 work_text,
                 cx,
             ))
-            .child(
-                div()
-                    .id("footer-gateway")
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .h(px(28.0))
-                    .gap(px(8.0))
-                    .px(px(10.0))
-                    .rounded(px(6.0))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.canvas))))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.navigate(NavModule::Providers, cx);
-                        this.modules.open_providers_gateway(window, cx);
-                    }))
-                    .child(
-                        h_row()
-                            .gap(px(8.0))
-                            .flex_1()
-                            .min_w_0()
-                            .child(status_indicator(
-                                if gw_running {
-                                    StatusShape::Live
-                                } else {
-                                    StatusShape::Idle
-                                },
-                                cx,
-                            ))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_xs()
-                                    .text_color(to_hsla(p.ink_2))
-                                    .truncate()
-                                    .child(gw_text),
-                            ),
-                    )
-                    .children(gw_port_label.map(|port| {
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(to_hsla(p.muted))
-                            .child(port)
-                    })),
-            )
             .child(div().w_full().pt(px(2.0)).child(render_nav_item(
                 shell,
                 NavModule::Settings,
@@ -224,29 +171,6 @@ pub fn render_sidebar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl Into
                 work_text,
                 cx,
             ))
-            .child(
-                div()
-                    .id("footer-gateway-rail")
-                    .size(px(34.0))
-                    .rounded(px(7.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.canvas))))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.navigate(NavModule::Providers, cx);
-                        this.modules.open_providers_gateway(window, cx);
-                    }))
-                    .child(status_indicator(
-                        if gw_running {
-                            StatusShape::Live
-                        } else {
-                            StatusShape::Idle
-                        },
-                        cx,
-                    )),
-            )
             .child(render_nav_item(shell, NavModule::Settings, true, cx));
     }
 
@@ -292,9 +216,13 @@ fn render_nav_item(
     } else {
         0
     };
-    let gw_live = module == NavModule::Providers && shell.state.gateway_port.is_some();
+    let gw_port = if module == NavModule::Gateway {
+        shell.state.gateway_port
+    } else {
+        None
+    };
 
-    let id = SharedString::from(format!("nav-{}", module.shortcut_digit()));
+    let id = SharedString::from(format!("nav-{}", module.id_slug()));
     if collapsed {
         let hover_bg = to_hsla(p.hover.composite_over(p.canvas));
         let mut tile = div()
@@ -336,7 +264,7 @@ fn render_nav_item(
             Some(p.warn)
         } else if prov_attn > 0 {
             Some(p.bad)
-        } else if live_mocks > 0 || live_flows > 0 || gw_live {
+        } else if live_mocks > 0 || live_flows > 0 || gw_port.is_some() {
             Some(p.ok)
         } else {
             None
@@ -407,8 +335,18 @@ fn render_nav_item(
         row = row.child(status_indicator(StatusShape::Run, cx));
     } else if prov_attn > 0 {
         row = row.child(status_indicator(StatusShape::Bad, cx));
-    } else if gw_live {
-        row = row.child(status_indicator(StatusShape::Live, cx));
+    } else if let Some(port) = gw_port {
+        row = row.child(
+            h_row()
+                .gap(px(4.0))
+                .child(status_indicator(StatusShape::Live, cx))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.ok))
+                        .child(format!(":{port}")),
+                ),
+        );
     }
     row
 }

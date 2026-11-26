@@ -24,6 +24,12 @@ use super::model::{
 impl RequestsView {
     // ── Collection / Folder Runner ───────────────────────────────────────────
 
+    pub fn open_first_collection_runner(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(first) = self.collections.first().map(|c| c.id.clone()) {
+            self.open_collection_runner_tab(first, None, window, cx);
+        }
+    }
+
     pub fn open_collection_runner_tab(
         &mut self,
         collection_id: String,

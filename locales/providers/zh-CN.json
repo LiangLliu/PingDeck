@@ -346,8 +346,10 @@
   "prov.gateway.gateway_start_error": "网关启动失败：{err}",
   "prov.gateway.gateway_url_copied": "网关地址已复制",
   "prov.gateway.in_out_cache": "输入 {today_in} · 输出 {today_out} · 缓存 {today_cached}",
-  "prov.gateway.listening": "正在监听",
   "prov.gateway.local_gateway": "本地网关",
+  "prov.gateway.add_provider_btn": "前往添加服务商 →",
+  "prov.gateway.no_providers_banner": "尚未配置任何 AI 服务商，启动网关前请先添加至少一个上游服务商。",
+  "prov.gateway.routing_settings_link": "重试与熔断参数 ↗",
   "prov.gateway.logs": "查看日志 ↗",
   "prov.gateway.ok_failed_cost": "{today_ok}次成功 · {today_fail}次失败 · 费用 {today_cost}",
   "prov.gateway.providers_rules": "{count}个服务商 · {count_2}条备用规则",
@@ -470,7 +472,6 @@
   "prov.providers.new_secret_empty_keep": "替换密钥（留空保持不变）",
   "prov.providers.notes": "备注（可选）",
   "prov.side.balance_from": "来源 {src} · {ago}",
-  "prov.sidebar.127_0_0_1_clients": "127.0.0.1:{gw_port} · {active_clients}个客户端",
   "prov.sidebar.clear": "清除搜索",
   "prov.sidebar.click_add_to_configure_a": "点击「添加」配置首个服务商",
   "prov.sidebar.down": "{bad_n} 不可达",
@@ -482,7 +483,6 @@
   "prov.sidebar.paste_any_base_url_to": "粘贴任意中转或官方 Base URL，自动探测协议、模型和余额。",
   "prov.sidebar.providers": "已配置服务商",
   "prov.sidebar.review": "未复核",
-  "prov.sidebar.stopped_clients": "已停止 · {active_clients}个客户端",
   "prov.sidebar.test_bench": "测试台",
   "prov.sidebar.unverified": "{unv_n} 未验证",
   "prov.sidebar.warn": "{warn_n} 需关注",
@@ -564,6 +564,5 @@
   "sniff.key.none": "无密钥",
   "sniff.picker.label": "全部预设",
   "sniff.picker.official": "官方",
-  "sniff.proto.primary": "主协议",
-  "strip.state.stopped": "网关已停止"
+  "sniff.proto.primary": "主协议"
 }

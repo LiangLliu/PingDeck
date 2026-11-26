@@ -222,7 +222,7 @@ window.PD = window.PD || {};
       html: () => sec("模型调用重试策略（对话、子智能体与网关共用）", [
         row("单次调用最大重试次数", "首个内容事件发出后绝不再切换目标。", num("2", "次")),
         row("单次重试退避上限", "遇到 429 时优先遵循上游 Retry-After 头。", num("15", "秒")),
-        row("网关备用规则", "按主模型配置的有序故障转移链位于「服务商 › 网关 › 备用规则」。", `<button class="btn btn-sm" data-nav-to="providers" data-sub-view="gateway" data-tab-jump="gw-main:rules">前往本地网关 ↗</button>`),
+        row("网关备用规则", "按主模型配置的有序故障转移链位于「本地网关 › 备用路由」。", `<button class="btn btn-sm" data-nav-to="gateway" data-tab-jump="gw-main:rules">前往本地网关 ↗</button>`),
       ].join("")),
     },
     "ai/catalog": {

@@ -233,6 +233,21 @@ impl EnvironmentsView {
         }
     }
 
+    pub fn open_resource_tab(&mut self, tab: EnvResourceTab, cx: &mut Context<Self>) {
+        self.resource_tab = tab;
+        self.vars_page = 0;
+        self.cookies_page = 0;
+        if let Some(ws) = self.workspace_id.clone() {
+            match tab {
+                EnvResourceTab::Globals => self.reload_globals(ws, cx),
+                EnvResourceTab::Cookies => self.reload_cookies(ws, cx),
+                EnvResourceTab::Certificates => self.reload_certificates(ws, cx),
+                EnvResourceTab::Environments => self.refresh_env_analysis(cx),
+            }
+        }
+        cx.notify();
+    }
+
     pub fn set_active_environment(&mut self, env_id: Option<String>, cx: &mut Context<Self>) {
         if self.active_env_id != env_id {
             self.active_env_id = env_id;

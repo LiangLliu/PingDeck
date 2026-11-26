@@ -13,7 +13,7 @@ use crate::ui::{
 };
 
 use super::RequestsView;
-use super::model::{ActiveModal, ImportExportTab, NewItemKind, OpenTab, TreeItemKind, method_str};
+use super::model::{ActiveModal, NewItemKind, OpenTab, RequestsHandoff, TreeItemKind, method_str};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_folder_branch(
@@ -253,12 +253,13 @@ pub(super) fn render_collection_menu(
                             ),
                             2 => this.open_collection_runner_tab(cid.clone(), None, window, cx),
                             3 => this.open_collection_settings_tab(cid.clone(), window, cx),
-                            4 => this.open_import_export_modal(
-                                ImportExportTab::Export,
-                                Some(cid.clone()),
-                                window,
-                                cx,
-                            ),
+                            4 => {
+                                this.pending_handoff
+                                    .set(Some(RequestsHandoff::OpenImportExport {
+                                        export_collection_id: Some(cid.clone()),
+                                    }));
+                                cx.notify();
+                            }
                             5 => {
                                 this.duplicate_tree_item(TreeItemKind::Collection, cid.clone(), cx)
                             }

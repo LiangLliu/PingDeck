@@ -27,7 +27,7 @@ use pingdeck_desktop::core::model::events::Sequenced;
 use pingdeck_desktop::core::model::settings::{Language, SidebarMode};
 use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::persistence::UiLocalState;
-use pingdeck_desktop::state::{NavModule, SettingsSection, ShellState, ToastKind, UtilityDialog};
+use pingdeck_desktop::state::{NavModule, SettingsSection, ShellState, ToastKind};
 use pingdeck_desktop::streams::{StreamReceiver, channel_sink};
 use pingdeck_desktop::theme::PaletteId;
 
@@ -42,7 +42,7 @@ use crate::ui::{
     InputState, WindowExt as _, apply_language, apply_palette, h_row, palette as active_palette,
     resolve_is_dark, sync_window_scale, to_hsla, tr, v_col,
 };
-use crate::views::utility::UtilityPanel;
+use crate::views::utility::{DiagnosticsHandoff, DiagnosticsSheet, ImportExportModal};
 
 use chrome::{
     render_palette_overlay, render_startup_banner, render_toast_stack, render_utility_overlay,
@@ -60,7 +60,8 @@ pub struct AppShell {
     focus_handle: FocusHandle,
     pub(crate) modules: ModuleHost,
     pub(crate) palette_view: Entity<CommandPaletteView>,
-    pub(crate) utility_view: Entity<UtilityPanel>,
+    pub(crate) import_export_view: Entity<ImportExportModal>,
+    pub(crate) diagnostics_view: Entity<DiagnosticsSheet>,
     pub(crate) workspace_menu_open: bool,
     pub(crate) new_workspace_input: Option<Entity<InputState>>,
     pub(crate) proxy_url_input: Entity<InputState>,
@@ -101,7 +102,8 @@ impl AppShell {
                 .default_value(initial_custom_proxy)
         });
         let palette_view = cx.new(|cx| CommandPaletteView::new(window, cx));
-        let utility_view = cx.new(|cx| UtilityPanel::new(window, cx));
+        let import_export_view = cx.new(|cx| ImportExportModal::new(window, cx));
+        let diagnostics_view = cx.new(|cx| DiagnosticsSheet::new(window, cx));
 
         let mut tasks = Vec::new();
 
@@ -250,8 +252,13 @@ impl AppShell {
                 cx.notify();
             }
         });
-        let util_sub = cx.observe(&utility_view, |_, view, cx| {
-            if view.read(cx).is_dismissed() {
+        let io_sub = cx.observe(&import_export_view, |_, view, cx| {
+            if view.read(cx).has_pending_signal() {
+                cx.notify();
+            }
+        });
+        let diag_sub = cx.observe(&diagnostics_view, |_, view, cx| {
+            if view.read(cx).has_pending_handoff() {
                 cx.notify();
             }
         });
@@ -263,7 +270,8 @@ impl AppShell {
             focus_handle,
             modules: ModuleHost::default(),
             palette_view,
-            utility_view,
+            import_export_view,
+            diagnostics_view,
             workspace_menu_open: false,
             new_workspace_input: None,
             proxy_url_input,
@@ -272,7 +280,7 @@ impl AppShell {
             provider_attention_count: 0,
             running_mock_summary: Vec::new(),
             workspace_counts: HashMap::new(),
-            _subscriptions: vec![act_sub, app_sub, pal_sub, util_sub],
+            _subscriptions: vec![act_sub, app_sub, pal_sub, io_sub, diag_sub],
             _tasks: tasks,
         };
         shell.refresh_running_work(cx);
@@ -319,19 +327,6 @@ impl AppShell {
         self.modules.set_settings_section(section, cx);
         self.state.navigate(NavModule::Settings);
         self.persist_local(cx);
-        cx.notify();
-    }
-
-    pub fn open_utility(
-        &mut self,
-        dialog: UtilityDialog,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.state.active_utility = Some(dialog);
-        let ws_id = self.state.active_workspace_id.clone();
-        self.utility_view
-            .update(cx, |panel, cx| panel.open(dialog, ws_id, window, cx));
         cx.notify();
     }
 
@@ -420,8 +415,16 @@ impl Render for AppShell {
         if self.palette_view.read(cx).take_dismissed_flag() {
             self.state.palette_open = false;
         }
-        if self.utility_view.read(cx).take_dismissed_flag() {
+        if self.import_export_view.read(cx).take_dismissed_flag() {
             self.state.active_utility = None;
+        }
+        if let Some(outcome) = self.import_export_view.read(cx).take_pending_outcome() {
+            self.handle_import_export_outcome(outcome, window, cx);
+        }
+        if let Some(DiagnosticsHandoff::Navigate(module)) =
+            self.diagnostics_view.read(cx).take_pending_handoff()
+        {
+            self.navigate(module, cx);
         }
         self.poll_all_handoffs(window, cx);
 
@@ -525,8 +528,8 @@ impl Render for AppShell {
             )
             .on_action(cx.listener(|this, _: &Nav6, _, cx| this.navigate(NavModule::Chat, cx)))
             .on_action(cx.listener(|this, _: &Nav7, _, cx| this.navigate(NavModule::Providers, cx)))
-            .on_action(cx.listener(|this, _: &Nav8, _, cx| this.navigate(NavModule::Usage, cx)))
-            .on_action(cx.listener(|this, _: &Nav9, _, cx| this.navigate(NavModule::Settings, cx)))
+            .on_action(cx.listener(|this, _: &Nav8, _, cx| this.navigate(NavModule::Gateway, cx)))
+            .on_action(cx.listener(|this, _: &Nav9, _, cx| this.navigate(NavModule::Usage, cx)))
             .child(render_title_bar(self, cx))
             .child(
                 h_row()

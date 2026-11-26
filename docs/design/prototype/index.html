@@ -138,7 +138,13 @@
           <button class="nav-item" data-nav-to="providers">
             <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></span>
             <span class="nav-item-label">服务商</span>
-            <span class="dot dot-ok nav-badge"></span>
+            <span class="dot dot-warn nav-badge"></span>
+          </button>
+          <button class="nav-item" data-nav-to="gateway">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+            <span class="nav-item-label">本地网关</span>
+            <span class="dot dot-live nav-badge"></span>
+            <span class="nav-badge-count mono">:4141</span>
           </button>
           <button class="nav-item" data-nav-to="usage">
             <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg></span>
@@ -151,11 +157,6 @@
             <span class="nav-ico"><span class="dot dot-warn"></span></span>
             <span class="foot-row-text">需要关注的服务商</span>
             <span class="foot-row-meta">1</span>
-          </button>
-          <button class="foot-row" data-nav-to="providers" data-sub-view="gateway" title="本地网关运行中">
-            <span class="nav-ico"><span class="dot dot-live"></span></span>
-            <span class="foot-row-text">网关运行中</span>
-            <span class="foot-row-meta">:4141</span>
           </button>
           <button class="nav-item" data-nav-to="settings" style="margin-top:2px">
             <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg></span>
@@ -1212,21 +1213,14 @@ currency=USD</div>
           </section>
 
           <!-- ================================================================ -->
-          <!-- MODULE 7: PROVIDERS & LOCAL GATEWAY (Complete OverviewTab!)      -->
+          <!-- MODULE 7: PROVIDERS (Upstream Providers + Model Test Bench)       -->
           <!-- ================================================================ -->
           <section class="module-view" data-module="providers">
             <div class="pane">
               <div class="pane-head"><span class="pane-title">服务商</span><button class="btn btn-sm" data-modal="add-provider">+ 添加</button></div>
               <div class="pane-body" style="padding-top:8px">
-                <button class="list-row selected" data-prov-view="gateway">
-                  <span class="dot dot-live"></span>
-                  <div class="list-row-col">
-                    <span class="list-row-title">本地网关</span>
-                    <span class="list-row-sub">127.0.0.1:4141 · 3 客户端</span>
-                  </div>
-                </button>
                 <div class="list-group-head"><span>已配置服务商</span></div>
-                <button class="list-row" data-prov-view="relay" data-prov-primary="relay">
+                <button class="list-row selected" data-prov-view="relay" data-prov-primary="relay">
                   <span class="dot dot-warn"></span>
                   <div class="list-row-col">
                     <span class="list-row-title">relay.acme.dev</span>
@@ -1241,90 +1235,8 @@ currency=USD</div>
               </div>
             </div>
 
-            <!-- Gateway Overview: Hero + TodayPanel + BaseUrls + Clients + Routing Rules Preview -->
-            <div id="prov-gateway-view" class="work">
-              <div class="work-head">
-                <span class="work-title">本地网关</span>
-                <div class="tabs-row" style="border:0;padding:0;margin-left:10px;height:100%" data-tab-group="gw-main">
-                  <button class="tab-btn active" data-tab="overview">概览</button>
-                  <button class="tab-btn" data-tab="clients">客户端 <span class="tab-cnt">3</span></button>
-                  <button class="tab-btn" data-tab="access">访问控制</button>
-                  <button class="tab-btn" data-tab="rules">备用路由 <span class="tab-cnt">4</span></button>
-                </div>
-                <div class="work-actions">
-                  <button class="btn btn-sm" data-toast="正在平滑重启本地网关 :4141…">重启</button>
-                  <button class="btn btn-sm" data-toast="已停止本地网关 :4141" data-toast-tone="warn">停止网关</button>
-                </div>
-              </div>
-
-              <div id="gw-tab-body" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto">
-                <div class="gw-hero">
-                  <div class="gw-hero-left">
-                    <div class="gw-hero-title">
-                      <span class="dot dot-live"></span>
-                      <span>正在监听</span>
-                      <code class="clickable" style="font-size:14px;padding:2px 8px;border-radius:6px;background:var(--bg-surface);border:1px solid var(--border-subtle)" data-toast="已复制 http://127.0.0.1:4141">http://127.0.0.1:4141</code>
-                      <span class="tag tag-ok">令牌鉴权已开启</span>
-                    </div>
-                    <div class="gw-hero-sub">
-                      <span>已运行 3 小时 12 分</span><span>·</span><span>仅本机回环（LAN 关闭）</span><span>·</span><span>Host / Origin 防重绑定保护已启用</span>
-                    </div>
-                  </div>
-                  <button class="btn btn-primary" data-modal="connect-client">接入编码工具…</button>
-                </div>
-
-                <div class="gw-body">
-                  <!-- TodayPanel (matches src/features/providers/gateway/TodayPanel.tsx) -->
-                  <div class="kpi-grid">
-                    <div class="kpi-card"><span class="kpi-label">今日网关转发</span><span class="kpi-val">412</span><span class="kpi-sub">12 次经备用链自动恢复</span></div>
-                    <div class="kpi-card"><span class="kpi-label">转发成功率</span><span class="kpi-val">91.0%</span><span class="kpi-sub"><button class="text-warn" data-nav-to="usage">37 次失败（查看日志 ↗）</button></span></div>
-                    <div class="kpi-card"><span class="kpi-label">直通 vs 协议转码</span><span class="kpi-val">318 / 94</span><span class="kpi-sub">同协议零损耗直通优先</span></div>
-                    <div class="kpi-card"><span class="kpi-label">网关中位首字延迟</span><span class="kpi-val">412 ms</span><span class="kpi-sub">网关自身转发开销 &lt; 1.2 ms</span></div>
-                  </div>
-
-                  <div class="card-panel">
-                    <div class="card-panel-head"><span>协议入口地址（自动转码或同协议直通）</span><button class="text-accent" data-nav-to="usage">查看调用日志 ↗</button></div>
-                    <table class="kv-table">
-                      <thead><tr><th>协议族</th><th>Base URL</th><th>支持路径</th><th style="width:72px">操作</th></tr></thead>
-                      <tbody>
-                        <tr><td><b>OpenAI 兼容</b></td><td class="mono">http://127.0.0.1:4141/v1</td><td class="mono text-muted">/chat/completions, /responses, /embeddings</td><td><button class="btn btn-sm" data-toast="已复制 OpenAI Base URL">复制</button></td></tr>
-                        <tr><td><b>Anthropic Messages</b></td><td class="mono">http://127.0.0.1:4141/anthropic</td><td class="mono text-muted">/v1/messages</td><td><button class="btn btn-sm" data-toast="已复制 Anthropic Base URL">复制</button></td></tr>
-                        <tr><td><b>Gemini</b></td><td class="mono">http://127.0.0.1:4141/gemini</td><td class="mono text-muted">/v1beta/models/*</td><td><button class="btn btn-sm" data-toast="已复制 Gemini Base URL">复制</button></td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div class="grid-2col">
-                    <div class="card-panel">
-                      <div class="card-panel-head"><span>已接入客户端（3 个令牌有效）</span><button class="text-accent" data-tab-jump="gw-main:clients">管理令牌 →</button></div>
-                      <table class="kv-table">
-                        <thead><tr><th>客户端</th><th>令牌前缀</th><th>默认模型</th><th>最近活跃</th></tr></thead>
-                        <tbody>
-                          <tr><td><b>Claude Code</b></td><td class="mono">pdk_c_••••9d2f</td><td><span class="tag mono">DeepSeek/v4-pro</span></td><td class="text-muted">2 分钟前</td></tr>
-                          <tr><td><b>Codex CLI</b></td><td class="mono">pdk_c_••••41ab</td><td><span class="tag mono">Anthropic/sonnet-5-5</span></td><td class="text-muted">18 分钟前</td></tr>
-                          <tr><td><b>Zed Editor</b></td><td class="mono">pdk_c_••••c07e</td><td><span class="tag mono">DeepSeek/v4-flash</span></td><td class="text-muted">1 小时前</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div class="card-panel">
-                      <div class="card-panel-head"><span>网关备用规则（首个内容事件后不切换）</span><button class="text-accent" data-tab-jump="gw-main:rules">配置规则 →</button></div>
-                      <table class="kv-table">
-                        <thead><tr><th>主模型</th><th>有序备用链</th><th class="text-right">今日命中</th></tr></thead>
-                        <tbody>
-                          <tr><td class="mono"><b>DeepSeek/v4-pro</b></td><td class="mono fs-2xs">Moonshot/kimi-k2.6 → Anthropic/sonnet-5-5</td><td class="mono text-right">214</td></tr>
-                          <tr><td class="mono"><b>Anthropic/sonnet-5-5</b></td><td class="mono fs-2xs">OpenAI/gpt-6.1</td><td class="mono text-right">78</td></tr>
-                          <tr><td class="mono"><b>DeepSeek/v4-flash</b></td><td class="mono fs-2xs">Moonshot/kimi-k2.6 → Ollama/qwen3</td><td class="mono text-right">104</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <!-- Provider Detail View (Complete OverviewTab: Drift Banner + Keys + Capabilities + Balance + Health + RecentCalls!) -->
-            <div id="prov-relay-view" hidden class="work">
+            <div id="prov-relay-view" class="work">
               <div class="work-head">
                 <span class="work-title">relay.acme.dev</span>
                 <span class="tag tag-warn">▲ 2/34 模型测试失败</span>
@@ -1430,7 +1342,82 @@ currency=USD</div>
           </section>
 
           <!-- ================================================================ -->
-          <!-- MODULE 8: USAGE & LOGS (ScopePane + Stats/Calls + 6-Dim Table)   -->
+          <!-- MODULE 8: LOCAL GATEWAY (Full-Width Service Cockpit)              -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="gateway">
+            <div id="prov-gateway-view" class="work">
+              <div class="work-head">
+                <span class="dot dot-live"></span>
+                <span class="work-title">本地网关</span>
+                <code class="clickable" style="font-size:12.5px;padding:2px 8px;border-radius:6px;background:var(--bg-surface);border:1px solid var(--border-subtle)" data-toast="已复制 http://127.0.0.1:4141">http://127.0.0.1:4141</code>
+                <span class="tag tag-ok">令牌鉴权已开启</span>
+                <div class="work-actions">
+                  <button class="btn btn-sm btn-primary" data-modal="connect-client">接入编码工具…</button>
+                  <button class="btn btn-sm" data-toast="正在平滑重启本地网关 :4141…">重启</button>
+                  <button class="btn btn-sm" data-toast="已停止本地网关 :4141" data-toast-tone="warn">停止网关</button>
+                  <button class="btn btn-sm btn-ghost" data-nav-to="usage">查看日志 ↗</button>
+                </div>
+              </div>
+              <div class="tabs-row" data-tab-group="gw-main">
+                <button class="tab-btn active" data-tab="overview">概览</button>
+                <button class="tab-btn" data-tab="clients">客户端 <span class="tab-cnt">3</span></button>
+                <button class="tab-btn" data-tab="rules">备用路由 <span class="tab-cnt">4</span></button>
+                <button class="tab-btn" data-tab="access">访问控制</button>
+              </div>
+
+              <div id="gw-tab-body" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto">
+                <div class="gw-body">
+                  <div class="kpi-grid">
+                    <div class="kpi-card"><span class="kpi-label">今日网关转发</span><span class="kpi-val">412</span><span class="kpi-sub">12 次经备用链自动恢复</span></div>
+                    <div class="kpi-card"><span class="kpi-label">转发成功率</span><span class="kpi-val">91.0%</span><span class="kpi-sub"><button class="text-warn" data-nav-to="usage">37 次失败（查看日志 ↗）</button></span></div>
+                    <div class="kpi-card"><span class="kpi-label">直通 vs 协议转码</span><span class="kpi-val">318 / 94</span><span class="kpi-sub">同协议零损耗直通优先</span></div>
+                    <div class="kpi-card"><span class="kpi-label">网关中位首字延迟</span><span class="kpi-val">412 ms</span><span class="kpi-sub">网关自身转发开销 &lt; 1.2 ms</span></div>
+                  </div>
+
+                  <div class="card-panel">
+                    <div class="card-panel-head"><span>协议入口地址（自动转码或同协议直通）</span><button class="text-accent" data-nav-to="usage">查看调用日志 ↗</button></div>
+                    <table class="kv-table">
+                      <thead><tr><th>协议族</th><th>Base URL</th><th>支持路径</th><th style="width:72px">操作</th></tr></thead>
+                      <tbody>
+                        <tr><td><b>OpenAI 兼容</b></td><td class="mono">http://127.0.0.1:4141/v1</td><td class="mono text-muted">/chat/completions, /responses, /embeddings</td><td><button class="btn btn-sm" data-toast="已复制 OpenAI Base URL">复制</button></td></tr>
+                        <tr><td><b>Anthropic Messages</b></td><td class="mono">http://127.0.0.1:4141/anthropic</td><td class="mono text-muted">/v1/messages</td><td><button class="btn btn-sm" data-toast="已复制 Anthropic Base URL">复制</button></td></tr>
+                        <tr><td><b>Gemini</b></td><td class="mono">http://127.0.0.1:4141/gemini</td><td class="mono text-muted">/v1beta/models/*</td><td><button class="btn btn-sm" data-toast="已复制 Gemini Base URL">复制</button></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="grid-2col">
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>已接入客户端（3 个令牌有效）</span><button class="text-accent" data-tab-jump="gw-main:clients">管理令牌 →</button></div>
+                      <table class="kv-table">
+                        <thead><tr><th>客户端</th><th>令牌前缀</th><th>默认模型</th><th>最近活跃</th></tr></thead>
+                        <tbody>
+                          <tr><td><b>Claude Code</b></td><td class="mono">pdk_c_••••9d2f</td><td><span class="tag mono">DeepSeek/v4-pro</span></td><td class="text-muted">2 分钟前</td></tr>
+                          <tr><td><b>Codex CLI</b></td><td class="mono">pdk_c_••••41ab</td><td><span class="tag mono">Anthropic/sonnet-5-5</span></td><td class="text-muted">18 分钟前</td></tr>
+                          <tr><td><b>Zed Editor</b></td><td class="mono">pdk_c_••••c07e</td><td><span class="tag mono">DeepSeek/v4-flash</span></td><td class="text-muted">1 小时前</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div class="card-panel">
+                      <div class="card-panel-head"><span>网关备用规则（首个内容事件后不切换）</span><button class="text-accent" data-tab-jump="gw-main:rules">配置规则 →</button></div>
+                      <table class="kv-table">
+                        <thead><tr><th>主模型</th><th>有序备用链</th><th class="text-right">今日命中</th></tr></thead>
+                        <tbody>
+                          <tr><td class="mono"><b>DeepSeek/v4-pro</b></td><td class="mono fs-2xs">Moonshot/kimi-k2.6 → Anthropic/sonnet-5-5</td><td class="mono text-right">214</td></tr>
+                          <tr><td class="mono"><b>Anthropic/sonnet-5-5</b></td><td class="mono fs-2xs">OpenAI/gpt-6.1</td><td class="mono text-right">78</td></tr>
+                          <tr><td class="mono"><b>DeepSeek/v4-flash</b></td><td class="mono fs-2xs">Moonshot/kimi-k2.6 → Ollama/qwen3</td><td class="mono text-right">104</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================================================================ -->
+          <!-- MODULE 9: USAGE & LOGS (ScopePane + Stats/Calls + 6-Dim Table)   -->
           <!-- ================================================================ -->
           <section class="module-view" data-module="usage">
             <div class="pane">
@@ -1873,7 +1860,7 @@ currency=USD</div>
         <button class="palette-item active" data-nav-to="requests" data-sub-view="http"><span class="m-get">GET</span><span class="flex-1">List invoices</span><span class="text-faint fs-2xs">请求</span></button>
         <button class="palette-item" data-nav-to="requests" data-sub-view="ai"><span class="tag tag-accent">AI</span><span class="flex-1">Ping test (deepseek-v4-flash)</span><span class="text-faint fs-2xs">AI 请求</span></button>
         <button class="palette-item" data-nav-to="chat"><span class="dot dot-warn"></span><span class="flex-1">429s from the gateway（待审批）</span><span class="text-faint fs-2xs">对话</span></button>
-        <button class="palette-item" data-nav-to="providers" data-sub-view="gateway"><span class="dot dot-live"></span><span class="flex-1">本地网关 :4141</span><span class="text-faint fs-2xs">服务商</span></button>
+        <button class="palette-item" data-nav-to="gateway"><span class="dot dot-live"></span><span class="flex-1">本地网关 :4141</span><span class="kbd">⌘8</span></button>
         <button class="palette-item" data-nav-to="settings"><span class="flex-1">外观与多主题设置</span><span class="kbd">⌘,</span></button>
         <div class="list-group-head"><span>快捷向导与弹窗</span></div>
         <button class="palette-item" data-modal="add-provider" data-action="close-cmd"><span class="tag tag-accent">向导</span><span class="flex-1">添加 AI 服务商（智能嗅探）…</span></button>

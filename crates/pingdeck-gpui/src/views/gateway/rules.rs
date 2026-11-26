@@ -3,17 +3,18 @@
 
 use gpui_kit::{Context, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::llm::store::ModelRef;
+use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
     Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_icon,
     btn_primary, btn_secondary, card, h_row, icon_xs, list_row, palette, popover, section_heading,
     select_pill, to_hsla, v_col,
 };
+use crate::views::providers::format::format_rule_status;
 
-use super::ProvidersView;
-use super::format::format_rule_status;
+use super::{GatewayHandoff, GatewayView};
 
-pub fn render_rules_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
+pub fn render_rules_tab(view: &GatewayView, cx: &mut Context<GatewayView>) -> gpui_kit::Div {
     let p = palette(cx);
     let mut root = v_col().gap(px(14.0));
 
@@ -119,7 +120,24 @@ pub fn render_rules_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -
                         ),
                     ),
             )
-            .child(add_btn),
+            .child(
+                h_row()
+                    .gap(px(6.0))
+                    .child(
+                        btn_ghost(
+                            "gw-open-routing-settings",
+                            crate::ui::tr(cx)
+                                .providers()
+                                .prov_gateway_routing_settings_link(),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.pending_handoff
+                                .set(Some(GatewayHandoff::OpenSettings(SettingsSection::Routing)));
+                            cx.notify();
+                        })),
+                    )
+                    .child(add_btn),
+            ),
     );
 
     // Inline rule editor when active.

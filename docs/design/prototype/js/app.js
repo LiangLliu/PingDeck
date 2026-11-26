@@ -13,7 +13,7 @@
   const { SETTINGS_PAGES, MOCK_BRANCHES, SSE_FRAMES, FLOW_STEPS, ENV_EXTRA_VIEWS, buildSubtabs } = window.PD;
 
   const state = {
-    module: "requests", reqMode: "http", provView: "gateway",
+    module: "requests", reqMode: "http", provView: "relay",
     envName: "Staging", envTab: "vars", usageView: "overview", usageScope: "全部服务商", setPage: "appearance",
     palette: "slate", mode: "light", density: "comfortable", platform: "macos", rail: false, frameless: false,
   };
@@ -120,10 +120,9 @@
 
   function setProvView(view, clickedEl) {
     state.provView = view;
-    if (byId("prov-gateway-view")) byId("prov-gateway-view").hidden = view !== "gateway";
-    if (byId("prov-relay-view")) byId("prov-relay-view").hidden = view !== "relay";
+    if (byId("prov-relay-view")) byId("prov-relay-view").hidden = false;
     document.querySelectorAll("[data-prov-view]").forEach((el) => {
-      const on = clickedEl ? el === clickedEl : (view === "gateway" ? el.dataset.provView === "gateway" : el.dataset.provPrimary === "relay");
+      const on = clickedEl ? el === clickedEl : el.dataset.provPrimary === "relay";
       el.classList.toggle("selected", on);
     });
   }
@@ -634,14 +633,14 @@
     jump.hidden = dist <= 40;
   });
 
-  const MODULE_ORDER = ["requests", "mock", "flows", "history", "environments", "chat", "providers", "usage"];
+  const MODULE_ORDER = ["requests", "mock", "flows", "history", "environments", "chat", "providers", "gateway", "usage"];
   document.addEventListener("keydown", (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); toggleCmd(); return; }
     if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); toggleRail(); return; }
     if (mod && e.key.toLowerCase() === "j") { e.preventDefault(); if (state.module === "requests") togglePanel("console-drawer"); return; }
     if (mod && e.key === ",") { e.preventDefault(); setModule("settings"); return; }
-    if (mod && /^[1-8]$/.test(e.key)) { e.preventDefault(); setModule(MODULE_ORDER[Number(e.key) - 1]); return; }
+    if (mod && /^[1-9]$/.test(e.key)) { e.preventDefault(); setModule(MODULE_ORDER[Number(e.key) - 1]); return; }
     if (e.key === "Escape") {
       if (!cmdModal.hidden) { toggleCmd(false); return; }
       if (wirePop && !wirePop.hidden) { wirePop.hidden = true; return; }

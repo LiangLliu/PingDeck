@@ -17,7 +17,6 @@ pub mod actions_ai;
 pub mod actions_compare;
 pub mod actions_crud;
 pub mod actions_exec;
-pub mod actions_io;
 pub mod actions_runner;
 pub mod actions_tools;
 pub mod actions_tree;
@@ -77,7 +76,7 @@ use crate::ui::{
 };
 
 pub use model::{ALL_METHODS, ActiveModal, OpenTab, RequestsHandoff};
-use model::{ConsoleRecord, ImportExportTab, NewItemKind, RequestTabState};
+use model::{ConsoleRecord, NewItemKind, RequestTabState};
 use state_sync::default_auth_for_kind;
 
 pub struct RequestsView {
@@ -162,7 +161,6 @@ pub struct RequestsView {
     pub snippet_lang: SnippetLanguage,
     pub snippet_editor: Entity<EditorState>,
     pub modal_name_input: Entity<InputState>,
-    pub modal_text_input: Entity<TextareaState>,
 
     // Console & feedback
     pub console_open: bool,
@@ -477,16 +475,13 @@ impl Render for RequestsView {
                                 crate::ui::tr(cx).requests().requests_import(),
                             )
                             .icon(icon_xs(UiIcon::Upload))
-                            .on_click(cx.listener(
-                                |this, _, window, cx| {
-                                    this.open_import_export_modal(
-                                        ImportExportTab::Import,
-                                        None,
-                                        window,
-                                        cx,
-                                    );
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pending_handoff
+                                    .set(Some(RequestsHandoff::OpenImportExport {
+                                        export_collection_id: None,
+                                    }));
+                                cx.notify();
+                            })),
                         )
                         .into_any_element(),
                 ),

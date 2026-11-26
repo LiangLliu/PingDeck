@@ -12,10 +12,11 @@ use crate::ui::{
     v_col,
 };
 
-use super::ProvidersView;
-use super::format::{format_client_status, format_relative_time};
+use crate::views::providers::format::{format_client_status, format_relative_time};
 
-pub fn render_clients_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>) -> gpui_kit::Div {
+use super::GatewayView;
+
+pub fn render_clients_tab(view: &GatewayView, cx: &mut Context<GatewayView>) -> gpui_kit::Div {
     let p = palette(cx);
 
     let mut root = v_col().gap(px(16.0));
@@ -540,9 +541,9 @@ pub fn render_clients_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>)
             );
 
             if editing_policy {
-                client_card = client_card.child(
-                    super::gateway_backups::render_client_policy_editor(view, client, cx),
-                );
+                client_card = client_card.child(super::backups::render_client_policy_editor(
+                    view, client, cx,
+                ));
             }
 
             tokens_box = tokens_box.child(card(cx).p(px(11.0)).child(client_card));
@@ -550,7 +551,7 @@ pub fn render_clients_tab(view: &ProvidersView, cx: &mut Context<ProvidersView>)
     }
 
     root = root.child(tokens_box);
-    if let Some(ledger) = super::gateway_backups::render_managed_backups(view, cx) {
+    if let Some(ledger) = super::backups::render_managed_backups(view, cx) {
         root = root.child(ledger);
     }
     root

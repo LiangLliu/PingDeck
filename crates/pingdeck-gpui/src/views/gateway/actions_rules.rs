@@ -1,4 +1,4 @@
-//! Routing-rule editor & route-preview actions for `ProvidersView`.
+//! Routing-rule editor & route-preview actions for `GatewayView`.
 
 use gpui_kit::Context;
 use pingdeck_desktop::core::app::{
@@ -9,9 +9,9 @@ use pingdeck_desktop::core::llm::store::ModelRef;
 use crate::bridge::spawn_blocking_into;
 use crate::ui::Tone;
 
-use super::{ProvidersView, RuleEditorState};
+use super::{GatewayView, RuleEditorState};
 
-impl ProvidersView {
+impl GatewayView {
     pub fn start_edit_rule(
         &mut self,
         primary: ModelRef,

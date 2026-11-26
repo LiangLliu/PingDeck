@@ -1,8 +1,9 @@
 //! Headless GPUI UI integration tests (`cargo test -p pingdeck-gpui --features test-support`).
 //!
 //! Verifies real GPUI window rendering, `CoreBridge` wiring to an in-memory `DesktopRuntime`,
-//! navigation across all 9 modules, 16 OKLCH eye-care palette hot-switches, all 20 Settings pages,
-//! all 6 Utility tools, `⌘K` Command Palette, and the 4 Phase 0 native widget workloads
+//! navigation across all 10 modules (including dedicated Local Gateway), 16 OKLCH eye-care
+//! palette hot-switches, all 20 Settings pages, unified Import/Export modal & Diagnostics
+//! slide-over sheet, `⌘K` Command Palette deep-links, and the 4 Phase 0 native widget workloads
 //! (IME editors, selectable streaming Markdown, 10,000-row virtual table, and 10 MiB JSON Rope
 //! load benchmark).
 
@@ -10,7 +11,7 @@
 mod gpui_integration {
     use std::sync::Arc;
 
-    use gpui_kit::TestAppContext;
+    use gpui_kit::{AppContext as _, TestAppContext};
     use pingdeck_desktop::core::app::{settings_get_impl, workspace_create_impl};
     use pingdeck_desktop::runtime::DesktopRuntime;
     use pingdeck_desktop::state::{NavModule, SettingsSection, UtilityDialog};
@@ -18,12 +19,13 @@ mod gpui_integration {
 
     use crate::bridge::CoreBridge;
     use crate::platform::GpuiHostWindow;
-    use crate::ui::{apply_palette, palette};
+    use crate::ui::{Root, apply_palette, palette};
     use crate::views::shell::AppShell;
     use crate::views::utility::bench::BenchTab;
+    use crate::views::utility::diagnostics::ConsoleMode;
 
     #[gpui_kit::test]
-    fn mounts_app_shell_navigates_all_9_modules_and_switches_16_palettes(cx: &mut TestAppContext) {
+    fn mounts_app_shell_navigates_all_10_modules_and_switches_16_palettes(cx: &mut TestAppContext) {
         // Real Tokio tasks (`pingdeck-core` runtime) wake GPUI foreground futures from Tokio
         // threads, so opt this integration test into non-deterministic parking mode.
         cx.background_executor.allow_parking();
@@ -42,10 +44,16 @@ mod gpui_integration {
             apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
         });
 
-        let (shell, visual) =
-            cx.add_window_view(move |window, cx| AppShell::new(rx, host, window, cx));
+        let mut shell_slot = None;
+        let (_root, visual) = cx.add_window_view(|window, cx| {
+            let s = cx.new(|cx| AppShell::new(rx, host, window, cx));
+            shell_slot = Some(s.clone());
+            Root::new(s, window, cx)
+        });
+        let shell = shell_slot.expect("mounted AppShell");
 
-        // 1. Navigate and render every single one of the 9 modules cleanly.
+        // 1. Navigate and render every single one of the 10 modules cleanly.
+        assert_eq!(NavModule::ALL.len(), 10);
         for module in NavModule::ALL {
             visual.update(|window, cx| {
                 shell.update(cx, |s, cx| s.navigate(module, cx));
@@ -74,7 +82,7 @@ mod gpui_integration {
             });
         }
 
-        // 4. Exercise all 6 Utility tabs wired to core.
+        // 4. Exercise both focused shell overlays (Import/Export modal & Diagnostics slide-over sheet).
         for dialog in UtilityDialog::ALL {
             visual.update(|window, cx| {
                 shell.update(cx, |s, cx| s.open_utility(dialog, window, cx));
@@ -107,18 +115,24 @@ mod gpui_integration {
             apply_palette(PaletteId::Sage, false, false, &settings.appearance, cx);
         });
 
-        let (shell, visual) =
-            cx.add_window_view(move |window, cx| AppShell::new(rx, host, window, cx));
+        let mut shell_slot = None;
+        let (_root, visual) = cx.add_window_view(|window, cx| {
+            let s = cx.new(|cx| AppShell::new(rx, host, window, cx));
+            shell_slot = Some(s.clone());
+            Root::new(s, window, cx)
+        });
+        let shell = shell_slot.expect("mounted AppShell");
 
-        // Open Console utility and exercise all 4 native widget stress tabs.
+        // Open Diagnostics slide-over sheet in GPU Bench mode and exercise all 4 native widget stress tabs.
         visual.update(|window, cx| {
             shell.update(cx, |s, cx| {
-                s.open_utility(UtilityDialog::Console, window, cx)
+                s.open_utility(UtilityDialog::Diagnostics, window, cx)
             });
-            let utility = shell.read(cx).utility_view.clone();
+            let diag = shell.read(cx).diagnostics_view.clone();
 
             // 1. IME CJK input into single-line InputState & multiline TextareaState.
-            utility.update(cx, |panel, cx| {
+            diag.update(cx, |panel, cx| {
+                panel.console_mode = ConsoleMode::GpuBench;
                 panel.bench.tab = BenchTab::Ime;
                 panel.bench.ime_input.update(cx, |i, cx| {
                     i.set_value("你好 PingDeck 纯 Rust GPUI", window, cx)
@@ -134,7 +148,7 @@ mod gpui_integration {
             window.refresh();
 
             // 2. Streaming Markdown burst (+600 tokens).
-            utility.update(cx, |panel, cx| {
+            diag.update(cx, |panel, cx| {
                 panel.bench.tab = BenchTab::StreamingMarkdown;
                 for _ in 0..3 {
                     panel.bench.append_stream_burst();
@@ -145,14 +159,14 @@ mod gpui_integration {
             window.refresh();
 
             // 3. 10,000-row virtualized DataTable render.
-            utility.update(cx, |panel, cx| {
+            diag.update(cx, |panel, cx| {
                 panel.bench.tab = BenchTab::VirtualTable10k;
                 cx.notify();
             });
             window.refresh();
 
             // 4. 10 MiB JSON Rope Editor load timing.
-            let load_ms = utility.update(cx, |panel, cx| {
+            let load_ms = diag.update(cx, |panel, cx| {
                 panel.bench.tab = BenchTab::LargeJson10Mb;
                 let ms = panel.bench.load_10mib_json(window, cx);
                 cx.notify();
@@ -177,7 +191,7 @@ mod gpui_integration {
 
         use crate::views::requests::RequestsView;
         use crate::views::requests::model::{
-            ActiveModal, AiEdTab, HttpEdTab, ImportExportTab, NewItemKind, OpenTab,
+            AiEdTab, HttpEdTab, NewItemKind, OpenTab, RequestsHandoff,
         };
 
         cx.background_executor.allow_parking();
@@ -319,25 +333,22 @@ mod gpui_integration {
             window.refresh();
         });
 
-        // 7. Import a cURL command into a new draft tab.
+        // 7. Import / Export delegates cleanly to the unified shell ImportExportModal handoff.
         visual.update(|window, cx| {
-            let before = view.read(cx).tabs.len();
+            let col_id = view.read(cx).collections[0].id.clone();
             view.update(cx, |v, cx| {
-                v.open_import_export_modal(ImportExportTab::Import, None, window, cx);
-                if let Some(ActiveModal::ImportExport { format, .. }) = &mut v.active_modal {
-                    *format = "curl".into();
-                }
-                v.modal_text_input.update(cx, |t, cx| {
-                    t.set_value(
-                        "curl -X POST https://httpbin.org/post -H 'X-Test: 1' -d '{\"ok\":true}'",
-                        window,
-                        cx,
-                    );
-                });
-                v.import_apply(window, cx);
+                v.pending_handoff
+                    .set(Some(RequestsHandoff::OpenImportExport {
+                        export_collection_id: Some(col_id.clone()),
+                    }));
+                cx.notify();
             });
-            assert_eq!(view.read(cx).tabs.len(), before + 1);
-            assert!(view.read(cx).active_modal.is_none());
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(RequestsHandoff::OpenImportExport {
+                    export_collection_id: Some(ref id)
+                }) if id == &col_id
+            ));
             window.refresh();
         });
 
@@ -1723,7 +1734,8 @@ mod gpui_integration {
 
     #[gpui_kit::test]
     fn providers_gateway_bench_and_handoff(cx: &mut TestAppContext) {
-        use crate::views::providers::{GatewayTab, LeftSelection, ProvidersHandoff, ProvidersView};
+        use crate::views::gateway::{GatewayHandoff, GatewayTab, GatewayView};
+        use crate::views::providers::{LeftSelection, ProvidersHandoff, ProvidersView};
 
         cx.background_executor.allow_parking();
         let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
@@ -1735,26 +1747,47 @@ mod gpui_integration {
             apply_palette(PaletteId::Ocean, true, false, &settings.appearance, cx);
         });
 
+        // A. Dedicated Local Gateway cockpit (4 tabs, modal dismissal, cross-module handoffs).
+        let (gw_view, gw_visual) = cx.add_window_view(GatewayView::new);
+        gw_visual.run_until_parked();
+
+        gw_visual.update(|window, cx| {
+            for tab in [
+                GatewayTab::Overview,
+                GatewayTab::Clients,
+                GatewayTab::Rules,
+                GatewayTab::Access,
+            ] {
+                gw_view.update(cx, |v, cx| v.set_tab(tab, cx));
+                window.refresh();
+            }
+
+            gw_view.update(cx, |v, cx| {
+                v.confirm_lan_open = true;
+                cx.notify();
+            });
+            assert!(gw_view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+            assert!(!gw_view.read(cx).confirm_lan_open);
+
+            gw_view.update(cx, |v, cx| {
+                v.pending_handoff
+                    .set(Some(GatewayHandoff::OpenSettings(SettingsSection::Routing)));
+                cx.notify();
+            });
+            assert!(matches!(
+                gw_view.read(cx).take_pending_handoff(),
+                Some(GatewayHandoff::OpenSettings(SettingsSection::Routing))
+            ));
+        });
+
+        // B. Focused Providers view (empty onboarding hero, Model Test Bench, modal dismissal, handoff).
         let (view, visual) = cx.add_window_view(ProvidersView::new);
         visual.run_until_parked();
 
         visual.update(|window, cx| {
-            // 1. Cycle all 4 Local Gateway cockpit tabs.
-            for tab in [
-                GatewayTab::Overview,
-                GatewayTab::Clients,
-                GatewayTab::Access,
-                GatewayTab::Rules,
-            ] {
-                view.update(cx, |v, cx| {
-                    v.selection = LeftSelection::Gateway;
-                    v.gateway_tab = tab;
-                    cx.notify();
-                });
-                window.refresh();
-            }
+            assert_eq!(view.read(cx).selection, LeftSelection::Empty);
+            window.refresh();
 
-            // 2. Mount and render Model Test Bench view.
             view.update(cx, |v, cx| {
                 v.open_bench(None, Vec::new(), window, cx);
             });
@@ -1762,14 +1795,12 @@ mod gpui_integration {
             assert!(view.read(cx).bench_view.is_some());
             window.refresh();
 
-            // 3. Exercise inline modal dismissal & Usage handoff emission.
             view.update(cx, |v, cx| {
-                v.confirm_lan_open = true;
                 v.adding_key_open = true;
                 cx.notify();
             });
             assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
-            assert!(!view.read(cx).confirm_lan_open && !view.read(cx).adding_key_open);
+            assert!(!view.read(cx).adding_key_open);
 
             view.update(cx, |v, cx| {
                 v.pending_handoff
@@ -1795,9 +1826,9 @@ mod gpui_integration {
         use pingdeck_desktop::core::model::{
             AuthConfig, HttpMethod, NetworkOptions, ProtocolKind, RequestBody,
         };
-        use pingdeck_desktop::state::{PaletteAction, ToastKind};
+        use pingdeck_desktop::state::{EnvironmentResourceTarget, PaletteAction, ToastKind};
 
-        use crate::views::utility::console::ConsoleMode;
+        use crate::views::utility::diagnostics::ConsoleMode;
         use crate::views::utility::import_export::IoTab;
 
         cx.background_executor.allow_parking();
@@ -1907,7 +1938,22 @@ mod gpui_integration {
                     PaletteAction::OpenFlow(flow.id.clone()),
                     NavModule::Flows,
                 ),
-                ("wiz:gw", PaletteAction::OpenGateway, NavModule::Providers),
+                ("wiz:gw", PaletteAction::OpenGateway, NavModule::Gateway),
+                (
+                    "deep:cookies",
+                    PaletteAction::OpenEnvironmentResource(EnvironmentResourceTarget::Cookies),
+                    NavModule::Environments,
+                ),
+                (
+                    "deep:certificates",
+                    PaletteAction::OpenEnvironmentResource(EnvironmentResourceTarget::Certificates),
+                    NavModule::Environments,
+                ),
+                (
+                    "deep:runner",
+                    PaletteAction::OpenCollectionRunner,
+                    NavModule::Requests,
+                ),
             ] {
                 shell.update(cx, |s, cx| {
                     s.execute_palette_action(id.into(), action, window, cx);
@@ -1916,23 +1962,44 @@ mod gpui_integration {
                 window.refresh();
             }
 
-            // 3. Exercise 3-tab Workspace Import/Export & 2-tab Diagnostic Console inside UtilityPanel.
+            // 3. Exercise unified Import/Export modal (3 tabs + cURL draft handoff) & Diagnostics slide-over sheet.
             shell.update(cx, |s, cx| {
+                s.navigate(NavModule::Gateway, cx);
                 s.open_utility(UtilityDialog::ImportExport, window, cx);
             });
-            let util = shell.read(cx).utility_view.clone();
+            let io_modal = shell.read(cx).import_export_view.clone();
             for tab in [IoTab::Import, IoTab::SanitizedExport, IoTab::SecretsExport] {
-                util.update(cx, |u, cx| {
+                io_modal.update(cx, |u, cx| {
                     u.io_tab = tab;
                     cx.notify();
                 });
                 window.refresh();
             }
-            shell.update(cx, |s, cx| {
-                s.open_utility(UtilityDialog::Console, window, cx);
+            io_modal.update(cx, |u, cx| {
+                u.io_tab = IoTab::Import;
+                u.io_format = "curl".into();
+                u.payload_input.update(cx, |t, cx| {
+                    t.set_value(
+                        "curl -X POST https://httpbin.org/post -H 'X-Test: 1' -d '{\"ok\":true}'",
+                        window,
+                        cx,
+                    );
+                });
+                u.run_io_import(cx);
             });
+        });
+        // Flush observer notification -> AppShell::render() to consume cURL draft handoff & close modal.
+        visual.run_until_parked();
+        visual.update(|window, cx| {
+            assert_eq!(shell.read(cx).state.active_module, NavModule::Requests);
+            assert!(shell.read(cx).state.active_utility.is_none());
+
+            shell.update(cx, |s, cx| {
+                s.open_utility(UtilityDialog::Diagnostics, window, cx);
+            });
+            let diag = shell.read(cx).diagnostics_view.clone();
             for mode in [ConsoleMode::Diagnostics, ConsoleMode::GpuBench] {
-                util.update(cx, |u, cx| {
+                diag.update(cx, |u, cx| {
                     u.console_mode = mode;
                     cx.notify();
                 });
@@ -1940,11 +2007,13 @@ mod gpui_integration {
             }
 
             // 4. Push auto-dismissing toast & verify sidebar collapse/expand rendering.
+            let toasts_before = shell.read(cx).state.toasts.len();
+            assert_eq!(toasts_before, 1, "cURL draft handoff should push one toast");
             shell.update(cx, |s, cx| {
                 s.push_toast_auto(ToastKind::Success, "Saved", None, cx);
                 s.toggle_sidebar(cx);
             });
-            assert_eq!(shell.read(cx).state.toasts.len(), 1);
+            assert_eq!(shell.read(cx).state.toasts.len(), toasts_before + 1);
             window.refresh();
             shell.update(cx, |s, cx| s.toggle_sidebar(cx));
             window.refresh();

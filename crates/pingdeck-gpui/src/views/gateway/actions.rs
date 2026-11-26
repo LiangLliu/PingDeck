@@ -1,4 +1,4 @@
-//! Gateway, Client & Routing-Rule actions for `ProvidersView`.
+//! Gateway, Client & Routing-Rule actions for `GatewayView`.
 
 use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::app::{
@@ -16,9 +16,9 @@ use pingdeck_desktop::core::model::settings::SettingsSection as CoreSection;
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
-use super::ProvidersView;
+use super::GatewayView;
 
-impl ProvidersView {
+impl GatewayView {
     pub fn gateway_action(&mut self, action: &'static str, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,

@@ -19,7 +19,7 @@ use crate::ui::{
     toggle_switch, v_col,
 };
 
-use super::ProvidersView;
+use super::GatewayView;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectToolKind {
@@ -46,7 +46,7 @@ impl ConnectToolKind {
 }
 
 pub struct ConnectClientSheet {
-    parent: Entity<ProvidersView>,
+    parent: Entity<GatewayView>,
     gateway_url: String,
     pub tool: ConnectToolKind,
     /// `(canonical "provider_id/model", display "provider_name/model")`.
@@ -69,7 +69,7 @@ pub struct ConnectClientSheet {
 
 impl ConnectClientSheet {
     pub fn new(
-        parent: Entity<ProvidersView>,
+        parent: Entity<GatewayView>,
         initial_tool: ConnectToolKind,
         gateway_url: String,
         available_models: Vec<(String, String)>,

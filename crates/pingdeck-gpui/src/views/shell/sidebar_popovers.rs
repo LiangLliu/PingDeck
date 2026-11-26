@@ -232,6 +232,7 @@ pub fn render_running_work_popover(
     let p = palette(cx);
     let approvals = shell.state.attention.approvals.clone();
     let mocks = shell.running_mock_summary.clone();
+    let gw_port = shell.state.gateway_port;
     let work = shell.state.running_work;
     let prov_attn = shell.provider_attention_count;
     let shell_ent = cx.entity().clone();
@@ -323,6 +324,28 @@ pub fn render_running_work_popover(
                         .child(appr.summary.clone()),
                 )
                 .child(badge(sh.running_gate_badge(), Tone::Warning, pop_cx)),
+            );
+        }
+
+        if let Some(port) = gw_port {
+            any_row = true;
+            let s_ent = shell_ent.clone();
+            let ph = pop_cx.entity().clone();
+            body = body.child(
+                list_row("rw-gateway", false, pop_cx, move |_, window, cx| {
+                    s_ent.update(cx, |s, cx| s.navigate(NavModule::Gateway, cx));
+                    ph.update(cx, |st, cx| st.dismiss(window, cx));
+                })
+                .justify_between()
+                .child(
+                    h_row()
+                        .gap(px(6.0))
+                        .min_w_0()
+                        .flex_1()
+                        .child(status_indicator(StatusShape::Live, pop_cx))
+                        .child(div().text_xs().truncate().child(sh.running_gateway_live())),
+                )
+                .child(meta_pill(format!(":{port}"), pop_cx)),
             );
         }
 
@@ -431,7 +454,7 @@ pub fn render_running_work_popover(
                 .justify_start()
                 .on_click(move |_, window, cx| {
                     s_con.update(cx, |s, cx| {
-                        s.open_utility(UtilityDialog::Console, window, cx);
+                        s.open_diagnostics(window, cx);
                     });
                     ph_con.update(cx, |st, cx| st.dismiss(window, cx));
                 }),

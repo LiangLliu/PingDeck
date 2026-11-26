@@ -1,24 +1,19 @@
-//! AI Providers, Local Gateway Cockpit, Coding Client Integrations & Test Bench (`NavModule::Providers`).
+//! AI Providers, Keys, Models, Pricing & Model Test Bench (`NavModule::Providers`).
 //!
 //! Unified master-detail shell (`h_resizable`):
-//! - Left pane (`sidebar.rs`): pinned Local Gateway + Test Bench + live-searchable configured Providers
+//! - Left pane (`sidebar.rs`): live-searchable configured Providers + pinned Model Test Bench tool
 //! - Right pane:
-//!   - Local Gateway Cockpit (`gateway.rs`, `gateway_overview.rs`, `gateway_access.rs`,
-//!     `gateway_clients.rs`, `gateway_backups.rs`, `gateway_rules.rs`, `connect_sheet.rs`)
-//!   - Model Test Bench (`bench.rs`, `bench_table.rs`)
 //!   - Provider Detail (`detail.rs`, `detail_keys.rs`, `detail_side.rs`, `detail_models.rs`,
-//!     `detail_models_table.rs`, `detail_config.rs`, `detail_config_extra.rs`)
-//! - Native Slide-Over Sheets (`sniff_sheet.rs`, `connect_sheet.rs`) via `WindowExt::open_sheet`.
+//!     `detail_models_table.rs`, `detail_config.rs`, `detail_config_extra.rs`, `detail_config_pricing.rs`)
+//!   - Model Test Bench (`bench.rs`, `bench_table.rs`, `bench_panels.rs`)
+//!   - Full-width Provider Onboarding Hero when no providers exist yet
+//! - Native Slide-Over Sheet (`sniff_sheet.rs`) via `WindowExt::open_sheet`.
 
-pub mod actions;
 pub mod actions_models;
 pub mod actions_provider;
-pub mod actions_rules;
 pub mod bench;
 pub mod bench_panels;
 pub mod bench_table;
-pub mod connect_sheet;
-pub mod connect_sheet_body;
 pub mod detail;
 pub mod detail_config;
 pub mod detail_config_extra;
@@ -28,12 +23,6 @@ pub mod detail_models;
 pub mod detail_models_table;
 pub mod detail_side;
 pub mod format;
-pub mod gateway;
-pub mod gateway_access;
-pub mod gateway_backups;
-pub mod gateway_clients;
-pub mod gateway_overview;
-pub mod gateway_rules;
 pub mod loader;
 pub mod sidebar;
 pub mod sniff_sheet;
@@ -48,59 +37,21 @@ use gpui_kit::{
     Subscription, Task, Window, div, px,
 };
 use pingdeck_desktop::core::app::{
-    ClientInspectDto, FallbackCandidate, GatewayOverviewDto, GatewayRule, ManagedTool,
-    ProviderHealthDto, ProviderModelView, ProviderPricingView, ProviderView, RoutePreview,
-    VerifyResult, settings_get_impl,
+    ProviderHealthDto, ProviderModelView, ProviderPricingView, ProviderView,
 };
-use pingdeck_desktop::core::client_config::{ClientApp, DetectedClient, DetectedSnippetClient};
 use pingdeck_desktop::core::llm::presets::ProviderPreset;
 use pingdeck_desktop::core::llm::status::ProviderStatusDto;
-use pingdeck_desktop::core::llm::store::{
-    GatewayClient, ModelRef, ProbeResult, ProviderKey, RequestLogEntry,
-};
+use pingdeck_desktop::core::llm::store::{ProbeResult, ProviderKey, RequestLogEntry};
 use pingdeck_desktop::core::model::model_catalog::ModelCatalogFamily;
-use pingdeck_desktop::core::model::settings::AiGatewaySettings;
 
-use crate::bridge::runtime;
 use crate::ui::{InputEvent, InputState, Tone, h_resizable, palette, resizable_panel, to_hsla};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum LeftSelection {
     #[default]
-    Gateway,
-    Bench,
+    Empty,
     Provider(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum GatewayTab {
-    #[default]
-    Overview,
-    Clients,
-    Access,
-    Rules,
-}
-
-impl GatewayTab {
-    #[must_use]
-    pub const fn index(self) -> usize {
-        match self {
-            Self::Overview => 0,
-            Self::Clients => 1,
-            Self::Access => 2,
-            Self::Rules => 3,
-        }
-    }
-
-    #[must_use]
-    pub const fn from_index(idx: usize) -> Self {
-        match idx {
-            1 => Self::Clients,
-            2 => Self::Access,
-            3 => Self::Rules,
-            _ => Self::Overview,
-        }
-    }
+    Bench,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -149,29 +100,14 @@ pub enum ProvidersHandoff {
     OpenUsageCall(i64),
 }
 
-pub struct RuleEditorState {
-    pub primary: ModelRef,
-    pub chain: Vec<ModelRef>,
-    pub candidates: Vec<FallbackCandidate>,
-}
-
 pub struct ProvidersView {
     pub selection: LeftSelection,
-    pub gateway_tab: GatewayTab,
     pub provider_tab: ProviderTab,
     pub providers: Vec<ProviderView>,
     pub statuses: HashMap<String, ProviderStatusDto>,
     pub keys: Vec<ProviderKey>,
     pub models: Vec<ProviderModelView>,
     pub presets: Vec<ProviderPreset>,
-    pub overview: Option<GatewayOverviewDto>,
-    pub gateway_settings: AiGatewaySettings,
-    pub detected_clients: Vec<DetectedClient>,
-    pub snippet_clients: Vec<DetectedSnippetClient>,
-    pub inspections: HashMap<ClientApp, ClientInspectDto>,
-    pub managed_tools: Vec<ManagedTool>,
-    pub gateway_clients: Vec<GatewayClient>,
-    pub gateway_rules: Vec<GatewayRule>,
     pub probe_results: Vec<ProbeResult>,
     pub provider_health: Option<ProviderHealthDto>,
     pub provider_pricing: HashMap<String, ProviderPricingView>,
@@ -182,11 +118,6 @@ pub struct ProvidersView {
     pub search_input: Entity<InputState>,
     pub quick_url_input: Entity<InputState>,
     pub model_search_input: Entity<InputState>,
-    pub gw_port_input: Entity<InputState>,
-    pub gw_extra_hosts_input: Entity<InputState>,
-    pub new_client_name_input: Entity<InputState>,
-    pub client_rpm_input: Entity<InputState>,
-    pub client_conc_input: Entity<InputState>,
     pub new_key_name_input: Entity<InputState>,
     pub new_key_secret_input: Entity<InputState>,
     pub new_key_group_input: Entity<InputState>,
@@ -197,14 +128,6 @@ pub struct ProvidersView {
     pub edit_key_secret_input: Entity<InputState>,
     pub new_model_id_input: Entity<InputState>,
     pub new_model_ctx_input: Entity<InputState>,
-
-    pub editing_client_policy: Option<String>,
-    pub confirm_revoke_client: Option<String>,
-    pub confirm_lan_open: bool,
-    pub revealed_client_token: Option<(String, String)>,
-    pub client_verify_results: HashMap<ClientApp, VerifyResult>,
-    pub rule_editor: Option<RuleEditorState>,
-    pub route_preview: Option<RoutePreview>,
 
     pub adding_key_open: bool,
     pub editing_key_id: Option<String>,
@@ -217,7 +140,6 @@ pub struct ProvidersView {
     pub model_filter: ModelFilterKind,
     pub models_page: usize,
     pub models_page_size: usize,
-    pub client_models_page: usize,
     pub selected_models: BTreeSet<String>,
     pub last_bulk_undo: Option<(String, String)>,
 
@@ -225,7 +147,6 @@ pub struct ProvidersView {
     pub bench_view: Option<Entity<bench::BenchView>>,
     pub status_msg: Option<(Tone, String)>,
     pub pending_handoff: Cell<Option<ProvidersHandoff>>,
-    pub(super) pending_gw_inputs_sync: Option<(String, String)>,
     pub(super) llm_sub_id: Option<u64>,
     pub(super) llm_stream_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -234,125 +155,30 @@ pub struct ProvidersView {
 
 impl ProvidersView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let settings = settings_get_impl(runtime(cx).state());
-        let gw_settings = settings.ai.gateway.clone();
+        let mk = |ph: &'static str, masked: bool, w: &mut Window, cx: &mut Context<Self>| {
+            cx.new(|cx| {
+                let mut st = InputState::new(w, cx).placeholder(ph);
+                if masked {
+                    st = st.masked(true);
+                }
+                st
+            })
+        };
 
-        let mk =
-            |ph: &'static str, init: &str, masked: bool, w: &mut Window, cx: &mut Context<Self>| {
-                cx.new(|cx| {
-                    let mut st = InputState::new(w, cx).placeholder(ph);
-                    if masked {
-                        st = st.masked(true);
-                    }
-                    if !init.is_empty() {
-                        st.set_value(init.to_owned(), w, cx);
-                    }
-                    st
-                })
-            };
-
-        let search_input = mk(
-            crate::ui::tr(cx).providers().prov_pane_search(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let quick_url_input = mk("https://api.deepseek.com", "", false, window, cx);
-        let model_search_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_filter_models(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let gw_port_input = mk("4141", &gw_settings.port.to_string(), false, window, cx);
-        let gw_extra_hosts_input = mk(
-            "host.docker.internal",
-            &gw_settings.extra_allowed_hosts.join(", "),
-            false,
-            window,
-            cx,
-        );
-        let new_client_name_input = mk(
-            crate::ui::tr(cx)
-                .providers()
-                .prov_providers_new_client_name(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let client_rpm_input = mk("60", "", false, window, cx);
-        let client_conc_input = mk("8", "", false, window, cx);
-        let new_key_name_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_key_name(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let new_key_secret_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_api_secret_sk(),
-            "",
-            true,
-            window,
-            cx,
-        );
-        let new_key_group_input = mk(
-            crate::ui::tr(cx)
-                .providers()
-                .prov_providers_group_optional(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let new_key_user_id_input = mk("New-Api-User (opt)", "", false, window, cx);
-        let edit_key_name_input = mk(
-            crate::ui::tr(cx).providers().cfg_keys_name(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let edit_key_group_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_group(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let edit_key_notes_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_notes(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let edit_key_secret_input = mk(
-            crate::ui::tr(cx)
-                .providers()
-                .prov_providers_new_secret_empty_keep(),
-            "",
-            true,
-            window,
-            cx,
-        );
-        let new_model_id_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_model_id(),
-            "",
-            false,
-            window,
-            cx,
-        );
-        let new_model_ctx_input = mk(
-            crate::ui::tr(cx).providers().prov_providers_context_opt(),
-            "",
-            false,
-            window,
-            cx,
-        );
+        let pr = crate::ui::tr(cx).providers();
+        let search_input = mk(pr.prov_pane_search(), false, window, cx);
+        let quick_url_input = mk("https://api.deepseek.com", false, window, cx);
+        let model_search_input = mk(pr.prov_providers_filter_models(), false, window, cx);
+        let new_key_name_input = mk(pr.prov_providers_key_name(), false, window, cx);
+        let new_key_secret_input = mk(pr.prov_providers_api_secret_sk(), true, window, cx);
+        let new_key_group_input = mk(pr.prov_providers_group_optional(), false, window, cx);
+        let new_key_user_id_input = mk("New-Api-User (opt)", false, window, cx);
+        let edit_key_name_input = mk(pr.cfg_keys_name(), false, window, cx);
+        let edit_key_group_input = mk(pr.prov_providers_group(), false, window, cx);
+        let edit_key_notes_input = mk(pr.prov_providers_notes(), false, window, cx);
+        let edit_key_secret_input = mk(pr.prov_providers_new_secret_empty_keep(), true, window, cx);
+        let new_model_id_input = mk(pr.prov_providers_model_id(), false, window, cx);
+        let new_model_ctx_input = mk(pr.prov_providers_context_opt(), false, window, cx);
 
         let sub_s = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
@@ -367,22 +193,13 @@ impl ProvidersView {
         });
 
         let mut view = Self {
-            selection: LeftSelection::Gateway,
-            gateway_tab: GatewayTab::Overview,
+            selection: LeftSelection::Empty,
             provider_tab: ProviderTab::Overview,
             providers: Vec::new(),
             statuses: HashMap::new(),
             keys: Vec::new(),
             models: Vec::new(),
             presets: Vec::new(),
-            overview: None,
-            gateway_settings: gw_settings,
-            detected_clients: Vec::new(),
-            snippet_clients: Vec::new(),
-            inspections: HashMap::new(),
-            managed_tools: Vec::new(),
-            gateway_clients: Vec::new(),
-            gateway_rules: Vec::new(),
             probe_results: Vec::new(),
             provider_health: None,
             provider_pricing: HashMap::new(),
@@ -391,11 +208,6 @@ impl ProvidersView {
             search_input,
             quick_url_input,
             model_search_input,
-            gw_port_input,
-            gw_extra_hosts_input,
-            new_client_name_input,
-            client_rpm_input,
-            client_conc_input,
             new_key_name_input,
             new_key_secret_input,
             new_key_group_input,
@@ -406,13 +218,6 @@ impl ProvidersView {
             edit_key_secret_input,
             new_model_id_input,
             new_model_ctx_input,
-            editing_client_policy: None,
-            confirm_revoke_client: None,
-            confirm_lan_open: false,
-            revealed_client_token: None,
-            client_verify_results: HashMap::new(),
-            rule_editor: None,
-            route_preview: None,
             adding_key_open: false,
             editing_key_id: None,
             confirm_delete_key: None,
@@ -424,14 +229,12 @@ impl ProvidersView {
             model_filter: ModelFilterKind::All,
             models_page: 0,
             models_page_size: 50,
-            client_models_page: 0,
             selected_models: BTreeSet::new(),
             last_bulk_undo: None,
             config_form: None,
             bench_view: None,
             status_msg: None,
             pending_handoff: Cell::new(None),
-            pending_gw_inputs_sync: None,
             llm_sub_id: None,
             llm_stream_task: None,
             _subscriptions: vec![sub_s, sub_m],
@@ -447,29 +250,16 @@ impl ProvidersView {
         self.pending_handoff.take()
     }
 
-    pub fn select_gateway(&mut self, cx: &mut Context<Self>) {
-        self.selection = LeftSelection::Gateway;
-        cx.notify();
-    }
-
     pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
-        let had = self.confirm_lan_open
-            || self.confirm_revoke_client.is_some()
-            || self.confirm_delete_key.is_some()
+        let had = self.confirm_delete_key.is_some()
             || self.adding_key_open
             || self.adding_model_open
-            || self.editing_key_id.is_some()
-            || self.rule_editor.is_some()
-            || self.editing_client_policy.is_some();
+            || self.editing_key_id.is_some();
         if had {
-            self.confirm_lan_open = false;
-            self.confirm_revoke_client = None;
             self.confirm_delete_key = None;
             self.adding_key_open = false;
             self.adding_model_open = false;
             self.editing_key_id = None;
-            self.rule_editor = None;
-            self.editing_client_policy = None;
             cx.notify();
         }
         had
@@ -479,25 +269,10 @@ impl ProvidersView {
     pub fn pricing_of(&self, provider_id: &str) -> Option<&ProviderPricingView> {
         self.provider_pricing.get(provider_id)
     }
-
-    #[must_use]
-    pub fn format_model_ref(&self, raw: &str) -> String {
-        if let Some((pid, mid)) = raw.split_once('/') {
-            format!("{}/{mid}", self.provider_name(pid))
-        } else {
-            raw.to_owned()
-        }
-    }
 }
 
 impl Render for ProvidersView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some((port_s, hosts_s)) = self.pending_gw_inputs_sync.take() {
-            self.gw_port_input
-                .update(cx, |i, cx| i.set_value(port_s, window, cx));
-            self.gw_extra_hosts_input
-                .update(cx, |i, cx| i.set_value(hosts_s, window, cx));
-        }
         let p = palette(cx);
 
         if let LeftSelection::Provider(id) = self.selection.clone()
@@ -508,12 +283,11 @@ impl Render for ProvidersView {
 
         let left_pane = sidebar::render_sidebar(self, cx);
         let right_content: gpui_kit::AnyElement = match &self.selection {
-            LeftSelection::Gateway => gateway::render_gateway_cockpit(self, cx).into_any_element(),
             LeftSelection::Bench => {
                 if let Some(bv) = &self.bench_view {
                     bv.clone().into_any_element()
                 } else {
-                    gateway::render_gateway_cockpit(self, cx).into_any_element()
+                    sidebar::render_onboarding_hero(self, cx).into_any_element()
                 }
             }
             LeftSelection::Provider(id) => {
@@ -525,15 +299,16 @@ impl Render for ProvidersView {
                 {
                     detail::render_provider_detail(self, &pv, cx).into_any_element()
                 } else {
-                    gateway::render_gateway_cockpit(self, cx).into_any_element()
+                    sidebar::render_onboarding_hero(self, cx).into_any_element()
                 }
             }
+            LeftSelection::Empty => sidebar::render_onboarding_hero(self, cx).into_any_element(),
         };
 
         h_resizable("providers-main-split")
             .child(
                 resizable_panel()
-                    .size(px(276.0))
+                    .size(px(268.0))
                     .size_range(px(220.0)..px(360.0))
                     .child(left_pane),
             )

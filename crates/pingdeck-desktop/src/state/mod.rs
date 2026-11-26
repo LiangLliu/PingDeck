@@ -13,6 +13,6 @@ pub use palette::{
     PaletteAction, PaletteCategory, PaletteDynamicItems, PaletteEngine, PaletteItem,
 };
 pub use shell::{
-    NavGroup, NavModule, SettingsGroup, SettingsSection, ShellState, ToastKind, ToastMessage,
-    UtilityDialog,
+    EnvironmentResourceTarget, NavGroup, NavModule, SettingsGroup, SettingsSection, ShellState,
+    ToastKind, ToastMessage, UtilityDialog,
 };

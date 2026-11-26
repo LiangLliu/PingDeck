@@ -12,7 +12,7 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::app::ProxyTestOutcome;
 use pingdeck_desktop::core::proxy_url;
-use pingdeck_desktop::state::{SettingsSection, UtilityDialog};
+use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
     Anchor, Disableable as _, Popover, StatusShape, Tone, UiIcon, app_title_bar, badge,
@@ -112,7 +112,7 @@ pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl In
                 .tooltip(sh.util_console())
                 .on_click(cx.listener(|this, _, window, cx| {
                     cx.stop_propagation();
-                    this.open_utility(UtilityDialog::Console, window, cx);
+                    this.open_diagnostics(window, cx);
                 })),
         )
         .child(
