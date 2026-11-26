@@ -45,8 +45,12 @@ PID=""
 
 die() {
   echo "FAIL: $*" >&2
-  # The isolated HOME is deleted on exit; keep the app log visible (CI has no other copy).
+  # The isolated HOME is deleted on exit; keep both stdout/stderr and pingdeck.log visible in CI.
   [ -n "$H" ] && [ -s "$H/app.log" ] && { echo "--- last 40 lines of $H/app.log" >&2; tail -n 40 "$H/app.log" >&2; }
+  [ -n "${DATA:-}" ] && [ -s "$DATA/logs/pingdeck.log" ] && {
+    echo "--- last 40 lines of $DATA/logs/pingdeck.log" >&2
+    tail -n 40 "$DATA/logs/pingdeck.log" >&2
+  }
   exit 1
 }
 ok() { echo "ok:   $*"; }
@@ -58,10 +62,20 @@ skip() { # skip <step>: list it once in the final SKIPPED line
 indent_lines() { printf '\n  %s' "${1//$'\n'/$'\n  '}"; } # one indented line per path, spaces kept
 cleanup() {
   [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && kill -KILL "$PID" 2>/dev/null
-  # Optional CI diagnostic copy: preserve app.log before the isolated HOME is removed.
-  if [ -n "${PINGDECK_SMOKE_LOG:-}" ] && [ -n "$H" ] && [ -s "$H/app.log" ]; then
+  # Optional CI diagnostic copy: preserve app.log and pingdeck.log before the isolated HOME is removed.
+  if [ -n "${PINGDECK_SMOKE_LOG:-}" ] && [ -n "$H" ]; then
     mkdir -p "$(dirname "$PINGDECK_SMOKE_LOG")" 2>/dev/null || true
-    cp "$H/app.log" "$PINGDECK_SMOKE_LOG" 2>/dev/null || true
+    {
+      if [ -s "$H/app.log" ]; then
+        echo "=== stdout/stderr ($H/app.log) ==="
+        cat "$H/app.log"
+      fi
+      if [ -n "${DATA:-}" ] && [ -s "$DATA/logs/pingdeck.log" ]; then
+        echo "=== diagnostic log ($DATA/logs/pingdeck.log) ==="
+        cat "$DATA/logs/pingdeck.log"
+      fi
+    } >"$PINGDECK_SMOKE_LOG" 2>/dev/null || true
+    [ -s "$PINGDECK_SMOKE_LOG" ] || rm -f "$PINGDECK_SMOKE_LOG" 2>/dev/null || true
   fi
   local tmp=${TMPDIR:-/tmp}
   case "$H" in "${tmp%/}"/*|/tmp/*|/var/folders/*) rm -rf "$H" ;; esac
@@ -122,6 +136,10 @@ quit_app() { # graceful quit; sets QUIT_CODE (empty when skipped) and QUIT_ERR (
         sleep "$POLL_S"
       done
       if [ -z "$w" ]; then
+        {
+          echo "[smoke] wmctrl -lp snapshot (wanted pid $PID):"
+          wmctrl -lp 2>&1 || true
+        } >>"$H/app.log"
         QUIT_ERR="no window for pid $PID to close (wmctrl)"; kill -KILL "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; return 1
       fi
       wmctrl -ic "$w" ;;

@@ -163,10 +163,13 @@ pub fn run() {
             log_line(
                 LogLevel::Error,
                 "startup",
-                &format!("failed to open main window: {error}"),
+                &format!("failed to open main window: {error:#}"),
             );
-            cx.quit();
-            return;
+            // Exit immediately rather than calling `cx.quit()`: on Linux `calloop::EventLoop::run`
+            // clears its stop signal when entering the loop after `on_finish_launching` returns,
+            // which would otherwise leave a windowless process hanging forever.
+            app_runtime.shutdown_blocking();
+            std::process::exit(1);
         }
 
         // Start OS background services after window creation.

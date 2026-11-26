@@ -207,14 +207,11 @@ impl SettingsView {
     pub fn reload_aux(&mut self, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
-            |state| {
-                let settings = settings_get_impl(state);
-                let mcp = agent_mcp_server_list_impl(state).unwrap_or_default();
-                (settings, mcp)
-            },
-            |this, (settings, mcp), cx| {
-                if settings != this.settings {
-                    this.apply_updated_settings(settings, cx);
+            |state| agent_mcp_server_list_impl(state).unwrap_or_default(),
+            |this, mcp, cx| {
+                let latest = settings_get_impl(runtime(cx).state());
+                if latest != this.settings {
+                    this.apply_updated_settings(latest, cx);
                 }
                 this.mcp_servers = mcp;
                 cx.notify();

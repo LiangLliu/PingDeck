@@ -452,7 +452,7 @@ mod gpui_integration {
             visual: &mut gpui_kit::VisualTestContext,
             pred: impl Fn(&gpui_kit::App) -> bool,
         ) -> bool {
-            for _ in 0..100 {
+            for _ in 0..200 {
                 visual.run_until_parked();
                 if visual.update(|window, cx| {
                     window.refresh();
@@ -522,17 +522,34 @@ mod gpui_integration {
                 );
             });
         });
-        assert!(
-            wait_for(visual, |cx| {
-                let s = &view.read(cx).settings;
-                s.network.timeout_ms == 45_000
-                    && s.editor.tab_size == 4
-                    && s.mock.default_latency_ms == 125
-                    && s.ai.gateway.max_retries == 6
-                    && s.advanced.script_recursion_limit == 512
-            }),
-            "settings patches must persist and sync back into SettingsView"
-        );
+        let synced = wait_for(visual, |cx| {
+            let s = &view.read(cx).settings;
+            s.network.timeout_ms == 45_000
+                && s.editor.tab_size == 4
+                && s.mock.default_latency_ms == 125
+                && s.ai.gateway.max_retries == 6
+                && s.advanced.script_recursion_limit == 512
+        });
+        if !synced {
+            let (view_s, flash) = visual
+                .update(|_, cx| (view.read(cx).settings.clone(), view.read(cx).flash.clone()));
+            let core_s = settings_get_impl(rt.state());
+            panic!(
+                "settings patches must persist and sync back into SettingsView\n\
+                 view: timeout={} tab={} mock={} retries={} rec={} flash={flash:?}\n\
+                 core: timeout={} tab={} mock={} retries={} rec={}",
+                view_s.network.timeout_ms,
+                view_s.editor.tab_size,
+                view_s.mock.default_latency_ms,
+                view_s.ai.gateway.max_retries,
+                view_s.advanced.script_recursion_limit,
+                core_s.network.timeout_ms,
+                core_s.editor.tab_size,
+                core_s.mock.default_latency_ms,
+                core_s.ai.gateway.max_retries,
+                core_s.advanced.script_recursion_limit,
+            );
+        }
 
         // 4. Invalid numeric input surfaces error flash & error pill state cleanly.
         visual.update(|window, cx| {
@@ -2046,7 +2063,7 @@ mod gpui_integration {
             visual: &mut gpui_kit::VisualTestContext,
             pred: impl Fn(&gpui_kit::App) -> bool,
         ) -> bool {
-            for _ in 0..100 {
+            for _ in 0..200 {
                 visual.run_until_parked();
                 if visual.update(|window, cx| {
                     window.refresh();

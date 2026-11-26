@@ -2,8 +2,9 @@
 //! tests. Compiled only for tests or with the `test-support` feature, never into a release.
 #![allow(clippy::expect_used, clippy::panic)]
 
+use std::borrow::Cow;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -49,11 +50,18 @@ impl TestServer {
                 thread::sleep(delay);
 
                 match action {
-                    TestServerAction::Respond(response) => stream
-                        .write_all(response.as_bytes())
-                        .expect("response should write"),
+                    TestServerAction::Respond(response) => {
+                        let response = ensure_connection_close(&response);
+                        stream
+                            .write_all(response.as_bytes())
+                            .expect("response should write");
+                        let _ = stream.flush();
+                        let _ = stream.shutdown(Shutdown::Write);
+                    }
                     TestServerAction::RespondBytes(response) => {
                         let _ = stream.write_all(&response);
+                        let _ = stream.flush();
+                        let _ = stream.shutdown(Shutdown::Write);
                     }
                     TestServerAction::CloseConnection => {}
                 }
@@ -103,6 +111,31 @@ fn find_header_end(bytes: &[u8]) -> Option<usize> {
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
         .map(|index| index + 4)
+}
+
+/// Ensures one-request-per-connection HTTP/1.1 responses advertise `Connection: close` so
+/// pooling clients (e.g. `reqwest` following redirects) never try to reuse a socket this
+/// server is about to close.
+fn ensure_connection_close(response: &str) -> Cow<'_, str> {
+    if !response.starts_with("HTTP/1.1 ") {
+        return Cow::Borrowed(response);
+    }
+    let Some(sep) = response.find("\r\n\r\n") else {
+        return Cow::Borrowed(response);
+    };
+    let head = &response[..sep];
+    let has_connection = head.lines().skip(1).any(|line| {
+        line.split_once(':')
+            .is_some_and(|(name, _)| name.trim().eq_ignore_ascii_case("connection"))
+    });
+    if has_connection {
+        return Cow::Borrowed(response);
+    }
+    let mut owned = String::with_capacity(response.len() + "\r\nConnection: close".len());
+    owned.push_str(head);
+    owned.push_str("\r\nConnection: close");
+    owned.push_str(&response[sep..]);
+    Cow::Owned(owned)
 }
 
 fn request_content_length(headers: &[u8]) -> usize {

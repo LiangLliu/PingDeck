@@ -8,13 +8,18 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
 
 jobs:
   changes:
@@ -27,12 +32,14 @@ jobs:
       rust: ${{ steps.resolve.outputs.rust }}
       rust_lock: ${{ steps.resolve.outputs.rust_lock }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
         if: github.event_name == 'pull_request'
       - name: Classify pull request changes
         id: filter
         if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             docs:
@@ -89,7 +96,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up Rust (xtask & fmt)
         uses: ./.github/actions/setup-rust
         with:
@@ -122,9 +131,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Rust dependency policy (cargo-deny)
-        uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories bans sources
 
@@ -139,7 +150,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-linux-deps
         with:
           gpui: "true"
@@ -148,6 +161,8 @@ jobs:
           cache-key: clippy
       - name: Workspace clippy (all targets)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: GPUI UI test-support clippy
+        run: cargo clippy -p pingdeck-gpui --features test-support --all-targets --locked -- -D warnings
 
   rust-nextest:
     name: Rust tests (${{ matrix.os }})
@@ -166,7 +181,9 @@ jobs:
             nextest: -p pingdeck-agent -p pingdeck-base -p pingdeck-executor -p pingdeck-desktop
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-linux-deps
         with:
           gpui: "true"
@@ -181,7 +198,7 @@ jobs:
         run: cargo nextest run --locked --profile ci ${{ matrix.nextest }}
       - name: Upload JUnit
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: nextest-junit-${{ matrix.os }}
           path: target/nextest/ci/junit.xml
@@ -199,7 +216,9 @@ jobs:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-linux-deps
         with:
           gpui: "true"
@@ -207,7 +226,7 @@ jobs:
         with:
           cache-key: gpui-ui-tests
       - name: Run headless GPUI integration suite
-        run: cargo test -p pingdeck-gpui --features test-support --locked
+        run: cargo test -p pingdeck-gpui --features test-support --locked -- --test-threads=2
 
   ci-gate:
     name: CI Gate

@@ -17,7 +17,9 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
+        Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset -nolisten tcp &
+        xvfb_pid=$!
+        echo "SMOKE_XVFB_PID=${xvfb_pid}" >> "$GITHUB_ENV"
         for _ in $(seq 1 50); do
           [ -S /tmp/.X11-unix/X99 ] && break
           sleep 0.2
@@ -25,24 +27,44 @@ runs:
         [ -S /tmp/.X11-unix/X99 ] || { echo "FAIL: Xvfb :99 did not start" >&2; exit 1; }
         export DISPLAY=:99
         echo "DISPLAY=:99" >> "$GITHUB_ENV"
+        export LIBGL_ALWAYS_SOFTWARE=1
+        echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+        lvp_icd=$(find /usr/share/vulkan/icd.d /etc/vulkan/icd.d -maxdepth 1 -name '*lvp*.json' 2>/dev/null | head -n 1 || true)
+        if [ -n "$lvp_icd" ]; then
+          export VK_ICD_FILENAMES="$lvp_icd"
+          echo "VK_ICD_FILENAMES=${lvp_icd}" >> "$GITHUB_ENV"
+        fi
         openbox >/dev/null 2>&1 &
+        openbox_pid=$!
+        echo "SMOKE_OPENBOX_PID=${openbox_pid}" >> "$GITHUB_ENV"
         for _ in $(seq 1 50); do
           wmctrl -m >/dev/null 2>&1 && break
           sleep 0.2
         done
         wmctrl -m >/dev/null 2>&1 || { echo "FAIL: openbox did not become ready" >&2; exit 1; }
+        vulkaninfo --summary 2>&1 || true
 
     # smoke.sh creates its own mktemp HOME (and CFFIXED_USER_HOME, XDG_*), drops PINGDECK_DATA_DIR
-    # and client config env vars, and copies app.log to PINGDECK_SMOKE_LOG before cleanup.
+    # and client config env vars, and copies app.log + pingdeck.log to PINGDECK_SMOKE_LOG before cleanup.
     - name: Execute release smoke test
       shell: bash
       env:
         PINGDECK_SMOKE_LOG: ${{ runner.temp }}/smoke-app.log
       run: scripts/smoke.sh "${{ inputs.binary }}"
 
+    - name: Stop virtual display and window manager (Linux)
+      if: always() && runner.os == 'Linux'
+      shell: bash
+      run: |
+        for pid in "${SMOKE_OPENBOX_PID:-}" "${SMOKE_XVFB_PID:-}"; do
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null || true
+          fi
+        done
+
     - name: Upload smoke app log on failure
       if: failure()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@v7
       with:
         name: smoke-app-log-${{ inputs.artifact-suffix }}
         path: ${{ runner.temp }}/smoke-app.log

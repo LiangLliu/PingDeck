@@ -98,8 +98,13 @@ pub(super) fn render_page_body(
                 existing.clone()
             } else {
                 let created = cx.new(|cx| agent::AgentSettingsView::new(sec, window, cx));
-                let sub = cx.observe(&created, |this, ent, cx| {
-                    this.settings = ent.read(cx).settings.clone();
+                let sub = cx.observe(&created, |this, _ent, cx| {
+                    let latest = pingdeck_desktop::core::app::settings_get_impl(
+                        crate::bridge::runtime(cx).state(),
+                    );
+                    if latest != this.settings {
+                        this.apply_updated_settings(latest, cx);
+                    }
                     cx.notify();
                 });
                 view._subscriptions.push(sub);

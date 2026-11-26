@@ -340,7 +340,6 @@ impl AgentSettingsView {
         let block_task = spawn_blocking_into(
             cx,
             |state| {
-                let settings = settings_get_impl(state);
                 let roles = agent_roles_get_impl(state).unwrap_or_default();
                 let trusts = agent_folder_trust_list_impl(state).unwrap_or_default();
                 let trusted_folders: Vec<TrustedFolderRow> = trusts
@@ -353,11 +352,15 @@ impl AgentSettingsView {
                 let rules = agent_permission_rule_views_impl(state, None, None).unwrap_or_default();
                 let skills = agent_skill_entries_impl(state, None).unwrap_or_default();
                 let sandbox = agent_sandbox_test_impl();
-                (settings, roles, trusted_folders, rules, skills, sandbox)
+                (roles, trusted_folders, rules, skills, sandbox)
             },
-            |this, (settings, roles, trusted_folders, rules, skills, sandbox), cx| {
-                if this.settings != settings {
-                    this.settings = settings;
+            |this, (roles, trusted_folders, rules, skills, sandbox), cx| {
+                // Read authoritative settings on the UI thread after slow blocking work (such as
+                // `agent_sandbox_test_impl`) completes so a pre-edit snapshot can never clobber
+                // concurrent settings commits.
+                let latest = settings_get_impl(runtime(cx).state());
+                if this.settings != latest {
+                    this.settings = latest;
                     this.pending_sync_inputs = true;
                 }
                 this.roles = roles;

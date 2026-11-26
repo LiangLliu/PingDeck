@@ -3,12 +3,12 @@
 use gpui_kit::{Context, PathPromptOptions, SharedString, Window};
 use pingdeck_desktop::core::agent::model::SubagentRole;
 use pingdeck_desktop::core::app::{
-    SettingsSecret, ai_search_test_impl, settings_reset_section_impl, settings_secret_set_impl,
-    settings_update_impl,
+    SettingsSecret, ai_search_test_impl, settings_get_impl, settings_reset_section_impl,
+    settings_secret_set_impl, settings_update_impl,
 };
 use pingdeck_desktop::core::model::settings::{SearchBackend, SettingsSection as CoreSection};
 
-use crate::bridge::{spawn_async_into, spawn_blocking_into};
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::AgentSettingsView;
@@ -25,8 +25,8 @@ impl AgentSettingsView {
             cx,
             move |state| settings_update_impl(state, CoreSection::Ai, &patch),
             move |this, res, cx| match res {
-                Ok(next) => {
-                    this.settings = next;
+                Ok(_) => {
+                    this.settings = settings_get_impl(runtime(cx).state());
                     if let Some(msg) = flash_ok {
                         this.flash = Some((Tone::Success, msg));
                     } else {
@@ -56,8 +56,8 @@ impl AgentSettingsView {
             cx,
             move |state| settings_reset_section_impl(state, CoreSection::Ai, Some(key_vec)),
             move |this, res, cx| match res {
-                Ok(next) => {
-                    this.settings = next;
+                Ok(_) => {
+                    this.settings = settings_get_impl(runtime(cx).state());
                     this.flash = Some((
                         Tone::Success,
                         crate::ui::tr(cx)
@@ -401,8 +401,8 @@ impl AgentSettingsView {
             cx,
             move |state| settings_update_impl(state, CoreSection::Ai, &patch),
             move |this, res, cx| match res {
-                Ok(next) => {
-                    this.settings = next;
+                Ok(_) => {
+                    this.settings = settings_get_impl(runtime(cx).state());
                     this.instructions_synced_text = synced;
                     this.instructions_dirty = false;
                     this.flash = Some((

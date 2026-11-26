@@ -3,7 +3,7 @@
 
 use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::app::{
-    network_ca_test_impl, network_proxy_test_impl, settings_reset_all_impl,
+    network_ca_test_impl, network_proxy_test_impl, settings_get_impl, settings_reset_all_impl,
     settings_reset_section_impl, settings_undo_last_reset_impl, settings_update_impl,
 };
 use pingdeck_desktop::core::model::settings::{Settings, SettingsSection as CoreSection};
@@ -11,7 +11,7 @@ use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::services::{FileFilter, FilePickerSpec, HostDialog as _, RfdDialog};
 
 use crate::app::actions::{SHORTCUT_SPECS, effective_key, normalize_keystroke};
-use crate::bridge::{spawn_async_into, spawn_blocking_into};
+use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::SettingsView;
@@ -57,10 +57,14 @@ impl SettingsView {
             move |state| settings_update_impl(state, section, &patch),
             move |this, res, cx| {
                 match res {
-                    Ok(next) => {
+                    Ok(_) => {
                         this.can_undo_reset_all = false;
                         this.last_save_error = false;
-                        this.apply_updated_settings(next, cx);
+                        // Re-read the authoritative store state on the UI thread so concurrent
+                        // patches finishing out of order never overwrite newer commits with a
+                        // stale snapshot.
+                        let latest = settings_get_impl(runtime(cx).state());
+                        this.apply_updated_settings(latest, cx);
                     }
                     Err(err) => {
                         this.pending_sync_inputs = true;
@@ -93,9 +97,10 @@ impl SettingsView {
             cx,
             move |state| settings_reset_section_impl(state, section, keys),
             move |this, res, cx| match res {
-                Ok(next) => {
+                Ok(_) => {
                     this.can_undo_reset_all = false;
-                    this.apply_updated_settings(next, cx);
+                    let latest = settings_get_impl(runtime(cx).state());
+                    this.apply_updated_settings(latest, cx);
                     this.set_flash(
                         Tone::Success,
                         crate::ui::tr(cx)
@@ -117,9 +122,10 @@ impl SettingsView {
             cx,
             settings_reset_all_impl,
             move |this, res, cx| match res {
-                Ok(next) => {
+                Ok(_) => {
                     this.can_undo_reset_all = true;
-                    this.apply_updated_settings(next, cx);
+                    let latest = settings_get_impl(runtime(cx).state());
+                    this.apply_updated_settings(latest, cx);
                     this.set_flash(
                         Tone::Success,
                         crate::ui::tr(cx)
@@ -140,8 +146,9 @@ impl SettingsView {
         let task = spawn_blocking_into(cx, settings_undo_last_reset_impl, move |this, res, cx| {
             this.can_undo_reset_all = false;
             match res {
-                Ok(next) => {
-                    this.apply_updated_settings(next, cx);
+                Ok(_) => {
+                    let latest = settings_get_impl(runtime(cx).state());
+                    this.apply_updated_settings(latest, cx);
                     this.set_flash(
                         Tone::Success,
                         crate::ui::tr(cx)
