@@ -524,3 +524,104 @@ fn unrouted_rows_are_excluded_from_all_usage_reads() {
             .all(|m| !m.provider_id.is_empty())
     );
 }
+
+#[test]
+fn today_gateway_ops_computes_passthrough_transcode_failover_median_ttft_and_hits() {
+    let c = connection();
+    let noon = midnight("2026-11-07") + 43_200_000;
+    let make_row = |ts_ms: i64,
+                    source: &str,
+                    provider_id: Option<&str>,
+                    requested_model: &str,
+                    status: u16,
+                    outcome: &str,
+                    translated: bool,
+                    ttft_ms: Option<u64>,
+                    attempts: serde_json::Value| {
+        let mut row = entry(requested_model);
+        row.ts_ms = ts_ms;
+        row.source = source.into();
+        row.provider_id = provider_id.map(str::to_owned);
+        row.provider_name = provider_id.map(str::to_owned);
+        row.key_id = provider_id.map(|_| "k1".to_owned());
+        row.upstream_model = provider_id.map(|_| "m".to_owned());
+        row.protocol_out = provider_id.map(|_| "openai_chat".to_owned());
+        row.status = status;
+        row.outcome = outcome.into();
+        row.stream = ttft_ms.is_some();
+        row.ttft_ms = ttft_ms;
+        row.attempts = attempts;
+        row.translated = translated;
+        row
+    };
+
+    for row in [
+        // 1) Passthrough ok, ttft 200
+        make_row(
+            noon,
+            "gateway",
+            Some("p1"),
+            "p1/deepseek-v4",
+            200,
+            "success",
+            false,
+            Some(200),
+            serde_json::json!([{"provider":"p1","status":200}]),
+        ),
+        // 2) Translated ok + failover recovered (2 attempts), ttft 400
+        make_row(
+            noon + 1_000,
+            "gateway",
+            Some("p2"),
+            "p1/deepseek-v4",
+            200,
+            "success",
+            true,
+            Some(400),
+            serde_json::json!([{"provider":"p1","status":429},{"provider":"p2","status":200}]),
+        ),
+        // 3) Pre-routing 401 rejection (no provider_id)
+        make_row(
+            noon + 2_000,
+            "gateway",
+            None,
+            "p1/deepseek-v4",
+            401,
+            "error",
+            false,
+            None,
+            serde_json::json!([]),
+        ),
+        // 4) Non-gateway agent call (must be ignored)
+        make_row(
+            noon + 3_000,
+            "agent",
+            Some("p1"),
+            "p1/deepseek-v4",
+            200,
+            "success",
+            true,
+            Some(999),
+            serde_json::json!([{"provider":"p1"},{"provider":"p2"}]),
+        ),
+    ] {
+        insert_log(
+            &c,
+            &LogWrite {
+                entry: &row,
+                capture: None,
+                rollup: None,
+            },
+        )
+        .unwrap();
+    }
+
+    let ops = today_gateway_ops(&c, noon + 5_000, 0).unwrap();
+    assert_eq!(ops.total_logged, 3);
+    assert_eq!(ops.passthrough, 1);
+    assert_eq!(ops.translated, 1);
+    assert_eq!(ops.failover_recovered, 1);
+    assert_eq!(ops.rejected, 1);
+    assert_eq!(ops.median_ttft_ms, Some(300));
+    assert_eq!(ops.model_hits.get("p1/deepseek-v4"), Some(&3));
+}

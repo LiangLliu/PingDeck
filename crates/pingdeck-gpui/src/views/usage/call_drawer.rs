@@ -27,6 +27,65 @@ use super::call_drawer_tabs::{
     render_frames_section, render_overview_section, render_payloads_section, render_reply_section,
 };
 use super::state::{UsageHandoff, UsageView, source_label};
+use crate::views::gateway::{GatewayHandoff, GatewayView};
+
+/// Which module owns the open [`CallDetailSheet`] so replay, capture deletion, and
+/// Request / Agent handoffs route back cleanly without duplicating the drawer.
+#[derive(Clone)]
+pub enum CallDetailHost {
+    Usage(Entity<UsageView>),
+    Gateway(Entity<GatewayView>),
+}
+
+impl CallDetailHost {
+    fn notify_changed(&self, cx: &mut gpui_kit::App) {
+        match self {
+            Self::Usage(ent) => ent.update(cx, |p, cx| p.reload_all(cx)),
+            Self::Gateway(ent) => ent.update(cx, |g, cx| {
+                g.reload_all(cx);
+                g.reload_traffic_page(false, cx);
+            }),
+        }
+    }
+
+    fn open_in_requests(
+        &self,
+        draft: pingdeck_desktop::core::llm::capture::ApiClientDraft,
+        cx: &mut gpui_kit::App,
+    ) {
+        match self {
+            Self::Usage(ent) => ent.update(cx, |p, cx| {
+                p.pending_handoff
+                    .set(Some(UsageHandoff::OpenAiRequest(Box::new(draft))));
+                cx.notify();
+            }),
+            Self::Gateway(ent) => ent.update(cx, |g, cx| {
+                g.pending_handoff
+                    .set(Some(GatewayHandoff::OpenAiRequest(Box::new(draft))));
+                cx.notify();
+            }),
+        }
+    }
+
+    fn ask_agent(&self, title: String, context_markdown: String, cx: &mut gpui_kit::App) {
+        match self {
+            Self::Usage(ent) => ent.update(cx, |p, cx| {
+                p.pending_handoff.set(Some(UsageHandoff::AskAgent {
+                    title,
+                    context_markdown,
+                }));
+                cx.notify();
+            }),
+            Self::Gateway(ent) => ent.update(cx, |g, cx| {
+                g.pending_handoff.set(Some(GatewayHandoff::AskAgent {
+                    title,
+                    context_markdown,
+                }));
+                cx.notify();
+            }),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DrawerTab {
@@ -70,7 +129,7 @@ impl DrawerTab {
 }
 
 pub struct CallDetailSheet {
-    parent: Entity<UsageView>,
+    host: CallDetailHost,
     pub lang: Language,
     pub detail: LogDetailDto,
     tab: DrawerTab,
@@ -84,14 +143,14 @@ pub struct CallDetailSheet {
 
 impl CallDetailSheet {
     pub fn new(
-        parent: Entity<UsageView>,
+        host: CallDetailHost,
         detail: LogDetailDto,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let lang = settings_get_impl(runtime(cx).state()).general.language;
         Self {
-            parent,
+            host,
             lang,
             detail,
             tab: DrawerTab::Overview,
@@ -131,7 +190,7 @@ impl CallDetailSheet {
                                         None => u.usage_drawer_replay_done().to_owned(),
                                     },
                                 ));
-                                this.parent.update(cx, |p, cx| p.reload_all(cx));
+                                this.host.notify_changed(cx);
                             }
                         }
                     }
@@ -203,7 +262,7 @@ impl CallDetailSheet {
                                 .usage_call_drawer_deleted_capture_for_this_call()
                                 .to_owned(),
                         ));
-                        this.parent.update(cx, |p, cx| p.reload_all(cx));
+                        this.host.notify_changed(cx);
                     }
                     Err(e) => this.status_note = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -216,11 +275,7 @@ impl CallDetailSheet {
     fn open_in_requests(&mut self, cx: &mut Context<Self>) {
         match llm_log_open_in_api_client_impl(runtime(cx).state(), self.detail.entry.id) {
             Ok(draft) => {
-                self.parent.update(cx, |p, cx| {
-                    p.pending_handoff
-                        .set(Some(UsageHandoff::OpenAiRequest(Box::new(draft))));
-                    cx.notify();
-                });
+                self.host.open_in_requests(draft, cx);
                 self.pending_close = true;
                 cx.notify();
             }
@@ -265,13 +320,8 @@ impl CallDetailSheet {
             error_line,
             reply_block,
         );
-        self.parent.update(cx, |p, cx| {
-            p.pending_handoff.set(Some(UsageHandoff::AskAgent {
-                title: format!("Log #{} · {}", e.id, e.requested_model),
-                context_markdown: md,
-            }));
-            cx.notify();
-        });
+        self.host
+            .ask_agent(format!("Log #{} · {}", e.id, e.requested_model), md, cx);
         self.pending_close = true;
         cx.notify();
     }

@@ -1,8 +1,9 @@
-//! Async data loading, live `LlmEvent` subscription, and Connect Client sheet launcher for `GatewayView`.
+//! Async data loading, live `LlmEvent` subscription, and centered Connect Client modal launcher
+//! for `GatewayView`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use gpui_kit::{AppContext as _, Context, ParentElement as _, Window, px};
+use gpui_kit::{AppContext as _, Context, Window};
 use pingdeck_desktop::core::app::{
     ClientInspectDto, GatewayOverviewDto, GatewayRule, ManagedTool, ProviderModelView,
     ProviderView, llm_client_detect_impl, llm_client_inspect_impl, llm_client_managed_list_impl,
@@ -17,7 +18,6 @@ use pingdeck_desktop::core::model::settings::AiGatewaySettings;
 use pingdeck_desktop::streams::channel_sink;
 
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
-use crate::ui::WindowExt as _;
 
 use super::GatewayView;
 use super::connect_sheet::{ConnectClientSheet, ConnectToolKind};
@@ -44,19 +44,39 @@ impl GatewayView {
         if let Ok(sub_id) = llm_subscribe_impl(runtime(cx).state(), sink, None) {
             self.llm_sub_id = Some(sub_id);
             self.llm_stream_task = Some(subscribe_stream_into(cx, rx, 16, |this, batch, cx| {
-                let relevant = batch.iter().any(|ev| {
-                    matches!(
-                        ev.event,
+                let mut need_overview = false;
+                let mut incoming_gw_logs = 0u64;
+                for ev in batch {
+                    match ev.event {
+                        LlmEvent::GatewayLogBatch { entries } => {
+                            let gw_cnt =
+                                entries.iter().filter(|e| e.source == "gateway").count() as u64;
+                            if gw_cnt > 0 {
+                                incoming_gw_logs = incoming_gw_logs.saturating_add(gw_cnt);
+                                need_overview = true;
+                            }
+                        }
                         LlmEvent::GatewayStatus { .. }
-                            | LlmEvent::ProvidersChanged
-                            | LlmEvent::ModelsChanged { .. }
-                            | LlmEvent::ClientsChanged
-                            | LlmEvent::GatewayLogBatch { .. }
-                            | LlmEvent::Gap { .. }
-                    )
-                });
-                if relevant {
+                        | LlmEvent::ProvidersChanged
+                        | LlmEvent::ModelsChanged { .. }
+                        | LlmEvent::ClientsChanged
+                        | LlmEvent::Gap { .. } => {
+                            need_overview = true;
+                        }
+                        _ => {}
+                    }
+                }
+                if need_overview {
                     this.reload_all(cx);
+                }
+                if incoming_gw_logs > 0 {
+                    if this.traffic_page == 0 && !this.traffic_body_searching {
+                        this.reload_traffic_page(false, cx);
+                    } else {
+                        this.traffic_pending_live =
+                            this.traffic_pending_live.saturating_add(incoming_gw_logs);
+                        cx.notify();
+                    }
                 }
             }));
         }
@@ -121,11 +141,15 @@ impl GatewayView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_connect_sheet_kind(
-            ConnectToolKind::File(initial_app.unwrap_or(ClientApp::ClaudeCode)),
-            window,
-            cx,
-        );
+        let pick = initial_app
+            .or_else(|| {
+                self.detected_clients
+                    .iter()
+                    .find(|d| d.installed)
+                    .map(|d| d.app)
+            })
+            .unwrap_or(ClientApp::ClaudeCode);
+        self.open_connect_sheet_kind(ConnectToolKind::File(pick), window, cx);
     }
 
     pub fn open_connect_sheet_kind(
@@ -155,18 +179,31 @@ impl GatewayView {
                 (canonical, display)
             })
             .collect();
-        let sheet_ent = cx.new(|cx| {
-            ConnectClientSheet::new(parent, initial_tool, gw_url, available_models, window, cx)
+        let installed_apps: HashSet<ClientApp> = self
+            .detected_clients
+            .iter()
+            .filter(|d| d.installed)
+            .map(|d| d.app)
+            .collect();
+        let installed_snippets: HashSet<_> = self
+            .snippet_clients
+            .iter()
+            .filter(|s| s.installed)
+            .map(|s| s.client)
+            .collect();
+        let modal_ent = cx.new(|cx| {
+            ConnectClientSheet::new(
+                parent,
+                initial_tool,
+                gw_url,
+                available_models,
+                installed_apps,
+                installed_snippets,
+                window,
+                cx,
+            )
         });
-        window.open_sheet(cx, move |sheet, _, cx| {
-            sheet
-                .size(px(640.0))
-                .title(
-                    crate::ui::tr(cx)
-                        .providers()
-                        .prov_loader_connect_local_ai_coding_tool(),
-                )
-                .child(sheet_ent.clone())
-        });
+        self.connect_modal = Some(modal_ent);
+        cx.notify();
     }
 }

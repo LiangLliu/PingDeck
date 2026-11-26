@@ -290,16 +290,13 @@ pub fn render_container_settings_tab(
                             });
                         }),
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_h_0()
-                        .child(code_editor(if sub == ScriptSubTab::Pre {
-                            &view.container_pre_editor
-                        } else {
-                            &view.container_post_editor
-                        })),
-                )
+                .child(v_col().flex_1().min_h_0().w_full().child(code_editor(
+                    if sub == ScriptSubTab::Pre {
+                        &view.container_pre_editor
+                    } else {
+                        &view.container_post_editor
+                    },
+                )))
                 .into_any_element()
         }
     };

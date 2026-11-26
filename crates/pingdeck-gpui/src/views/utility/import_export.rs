@@ -242,31 +242,33 @@ impl Render for ImportExportModal {
             IoTab::SecretsExport => render_export_tab(self, true, cx),
         };
 
-        let mut body = v_col()
-            .w_full()
-            .gap(px(12.0))
-            .child(
-                h_row()
-                    .w_full()
-                    .justify_between()
-                    .gap(px(8.0))
-                    .flex_wrap()
-                    .child(tabs)
-                    .children(
-                        self.status_note
-                            .clone()
-                            .map(|(tone, msg)| badge(SharedString::from(msg), tone, cx)),
-                    ),
-            )
+        let mut body = v_col().w_full().gap(px(12.0)).child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .gap(px(8.0))
+                .flex_wrap()
+                .child(tabs)
+                .children(
+                    self.status_note
+                        .clone()
+                        .map(|(tone, msg)| badge(SharedString::from(msg), tone, cx)),
+                ),
+        );
+        let vp = window.viewport_size();
+        let (_, max_card_h) =
+            crate::ui::responsive_modal_bounds(680.0, f32::from(vp.width), f32::from(vp.height));
+        let scroll_max_h = (max_card_h - 176.0).max(240.0);
+        body = body
             .child(
                 div()
                     .id("util-io-scroll")
                     .w_full()
-                    .max_h(px(440.0))
+                    .max_h(px(scroll_max_h))
                     .overflow_y_scrollbar()
                     .child(tab_body),
-            );
-        body = body.text_color(to_hsla(p.ink));
+            )
+            .text_color(to_hsla(p.ink));
 
         let footer_left = div()
             .flex_1()

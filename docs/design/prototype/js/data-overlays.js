@@ -271,29 +271,48 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
       size: "lg",
       title: "一键接入本地 AI 编码工具",
       body: `
-        <div class="seg" style="align-self:flex-start">
-          <button class="${connectTool === "claude" ? "active" : ""}" data-connect-tool="claude">Claude Code</button>
-          <button class="${connectTool === "codex" ? "active" : ""}" data-connect-tool="codex">Codex CLI</button>
-          <button class="${connectTool === "zed" ? "active" : ""}" data-connect-tool="zed">Zed Editor</button>
+        <div class="row-between" style="flex-wrap:wrap;gap:12px;align-items:flex-start">
+          <div class="field-col" style="gap:5px">
+            <span class="field-label">自动配置（备份后写入）</span>
+            <div class="seg">
+              <button class="${connectTool === "claude" ? "active" : ""}" data-connect-tool="claude">Claude Code</button>
+              <button class="${connectTool === "codex" ? "active" : ""}" data-connect-tool="codex">Codex</button>
+              <button class="${connectTool === "opencode" ? "active" : ""}" data-connect-tool="opencode">OpenCode</button>
+              <button class="${connectTool === "gemini" ? "active" : ""}" data-connect-tool="gemini">Gemini CLI</button>
+            </div>
+          </div>
+          <div class="field-col" style="gap:5px">
+            <span class="field-label">手动片段（复制配置）</span>
+            <div class="seg">
+              <button class="${connectTool === "cursor" ? "active" : ""}" data-connect-tool="cursor">Cursor</button>
+              <button class="${connectTool === "zed" ? "active" : ""}" data-connect-tool="zed">Zed</button>
+              <button class="${connectTool === "cherry" ? "active" : ""}" data-connect-tool="cherry">Cherry Studio</button>
+              <button class="${connectTool === "env" ? "active" : ""}" data-connect-tool="env">环境变量</button>
+            </div>
+          </div>
         </div>
         <div class="field-grid">
-          <div class="field-col"><span class="field-label">目标配置文件</span><div class="input-box sunken"><input value="${connectTool === "claude" ? "~/.claude/settings.json" : connectTool === "codex" ? "~/.codex/config.toml" : "~/.config/zed/settings.json"}" readonly /></div></div>
-          <div class="field-col"><span class="field-label">默认模型</span><div class="select-pill w-full mono">${connectTool === "claude" ? "DeepSeek/deepseek-v4-pro" : connectTool === "codex" ? "Anthropic/claude-sonnet-5-5" : "DeepSeek/deepseek-v4-flash"} ▾</div></div>
+          <div class="field-col"><span class="field-label">${["claude", "codex", "opencode", "gemini"].includes(connectTool) ? "目标配置文件" : "网关入口地址"}</span><div class="input-box sunken"><input value="${connectTool === "claude" ? "~/.claude/settings.json" : connectTool === "codex" ? "~/.codex/config.toml" : connectTool === "opencode" ? "~/.config/opencode/opencode.json" : connectTool === "gemini" ? "~/.gemini/settings.json" : "http://127.0.0.1:4141/v1"}" readonly /></div></div>
+          <div class="field-col"><span class="field-label">默认模型</span><div class="select-pill w-full mono">${connectTool === "codex" ? "Anthropic/claude-sonnet-5-5" : "DeepSeek/deepseek-v4-pro"} ▾</div></div>
         </div>
+        <div class="fs-xs text-muted">▸ 高级选项（客户端名称 · 已有配置冲突策略 · 未知模型回退）</div>
         <div class="diff-box">
-          <div class="diff-head"><span>写入前差异预览（写入前自动创建时间戳备份，支持一键还原）</span><span class="tag tag-ok">自动生成独立客户端令牌</span></div>
+          <div class="diff-head"><span>${["claude", "codex", "opencode", "gemini"].includes(connectTool) ? "写入前差异预览（写入前自动创建时间戳备份，支持一键还原）" : "配置片段预览（签发独立客户端令牌后自动填入）"}</span><span class="tag tag-ok">自动生成独立客户端令牌</span></div>
           ${connectTool === "claude" ? `
           <div class="diff-row del">-  "ANTHROPIC_BASE_URL": "https://api.anthropic.com"</div>
-          <div class="diff-row add">+  "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141/anthropic"</div>
+          <div class="diff-row add">+  "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141"</div>
           <div class="diff-row add">+  "ANTHROPIC_AUTH_TOKEN": "pdk_c_••••8a1f"</div>` : connectTool === "codex" ? `
           <div class="diff-row del">-  base_url = "https://api.openai.com/v1"</div>
           <div class="diff-row add">+  base_url = "http://127.0.0.1:4141/v1"</div>
-          <div class="diff-row add">+  bearer_token = "pdk_c_••••4c02"</div>` : `
-          <div class="diff-row del">-  "api_url": "https://api.openai.com/v1"</div>
-          <div class="diff-row add">+  "api_url": "http://127.0.0.1:4141/v1",</div>
-          <div class="diff-row add">+  "api_key": "pdk_c_••••9e7b"</div>`}
+          <div class="diff-row add">+  experimental_bearer_token = "pdk_c_••••4c02"</div>` : connectTool === "opencode" ? `
+          <div class="diff-row add">+  "baseURL": "http://127.0.0.1:4141/v1",</div>
+          <div class="diff-row add">+  "apiKey": "pdk_c_••••2f9a"</div>` : connectTool === "gemini" ? `
+          <div class="diff-row add">+  GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:4141</div>
+          <div class="diff-row add">+  GEMINI_API_KEY=pdk_c_••••6e1d</div>` : `
+          <div class="diff-row add">Base URL: http://127.0.0.1:4141/v1</div>
+          <div class="diff-row add">API Key:  pdk_c_••••9e7b</div>`}
         </div>`,
-      foot: `<span class="dialog-foot-note">应用后可执行连通性验证</span><button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-done="已写入配置并备份原文件（可随时一键还原）">备份并写入配置</button>`,
+      foot: `<span class="dialog-foot-note">写入后可执行连通性验证</span><button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-done="${["claude", "codex", "opencode", "gemini"].includes(connectTool) ? "已写入配置并备份原文件（可随时一键还原）" : "已生成独立客户端令牌并填入配置片段"}">${["claude", "codex", "opencode", "gemini"].includes(connectTool) ? "备份并写入配置" : "创建客户端令牌并填入代码片段"}</button>`,
     },
     "benchmark-cost": {
       size: "sm", tone: "warn",

@@ -30,49 +30,41 @@ impl ModuleHost {
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_mock_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<MockHandoff> {
         self.mock
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_flows_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<FlowsHandoff> {
         self.flows
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_history_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<HistoryHandoff> {
         self.history
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_usage_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<UsageHandoff> {
         self.usage
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_providers_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<ProvidersHandoff> {
         self.providers
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_gateway_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<GatewayHandoff> {
         self.gateway
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_chat_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<ChatHandoff> {
         self.chat
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
-
     pub fn poll_env_active_change<V: 'static>(&self, cx: &Context<V>) -> Option<Option<String>> {
         self.environments
             .as_ref()
@@ -156,6 +148,16 @@ impl ModuleHost {
     ) {
         let view = self.ensure_usage(window, cx);
         view.update(cx, |u, cx| u.select_provider_scope(provider_id, false, cx));
+    }
+
+    pub fn open_usage_gateway<V: 'static>(
+        &mut self,
+        open_calls: bool,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) {
+        let view = self.ensure_usage(window, cx);
+        view.update(cx, |u, cx| u.select_gateway_scope(open_calls, cx));
     }
 
     pub fn open_usage_call_id<V: 'static>(
@@ -558,11 +560,24 @@ impl AppShell {
         if let Some(handoff) = self.modules.poll_gateway_handoff(cx) {
             match handoff {
                 GatewayHandoff::OpenProviders => self.navigate(NavModule::Providers, cx),
-                GatewayHandoff::OpenUsageProvider(pid) => {
+                GatewayHandoff::OpenUsageGateway => {
                     self.navigate(NavModule::Usage, cx);
-                    self.modules.open_usage_provider(pid, window, cx);
+                    self.modules.open_usage_gateway(false, window, cx);
                 }
                 GatewayHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),
+                GatewayHandoff::OpenAiRequest(draft) => {
+                    let ws_id = self.state.active_workspace_id.clone();
+                    self.navigate(NavModule::Requests, cx);
+                    self.modules.open_ai_client_draft(ws_id, *draft, window, cx);
+                }
+                GatewayHandoff::AskAgent {
+                    title,
+                    context_markdown,
+                } => {
+                    self.navigate(NavModule::Chat, cx);
+                    self.modules
+                        .handoff_to_chat(title, context_markdown, window, cx);
+                }
             }
         }
 

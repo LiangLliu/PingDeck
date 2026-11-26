@@ -1352,16 +1352,17 @@ currency=USD</div>
                 <code class="clickable" style="font-size:12.5px;padding:2px 8px;border-radius:6px;background:var(--bg-surface);border:1px solid var(--border-subtle)" data-toast="已复制 http://127.0.0.1:4141">http://127.0.0.1:4141</code>
                 <span class="tag tag-ok">令牌鉴权已开启</span>
                 <div class="work-actions">
-                  <button class="btn btn-sm btn-primary" data-modal="connect-client">接入编码工具…</button>
+                  <button class="btn btn-sm btn-primary" data-tab-jump="gw-main:clients">+ 创建令牌</button>
                   <button class="btn btn-sm" data-toast="正在平滑重启本地网关 :4141…">重启</button>
                   <button class="btn btn-sm" data-toast="已停止本地网关 :4141" data-toast-tone="warn">停止网关</button>
-                  <button class="btn btn-sm btn-ghost" data-nav-to="usage">查看日志 ↗</button>
+                  <button class="btn btn-sm btn-ghost" data-nav-to="usage">用量统计 ↗</button>
                 </div>
               </div>
               <div class="tabs-row" data-tab-group="gw-main">
                 <button class="tab-btn active" data-tab="overview">概览</button>
-                <button class="tab-btn" data-tab="clients">客户端 <span class="tab-cnt">3</span></button>
+                <button class="tab-btn" data-tab="clients">客户端与令牌 <span class="tab-cnt">3</span></button>
                 <button class="tab-btn" data-tab="rules">备用路由 <span class="tab-cnt">4</span></button>
+                <button class="tab-btn" data-tab="traffic">流量日志 <span class="tab-cnt">412</span></button>
                 <button class="tab-btn" data-tab="access">访问控制</button>
               </div>
 
@@ -1369,19 +1370,19 @@ currency=USD</div>
                 <div class="gw-body">
                   <div class="kpi-grid">
                     <div class="kpi-card"><span class="kpi-label">今日网关转发</span><span class="kpi-val">412</span><span class="kpi-sub">12 次经备用链自动恢复</span></div>
-                    <div class="kpi-card"><span class="kpi-label">转发成功率</span><span class="kpi-val">91.0%</span><span class="kpi-sub"><button class="text-warn" data-nav-to="usage">37 次失败（查看日志 ↗）</button></span></div>
+                    <div class="kpi-card"><span class="kpi-label">转发成功率</span><span class="kpi-val">91.0%</span><span class="kpi-sub"><button class="text-warn" data-tab-jump="gw-main:traffic">37 次失败（查看流量 →）</button></span></div>
                     <div class="kpi-card"><span class="kpi-label">直通 vs 协议转码</span><span class="kpi-val">318 / 94</span><span class="kpi-sub">同协议零损耗直通优先</span></div>
-                    <div class="kpi-card"><span class="kpi-label">网关中位首字延迟</span><span class="kpi-val">412 ms</span><span class="kpi-sub">网关自身转发开销 &lt; 1.2 ms</span></div>
+                    <div class="kpi-card"><span class="kpi-label">网关中位首字延迟</span><span class="kpi-val">412 ms</span><span class="kpi-sub">今日流式请求首字延迟中位数</span></div>
                   </div>
 
                   <div class="card-panel">
-                    <div class="card-panel-head"><span>协议入口地址（自动转码或同协议直通）</span><button class="text-accent" data-nav-to="usage">查看调用日志 ↗</button></div>
+                    <div class="card-panel-head"><span>协议入口地址（同协议直通或自动转码）</span><button class="text-accent" data-tab-jump="gw-main:traffic">查看流量日志 →</button></div>
                     <table class="kv-table">
                       <thead><tr><th>协议族</th><th>Base URL</th><th>支持路径</th><th style="width:72px">操作</th></tr></thead>
                       <tbody>
-                        <tr><td><b>OpenAI 兼容</b></td><td class="mono">http://127.0.0.1:4141/v1</td><td class="mono text-muted">/chat/completions, /responses, /embeddings</td><td><button class="btn btn-sm" data-toast="已复制 OpenAI Base URL">复制</button></td></tr>
-                        <tr><td><b>Anthropic Messages</b></td><td class="mono">http://127.0.0.1:4141/anthropic</td><td class="mono text-muted">/v1/messages</td><td><button class="btn btn-sm" data-toast="已复制 Anthropic Base URL">复制</button></td></tr>
-                        <tr><td><b>Gemini</b></td><td class="mono">http://127.0.0.1:4141/gemini</td><td class="mono text-muted">/v1beta/models/*</td><td><button class="btn btn-sm" data-toast="已复制 Gemini Base URL">复制</button></td></tr>
+                        <tr><td><b>OpenAI 兼容</b></td><td class="mono">http://127.0.0.1:4141/v1</td><td class="mono text-muted">/chat/completions, /responses, /embeddings, /models</td><td><button class="btn btn-sm" data-toast="已复制 OpenAI Base URL">复制</button></td></tr>
+                        <tr><td><b>Anthropic Messages</b></td><td class="mono">http://127.0.0.1:4141</td><td class="mono text-muted">/v1/messages, /v1/messages/count_tokens</td><td><button class="btn btn-sm" data-toast="已复制 Anthropic Base URL">复制</button></td></tr>
+                        <tr><td><b>Google Gemini</b></td><td class="mono">http://127.0.0.1:4141</td><td class="mono text-muted">/v1beta/models/*</td><td><button class="btn btn-sm" data-toast="已复制 Gemini Base URL">复制</button></td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -1467,11 +1468,20 @@ currency=USD</div>
                 </div>
               </div>
 
+              <div class="row-center" style="padding:7px 18px;background:var(--bg-pane);border-bottom:1px solid var(--border-subtle);gap:8px">
+                <span class="fs-xs text-muted">来源</span>
+                <div class="seg">
+                  <button class="active" data-action="seg-pick">全部</button>
+                  <button data-action="seg-pick">本地网关</button>
+                  <button data-action="seg-pick">智能体对话</button>
+                  <button data-action="seg-pick">AI 请求</button>
+                  <button data-action="seg-pick">探测</button>
+                </div>
+              </div>
+
               <div id="usage-overview-view" class="gw-body">
                 <div class="row-center" style="flex-wrap:wrap">
                   <button id="usage-range-btn" class="select-pill" data-popover="usage-range">时间范围 7d ▾</button>
-                  <button class="select-pill" data-toast="筛选来源：全部（网关 / 对话 / AI 请求 / 探针）">来源 全部 ▾</button>
-                  <button class="select-pill" data-toast="筛选模型：全部">模型 全部 ▾</button>
                   <button class="select-pill" data-toast="筛选密钥：全部">密钥 全部 ▾</button>
                   <button class="select-pill" data-toast="筛选客户端：全部">客户端 全部 ▾</button>
                   <span class="ml-auto fs-xs text-muted mono">2026-11-13 至 2026-11-19</span>

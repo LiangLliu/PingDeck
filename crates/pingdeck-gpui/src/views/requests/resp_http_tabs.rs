@@ -30,9 +30,11 @@ pub(super) fn render_resp_body(
 
     v_col()
         .size_full()
+        .min_h_0()
         .child(
             h_row()
                 .w_full()
+                .flex_shrink_0()
                 .gap(px(6.0))
                 .px(px(10.0))
                 .py(px(6.0))
@@ -93,12 +95,12 @@ pub(super) fn render_resp_body(
                 ),
         )
         .child(
-            div()
+            v_col()
                 .flex_1()
                 .min_h_0()
                 .w_full()
                 .p(px(8.0))
-                .child(code_editor(&view.response_editor)),
+                .child(code_editor(&view.response_editor).readonly(true)),
         )
 }
 

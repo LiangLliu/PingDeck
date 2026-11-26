@@ -26,13 +26,14 @@ use gpui_kit::{
     Styled as _, Window, div, px,
 };
 use pingdeck_desktop::core::app::{current_time_ms, settings_get_impl};
+use pingdeck_desktop::core::llm::usage::UsageSource;
 use pingdeck_desktop::time::format_local_time;
 
 use crate::bridge::runtime;
 use crate::ui::{
     InputEvent, InputState, UiIcon, btn_danger, btn_ghost, btn_secondary, dismissible_banner,
-    h_resizable, h_row, icon_xs, modal_dialog, palette, resizable_panel, tab_bar_underline,
-    tab_item, to_hsla, toolbar_strip, v_col,
+    h_resizable, h_row, icon_xs, modal_dialog, palette, resizable_panel, tab_bar_segmented,
+    tab_bar_underline, tab_item, to_hsla, toolbar_strip, v_col,
 };
 
 use state::{BreakdownDim, CallsQuickFilter, ChartMetric, RangePreset, UsageModal, UsageViewTab};
@@ -115,6 +116,19 @@ impl UsageView {
         if open_calls {
             self.active_tab = UsageViewTab::Calls;
         }
+        self.reload_all(cx);
+    }
+
+    /// Pre-filters Usage Analytics strictly to Local Gateway traffic (`source = Gateway`, `Today`).
+    pub fn select_gateway_scope(&mut self, open_calls: bool, cx: &mut Context<Self>) {
+        self.scope_provider_id = None;
+        self.filter_source = Some(UsageSource::Gateway);
+        self.range = RangePreset::Today;
+        self.active_tab = if open_calls {
+            UsageViewTab::Calls
+        } else {
+            UsageViewTab::Overview
+        };
         self.reload_all(cx);
     }
 
@@ -252,12 +266,65 @@ impl Render for UsageView {
                     ),
             );
 
+        let src_idx = match self.filter_source {
+            None => 0,
+            Some(UsageSource::Gateway) => 1,
+            Some(UsageSource::Agent) => 2,
+            Some(UsageSource::Api) => 3,
+            Some(UsageSource::Probe) => 4,
+        };
+        let u_tr = crate::ui::Tr(self.lang).usage();
+        let src_seg = tab_bar_segmented("usage-source-seg")
+            .selected_index(src_idx)
+            .child(tab_item(u_tr.usage_overview_source_seg_all()))
+            .child(tab_item(u_tr.usage_overview_source_seg_gateway()))
+            .child(tab_item(u_tr.usage_overview_source_seg_agent()))
+            .child(tab_item(u_tr.usage_overview_source_seg_api()))
+            .child(tab_item(u_tr.usage_overview_source_seg_probe()))
+            .on_click(cx.listener(|this, idx: &usize, _, cx| {
+                this.filter_source = match *idx {
+                    1 => Some(UsageSource::Gateway),
+                    2 => Some(UsageSource::Agent),
+                    3 => Some(UsageSource::Api),
+                    4 => Some(UsageSource::Probe),
+                    _ => None,
+                };
+                this.reload_all(cx);
+            }));
+
+        let source_bar = h_row()
+            .w_full()
+            .flex_shrink_0()
+            .justify_between()
+            .gap(px(10.0))
+            .px(px(18.0))
+            .py(px(7.0))
+            .bg(to_hsla(p.pane))
+            .border_b_1()
+            .border_color(to_hsla(p.line.composite_over(p.pane)))
+            .child(
+                h_row()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(to_hsla(p.muted))
+                            .child(u_tr.usage_dim_source()),
+                    )
+                    .child(src_seg),
+            );
+
         let content = match self.active_tab {
             UsageViewTab::Overview => overview::render_overview(self, cx),
             UsageViewTab::Calls => calls::render_calls(self, cx),
         };
 
-        let mut right = v_col().size_full().min_h_0().child(header);
+        let mut right = v_col()
+            .size_full()
+            .min_h_0()
+            .child(header)
+            .child(source_bar);
         if let Some((tone, msg)) = &self.status_msg {
             right = right.child(div().px(px(16.0)).pt(px(8.0)).child(dismissible_banner(
                 "usage-banner-close",

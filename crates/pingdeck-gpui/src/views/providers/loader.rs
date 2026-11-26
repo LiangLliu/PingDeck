@@ -247,9 +247,11 @@ impl ProvidersView {
                 cx,
             )
         });
-        window.open_sheet(cx, move |sheet, _, cx| {
+        window.open_sheet(cx, move |sheet, w, cx| {
+            let sheet_w =
+                crate::ui::responsive_sheet_width(640.0, f32::from(w.viewport_size().width));
             sheet
-                .size(px(640.0))
+                .size(px(sheet_w))
                 .title(if is_resniff {
                     crate::ui::tr(cx).providers().prov_loader_re_scan_provider()
                 } else {

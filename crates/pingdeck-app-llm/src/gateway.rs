@@ -115,10 +115,12 @@ pub fn llm_gateway_overview_impl(state: &AppState) -> Result<GatewayOverviewDto,
     let status = state.llm.gateway.status(&state.llm);
     let snapshot = state.llm.snapshot_blocking()?;
     let tz_offset_minutes = state.llm.tz_offset_minutes();
-    let (clients, today) = with_connection(state, |connection| {
+    let (clients, today, ops) = with_connection(state, |connection| {
         let clients = store::list_clients(connection)?;
         let today = today_figures(connection, now_ms, tz_offset_minutes).map_err(|e| e.to_string());
-        Ok((clients, today))
+        let ops =
+            store::today_gateway_ops(connection, now_ms, tz_offset_minutes).unwrap_or_default();
+        Ok((clients, today, ops))
     })?;
     let lan = state.llm.gateway.lan_addresses();
     Ok(build_overview(OverviewInputs {
@@ -128,6 +130,7 @@ pub fn llm_gateway_overview_impl(state: &AppState) -> Result<GatewayOverviewDto,
         clients: &clients,
         snapshot: &snapshot,
         today,
+        ops,
     }))
 }
 

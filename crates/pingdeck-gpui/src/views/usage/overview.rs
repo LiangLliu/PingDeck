@@ -6,7 +6,6 @@ use gpui_kit::{
     Styled as _, div, px,
 };
 use pingdeck_desktop::core::app::current_time_ms;
-use pingdeck_desktop::core::llm::usage::UsageSource;
 use pingdeck_desktop::time::format_local_date;
 
 use crate::ui::{
@@ -16,7 +15,7 @@ use crate::ui::{
 
 use super::breakdown::render_breakdown_card;
 use super::chart::render_trend_chart;
-use super::state::{RangePreset, UsageView, fmt_compact, fmt_cost_map, fmt_latency, source_label};
+use super::state::{RangePreset, UsageView, fmt_compact, fmt_cost_map, fmt_latency};
 
 pub fn render_overview(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElement {
     let body = v_col()
@@ -87,70 +86,6 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
                             this.reload_all(cx);
                         });
                         pop_h.update(cx, |s, cx| s.dismiss(w, cx));
-                    },
-                ));
-            }
-            m
-        });
-
-    let src_ent = entity.clone();
-    let active_src = view.filter_source;
-    let src_lbl = match view.filter_source {
-        Some(s) => format!(
-            "{} {}",
-            crate::ui::Tr(lang).usage().usage_dim_source(),
-            source_label(s.as_str(), lang)
-        ),
-        None => crate::ui::Tr(lang)
-            .usage()
-            .usage_overview_source_all()
-            .to_owned(),
-    };
-    let src_pop = popover("usage-src-pop")
-        .anchor(Anchor::TopLeft)
-        .trigger(select_pill(
-            "usage-src-trigger",
-            src_lbl,
-            view.filter_source.is_some(),
-            cx,
-        ))
-        .content(move |_, _w, pop_cx| {
-            let mut m = v_col().w(px(186.0)).gap(px(2.0)).child(popover_header(
-                crate::ui::tr(pop_cx).usage().usage_overview_filter_source(),
-                None,
-                pop_cx,
-            ));
-            let ent0 = src_ent.clone();
-            let pop0 = pop_cx.entity().clone();
-            m = m.child(pick_row(
-                "u-src-all",
-                crate::ui::tr(pop_cx)
-                    .usage()
-                    .usage_overview_default_no_probes(),
-                active_src.is_none(),
-                pop_cx,
-                move |_, w, cx| {
-                    ent0.update(cx, |this, cx| {
-                        this.filter_source = None;
-                        this.reload_all(cx);
-                    });
-                    pop0.update(cx, |s, cx| s.dismiss(w, cx));
-                },
-            ));
-            for s in UsageSource::ALL {
-                let ent = src_ent.clone();
-                let pop_h = pop_cx.entity().clone();
-                m = m.child(pick_row(
-                    SharedString::from(format!("u-src-{}", s.as_str())),
-                    source_label(s.as_str(), lang),
-                    active_src == Some(s),
-                    pop_cx,
-                    move |_, w, cx| {
-                        ent.update(cx, |this, cx| {
-                            this.filter_source = Some(s);
-                            this.reload_all(cx);
-                        });
-                        pop_h.update(cx, |st, cx| st.dismiss(w, cx));
                     },
                 ));
             }
@@ -318,7 +253,6 @@ fn render_filter_bar(view: &UsageView, cx: &mut Context<UsageView>) -> AnyElemen
         .gap(px(6.0))
         .flex_wrap()
         .child(range_pop)
-        .child(src_pop)
         .child(key_pop)
         .child(client_pop)
         .children(has_filter.then(|| {

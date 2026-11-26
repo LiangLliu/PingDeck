@@ -104,9 +104,10 @@ pub fn render_ai_editor(view: &RequestsView, cx: &mut Context<RequestsView>) -> 
                     ),
             )
             .child(
-                div()
+                v_col()
                     .flex_1()
                     .min_h_0()
+                    .w_full()
                     .child(code_editor(&view.ai_raw_editor)),
             )
             .into_any_element(),
@@ -132,7 +133,7 @@ pub fn render_ai_editor(view: &RequestsView, cx: &mut Context<RequestsView>) -> 
                         .child(SharedString::from(meta_hint)),
                 ),
         )
-        .child(div().flex_1().min_h_0().w_full().child(body))
+        .child(v_col().flex_1().min_h_0().w_full().child(body))
 }
 
 fn render_ai_messages_tab(
@@ -339,7 +340,7 @@ fn render_ai_tools_tab(view: &RequestsView, cx: &mut Context<RequestsView>) -> g
                 ),
         )
         .child(
-            div()
+            v_col()
                 .flex_1()
                 .min_h_0()
                 .w_full()

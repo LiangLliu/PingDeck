@@ -129,7 +129,7 @@ pub(super) fn render_body_tab(
             cx,
         )
         .into_any_element(),
-        RequestBody::Json { .. } | RequestBody::RawText { .. } => div()
+        RequestBody::Json { .. } | RequestBody::RawText { .. } => v_col()
             .flex_1()
             .min_h_0()
             .w_full()
@@ -358,9 +358,10 @@ pub(super) fn render_body_tab(
                     .gap(px(4.0))
                     .child(section_heading("Query", cx))
                     .child(
-                        div()
+                        v_col()
                             .flex_1()
                             .min_h_0()
+                            .w_full()
                             .child(code_editor(&view.body_editor)),
                     ),
             )
@@ -371,9 +372,10 @@ pub(super) fn render_body_tab(
                     .gap(px(4.0))
                     .child(section_heading("Variables (JSON)", cx))
                     .child(
-                        div()
+                        v_col()
                             .flex_1()
                             .min_h_0()
+                            .w_full()
                             .child(code_editor(&view.gql_vars_editor)),
                     ),
             )

@@ -126,7 +126,7 @@ pub fn render_scripts_tab(
     }
 
     col.child(
-        div()
+        v_col()
             .flex_1()
             .min_h_0()
             .w_full()

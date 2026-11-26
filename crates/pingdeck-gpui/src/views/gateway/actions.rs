@@ -140,6 +140,7 @@ impl GatewayView {
             move |this, res, cx| {
                 match res {
                     Ok(created) => {
+                        this.custom_token_open = false;
                         this.revealed_client_token = Some((created.client.name, created.token));
                         this.reload_all(cx);
                     }

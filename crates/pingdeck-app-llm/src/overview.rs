@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::llm::gateway::{GatewayStatus, LanAddress};
 use crate::llm::router::RoutingSnapshot;
-use crate::llm::store::GatewayClient;
+use crate::llm::store::{GatewayClient, GatewayTodayOps};
 use crate::llm::usage::{RollupRow, UsageToday};
 use crate::llm::wire::Protocol;
 use crate::settings::AiGatewaySettings;
@@ -171,6 +171,10 @@ pub struct GatewayOverviewDto {
     pub today: Option<UsageToday>,
     /// Why `today` is missing.
     pub today_error: Option<String>,
+    /// Today's real-time operational metrics from `llm_request_log` (passthrough vs transcode,
+    /// failover recoveries, median TTFT, per-model hits).
+    #[serde(default)]
+    pub ops: GatewayTodayOps,
     /// The clients table.
     pub clients: Vec<ClientRow>,
     /// Empty-state flags.
@@ -188,6 +192,8 @@ pub(super) struct OverviewInputs<'a> {
     pub snapshot: &'a RoutingSnapshot,
     /// Today's gateway rollup rows and the summary of them, or why they are unavailable.
     pub today: Result<(Vec<RollupRow>, UsageToday), String>,
+    /// Today's operational gateway figures from `llm_request_log`.
+    pub ops: GatewayTodayOps,
 }
 
 /// `pd_cc_••••9d2f` for a client; a legacy client (no last four) shows the prefix and bullets.
@@ -314,6 +320,7 @@ pub(super) fn build_overview(inputs: OverviewInputs<'_>) -> GatewayOverviewDto {
         empty,
         today,
         today_error,
+        ops: inputs.ops,
         status: inputs.status,
     }
 }

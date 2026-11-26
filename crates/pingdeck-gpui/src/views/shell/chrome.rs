@@ -56,9 +56,11 @@ impl AppShell {
         self.diagnostics_view
             .update(cx, |diag, cx| diag.reload_diagnostics(cx));
         let diag_ent = self.diagnostics_view.clone();
-        window.open_sheet(cx, move |sheet, _, cx| {
+        window.open_sheet(cx, move |sheet, w, cx| {
+            let sheet_w =
+                crate::ui::responsive_sheet_width(620.0, f32::from(w.viewport_size().width));
             sheet
-                .size(px(620.0))
+                .size(px(sheet_w))
                 .title(tr(cx).shell().util_console())
                 .child(diag_ent.clone())
         });

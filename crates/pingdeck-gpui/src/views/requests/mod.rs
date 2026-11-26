@@ -375,17 +375,17 @@ impl Render for RequestsView {
                 .child(toolbar::render_identity_strip(self, cx))
                 .child(editor_ai::render_ai_url_strip(self, cx))
                 .child(
-                    div().flex_1().min_h_0().w_full().child(
+                    v_col().flex_1().min_h_0().w_full().child(
                         v_resizable("req-ai-vert-split")
                             .child(
                                 resizable_panel()
                                     .size(px(300.0))
-                                    .size_range(px(160.0)..px(560.0))
+                                    .size_range(px(160.0)..px(900.0))
                                     .child(editor_ai::render_ai_editor(self, cx)),
                             )
                             .child(
                                 resizable_panel()
-                                    .size_range(px(180.0)..px(640.0))
+                                    .size_range(px(180.0)..px(2400.0))
                                     .child(resp_ai::render_ai_response(self, cx)),
                             ),
                     ),
@@ -398,17 +398,17 @@ impl Render for RequestsView {
                 .child(toolbar::render_identity_strip(self, cx))
                 .child(toolbar::render_http_url_strip(self, cx))
                 .child(
-                    div().flex_1().min_h_0().w_full().child(
+                    v_col().flex_1().min_h_0().w_full().child(
                         v_resizable("req-http-vert-split")
                             .child(
                                 resizable_panel()
                                     .size(px(290.0))
-                                    .size_range(px(160.0)..px(560.0))
+                                    .size_range(px(160.0)..px(900.0))
                                     .child(editor_http::render_http_editor(self, cx)),
                             )
                             .child(
                                 resizable_panel()
-                                    .size_range(px(180.0)..px(640.0))
+                                    .size_range(px(180.0)..px(2400.0))
                                     .child(resp_http::render_http_response(self, cx)),
                             ),
                     ),

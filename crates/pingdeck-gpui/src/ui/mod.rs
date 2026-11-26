@@ -41,7 +41,7 @@ pub use gpui_kit::component::{
 
 pub use assets::{APP_ICON_PNG_BYTES, PingDeckAssets};
 pub use data::{choice_chip, data_row, kpi_card, kv_line, table_header};
-pub use dialog::modal_dialog;
+pub use dialog::{modal_dialog, responsive_modal_bounds, responsive_sheet_width};
 pub use feedback::{
     alert_banner, dismissible_banner, empty_inline, empty_state, empty_state_with_actions,
 };

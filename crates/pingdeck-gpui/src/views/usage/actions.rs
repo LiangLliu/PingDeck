@@ -23,7 +23,7 @@ use pingdeck_desktop::time::{format_local_datetime, local_tz_offset_minutes};
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::{Tone, WindowExt as _};
 
-use super::call_drawer::CallDetailSheet;
+use super::call_drawer::{CallDetailHost, CallDetailSheet};
 use super::state::{
     BreakdownDim, UsageModal, UsageView, UsageViewTab, fmt_cost_micro, latency_totals,
 };
@@ -438,9 +438,15 @@ impl UsageView {
         match res {
             Ok(detail) => {
                 let parent = cx.entity().clone();
-                let sheet_entity = cx.new(|cx| CallDetailSheet::new(parent, detail, window, cx));
-                window.open_sheet(cx, move |sheet, _w, _cx| {
-                    sheet.size(px(640.0)).p_0().child(sheet_entity.clone())
+                let sheet_entity = cx.new(|cx| {
+                    CallDetailSheet::new(CallDetailHost::Usage(parent), detail, window, cx)
+                });
+                window.open_sheet(cx, move |sheet, w, _cx| {
+                    let sheet_w = crate::ui::responsive_sheet_width(
+                        640.0,
+                        f32::from(w.viewport_size().width),
+                    );
+                    sheet.size(px(sheet_w)).p_0().child(sheet_entity.clone())
                 });
             }
             Err(e) => {

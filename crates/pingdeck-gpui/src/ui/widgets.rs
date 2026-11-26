@@ -494,31 +494,47 @@ pub fn diff_lines_preview(text: &str, max_lines: usize, cx: &App) -> Div {
     let total = text.lines().count();
     for line in text.lines().take(max_lines) {
         count += 1;
-        let (row_bg, fg) = if line.starts_with('+') && !line.starts_with("+++") {
-            (Some(to_hsla(p.diff_add)), to_hsla(p.ok))
+        let (row_bg, stripe, fg) = if line.starts_with('+') && !line.starts_with("+++") {
+            (
+                Some(to_hsla(p.diff_add_bg.composite_over(p.sunken))),
+                Some(to_hsla(p.diff_add)),
+                to_hsla(p.diff_add),
+            )
         } else if line.starts_with('-') && !line.starts_with("---") {
-            (Some(to_hsla(p.diff_del)), to_hsla(p.bad))
+            (
+                Some(to_hsla(p.diff_del_bg.composite_over(p.sunken))),
+                Some(to_hsla(p.diff_del)),
+                to_hsla(p.diff_del),
+            )
         } else if line.starts_with("@@") {
-            (Some(to_hsla(p.accent_soft)), to_hsla(p.accent_ink))
+            (
+                Some(to_hsla(p.accent_soft.composite_over(p.sunken))),
+                None,
+                to_hsla(p.accent_ink),
+            )
         } else {
-            (None, to_hsla(p.ink_2))
+            (None, None, to_hsla(p.ink_2))
         };
         let mut row = div()
-            .px(px(8.0))
-            .py(px(1.0))
+            .w_full()
+            .px(px(10.0))
+            .py(px(2.0))
             .text_xs()
             .text_color(fg)
             .child(SharedString::from(line.to_owned()));
         if let Some(bg) = row_bg {
             row = row.bg(bg);
         }
+        if let Some(bar) = stripe {
+            row = row.border_l_2().border_color(bar).pl(px(8.0));
+        }
         box_el = box_el.child(row);
     }
     if total > count {
         box_el = box_el.child(
             div()
-                .px(px(8.0))
-                .pt(px(3.0))
+                .px(px(10.0))
+                .pt(px(4.0))
                 .text_xs()
                 .text_color(to_hsla(p.muted))
                 .child(SharedString::from(format!("… +{} lines", total - count))),

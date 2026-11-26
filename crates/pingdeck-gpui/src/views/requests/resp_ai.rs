@@ -171,6 +171,7 @@ pub fn render_ai_response(
 
     let head = h_row()
         .w_full()
+        .flex_shrink_0()
         .justify_between()
         .gap(px(8.0))
         .px(px(14.0))
@@ -317,7 +318,7 @@ pub fn render_ai_response(
         .bg(to_hsla(p.surface))
         .child(head)
         .child(subtab_strip(tabs, None, cx))
-        .child(div().flex_1().min_h_0().w_full().child(body))
+        .child(v_col().flex_1().min_h_0().w_full().child(body))
         .into_any_element()
 }
 

@@ -463,37 +463,70 @@ window.PD = window.PD || {};
       clients: () => `
         <div class="gw-body">
           <div class="card-panel">
-            <div class="card-panel-head"><span>客户端接入与独立令牌（3 个已连接）</span><button class="btn btn-sm btn-primary" data-modal="connect-client">+ 接入编码工具…</button></div>
+            <div class="card-panel-head"><span>客户端令牌与已接入工具（3 个有效）</span><div class="row-center"><button class="btn btn-sm" data-modal="connect-client">接入编码工具…</button><button class="btn btn-sm" data-toast="在卡片内展开创建令牌表单">+ 创建令牌</button></div></div>
             <table class="kv-table">
-              <thead><tr><th>客户端</th><th>配置文件</th><th>令牌</th><th>允许模型范围</th><th style="width:140px">操作</th></tr></thead>
+              <thead><tr><th>客户端</th><th>配置文件 / 类型</th><th>令牌</th><th>允许模型范围</th><th style="width:220px">操作</th></tr></thead>
               <tbody>
-                <tr><td><b>Claude Code</b></td><td class="mono">~/.claude/settings.json</td><td class="mono">pdk_c_••••9d2f</td><td><span class="tag mono">DeepSeek/deepseek-v4-pro</span></td><td><button class="btn btn-sm" data-toast="已为 Claude Code 轮换新令牌并写回配置">换令牌</button> <button class="btn btn-sm btn-ghost" data-toast="已从时间戳备份还原 ~/.claude/settings.json">还原</button></td></tr>
-                <tr><td><b>Codex CLI</b></td><td class="mono">~/.codex/config.toml</td><td class="mono">pdk_c_••••41ab</td><td><span class="tag mono">Anthropic/claude-sonnet-5-5</span></td><td><button class="btn btn-sm" data-toast="已为 Codex CLI 轮换新令牌">换令牌</button> <button class="btn btn-sm btn-ghost" data-toast="已还原 Codex CLI 配置">还原</button></td></tr>
-                <tr><td><b>Zed Editor</b></td><td class="mono">~/.config/zed/settings.json</td><td class="mono">pdk_c_••••c07e</td><td><span class="tag mono">DeepSeek/deepseek-v4-flash</span></td><td><button class="btn btn-sm" data-toast="已为 Zed 轮换新令牌">换令牌</button> <button class="btn btn-sm btn-ghost" data-toast="已还原 Zed 配置">还原</button></td></tr>
+                <tr><td><span class="dot dot-ok"></span> <b>Claude Code</b> <span class="tag tag-ok">已验证</span></td><td class="mono">~/.claude/settings.json</td><td class="mono">pdk_c_••••9d2f</td><td><span class="tag mono">DeepSeek/v4-pro</span></td><td><button class="btn btn-sm btn-ghost" data-toast="连通性测试通过 · 388 ms">测试</button> <button class="btn btn-sm" data-toast="已为 Claude Code 轮换新令牌并写回配置">换令牌</button> <button class="btn btn-sm btn-ghost" data-toast="已从时间戳备份还原 ~/.claude/settings.json">还原</button></td></tr>
+                <tr><td><span class="dot dot-ok"></span> <b>Codex CLI</b> <span class="tag">已配置</span></td><td class="mono">~/.codex/config.toml</td><td class="mono">pdk_c_••••41ab</td><td><span class="tag mono">Anthropic/sonnet-5-5</span></td><td><button class="btn btn-sm btn-ghost" data-toast="连通性测试通过 · 512 ms">测试</button> <button class="btn btn-sm" data-toast="已为 Codex CLI 轮换新令牌">换令牌</button> <button class="btn btn-sm btn-ghost" data-toast="已还原 Codex CLI 配置">还原</button></td></tr>
+                <tr><td><span class="dot dot-ok"></span> <b>Cursor</b></td><td class="text-muted">手动客户端令牌</td><td class="mono">pdk_c_••••c07e</td><td><span class="tag mono">全部模型</span></td><td><button class="btn btn-sm" data-toast="已为 Cursor 轮换新令牌">换令牌</button> <button class="btn btn-sm btn-ghost" data-toast="打开客户端限额与模型范围策略">策略</button></td></tr>
               </tbody>
             </table>
           </div>
+          <div class="card-panel" style="padding:9px 12px">
+            <div class="row-between"><span class="fs-xs text-muted">▸ 配置备份与恢复记录（2 个工具 · 3 份备份）</span><span class="fs-2xs text-muted">PingDeck 改过的文件与备份</span></div>
+          </div>
+        </div>`,
+      traffic: () => `
+        <div class="gw-body">
+          <div class="row-center" style="flex-wrap:wrap;gap:8px">
+            <div class="input-box" style="flex:1;min-width:220px"><input placeholder="筛选网关流量：model:deepseek client:claude body:<关键词>…" /></div>
+            <div class="seg">
+              <button class="active" data-action="seg-pick">全部</button>
+              <button data-action="seg-pick">失败</button>
+              <button data-action="seg-pick">备用切换</button>
+              <button data-action="seg-pick">鉴权/限流拦截</button>
+            </div>
+          </div>
+          <div class="card-panel">
+            <table class="kv-table">
+              <thead><tr><th style="width:74px">时间</th><th style="width:136px">客户端</th><th>模型与路由</th><th style="width:88px">协议模式</th><th style="width:110px">状态</th><th style="width:108px">首字 / 总耗时</th></tr></thead>
+              <tbody>
+                <tr class="clickable" data-drawer="call-detail"><td class="mono text-muted">14:32:04</td><td><b>Claude Code</b></td><td class="mono">DeepSeek/v4-pro</td><td><span class="tag tag-accent">转码</span></td><td><span class="tag tag-ok">200</span></td><td class="mono">388ms / 1.4s</td></tr>
+                <tr class="clickable" data-drawer="call-detail"><td class="mono text-muted">14:29:51</td><td><b>Codex CLI</b></td><td class="mono">DeepSeek/v4-pro → kimi-k2.6</td><td><span class="tag">直通</span></td><td><span class="tag tag-warn">200 · 故障转移</span></td><td class="mono">612ms / 2.1s</td></tr>
+                <tr class="clickable" data-drawer="call-detail"><td class="mono text-muted">14:27:19</td><td class="text-muted">匿名客户端 · 127.0.0.1</td><td class="mono">gpt-6.1</td><td><span class="tag tag-bad">已拦截</span></td><td><span class="tag tag-bad">401</span></td><td class="mono">— / 1ms</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="row-between"><span class="fs-2xs text-muted">仅展示本地网关代理流量（含 401/403/429 路由前拦截）· 点击任意行查看抓包详情、重放或复制 cURL</span><button class="text-accent fs-xs" data-nav-to="usage">查看网关费用统计 ↗</button></div>
         </div>`,
       access: () => `
         <div class="gw-body">
           <div class="card-panel">
-            <div class="card-panel-head"><span>网关安全边界（Host / Origin + 令牌鉴权）</span><span class="tag tag-ok">严格本机模式</span></div>
-            ${row("监听地址与端口", "默认仅绑定 127.0.0.1；跨局域网暴露必须显式开启令牌鉴权。", `<span class="tag mono">127.0.0.1:4141</span>`)}
-            ${row("要求 Bearer / x-api-key 令牌", "拒绝未携带有效客户端令牌的请求。", sw(true))}
-            ${row("允许局域网设备访问 (0.0.0.0)", "仅在信任内网临时共享时开启。", sw(false))}
-            ${row("防 DNS 重绑定（Host 白名单）", "仅放行 localhost / 127.0.0.1 Host 头，拦截恶意外站请求。", sw(true))}
+            <div class="card-panel-head"><span>服务与安全边界</span><span class="tag tag-ok">严格本机模式</span></div>
+            ${row("监听端口", "默认仅绑定 127.0.0.1；修改端口后会重启网关。", `<span class="tag mono">127.0.0.1:4141</span>`)}
+            ${row("要求客户端令牌鉴权", "每次请求都必须携带有效客户端令牌；未知或已吊销令牌一律返回 401。", sw(true))}
+            ${row("在局域网提供服务 (0.0.0.0)", "仅在信任内网临时共享时开启（需要至少一个有效客户端令牌）。", sw(false))}
+            ${row("额外允许的 Host 名", "逗号分隔，用于 Docker / devcontainer 或隧道（如 host.docker.internal）。", `<span class="tag mono">localhost, 127.0.0.1</span>`)}
+            ${row("启动时自动开启网关", "PingDeck 打开时自动启动网关。", sw(true))}
+            ${row("请求体调试捕获", "决定哪些网关交互保留请求与响应体供日志排障。", `<div class="seg"><button data-action="seg-pick">关闭</button><button class="active" data-action="seg-pick">仅出错时</button><button data-action="seg-pick">全部</button></div>`)}
+          </div>
+          <div class="card-panel">
+            <div class="card-panel-head"><span>当前接受的 Host 名称与运行控制</span></div>
+            ${row("本机回环（始终接受）", "防重绑定策略：不发送 CORS 头，未知 Host 或 Origin 请求一律返回 403。", `<span class="mono fs-xs">127.0.0.1, localhost, [::1]</span>`)}
+            ${row("重置全部熔断器", "当上游故障恢复后，可手动清空所有服务商与模型的熔断器状态。", `<button class="btn btn-sm btn-danger" data-toast="已重置全部熔断器">重置全部熔断器</button>`)}
           </div>
         </div>`,
       rules: () => `
         <div class="gw-body">
           <div class="card-panel">
-            <div class="card-panel-head"><span>网关备用规则（首个内容事件后绝不切换）</span><button class="btn btn-sm btn-primary" data-toast="已新增网关备用规则草稿">+ 添加规则</button></div>
+            <div class="card-panel-head"><span>网关备用规则（首个内容事件后绝不切换）</span><div class="row-center"><button class="btn btn-sm btn-ghost" data-nav-to="settings" data-set-page="ai/routing">重试与熔断参数 ↗</button><button class="btn btn-sm btn-primary" data-toast="已新增网关备用规则草稿">+ 添加规则</button></div></div>
             <table class="kv-table">
-              <thead><tr><th>主模型</th><th>有序备用链</th><th>策略</th><th style="width:80px">今日命中</th></tr></thead>
+              <thead><tr><th>主模型</th><th>有序备用链</th><th style="width:90px">状态</th><th style="width:72px">今日命中</th><th style="width:140px">操作</th></tr></thead>
               <tbody>
-                <tr><td class="mono"><b>DeepSeek/deepseek-v4-pro</b></td><td><span class="tag mono">Moonshot/kimi-k2.6</span> → <span class="tag mono">Anthropic/claude-sonnet-5-5</span></td><td>429 先等 Retry-After</td><td class="mono">214</td></tr>
-                <tr><td class="mono"><b>Anthropic/claude-sonnet-5-5</b></td><td><span class="tag mono">OpenAI/gpt-6.1</span></td><td>同协议直通优先</td><td class="mono">78</td></tr>
-                <tr><td class="mono"><b>DeepSeek/deepseek-v4-flash</b></td><td><span class="tag mono">Moonshot/kimi-k2.6</span> → <span class="tag mono">Ollama/qwen3-coder:30b</span></td><td>低延迟优先</td><td class="mono">104</td></tr>
+                <tr><td class="mono"><b>DeepSeek/deepseek-v4-pro</b></td><td><span class="tag mono">Moonshot/kimi-k2.6</span> → <span class="tag mono">Anthropic/claude-sonnet-5-5</span></td><td><span class="tag tag-ok">生效</span></td><td class="mono">214</td><td><button class="btn btn-sm btn-ghost" data-toast="预览路由顺序">预览</button> <button class="btn btn-sm" data-toast="编辑备用链">编辑</button></td></tr>
+                <tr><td class="mono"><b>Anthropic/claude-sonnet-5-5</b></td><td><span class="tag mono">OpenAI/gpt-6.1</span></td><td><span class="tag tag-ok">生效</span></td><td class="mono">78</td><td><button class="btn btn-sm btn-ghost" data-toast="预览路由顺序">预览</button> <button class="btn btn-sm" data-toast="编辑备用链">编辑</button></td></tr>
+                <tr><td class="mono"><b>DeepSeek/deepseek-v4-flash</b></td><td><span class="tag mono">Moonshot/kimi-k2.6</span> → <span class="tag mono">Ollama/qwen3-coder:30b</span></td><td><span class="tag tag-ok">生效</span></td><td class="mono">104</td><td><button class="btn btn-sm btn-ghost" data-toast="预览路由顺序">预览</button> <button class="btn btn-sm" data-toast="编辑备用链">编辑</button></td></tr>
               </tbody>
             </table>
           </div>

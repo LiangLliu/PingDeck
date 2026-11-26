@@ -254,9 +254,10 @@ impl NativeBenchState {
                 .child(multiline_input(&self.ime_textarea))
                 .child(section_heading(u.bench_sec_editor(), cx))
                 .child(
-                    div()
+                    v_col()
                         .flex_1()
                         .min_h(px(180.0))
+                        .w_full()
                         .child(code_editor(&self.ime_editor)),
                 ),
             BenchTab::StreamingMarkdown => v_col()
@@ -319,9 +320,10 @@ impl NativeBenchState {
                         )),
                 )
                 .child(
-                    div()
+                    v_col()
                         .flex_1()
                         .min_h(px(360.0))
+                        .w_full()
                         .child(code_editor(&self.large_json_editor)),
                 ),
         };

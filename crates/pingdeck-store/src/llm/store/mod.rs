@@ -142,9 +142,9 @@ pub use sniff_create::{
     KeyCheck, NewKeyFromSniff, NewProviderFromSniff, SniffChecks, create_provider_from_sniff,
 };
 pub use usage::{
-    FailureCount, MINUTE_RETENTION_DAYS, UsageFailure, UsageLatency, failure_counts, prune_usage,
-    today_gateway_rows, upsert_rollup, usage_failures, usage_latency, usage_latency_modes,
-    usage_retention_preview, usage_rows,
+    FailureCount, GatewayTodayOps, MINUTE_RETENTION_DAYS, UsageFailure, UsageLatency,
+    failure_counts, prune_usage, today_gateway_ops, today_gateway_rows, upsert_rollup,
+    usage_failures, usage_latency, usage_latency_modes, usage_retention_preview, usage_rows,
 };
 
 // `atomic` here is the AppError flavour (`crate::sqlite::atomic` needs E: From<rusqlite::Error>).

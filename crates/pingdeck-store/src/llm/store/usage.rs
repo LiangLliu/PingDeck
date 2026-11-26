@@ -7,6 +7,8 @@
 //! are never pruned by the log retention: the daily one keeps `usage_retention_days`, the minute
 //! one at most [`MINUTE_RETENTION_DAYS`].
 
+use std::collections::BTreeMap;
+
 use rusqlite::types::Value;
 use rusqlite::{Connection, params, params_from_iter};
 use serde::{Deserialize, Serialize};
@@ -16,7 +18,7 @@ use crate::llm::failure::FailureKind;
 pub use crate::llm::usage::FailureCount;
 use crate::llm::usage::{
     MAX_TZ_OFFSET_MINUTES, RollupDelta, RollupRow, UsageGroup, UsageLatencyMode, UsageQuery,
-    UsageSource, add_days, local_day,
+    UsageSource, add_days, local_day, local_midnight_ms,
 };
 use pingdeck_base::error::AppError;
 
@@ -548,6 +550,125 @@ pub fn today_gateway_rows(
         )
         .map_err(db)?;
     rows.collect::<Result<_, _>>().map_err(db)
+}
+
+/// Real-time operational figures for today's local gateway traffic, read from `llm_request_log`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayTodayOps {
+    /// All gateway log rows recorded during the local day (including pre-routing rejections).
+    pub total_logged: u64,
+    /// Routed gateway calls today answered via same-protocol passthrough (`translated = 0`).
+    pub passthrough: u64,
+    /// Routed gateway calls today answered via cross-protocol transcoding (`translated = 1`).
+    pub translated: u64,
+    /// Successful gateway calls today that recovered via a fallback attempt (`attempts > 1`).
+    pub failover_recovered: u64,
+    /// Gateway calls rejected before routing to any provider (401/403/429/unknown model).
+    pub rejected: u64,
+    /// Median streaming time-to-first-token (ms) among successful gateway calls today.
+    pub median_ttft_ms: Option<u64>,
+    /// Today's gateway request count keyed by `requested_model`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_hits: BTreeMap<String, u64>,
+}
+
+/// Operational breakdown for today's local gateway traffic (`source = 'gateway'`).
+///
+/// # Errors
+/// [`AppError::Database`] on SQLite failure.
+pub fn today_gateway_ops(
+    connection: &Connection,
+    now_ms: i64,
+    tz_offset_minutes: i16,
+) -> Result<GatewayTodayOps, AppError> {
+    let day = local_day(now_ms, tz_offset_minutes);
+    let Some(start_ms) = local_midnight_ms(&day, tz_offset_minutes) else {
+        return Ok(GatewayTodayOps::default());
+    };
+    let end_ms = start_ms.saturating_add(MS_PER_DAY);
+    let source = UsageSource::Gateway.as_str();
+
+    let (total_logged, passthrough, translated, failover_recovered, rejected) = connection
+        .prepare_cached(
+            "SELECT \
+                 COUNT(*), \
+                 COALESCE(SUM(CASE WHEN COALESCE(provider_id, '') <> '' AND translated = 0 THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN COALESCE(provider_id, '') <> '' AND translated = 1 THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN outcome = 'success' AND status < 400 \
+                     AND (CASE WHEN json_valid(attempts_json) THEN json_array_length(attempts_json) ELSE 0 END) > 1 \
+                     THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN COALESCE(provider_id, '') = '' THEN 1 ELSE 0 END), 0) \
+             FROM llm_request_log \
+             WHERE source = ?1 AND ts_ms >= ?2 AND ts_ms < ?3",
+        )
+        .map_err(db)?
+        .query_row(params![source, start_ms, end_ms], |row| {
+            Ok((
+                to_u64(row.get(0)?),
+                to_u64(row.get(1)?),
+                to_u64(row.get(2)?),
+                to_u64(row.get(3)?),
+                to_u64(row.get(4)?),
+            ))
+        })
+        .map_err(db)?;
+
+    let mut ttft_stmt = connection
+        .prepare_cached(
+            "SELECT ttft_ms FROM llm_request_log \
+             WHERE source = ?1 AND ts_ms >= ?2 AND ts_ms < ?3 \
+               AND outcome = 'success' AND status < 400 AND ttft_ms IS NOT NULL \
+             ORDER BY ttft_ms ASC",
+        )
+        .map_err(db)?;
+    let ttfts: Vec<u64> = ttft_stmt
+        .query_map(params![source, start_ms, end_ms], |row| {
+            Ok(to_u64(row.get(0)?))
+        })
+        .map_err(db)?
+        .collect::<Result<_, _>>()
+        .map_err(db)?;
+    let median_ttft_ms = if ttfts.is_empty() {
+        None
+    } else {
+        let mid = ttfts.len() / 2;
+        if ttfts.len() % 2 == 1 {
+            ttfts.get(mid).copied()
+        } else {
+            match (ttfts.get(mid - 1), ttfts.get(mid)) {
+                (Some(&a), Some(&b)) => Some(a.saturating_add(b) / 2),
+                _ => None,
+            }
+        }
+    };
+
+    let mut hits_stmt = connection
+        .prepare_cached(
+            "SELECT requested_model, COUNT(*) FROM llm_request_log \
+             WHERE source = ?1 AND ts_ms >= ?2 AND ts_ms < ?3 AND requested_model <> '' \
+             GROUP BY requested_model",
+        )
+        .map_err(db)?;
+    let mut model_hits = BTreeMap::new();
+    let hit_rows = hits_stmt
+        .query_map(params![source, start_ms, end_ms], |row| {
+            Ok((row.get::<_, String>(0)?, to_u64(row.get(1)?)))
+        })
+        .map_err(db)?;
+    for row in hit_rows {
+        let (model, count) = row.map_err(db)?;
+        model_hits.insert(model, count);
+    }
+
+    Ok(GatewayTodayOps {
+        total_logged,
+        passthrough,
+        translated,
+        failover_recovered,
+        rejected,
+        median_ttft_ms,
+        model_hits,
+    })
 }
 
 /// The exact failure counters of `query` (window, sources and provider; keys and clients are not

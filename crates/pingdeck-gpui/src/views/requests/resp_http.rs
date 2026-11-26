@@ -118,6 +118,7 @@ pub fn render_http_response(
     // 1. Response Header Bar
     let resp_head = h_row()
         .w_full()
+        .flex_shrink_0()
         .justify_between()
         .gap(px(8.0))
         .px(px(14.0))
@@ -335,7 +336,7 @@ pub fn render_http_response(
         (tab.http_resp_tab == HttpRespTab::Body).then(|| format_controls.into_any_element());
 
     root.child(subtab_strip(tabs, right_fmt, cx))
-        .child(div().flex_1().min_h_0().w_full().child(content))
+        .child(v_col().flex_1().min_h_0().w_full().child(content))
         .into_any_element()
 }
 

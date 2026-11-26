@@ -1747,7 +1747,7 @@ mod gpui_integration {
             apply_palette(PaletteId::Ocean, true, false, &settings.appearance, cx);
         });
 
-        // A. Dedicated Local Gateway cockpit (4 tabs, modal dismissal, cross-module handoffs).
+        // A. Dedicated Local Gateway cockpit (5 tabs incl. Traffic, centered connect modal, handoffs).
         let (gw_view, gw_visual) = cx.add_window_view(GatewayView::new);
         gw_visual.run_until_parked();
 
@@ -1756,11 +1756,19 @@ mod gpui_integration {
                 GatewayTab::Overview,
                 GatewayTab::Clients,
                 GatewayTab::Rules,
+                GatewayTab::Traffic,
                 GatewayTab::Access,
             ] {
                 gw_view.update(cx, |v, cx| v.set_tab(tab, cx));
                 window.refresh();
             }
+
+            // Centered Connect Coding Tool modal opens and dismisses cleanly via Escape.
+            gw_view.update(cx, |v, cx| v.open_connect_sheet(None, window, cx));
+            assert!(gw_view.read(cx).connect_modal.is_some());
+            window.refresh();
+            assert!(gw_view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+            assert!(gw_view.read(cx).connect_modal.is_none());
 
             gw_view.update(cx, |v, cx| {
                 v.confirm_lan_open = true;
@@ -1771,12 +1779,12 @@ mod gpui_integration {
 
             gw_view.update(cx, |v, cx| {
                 v.pending_handoff
-                    .set(Some(GatewayHandoff::OpenSettings(SettingsSection::Routing)));
+                    .set(Some(GatewayHandoff::OpenUsageGateway));
                 cx.notify();
             });
             assert!(matches!(
                 gw_view.read(cx).take_pending_handoff(),
-                Some(GatewayHandoff::OpenSettings(SettingsSection::Routing))
+                Some(GatewayHandoff::OpenUsageGateway)
             ));
         });
 
@@ -2334,6 +2342,88 @@ mod gpui_integration {
                 cx.notify();
             });
             window.refresh();
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn code_editor_fills_response_pane_and_usage_gateway_scope_filters(cx: &mut TestAppContext) {
+        use crate::ui::{EditorState, code_editor, v_col};
+        use crate::views::usage::{UsageView, state::RangePreset};
+        use gpui_kit::{
+            AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+            Window, div, px,
+        };
+        use pingdeck_desktop::core::llm::usage::UsageSource;
+
+        struct ResponsePaneHarness {
+            editor: Entity<EditorState>,
+        }
+
+        impl Render for ResponsePaneHarness {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                v_col()
+                    .w(px(800.0))
+                    .h(px(400.0))
+                    .child(div().h(px(40.0)).flex_shrink_0())
+                    .child(
+                        v_col()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .p(px(8.0))
+                            .child(code_editor(&self.editor).readonly(true)),
+                    )
+            }
+        }
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Ocean, false, false, &settings.appearance, cx);
+        });
+
+        // 1. Verify `code_editor` fills its bounded flex-1 container (regression for 2-line collapse).
+        let (harness, visual) = cx.add_window_view(|window, cx| {
+            let editor = cx.new(|cx| {
+                let mut ed = EditorState::new(window, cx)
+                    .soft_wrap(true)
+                    .default_value("{\n  \"args\": {},\n  \"headers\": {\n    \"Host\": \"httpbin.org\"\n  },\n  \"origin\": \"127.0.0.1\",\n  \"url\": \"https://httpbin.org/get\"\n}");
+                ed.set_highlighter("json", cx);
+                ed
+            });
+            ResponsePaneHarness { editor }
+        });
+        let editor_ent = harness.read_with(visual, |h, _| h.editor.clone());
+        let painted_h = visual.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+            editor_ent.read(cx).input_bounds().size.height
+        });
+        assert!(
+            painted_h > px(250.0),
+            "code_editor inside 360px response container must fill height (got {painted_h:?})"
+        );
+
+        // 2. Verify UsageView::select_gateway_scope pre-filters strictly to Gateway + Today.
+        let (usage_view, usage_visual) = cx.add_window_view(UsageView::new);
+        usage_visual.run_until_parked();
+        usage_visual.update(|window, cx| {
+            usage_view.update(cx, |u, cx| u.select_gateway_scope(false, cx));
+            window.refresh();
+            let u = usage_view.read(cx);
+            assert_eq!(u.filter_source, Some(UsageSource::Gateway));
+            assert_eq!(u.range, RangePreset::Today);
+            assert!(u.scope_provider_id.is_none());
         });
 
         rt.shutdown_blocking();

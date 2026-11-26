@@ -72,9 +72,12 @@ pub fn multiline_input(state: &Entity<TextareaState>) -> Textarea {
 }
 
 /// Tree-sitter syntax-highlighted source code editor widget (JSON, JS, YAML, SQL, etc.).
+///
+/// Fills 100% of its bounded parent container height (`h(relative(1.0))`) instead of collapsing
+/// to `gpui-component`'s 2-line `h_auto()` default.
 #[must_use]
 pub fn code_editor(state: &Entity<EditorState>) -> Editor {
-    Editor::new(state).small()
+    Editor::new(state).small().h(gpui_kit::relative(1.0))
 }
 
 /// Virtualized high-performance data table (10,000+ rows at 120fps).

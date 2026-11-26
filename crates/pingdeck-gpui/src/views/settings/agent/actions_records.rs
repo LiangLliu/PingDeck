@@ -244,10 +244,12 @@ impl AgentSettingsView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.open_sheet(cx, move |sheet, _, cx| {
+        window.open_sheet(cx, move |sheet, w, cx| {
             let title = drawer.read(cx).sheet_title(cx);
+            let sheet_w =
+                crate::ui::responsive_sheet_width(560.0, f32::from(w.viewport_size().width));
             sheet
-                .size(px(560.0))
+                .size(px(sheet_w))
                 .resizable(true)
                 .title(title)
                 .child(drawer.clone())

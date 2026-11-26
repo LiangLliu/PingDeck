@@ -97,7 +97,13 @@ impl RequestsView {
         let ai_tools_editor = mk_ed("json", "", window, cx);
         let ai_raw_editor = mk_ed("json", "", window, cx);
 
-        let response_editor = mk_ed("json", r.ph_resp_init(), window, cx);
+        let response_editor = cx.new(|cx| {
+            let mut ed = EditorState::new(window, cx)
+                .soft_wrap(true)
+                .default_value(r.ph_resp_init());
+            ed.set_highlighter("json", cx);
+            ed
+        });
         let resp_filter_input = mk_in(r.ph_resp_filter(), window, cx);
 
         let runner_iter_input = cx.new(|cx| {

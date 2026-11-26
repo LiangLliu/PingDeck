@@ -120,6 +120,7 @@ pub use overview::{
     AliasRow, BaseUrlRow, ClientRow, EndpointRow, GatewayOverviewDto, HostNames, OverviewEmpty,
     TargetRow, TargetState,
 };
+pub use pingdeck_store::llm::store::GatewayTodayOps;
 pub use price_book::{
     EffectivePriceState, EffectivePriceView, ModelPriceDetail, ProviderModelPrice,
     ProviderPricingView, UnlistedModel,

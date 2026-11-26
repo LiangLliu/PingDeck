@@ -97,7 +97,7 @@ pub fn render_http_editor(view: &RequestsView, cx: &mut Context<RequestsView>) -
         .size_full()
         .bg(to_hsla(p.surface))
         .child(subtab_strip(tabs, auth_pill, cx))
-        .child(div().flex_1().min_h_0().w_full().child(content))
+        .child(v_col().flex_1().min_h_0().w_full().child(content))
 }
 
 fn render_params_tab(view: &RequestsView, cx: &mut Context<RequestsView>) -> gpui_kit::AnyElement {
