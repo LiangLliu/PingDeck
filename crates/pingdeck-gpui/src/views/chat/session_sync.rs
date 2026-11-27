@@ -10,8 +10,8 @@ use pingdeck_desktop::core::app::{
     AgentPageRequest, agent_attention_subscribe_impl, agent_board_impl, agent_changes_list_impl,
     agent_process_list_impl, agent_queue_list_impl, agent_run_subscribe_impl,
     agent_run_unsubscribe_impl, agent_session_generate_title_impl, agent_session_get_impl,
-    agent_session_latest_topology_impl, agent_session_list_impl, agent_skill_list_impl,
-    agent_workspace_info_impl, environment_list_impl, workspace_list_impl,
+    agent_session_list_impl, agent_skill_list_impl, agent_workspace_info_impl,
+    environment_list_impl, workspace_list_impl,
 };
 use pingdeck_desktop::core::logging::{LogLevel, log_line};
 use pingdeck_desktop::core::model::events::Sequenced;
@@ -21,12 +21,11 @@ use pingdeck_desktop::streams::{channel_sink, coalesced_agent_sink};
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 
 use super::actions::load_model_options;
-use super::types::ChatSidebarMode;
 use super::{ChatView, reasoning};
 
 impl ChatView {
-    /// Subscribes to the global [`AgentAttention`] feed so the Run Monitor, sidebar status pill,
-    /// and execution topology stay synchronized in real time across all concurrent chats.
+    /// Subscribes to the global [`AgentAttention`] feed so sidebar status pills stay synchronized
+    /// in real time across all concurrent chats.
     pub(super) fn subscribe_attention(&mut self, cx: &mut Context<Self>) {
         if self.attention_task.is_some() {
             return;
@@ -40,9 +39,6 @@ impl ChatView {
                     return;
                 }
                 this.load_board(cx);
-                if this.details_open && !this.thread.session_id.is_empty() {
-                    this.load_session_topology(cx);
-                }
             }));
         }
     }
@@ -56,9 +52,7 @@ impl ChatView {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 let keep_going = weak
                     .update(cx, |this, cx| {
-                        let active = this.is_run_active()
-                            || (this.sidebar_mode == ChatSidebarMode::Board
-                                && this.has_any_active_board_run());
+                        let active = this.is_run_active();
                         if !active {
                             this.tick_task = None;
                         }
@@ -174,17 +168,16 @@ impl ChatView {
                 self.subscribed_session_id = Some(session_id.to_owned());
                 self.stream_task = Some(subscribe_stream_into(cx, rx, 32, |this, batch, cx| {
                     let mut got_user_msg = false;
-                    let mut got_run_started = false;
+                    let mut got_run_started: Option<String> = None;
                     let mut got_title: Option<(String, String)> = None;
                     let mut got_finished = false;
-                    let mut got_topology_event = false;
                     let mut got_scroll_worthy = false;
                     let mut auto_expand_reasoning_ids: Vec<String> = Vec::new();
 
                     for env in &batch {
                         match &env.event {
                             AgentEvent::RunStarted { .. } => {
-                                got_run_started = true;
+                                got_run_started = Some(env.run_id.clone());
                                 got_scroll_worthy = true;
                                 this.thinking_started_at = None;
                                 this.thinking_ended_at = None;
@@ -241,7 +234,6 @@ impl ChatView {
                             AgentEvent::SubagentStarted { .. }
                             | AgentEvent::SubagentFinished { .. }
                             | AgentEvent::ToolResult { .. } => {
-                                got_topology_event = true;
                                 got_scroll_worthy = true;
                             }
                             AgentEvent::SessionTitleUpdated { session_id, title } => {
@@ -266,8 +258,9 @@ impl ChatView {
                     if got_user_msg {
                         this.pending_user_text = None;
                     }
-                    if got_run_started {
+                    if let Some(started_rid) = got_run_started {
                         this.submitting = false;
+                        this.latest_session_run_id = Some(started_rid);
                         this.run_started_at.get_or_insert_with(Instant::now);
                         this.start_elapsed_ticker(cx);
                     }
@@ -280,22 +273,10 @@ impl ChatView {
                             this.refresh_catalog(cx);
                         }
                     }
-                    if got_topology_event {
-                        if this.details_open {
-                            this.load_session_topology(cx);
-                        }
-                        if this.sidebar_mode == ChatSidebarMode::Board {
-                            this.load_selected_topology(cx);
-                        }
-                    }
                     if got_finished {
                         this.submitting = false;
                         this.run_started_at = None;
-                        if !(this.sidebar_mode == ChatSidebarMode::Board
-                            && this.has_any_active_board_run())
-                        {
-                            this.tick_task = None;
-                        }
+                        this.tick_task = None;
                         this.pending_user_text = None;
                         this.refresh_after_turn(cx);
                     }
@@ -396,20 +377,19 @@ impl ChatView {
                 let changes = agent_changes_list_impl(state, &sid).unwrap_or_default();
                 let procs = agent_process_list_impl(state, Some(&sid)).unwrap_or_default();
                 let queue = agent_queue_list_impl(state, &sid).unwrap_or_default();
-                let topo = agent_session_latest_topology_impl(state, &sid)
-                    .ok()
-                    .flatten();
-                (detail, changes, procs, queue, topo)
+                (detail, changes, procs, queue)
             },
-            move |this, (res, changes, procs, queue, topo), cx| {
+            move |this, (res, changes, procs, queue), cx| {
                 if this.thread.session_id != sid_check {
                     return;
                 }
                 this.persisted_changes = changes;
                 this.processes = procs;
                 this.thread.queued_turns = queue;
-                this.session_topology = topo;
                 if let Ok(detail) = res {
+                    if let Some(run) = detail.runs.first() {
+                        this.latest_session_run_id = Some(run.run_id.clone());
+                    }
                     for tc in detail.tool_calls {
                         if !this
                             .audit_tool_calls
@@ -464,7 +444,7 @@ impl ChatView {
 
         self.thread = ChatThreadState::new(session_id.clone(), "");
         self.session = None;
-        self.session_topology = None;
+        self.latest_session_run_id = None;
         self.plan_mode = false;
         self.has_earlier_messages = false;
         self.loading_earlier_messages = false;
@@ -492,9 +472,6 @@ impl ChatView {
                 let changes = agent_changes_list_impl(state, &sid_load).unwrap_or_default();
                 let procs = agent_process_list_impl(state, Some(&sid_load)).unwrap_or_default();
                 let queue = agent_queue_list_impl(state, &sid_load).unwrap_or_default();
-                let topo = agent_session_latest_topology_impl(state, &sid_load)
-                    .ok()
-                    .flatten();
                 let (ws_info, envs, skills) = match &detail {
                     Ok(d) => {
                         let wi = d
@@ -514,20 +491,20 @@ impl ChatView {
                     }
                     Err(_) => (None, Vec::new(), Vec::new()),
                 };
-                (detail, changes, procs, queue, topo, ws_info, envs, skills)
+                (detail, changes, procs, queue, ws_info, envs, skills)
             },
-            move |this, (res, changes, procs, queue, topo, ws_info, envs, skills), cx| {
+            move |this, (res, changes, procs, queue, ws_info, envs, skills), cx| {
                 if this.thread.session_id != sid_check {
                     return;
                 }
                 this.persisted_changes = changes;
                 this.processes = procs;
-                this.session_topology = topo;
                 this.workspace_info = ws_info;
                 this.environments = envs;
                 this.available_skills = skills;
                 this.thread.queued_turns = queue;
                 if let Ok(detail) = res {
+                    this.latest_session_run_id = detail.runs.first().map(|r| r.run_id.clone());
                     this.plan_mode = detail.plan_mode.unwrap_or(false);
                     this.thread.queue_paused = detail.queue_paused.unwrap_or(false);
                     this.has_earlier_messages = detail.has_more;

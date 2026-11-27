@@ -24,6 +24,7 @@ fn module_icon(module: NavModule) -> UiIcon {
         NavModule::History => UiIcon::History,
         NavModule::Environments => UiIcon::Layers,
         NavModule::Chat => UiIcon::Chat,
+        NavModule::Runs => UiIcon::Activity,
         NavModule::Providers => UiIcon::Cpu,
         NavModule::Gateway => UiIcon::Zap,
         NavModule::Usage => UiIcon::Usage,
@@ -196,8 +197,13 @@ fn render_nav_item(
     let t = tr(cx);
     let selected = shell.state.active_module == module;
     let label = module.label(t.lang());
-    let waiting = if module == NavModule::Chat {
+    let waiting = if matches!(module, NavModule::Chat | NavModule::Runs) {
         shell.state.attention.waiting_approval
+    } else {
+        0
+    };
+    let live_runs = if module == NavModule::Runs {
+        shell.state.running_work.agent_runs
     } else {
         0
     };
@@ -264,6 +270,8 @@ fn render_nav_item(
             Some(p.warn)
         } else if prov_attn > 0 {
             Some(p.bad)
+        } else if live_runs > 0 {
+            Some(p.accent)
         } else if live_mocks > 0 || live_flows > 0 || gw_port.is_some() {
             Some(p.ok)
         } else {
@@ -319,6 +327,18 @@ fn render_nav_item(
             Tone::Warning,
             cx,
         ));
+    } else if live_runs > 0 {
+        row = row.child(
+            h_row()
+                .gap(px(4.0))
+                .child(status_indicator(StatusShape::Run, cx))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(p.accent))
+                        .child(live_runs.to_string()),
+                ),
+        );
     } else if live_mocks > 0 {
         row = row.child(
             h_row()

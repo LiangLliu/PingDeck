@@ -1,6 +1,6 @@
 //! Top header bar for AI Chat: clickable renameable title, model badge, interactive
 //! Workspace / Environment / Folder binding popover with Git branch, export, reasoning toggle,
-//! pin, details inspector toggle, and safe delete.
+//! pin, and Workflow Monitor modal trigger.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -9,9 +9,12 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-    Anchor, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, list_row, palette, pill_btn,
-    popover, popover_header, section_heading, text_tooltip, to_hsla, v_col,
+    Anchor, StatusShape, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, list_row, palette,
+    pill_btn, popover, popover_header, section_heading, status_indicator, text_tooltip, to_hsla,
+    v_col,
 };
+use crate::views::runs::WorkflowTab;
+use pingdeck_desktop::core::agent::model::{AgentRunStatus, AgentTodoStatus, FileChangeStatus};
 
 use super::ChatView;
 use super::reasoning::message_has_reasoning;
@@ -53,6 +56,55 @@ pub fn render_header(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoEl
     let can_rename = !view.thread.session_id.is_empty();
     let rename_sid = view.thread.session_id.clone();
     let rename_title = title.clone();
+    let has_workflow = !view.thread.session_id.is_empty()
+        && (view.is_run_active()
+            || view.thread.active_run.is_some()
+            || view.latest_session_run_id.is_some());
+    let pending_files: Vec<_> = view
+        .persisted_changes
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.status,
+                FileChangeStatus::Pending | FileChangeStatus::Conflict
+            )
+        })
+        .collect();
+    let pending_added: u32 = pending_files.iter().map(|c| c.added).sum();
+    let pending_removed: u32 = pending_files.iter().map(|c| c.removed).sum();
+    let wf_shape =
+        if !view.thread.pending_approvals.is_empty() || !view.thread.open_gates.is_empty() {
+            Some(StatusShape::Warn)
+        } else if view.is_run_active() {
+            Some(StatusShape::Run)
+        } else if view.thread.active_run.as_ref().is_some_and(|r| {
+            matches!(
+                r.status,
+                AgentRunStatus::Failed | AgentRunStatus::Interrupted
+            )
+        }) {
+            Some(StatusShape::Bad)
+        } else {
+            None
+        };
+    let todo_done = view
+        .thread
+        .todos
+        .iter()
+        .filter(|t| t.status == AgentTodoStatus::Completed)
+        .count();
+    let todo_total = view
+        .thread
+        .todos
+        .iter()
+        .filter(|t| t.status != AgentTodoStatus::Cancelled)
+        .count();
+    let ch = crate::ui::tr(cx).chat();
+    let wf_label = if todo_total > 0 && view.is_run_active() {
+        format!("{} {todo_done}/{todo_total}", ch.monitor_workflow_btn())
+    } else {
+        ch.monitor_workflow_btn().to_owned()
+    };
 
     let title_hover_bg = to_hsla(p.hover.composite_over(p.surface));
     let title_row = h_row()
@@ -149,29 +201,68 @@ pub fn render_header(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoEl
                     })
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_pinned(cx))),
                 )
-                .child(
-                    btn_icon(
-                        "chat-hdr-details",
-                        if view.details_open {
-                            UiIcon::PanelRightClose
-                        } else {
-                            UiIcon::PanelRightOpen
-                        },
-                    )
-                    .tooltip(
-                        crate::ui::tr(cx)
-                            .chat()
-                            .thread_header_thread_details_changes(),
+                .children((!pending_files.is_empty()).then(|| {
+                    pill_btn(
+                        "chat-hdr-changes",
+                        format!(
+                            "±{} +{pending_added} -{pending_removed}",
+                            pending_files.len()
+                        ),
+                        Some(UiIcon::FileDiff),
+                        false,
                     )
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.details_open = !this.details_open;
-                        cx.notify();
-                    })),
-                )
+                        this.open_workflow_modal(None, Some(WorkflowTab::Changes), cx);
+                    }))
+                }))
                 .child(
-                    btn_icon("chat-hdr-del", UiIcon::Trash)
-                        .tooltip(crate::ui::tr(cx).chat().thread_header_delete_chat())
-                        .on_click(cx.listener(|this, _, _, cx| this.request_delete_current(cx))),
+                    h_row()
+                        .id("chat-hdr-workflow")
+                        .gap(px(5.0))
+                        .px(px(8.0))
+                        .py(px(3.5))
+                        .rounded(px(6.0))
+                        .bg(to_hsla(if wf_shape.is_some() {
+                            p.accent_soft
+                        } else {
+                            p.sunken
+                        }))
+                        .border_1()
+                        .border_color(to_hsla(if wf_shape == Some(StatusShape::Warn) {
+                            p.warn_line.composite_over(p.accent_soft)
+                        } else if wf_shape == Some(StatusShape::Bad) {
+                            p.bad_line.composite_over(p.accent_soft)
+                        } else if wf_shape.is_some() {
+                            p.accent_line.composite_over(p.accent_soft)
+                        } else {
+                            p.line.composite_over(p.sunken)
+                        }))
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(to_hsla(if !has_workflow {
+                            p.faint
+                        } else if wf_shape.is_some() {
+                            p.accent_ink
+                        } else {
+                            p.ink
+                        }))
+                        .tooltip(text_tooltip(if has_workflow {
+                            ch.monitor_workflow_tooltip()
+                        } else {
+                            ch.monitor_workflow_empty_tooltip()
+                        }))
+                        .when(has_workflow, |el| {
+                            el.cursor_pointer()
+                                .hover(|s| s.border_color(to_hsla(p.accent)))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.open_workflow_modal(None, None, cx);
+                                }))
+                        })
+                        .child(match wf_shape {
+                            Some(shape) => status_indicator(shape, cx).into_any_element(),
+                            None => icon_xs(UiIcon::Activity).into_any_element(),
+                        })
+                        .child(SharedString::from(wf_label)),
                 ),
         );
 
@@ -389,6 +480,32 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
                     );
                 }
             }
+            let ent_inst = chat_ent.clone();
+            let pop_inst = pop_cx.entity().clone();
+            m = m.child(
+                div()
+                    .pt(px(6.0))
+                    .border_t_1()
+                    .border_color(to_hsla(pp.line.composite_over(pp.overlay)))
+                    .child(
+                        btn_ghost(
+                            "chat-bind-instructions",
+                            crate::ui::tr(pop_cx)
+                                .chat()
+                                .thread_header_chat_instructions(),
+                        )
+                        .icon(icon_xs(UiIcon::Sliders))
+                        .w_full()
+                        .justify_start()
+                        .on_click(move |_, w, cx| {
+                            ent_inst.update(cx, |this, cx| {
+                                this.active_modal = Some(ChatModal::ChatInstructions);
+                                cx.notify();
+                            });
+                            pop_inst.update(cx, |s, cx| s.dismiss(w, cx));
+                        }),
+                    ),
+            );
             m
         })
 }

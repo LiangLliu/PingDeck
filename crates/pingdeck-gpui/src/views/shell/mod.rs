@@ -34,7 +34,7 @@ use pingdeck_desktop::theme::PaletteId;
 use crate::app::actions::{
     CloseOverlay, CloseTab, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9,
     NewTab, OpenSettings, QuitApp, SaveActive, SendRequest, ToggleConsole, TogglePalette,
-    ToggleSidebar, bind_app_shortcuts,
+    ToggleRunMonitor, ToggleSidebar, bind_app_shortcuts,
 };
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
@@ -42,6 +42,7 @@ use crate::ui::{
     InputState, WindowExt as _, apply_language, apply_palette, h_row, palette as active_palette,
     resolve_is_dark, sync_window_scale, to_hsla, tr, v_col,
 };
+use crate::views::runs::WorkflowMonitorModal;
 use crate::views::utility::{DiagnosticsHandoff, DiagnosticsSheet, ImportExportModal};
 
 use chrome::{
@@ -62,6 +63,7 @@ pub struct AppShell {
     pub(crate) palette_view: Entity<CommandPaletteView>,
     pub(crate) import_export_view: Entity<ImportExportModal>,
     pub(crate) diagnostics_view: Entity<DiagnosticsSheet>,
+    pub(crate) workflow_modal: Entity<WorkflowMonitorModal>,
     pub(crate) workspace_menu_open: bool,
     pub(crate) new_workspace_input: Option<Entity<InputState>>,
     pub(crate) proxy_url_input: Entity<InputState>,
@@ -104,6 +106,7 @@ impl AppShell {
         let palette_view = cx.new(|cx| CommandPaletteView::new(window, cx));
         let import_export_view = cx.new(|cx| ImportExportModal::new(window, cx));
         let diagnostics_view = cx.new(|cx| DiagnosticsSheet::new(window, cx));
+        let workflow_modal = cx.new(|cx| WorkflowMonitorModal::new(window, cx));
 
         let mut tasks = Vec::new();
 
@@ -161,6 +164,10 @@ impl AppShell {
                 if let Some(last) = batches.into_iter().last() {
                     this.state.attention = last.event;
                     this.refresh_running_work(cx);
+                    this.modules.refresh_runs_if_mounted(cx);
+                    if this.workflow_modal.read(cx).is_open() {
+                        this.workflow_modal.update(cx, |m, cx| m.reload_all(cx));
+                    }
                     cx.notify();
                 }
             },
@@ -262,6 +269,11 @@ impl AppShell {
                 cx.notify();
             }
         });
+        let wf_sub = cx.observe(&workflow_modal, |_, view, cx| {
+            if view.read(cx).has_pending_signal() {
+                cx.notify();
+            }
+        });
 
         let mut shell = Self {
             state,
@@ -272,6 +284,7 @@ impl AppShell {
             palette_view,
             import_export_view,
             diagnostics_view,
+            workflow_modal,
             workspace_menu_open: false,
             new_workspace_input: None,
             proxy_url_input,
@@ -280,7 +293,7 @@ impl AppShell {
             provider_attention_count: 0,
             running_mock_summary: Vec::new(),
             workspace_counts: HashMap::new(),
-            _subscriptions: vec![act_sub, app_sub, pal_sub, io_sub, diag_sub],
+            _subscriptions: vec![act_sub, app_sub, pal_sub, io_sub, diag_sub, wf_sub],
             _tasks: tasks,
         };
         shell.refresh_running_work(cx);
@@ -334,6 +347,9 @@ impl AppShell {
         self.state.palette_open = false;
         self.state.active_utility = None;
         self.workspace_menu_open = false;
+        if self.workflow_modal.read(cx).is_open() {
+            self.workflow_modal.update(cx, |m, cx| m.close(cx));
+        }
         cx.notify();
     }
 
@@ -476,10 +492,20 @@ impl Render for AppShell {
             .on_action(cx.listener(|this, _: &TogglePalette, window, cx| {
                 this.toggle_palette(window, cx);
             }))
+            .on_action(cx.listener(|this, _: &ToggleRunMonitor, _, cx| {
+                this.handle_toggle_run_monitor(cx);
+            }))
             .on_action(cx.listener(|this, _: &OpenSettings, _, cx| {
                 this.navigate(NavModule::Settings, cx);
             }))
             .on_action(cx.listener(|this, _: &CloseOverlay, window, cx| {
+                if this
+                    .workflow_modal
+                    .update(cx, |m, cx| m.dismiss_inner_or_close(cx))
+                {
+                    cx.notify();
+                    return;
+                }
                 if window.has_active_sheet(cx) {
                     window.close_sheet(cx);
                     return;
@@ -546,6 +572,9 @@ impl Render for AppShell {
         }
         if let Some(overlay) = render_utility_overlay(self, cx) {
             root = root.child(overlay);
+        }
+        if self.workflow_modal.read(cx).is_open() {
+            root = root.child(self.workflow_modal.clone());
         }
         if let Some(toasts) = render_toast_stack(self, cx) {
             root = root.child(toasts);

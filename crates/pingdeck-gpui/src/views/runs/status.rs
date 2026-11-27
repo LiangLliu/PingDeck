@@ -1,20 +1,15 @@
-//! Shared lifecycle status encoding, elapsed-time formatting, and horizontal waterfall timing
-//! bars used across the Run Monitor, Execution Topology tree, Chat Sidebar, and Inspector.
+//! Shared lifecycle status encoding, elapsed/token formatting, relative age formatting,
+//! and horizontal waterfall timing bar helpers reused by `RunsView`, `WorkflowMonitorModal`,
+//! and `ChatView`.
 
 use gpui_kit::{
-    AnyElement, App, Context, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div,
-    px,
+    AnyElement, App, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
 use pingdeck_desktop::core::agent::dto::{AgentBoard, BoardWait, TopologyToolStep};
 use pingdeck_desktop::core::agent::model::{AgentRunStatus, SubagentRole};
-use pingdeck_desktop::state::GraphNodeStatus;
+use pingdeck_desktop::state::{GraphNodeKind, GraphNodeStatus};
 
-use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, btn_danger, btn_icon, h_row, icon_xs, palette,
-    status_indicator, to_hsla, v_col,
-};
-
-use super::ChatView;
+use crate::ui::{StatusShape, Tone, badge, h_row, palette, status_indicator, to_hsla, v_col};
 
 /// Maps an agent run's lifecycle status + wait reason to an accessible geometric indicator,
 /// semantic tone, and localized status label.
@@ -65,6 +60,53 @@ pub fn tool_status_meta(status: &str) -> (StatusShape, Tone) {
     }
 }
 
+/// Maps a [`GraphNodeStatus`] to accessible geometric shape + semantic tone.
+#[must_use]
+pub const fn graph_status_visual(status: GraphNodeStatus) -> (StatusShape, Tone) {
+    match status {
+        GraphNodeStatus::Completed => (StatusShape::Ok, Tone::Success),
+        GraphNodeStatus::Running => (StatusShape::Run, Tone::Accent),
+        GraphNodeStatus::Waiting | GraphNodeStatus::Interrupted => {
+            (StatusShape::Warn, Tone::Warning)
+        }
+        GraphNodeStatus::Failed => (StatusShape::Bad, Tone::Danger),
+        GraphNodeStatus::Pending
+        | GraphNodeStatus::Queued
+        | GraphNodeStatus::Cancelled
+        | GraphNodeStatus::Skipped => (StatusShape::Idle, Tone::Neutral),
+    }
+}
+
+/// Localized status label for a [`GraphNodeStatus`].
+#[must_use]
+pub fn graph_status_label(status: GraphNodeStatus, cx: &App) -> &'static str {
+    let ch = crate::ui::tr(cx).chat();
+    match status {
+        GraphNodeStatus::Pending | GraphNodeStatus::Queued => ch.run_status_queued(),
+        GraphNodeStatus::Running => ch.run_status_running(),
+        GraphNodeStatus::Waiting => ch.run_status_waiting_approval(),
+        GraphNodeStatus::Completed => ch.run_status_completed(),
+        GraphNodeStatus::Failed => ch.run_status_failed(),
+        GraphNodeStatus::Cancelled | GraphNodeStatus::Skipped => ch.run_status_cancelled(),
+        GraphNodeStatus::Interrupted => ch.run_status_interrupted(),
+    }
+}
+
+/// Localized label for a [`GraphNodeKind`].
+#[must_use]
+pub fn graph_kind_label(kind: GraphNodeKind, cx: &App) -> &'static str {
+    let ch = crate::ui::tr(cx).chat();
+    match kind {
+        GraphNodeKind::Main => ch.monitor_main_agent(),
+        GraphNodeKind::Explore => ch.graph_kind_explore(),
+        GraphNodeKind::Implement => ch.graph_kind_implement(),
+        GraphNodeKind::Verify => ch.graph_kind_verify(),
+        GraphNodeKind::Gate => ch.graph_kind_gate(),
+        GraphNodeKind::Tool => ch.graph_kind_tool(),
+        GraphNodeKind::Group => ch.graph_parallel_group(),
+    }
+}
+
 /// Localized label for a sub-agent role (`Fast` / `Deep` / `Vision`).
 #[must_use]
 pub fn subagent_role_label(role: SubagentRole, cx: &App) -> &'static str {
@@ -112,6 +154,22 @@ pub fn format_tokens_compact(tokens: u64) -> String {
         format!("{:.1}k", tokens as f64 / 1_000.0)
     } else {
         tokens.to_string()
+    }
+}
+
+/// Formats a compact relative age label (`now`, `5m`, `3h`, `2d`).
+#[must_use]
+pub fn format_relative_age(ts_ms: i64, now_ms: i64, cx: &App) -> String {
+    let ch = crate::ui::tr(cx).chat();
+    let diff_s = now_ms.saturating_sub(ts_ms).max(0) / 1_000;
+    if diff_s < 60 {
+        ch.sidebar_now().to_owned()
+    } else if diff_s < 3_600 {
+        ch.sidebar_m(diff_s / 60)
+    } else if diff_s < 86_400 {
+        ch.sidebar_h(diff_s / 3_600)
+    } else {
+        ch.sidebar_d(diff_s / 86_400)
     }
 }
 
@@ -187,130 +245,16 @@ pub fn folder_basename(path: &str) -> &str {
         .unwrap_or(path)
 }
 
-/// Top global telemetry bar rendered above the Run Monitor master/detail split.
-pub fn render_telemetry_bar(board: &AgentBoard, cx: &mut Context<ChatView>) -> AnyElement {
-    let p = palette(cx);
-    let ch = crate::ui::tr(cx).chat();
-    let max_slots = usize::from(board.limits.max_concurrent_runs.max(1));
-    let running_now = board.running.iter().filter(|r| !r.waiting_for_slot).count();
-    let queued_now = board.running.iter().filter(|r| r.waiting_for_slot).count();
-    let active_total = board.running.len()
-        + board
-            .needs_you
-            .iter()
-            .filter(|r| r.run.status.is_active())
-            .count();
-    let waiting_count = board.needs_you.len();
-    let (ok_24h, fail_24h) = count_24h_outcomes(board);
-    let tok_total = board.tokens_today.input + board.tokens_today.output;
-    let cost_txt = format_cost_today(board);
-
-    let mut slot_pips = h_row().gap(px(3.0));
-    for idx in 0..max_slots.min(8) {
-        let filled = idx < running_now;
-        slot_pips = slot_pips.child(
-            div()
-                .size(px(7.0))
-                .rounded(px(999.0))
-                .bg(to_hsla(if filled { p.accent } else { p.line_strong })),
-        );
-    }
-
-    let left_metrics = h_row()
-        .flex_1()
-        .min_w_0()
-        .gap(px(10.0))
-        .flex_wrap()
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .child(
-                    div()
-                        .text_color(to_hsla(p.accent))
-                        .child(icon_xs(UiIcon::Activity)),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .child(ch.monitor_title()),
-                ),
-        )
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .py(px(3.0))
-                .rounded(px(6.0))
-                .bg(to_hsla(p.sunken))
-                .child(slot_pips)
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.ink_2))
-                        .child(SharedString::from(ch.monitor_slots(running_now, max_slots))),
-                ),
-        )
-        .children(
-            (queued_now > 0).then(|| badge(ch.monitor_queued_count(queued_now), Tone::Neutral, cx)),
-        )
-        .children((board.active_subagents > 0).then(|| {
-            badge(
-                ch.monitor_subagents_active(board.active_subagents),
-                Tone::Accent,
-                cx,
-            )
-        }))
-        .children(
-            (waiting_count > 0)
-                .then(|| badge(ch.monitor_attention_count(waiting_count), Tone::Warning, cx)),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(SharedString::from(ch.monitor_outcome_24h(ok_24h, fail_24h))),
-        );
-
-    let right_controls = h_row()
-        .flex_shrink_0()
-        .gap(px(8.0))
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(SharedString::from(format!(
-                    "{} · {cost_txt}",
-                    ch.sidebar_today_tok(format_tokens_compact(tok_total))
-                ))),
-        )
-        .child(
-            btn_icon("monitor-refresh", UiIcon::Refresh)
-                .tooltip(ch.monitor_refresh())
-                .on_click(cx.listener(|this, _, _, cx| this.refresh_monitor(cx))),
-        )
-        .children((active_total > 0).then(|| {
-            btn_danger("monitor-stop-all", ch.monitor_stop_all())
-                .on_click(cx.listener(|this, _, _, cx| this.request_stop_all_runs(cx)))
-        }));
-
-    h_row()
-        .w_full()
-        .flex_shrink_0()
-        .justify_between()
-        .gap(px(12.0))
-        .px(px(16.0))
-        .py(px(10.0))
-        .bg(to_hsla(p.pane))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.pane)))
-        .child(left_metrics)
-        .child(right_controls)
-        .into_any_element()
+/// Formats a raw `provider_id/model_id` string concisely when no display map is needed.
+#[must_use]
+pub fn format_model_short(raw: &str) -> String {
+    raw.split_once('/')
+        .map_or_else(|| raw.to_owned(), |(_, m)| m.to_owned())
 }
 
-fn count_24h_outcomes(board: &AgentBoard) -> (usize, usize) {
+/// Counts 24h ok / failed outcomes across the global board snapshot.
+#[must_use]
+pub fn count_24h_outcomes(board: &AgentBoard) -> (usize, usize) {
     let mut ok = 0usize;
     let mut failed = 0usize;
     for r in board
@@ -327,7 +271,9 @@ fn count_24h_outcomes(board: &AgentBoard) -> (usize, usize) {
     (ok, failed)
 }
 
-fn format_cost_today(board: &AgentBoard) -> String {
+/// Formats today's per-currency cost summary for the telemetry bar.
+#[must_use]
+pub fn format_cost_today(board: &AgentBoard) -> String {
     if board.cost_today.is_empty() {
         "—".to_owned()
     } else {
@@ -341,7 +287,7 @@ fn format_cost_today(board: &AgentBoard) -> String {
 }
 
 /// Compact read-only tool step card reused by `Node Inspector`.
-pub(super) fn compact_tool_row(step: &TopologyToolStep, cx: &App) -> AnyElement {
+pub fn compact_tool_row(step: &TopologyToolStep, cx: &App) -> AnyElement {
     let p = palette(cx);
     let (shape, _) = tool_status_meta(&step.status);
     v_col()
@@ -392,19 +338,4 @@ pub(super) fn compact_tool_row(step: &TopologyToolStep, cx: &App) -> AnyElement 
                 .child(SharedString::from(step.summary.clone()))
         }))
         .into_any_element()
-}
-
-/// Localized status label for a [`GraphNodeStatus`].
-#[must_use]
-pub fn graph_status_label(status: GraphNodeStatus, cx: &App) -> &'static str {
-    let ch = crate::ui::tr(cx).chat();
-    match status {
-        GraphNodeStatus::Pending | GraphNodeStatus::Queued => ch.run_status_queued(),
-        GraphNodeStatus::Running => ch.run_status_running(),
-        GraphNodeStatus::Waiting => ch.run_status_waiting_approval(),
-        GraphNodeStatus::Completed => ch.run_status_completed(),
-        GraphNodeStatus::Failed => ch.run_status_failed(),
-        GraphNodeStatus::Cancelled | GraphNodeStatus::Skipped => ch.run_status_cancelled(),
-        GraphNodeStatus::Interrupted => ch.run_status_interrupted(),
-    }
 }

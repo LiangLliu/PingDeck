@@ -820,6 +820,8 @@
   "set.shortcut.app.palette.title": "Open Command Palette",
   "set.shortcut.app.quit.desc": "Stop background services, release ports, and quit cleanly.",
   "set.shortcut.app.quit.title": "Quit PingDeck",
+  "set.shortcut.app.runs.desc": "Toggle the active chat's 90% workflow modal or open the global Run Monitor.",
+  "set.shortcut.app.runs.title": "Open Run Monitor / Workflow",
   "set.shortcut.app.settings.desc": "Jump to Settings or return to the previous module.",
   "set.shortcut.app.settings.title": "Open Settings",
   "set.shortcut.app.sidebar.desc": "Switch between full sidebar and compact icon rail.",

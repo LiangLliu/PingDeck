@@ -9,10 +9,11 @@ use pingdeck_desktop::core::model::settings::{
     Language, SettingsSection as CoreSettingsSection, Theme as SettingsTheme,
 };
 use pingdeck_desktop::core::proxy_url;
-use pingdeck_desktop::state::ToastKind;
+use pingdeck_desktop::state::{NavModule, ToastKind};
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::{InputState, apply_language, palette as active_palette, tr};
+use crate::views::runs::WorkflowTab;
 
 use super::AppShell;
 
@@ -181,5 +182,36 @@ impl AppShell {
             },
         );
         self._tasks.push(task);
+    }
+
+    /// Opens the shared 90% viewport Workflow Monitor modal on top of the active window.
+    pub fn open_workflow_modal(
+        &mut self,
+        session_id: String,
+        run_id: Option<String>,
+        initial_tab: Option<WorkflowTab>,
+        cx: &mut Context<Self>,
+    ) {
+        self.workflow_modal.update(cx, |m, cx| {
+            m.open_for_session(session_id, run_id, initial_tab, cx);
+        });
+        cx.notify();
+    }
+
+    /// `⌘⇧A` shortcut: toggles the active chat's 90% Workflow Monitor modal when inside `Chat`,
+    /// or jumps straight to the standalone global `Run Monitor` module from anywhere else.
+    pub fn handle_toggle_run_monitor(&mut self, cx: &mut Context<Self>) {
+        if self.workflow_modal.read(cx).is_open() {
+            self.workflow_modal.update(cx, |m, cx| m.close(cx));
+            cx.notify();
+            return;
+        }
+        if self.state.active_module == NavModule::Chat
+            && let Some((sid, rid)) = self.modules.active_chat_workflow_target(cx)
+        {
+            self.open_workflow_modal(sid, rid, None, cx);
+            return;
+        }
+        self.navigate(NavModule::Runs, cx);
     }
 }

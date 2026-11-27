@@ -52,8 +52,8 @@ mod gpui_integration {
         });
         let shell = shell_slot.expect("mounted AppShell");
 
-        // 1. Navigate and render every single one of the 10 modules cleanly.
-        assert_eq!(NavModule::ALL.len(), 10);
+        // 1. Navigate and render every single one of the 11 modules cleanly (including Runs).
+        assert_eq!(NavModule::ALL.len(), 11);
         for module in NavModule::ALL {
             visual.update(|window, cx| {
                 shell.update(cx, |s, cx| s.navigate(module, cx));
@@ -1374,9 +1374,7 @@ mod gpui_integration {
 
     #[gpui_kit::test]
     fn chat_workbench_modes_gates_and_modals(cx: &mut TestAppContext) {
-        use crate::views::chat::{
-            ChatHandoff, ChatModal, ChatSidebarMode, ChatView, DetailsTab, MonitorFilter,
-        };
+        use crate::views::chat::{ChatHandoff, ChatModal, ChatSidebarMode, ChatView};
 
         cx.background_executor.allow_parking();
         let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
@@ -1392,11 +1390,7 @@ mod gpui_integration {
         visual.run_until_parked();
 
         visual.update(|window, cx| {
-            for mode in [
-                ChatSidebarMode::Time,
-                ChatSidebarMode::Board,
-                ChatSidebarMode::Trash,
-            ] {
+            for mode in [ChatSidebarMode::Time, ChatSidebarMode::Trash] {
                 view.update(cx, |v, cx| {
                     v.sidebar_mode = mode;
                     cx.notify();
@@ -1405,28 +1399,18 @@ mod gpui_integration {
             }
 
             view.update(cx, |v, cx| {
-                v.details_open = true;
+                v.sidebar_mode = ChatSidebarMode::Time;
                 v.plan_mode = true;
                 cx.notify();
             });
-            for tab in [
-                DetailsTab::Progress,
-                DetailsTab::Changes,
-                DetailsTab::Context,
-                DetailsTab::Options,
-            ] {
-                view.update(cx, |v, cx| {
-                    v.details_tab = tab;
-                    cx.notify();
-                });
-                window.refresh();
-            }
+            window.refresh();
 
-            // Exercise FullAccessConfirm, DiffPreview, and ToolOutput modals + Esc dismissal.
+            // Exercise FullAccessConfirm, ChatInstructions, DiffPreview, and ToolOutput modals + Esc.
             for modal in [
                 ChatModal::FullAccessConfirm {
                     acknowledged: false,
                 },
+                ChatModal::ChatInstructions,
                 ChatModal::DiffPreview {
                     path: "src/main.rs".into(),
                     diff: "+fn ok() {}\n".into(),
@@ -1439,9 +1423,6 @@ mod gpui_integration {
                     has_more: false,
                     next_offset: 0,
                 },
-                ChatModal::StopAllConfirm {
-                    active_runs: vec![("r1".into(), "Refactor auth".into())],
-                },
             ] {
                 view.update(cx, |v, cx| {
                     v.active_modal = Some(modal);
@@ -1452,229 +1433,15 @@ mod gpui_integration {
                 assert!(view.read(cx).active_modal.is_none());
             }
 
-            // Exercise full-canvas Run Monitor filters & parallel/serial waterfall topology rendering.
+            // Exercise streamlined header Workflow handoff (replaces legacy right-hand details drawer).
             view.update(cx, |v, cx| {
-                use pingdeck_desktop::core::agent::dto::{
-                    AgentBoard, AgentBoardRow, AgentRunTopology, BoardChanges, BoardLimits,
-                    BoardSubagentCounts, ExecutionWave, TokensToday, TopologySubagent,
-                    TopologyToolStep,
-                };
-                use pingdeck_desktop::core::agent::model::{
-                    AgentRunKind, AgentRunStatus, AgentRunSummary, SubagentRole,
-                };
-                use pingdeck_desktop::core::model::hub::HubUsage;
-
-                let run = AgentRunSummary {
-                    run_id: "r_topo_1".into(),
-                    session_id: "s_topo_1".into(),
-                    kind: AgentRunKind::Main,
-                    parent_run_id: None,
-                    parent_call_id: None,
-                    status: AgentRunStatus::Running,
-                    model_label: "openai/gpt-5".into(),
-                    target: None,
-                    iterations: 3,
-                    usage: HubUsage::default(),
-                    cost_micro_usd: 12_500,
-                    started_at_ms: 10_000,
-                    finished_at_ms: None,
-                    last_event_ms: Some(20_000),
-                    last_step: Some("task".into()),
-                    stop_reason: None,
-                    error_kind: None,
-                    error: None,
-                    prompt_version: 1,
-                    last_seq: 12,
-                    failure: None,
-                    role: None,
-                    cost_currency: Some("USD".into()),
-                    cap_inapplicable: None,
-                    status_detail: None,
-                };
-                let sub_ok = TopologySubagent {
-                    run: AgentRunSummary {
-                        run_id: "r_sub_ok".into(),
-                        session_id: "s_sub_ok".into(),
-                        kind: AgentRunKind::Subagent,
-                        parent_run_id: Some("r_topo_1".into()),
-                        parent_call_id: Some("c_t1".into()),
-                        status: AgentRunStatus::Completed,
-                        started_at_ms: 12_000,
-                        finished_at_ms: Some(16_000),
-                        role: Some(SubagentRole::Fast),
-                        ..run.clone()
-                    },
-                    parent_call_id: "c_t1".into(),
-                    child_session_id: "s_sub_ok".into(),
-                    description: "Audit routes".into(),
-                    subagent_kind: "explore".into(),
-                    resumed: false,
-                    awake_ms: 4_000,
-                    pending_approval: None,
-                    last_answer: Some("Found 3 unguarded handlers".into()),
-                    tool_calls: vec![TopologyToolStep {
-                        call_id: "c_g1".into(),
-                        name: "grep".into(),
-                        class: "read".into(),
-                        summary: "auth_guard".into(),
-                        status: "ok".into(),
-                        started_ms: Some(12_500),
-                        ended_ms: Some(13_100),
-                        duration_ms: Some(600),
-                        exit_code: None,
-                        parallel_safe: true,
-                    }],
-                };
-                let sub_fail = TopologySubagent {
-                    run: AgentRunSummary {
-                        run_id: "r_sub_fail".into(),
-                        session_id: "s_sub_fail".into(),
-                        kind: AgentRunKind::Subagent,
-                        parent_run_id: Some("r_topo_1".into()),
-                        parent_call_id: Some("c_t2".into()),
-                        status: AgentRunStatus::Failed,
-                        started_at_ms: 12_100,
-                        finished_at_ms: Some(15_200),
-                        error: Some("rate limit 429".into()),
-                        role: Some(SubagentRole::Deep),
-                        ..run.clone()
-                    },
-                    parent_call_id: "c_t2".into(),
-                    child_session_id: "s_sub_fail".into(),
-                    description: "Verify OAuth signature".into(),
-                    subagent_kind: "general".into(),
-                    resumed: true,
-                    awake_ms: 3_100,
-                    pending_approval: None,
-                    last_answer: None,
-                    tool_calls: Vec::new(),
-                };
-                let counts = BoardSubagentCounts {
-                    total: 2,
-                    active: 0,
-                    waiting: 0,
-                    completed: 1,
-                    failed: 1,
-                    cancelled: 0,
-                };
-                let topo = AgentRunTopology {
-                    run: run.clone(),
-                    title: "Refactor auth middleware".into(),
-                    folder: Some("/tmp/demo".into()),
-                    awake_ms: 10_000,
-                    snapshot_ms: 20_000,
-                    waiting_for_slot: false,
-                    wait: None,
-                    pending_approval: None,
-                    pending_changes: BoardChanges {
-                        files: 2,
-                        added: 34,
-                        removed: 7,
-                    },
-                    plan_done: 1,
-                    plan_total: 3,
-                    cost_currency: Some("USD".into()),
-                    last_answer: None,
-                    queued_turns: 1,
-                    queue_paused: false,
-                    waves: vec![
-                        ExecutionWave::ParallelSubagents {
-                            wave_index: 1,
-                            started_ms: Some(12_000),
-                            ended_ms: Some(16_000),
-                            subagents: vec![sub_ok, sub_fail],
-                        },
-                        ExecutionWave::SerialTool {
-                            wave_index: 2,
-                            started_ms: Some(16_500),
-                            ended_ms: Some(19_000),
-                            tool: TopologyToolStep {
-                                call_id: "c_sh".into(),
-                                name: "shell".into(),
-                                class: "exec".into(),
-                                summary: "cargo test".into(),
-                                status: "ok".into(),
-                                started_ms: Some(16_500),
-                                ended_ms: Some(19_000),
-                                duration_ms: Some(2_500),
-                                exit_code: Some(0),
-                                parallel_safe: false,
-                            },
-                        },
-                    ],
-                    subagent_counts: counts,
-                    task_graph: Vec::new(),
-                };
-                v.board = Some(AgentBoard {
-                    running: vec![AgentBoardRow {
-                        run,
-                        title: "Refactor auth middleware".into(),
-                        folder: Some("/tmp/demo".into()),
-                        awake_ms: 10_000,
-                        waiting_for_slot: false,
-                        wait: None,
-                        pending_approval: None,
-                        inline_allow: false,
-                        plan_done: 1,
-                        plan_total: 3,
-                        cost_currency: Some("USD".into()),
-                        subagents: 2,
-                        subagent_counts: counts,
-                        pending_changes: BoardChanges {
-                            files: 2,
-                            added: 34,
-                            removed: 7,
-                        },
-                        last_answer: None,
-                        approval_timed_out: false,
-                        seen: true,
-                        review: false,
-                    }],
-                    needs_you: Vec::new(),
-                    done: Vec::new(),
-                    limits: BoardLimits {
-                        max_concurrent_runs: 3,
-                        max_subagents: 3,
-                        max_steps: 20,
-                        approval_timeout_s: 600,
-                        queue_messages: 5,
-                        auto_compact_pct: Some(85),
-                    },
-                    cost_today: Vec::new(),
-                    tokens_today: TokensToday {
-                        input: 4_000,
-                        output: 1_200,
-                    },
-                    running_processes: 0,
-                    active_subagents: 1,
-                });
-                v.selected_monitor_run_id = Some("r_topo_1".into());
-                v.selected_topology = Some(topo.clone());
-                v.session_topology = Some(topo);
-                v.expanded_topology_nodes.insert("sub-r_sub_ok".into());
-                v.sidebar_mode = ChatSidebarMode::Board;
-                cx.notify();
+                v.thread.session_id = "s-wf-1".into();
+                v.open_workflow_modal(Some("r-wf-1".into()), None, cx);
             });
-            for filter in [
-                MonitorFilter::All,
-                MonitorFilter::Waiting,
-                MonitorFilter::Running,
-                MonitorFilter::Failed,
-                MonitorFilter::Done,
-            ] {
-                view.update(cx, |v, cx| {
-                    v.monitor_filter = filter;
-                    cx.notify();
-                });
-                window.refresh();
-            }
-            view.update(cx, |v, cx| {
-                v.sidebar_mode = ChatSidebarMode::Time;
-                v.details_open = true;
-                v.details_tab = DetailsTab::Progress;
-                cx.notify();
-            });
-            window.refresh();
+            assert!(matches!(
+                view.read(cx).take_pending_handoff(),
+                Some(ChatHandoff::OpenWorkflowModal { .. })
+            ));
 
             // Exercise 2-row header, simplified 6-item metrics footer, and stick-to-bottom toggle.
             view.update(cx, |v, cx| {
@@ -1686,7 +1453,7 @@ mod gpui_integration {
                 let mut msg = AgentMessage {
                     id: "m-assist-stats".into(),
                     session_id: "s-1".into(),
-                    run_id: None,
+                    run_id: Some("r-wf-1".into()),
                     seq: 2,
                     role: AgentRole::Assistant,
                     parts: vec![HubPart::text("已拆分 429 退避策略。")],
@@ -2433,15 +2200,20 @@ mod gpui_integration {
     #[gpui_kit::test]
     fn run_monitor_adaptive_three_views_and_execution_graph_inspector(cx: &mut TestAppContext) {
         use crate::views::chat::{ChatSidebarMode, ChatView};
+        use crate::views::runs::{
+            RunsFilter, RunsHandoff, RunsScope, RunsView, WorkflowMonitorModal, WorkflowTab,
+        };
         use pingdeck_desktop::core::agent::dto::{
-            AgentBoard, AgentRunTopology, BoardChanges, BoardLimits, BoardSubagentCounts,
-            ExecutionWave, TokensToday, TopologySubagent, TopologyToolStep,
+            AgentBoard, AgentBoardRow, AgentRunTopology, BoardChanges, BoardLimits,
+            BoardSubagentCounts, ExecutionWave, SessionRunHistoryItem, TokensToday,
+            TopologySubagent, TopologyToolStep,
         };
         use pingdeck_desktop::core::agent::model::{
-            AgentRunKind, AgentRunStatus, AgentRunSummary, SubagentRole,
+            AgentRunKind, AgentRunStatus, AgentRunSummary, FileChange, FileChangeKind,
+            FileChangeStatus, SubagentRole,
         };
         use pingdeck_desktop::core::llm::hub::HubUsage;
-        use pingdeck_desktop::state::{RunViewMode, is_graph_available};
+        use pingdeck_desktop::state::is_graph_available;
 
         let make_run = |id: &str, kind: AgentRunKind, status: AgentRunStatus| AgentRunSummary {
             run_id: id.to_owned(),
@@ -2494,6 +2266,9 @@ mod gpui_integration {
             waves: Vec::new(),
             subagent_counts: BoardSubagentCounts::default(),
             task_graph: Vec::new(),
+            user_prompt: Some("Why does this SQL query fail?".to_owned()),
+            reasoning_preview: None,
+            full_answer: Some("Missing `GROUP BY` column.".to_owned()),
         };
 
         let parallel_topo = AgentRunTopology {
@@ -2536,6 +2311,8 @@ mod gpui_integration {
                             awake_ms: 2_800,
                             pending_approval: None,
                             last_answer: Some("Checked 429 retry paths.".to_owned()),
+                            brief: Some("Inspect retry_after handling in router.rs".to_owned()),
+                            full_report: Some("## Audit\nChecked 429 retry paths.".to_owned()),
                             tool_calls: vec![TopologyToolStep {
                                 call_id: "tc_1".to_owned(),
                                 name: "grep".to_owned(),
@@ -2547,6 +2324,9 @@ mod gpui_integration {
                                 duration_ms: Some(200),
                                 exit_code: None,
                                 parallel_safe: true,
+                                args_preview: Some("{\"pattern\":\"retry_after\"}".to_owned()),
+                                output_preview: Some("router.rs:42: retry_after".to_owned()),
+                                ..TopologyToolStep::default()
                             }],
                         },
                         TopologySubagent {
@@ -2563,6 +2343,8 @@ mod gpui_integration {
                             awake_ms: 2_500,
                             pending_approval: None,
                             last_answer: Some("Tests baseline clean.".to_owned()),
+                            brief: None,
+                            full_report: None,
                             tool_calls: Vec::new(),
                         },
                     ],
@@ -2574,8 +2356,8 @@ mod gpui_integration {
                     tools: vec![
                         TopologyToolStep {
                             call_id: "tc_2".to_owned(),
-                            name: "read_file".to_owned(),
-                            class: "read".to_owned(),
+                            name: "edit_file".to_owned(),
+                            class: "write".to_owned(),
                             summary: "auth.rs".to_owned(),
                             status: "ok".to_owned(),
                             started_ms: Some(5_200),
@@ -2583,6 +2365,14 @@ mod gpui_integration {
                             duration_ms: Some(400),
                             exit_code: None,
                             parallel_safe: true,
+                            risk: Some("medium".to_owned()),
+                            decision: Some("allow".to_owned()),
+                            sandbox: Some("seatbelt".to_owned()),
+                            file_change_id: Some("fc_1".to_owned()),
+                            file_path: Some("src/auth.rs".to_owned()),
+                            file_added: 12,
+                            file_removed: 3,
+                            ..TopologyToolStep::default()
                         },
                         TopologyToolStep {
                             call_id: "tc_3".to_owned(),
@@ -2595,6 +2385,7 @@ mod gpui_integration {
                             duration_ms: Some(900),
                             exit_code: None,
                             parallel_safe: true,
+                            ..TopologyToolStep::default()
                         },
                     ],
                 },
@@ -2605,10 +2396,32 @@ mod gpui_integration {
                 ..BoardSubagentCounts::default()
             },
             task_graph: Vec::new(),
+            user_prompt: Some("Refactor gateway auth middleware".to_owned()),
+            reasoning_preview: Some("Plan parallel audit then edit.".to_owned()),
+            full_answer: Some("## Summary\nRefactored auth and tests pass.".to_owned()),
         };
 
-        let empty_board = AgentBoard {
-            running: Vec::new(),
+        let sample_board = AgentBoard {
+            running: vec![AgentBoardRow {
+                run: parallel_topo.run.clone(),
+                title: "Refactor gateway auth".to_owned(),
+                folder: Some("/tmp/PingDeck".to_owned()),
+                awake_ms: 8_000,
+                waiting_for_slot: false,
+                wait: None,
+                pending_approval: None,
+                inline_allow: false,
+                plan_done: 1,
+                plan_total: 3,
+                cost_currency: Some("USD".to_owned()),
+                subagents: 2,
+                subagent_counts: parallel_topo.subagent_counts,
+                pending_changes: parallel_topo.pending_changes,
+                last_answer: parallel_topo.last_answer.clone(),
+                approval_timed_out: false,
+                seen: true,
+                review: false,
+            }],
             needs_you: Vec::new(),
             done: Vec::new(),
             limits: BoardLimits {
@@ -2620,10 +2433,40 @@ mod gpui_integration {
                 auto_compact_pct: Some(85),
             },
             cost_today: Vec::new(),
-            tokens_today: TokensToday::default(),
+            tokens_today: TokensToday {
+                input: 4_000,
+                output: 1_200,
+            },
             running_processes: 0,
-            active_subagents: 0,
+            active_subagents: 1,
         };
+
+        let sample_history = vec![
+            SessionRunHistoryItem {
+                run: parallel_topo.run.clone(),
+                title: parallel_topo.title.clone(),
+                awake_ms: 8_000,
+                cost_currency: Some("USD".to_owned()),
+                prompt_preview: Some("Refactor gateway auth middleware".to_owned()),
+                tool_count: 3,
+                subagent_count: 2,
+                has_parallel: true,
+                has_task_graph: false,
+                pending_changes: parallel_topo.pending_changes,
+            },
+            SessionRunHistoryItem {
+                run: direct_topo.run.clone(),
+                title: direct_topo.title.clone(),
+                awake_ms: 1_200,
+                cost_currency: Some("USD".to_owned()),
+                prompt_preview: Some("Why does this SQL query fail?".to_owned()),
+                tool_count: 0,
+                subagent_count: 0,
+                has_parallel: false,
+                has_task_graph: false,
+                pending_changes: BoardChanges::default(),
+            },
+        ];
 
         cx.background_executor.allow_parking();
         let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
@@ -2634,60 +2477,135 @@ mod gpui_integration {
             apply_palette(PaletteId::Ocean, false, false, &settings.appearance, cx);
         });
 
-        let (chat, visual) = cx.add_window_view(ChatView::new);
+        // 0. Standalone full-width RunsView (NavModule::Runs): filters, scopes, Stop All confirm, handoff.
+        let (runs_view, runs_visual) = cx.add_window_view(RunsView::new);
+        runs_visual.run_until_parked();
+        runs_visual.update(|window, cx| {
+            runs_view.update(cx, |v, cx| {
+                v.board = Some(sample_board.clone());
+                v.all_history = sample_history.clone();
+                cx.notify();
+            });
+            for filter in [
+                RunsFilter::All,
+                RunsFilter::Waiting,
+                RunsFilter::Running,
+                RunsFilter::Failed,
+                RunsFilter::Done,
+            ] {
+                runs_view.update(cx, |v, cx| v.set_filter(filter, cx));
+                window.refresh();
+            }
+            runs_view.update(cx, |v, cx| {
+                v.set_filter(RunsFilter::All, cx);
+                v.set_scope(RunsScope::AllHistory, cx);
+            });
+            window.refresh();
+            runs_view.update(cx, |v, cx| {
+                v.open_workflow_modal("as_test".into(), Some("run_dag".into()), None, cx);
+            });
+            assert!(matches!(
+                runs_view.read(cx).take_pending_handoff(),
+                Some(RunsHandoff::OpenWorkflowModal { .. })
+            ));
+        });
+
+        // 1. Shared 90% viewport WorkflowMonitorModal: direct answer -> auto Steps, Graph unavailable.
+        let (modal, visual) = cx.add_window_view(WorkflowMonitorModal::new);
         visual.run_until_parked();
 
-        // 1. Direct answer -> auto Steps, Graph unavailable, renders cleanly.
         visual.update(|window, cx| {
-            chat.update(cx, |v, cx| {
-                v.sidebar_mode = ChatSidebarMode::Board;
-                v.board = Some(empty_board.clone());
-                v.selected_monitor_run_id = Some("run_direct".to_owned());
-                v.selected_topology = Some(direct_topo.clone());
+            modal.update(cx, |m, cx| {
+                m.open = true;
+                m.session_id = "as_test".to_owned();
+                m.run_id = Some("run_direct".to_owned());
+                m.topology = Some(direct_topo.clone());
+                m.session_history = sample_history.clone();
                 assert!(!is_graph_available(&direct_topo));
-                assert_eq!(
-                    v.effective_monitor_view_mode(&direct_topo),
-                    (RunViewMode::Steps, true)
-                );
+                assert_eq!(m.effective_tab(&direct_topo), (WorkflowTab::Steps, true));
                 cx.notify();
             });
             window.refresh();
             window.draw(cx).clear(cx);
         });
 
-        // 2. Parallel fan-out run -> auto Graph, expand Parallel Group, open Node Inspector,
-        //    then manually switch to Timeline while preserving selection.
+        // 2. Parallel fan-out run -> auto Graph, expand Parallel Group, inspect all key archetypes,
+        //    switch to Timeline & Changes tabs, verify layered Esc dismissal.
         visual.update(|window, cx| {
-            chat.update(cx, |v, cx| {
-                v.selected_monitor_run_id = Some("run_dag".to_owned());
-                v.selected_topology = Some(parallel_topo.clone());
+            modal.update(cx, |m, cx| {
+                m.run_id = Some("run_dag".to_owned());
+                m.topology = Some(parallel_topo.clone());
+                m.changes = vec![FileChange {
+                    id: "fc_1".to_owned(),
+                    session_id: "as_test".to_owned(),
+                    run_id: "run_dag".to_owned(),
+                    call_id: "tc_2".to_owned(),
+                    folder: Some("/tmp/PingDeck".to_owned()),
+                    path: "src/auth.rs".to_owned(),
+                    kind: FileChangeKind::Edit,
+                    before_sha256: None,
+                    after_sha256: None,
+                    added: 12,
+                    removed: 3,
+                    status: FileChangeStatus::Pending,
+                    created_at_ms: 5_600,
+                }];
+                m.selected_change_id = Some("fc_1".to_owned());
+                m.selected_change_diff = Some((
+                    "fc_1".to_owned(),
+                    "@@ -1,2 +1,3 @@\n fn auth() {}\n+fn verify() {}\n".to_owned(),
+                    false,
+                ));
                 assert!(is_graph_available(&parallel_topo));
-                assert_eq!(
-                    v.effective_monitor_view_mode(&parallel_topo),
-                    (RunViewMode::Graph, true)
-                );
-                v.toggle_graph_group("grp-tools-run_dag-2".to_owned(), cx);
-                v.select_graph_node(Some("sub:sub_1".to_owned()), cx);
-                v.set_graph_zoom(0.75, cx);
+                assert_eq!(m.effective_tab(&parallel_topo), (WorkflowTab::Graph, true));
+                m.toggle_group("grp-tools-run_dag-2".to_owned(), cx);
+                m.select_node(Some("sub:sub_1".to_owned()), cx);
+                m.set_zoom(0.75, cx);
                 cx.notify();
             });
             window.refresh();
             window.draw(cx).clear(cx);
 
-            chat.update(cx, |v, cx| {
-                v.set_monitor_view_mode("run_dag".to_owned(), RunViewMode::Timeline, cx);
+            // Inspect Tool Step, Parallel Group, Main Start, and Main Summary archetypes cleanly.
+            for nid in [
+                "tool:tc_2",
+                "grp-tools-run_dag-2",
+                "main-start-run_dag",
+                "main-summary-run_dag",
+            ] {
+                modal.update(cx, |m, cx| m.select_node(Some(nid.to_owned()), cx));
+                window.refresh();
+                window.draw(cx).clear(cx);
+            }
+
+            modal.update(cx, |m, cx| {
+                m.select_node(Some("sub:sub_1".to_owned()), cx);
+                m.set_tab("run_dag".to_owned(), WorkflowTab::Timeline, cx);
                 assert_eq!(
-                    v.effective_monitor_view_mode(&parallel_topo),
-                    (RunViewMode::Timeline, false)
+                    m.effective_tab(&parallel_topo),
+                    (WorkflowTab::Timeline, false)
                 );
-                assert_eq!(v.selected_graph_node_id.as_deref(), Some("sub:sub_1"));
+                assert_eq!(m.selected_node_id.as_deref(), Some("sub:sub_1"));
             });
             window.refresh();
             window.draw(cx).clear(cx);
+
+            // Switch to full-width 2-pane Changes Diff tab & verify layered Esc dismissal.
+            modal.update(cx, |m, cx| {
+                m.set_tab("run_dag".to_owned(), WorkflowTab::Changes, cx);
+                m.open_text_dialog("grep".to_owned(), "full tool output".to_owned(), cx);
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert!(modal.update(cx, |m, cx| m.dismiss_inner_or_close(cx)));
+            assert!(modal.read(cx).full_output_dialog.is_none());
+            assert!(modal.read(cx).is_open());
+            assert!(modal.update(cx, |m, cx| m.dismiss_inner_or_close(cx)));
+            assert!(!modal.read(cx).is_open());
         });
 
-        // 3. Phase 2: Structured Task Graph renders Plan preview in Chat gate + node recovery UI
-        //    inside Run Monitor Node Inspector for a failed task node.
+        // 3. Phase 2: Structured Task Graph renders node recovery UI inside WorkflowMonitorModal
+        //    and Plan approval gate with embedded Task Graph preview inside ChatView.
         let planned_tasks = vec![
             pingdeck_desktop::core::agent::model::AgentTodoItem {
                 id: "n1".to_owned(),
@@ -2738,20 +2656,25 @@ mod gpui_integration {
         task_graph_topo.task_graph = planned_tasks.clone();
 
         visual.update(|window, cx| {
-            chat.update(cx, |v, cx| {
-                v.selected_monitor_run_id = Some("run_tg".to_owned());
-                v.selected_topology = Some(task_graph_topo.clone());
+            modal.update(cx, |m, cx| {
+                m.open = true;
+                m.run_id = Some("run_tg".to_owned());
+                m.topology = Some(task_graph_topo.clone());
                 assert!(is_graph_available(&task_graph_topo));
                 assert_eq!(
-                    v.effective_monitor_view_mode(&task_graph_topo),
-                    (RunViewMode::Graph, true)
+                    m.effective_tab(&task_graph_topo),
+                    (WorkflowTab::Graph, true)
                 );
-                v.select_graph_node(Some("task:n3".to_owned()), cx);
+                m.select_node(Some("task:n3".to_owned()), cx);
                 cx.notify();
             });
             window.refresh();
             window.draw(cx).clear(cx);
+        });
 
+        let (chat, chat_visual) = cx.add_window_view(ChatView::new);
+        chat_visual.run_until_parked();
+        chat_visual.update(|window, cx| {
             // Render Plan approval gate with embedded Task Graph preview & switch to Markdown.
             chat.update(cx, |v, cx| {
                 v.sidebar_mode = ChatSidebarMode::Time;

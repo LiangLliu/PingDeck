@@ -23,7 +23,7 @@ pub enum NavGroup {
     Footer,
 }
 
-/// All 10 top-level navigation modules of PingDeck.
+/// All 11 top-level navigation modules of PingDeck.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NavModule {
@@ -34,6 +34,7 @@ pub enum NavModule {
     History,
     Environments,
     Chat,
+    Runs,
     Providers,
     Gateway,
     Usage,
@@ -51,15 +52,22 @@ impl NavModule {
     ];
 
     /// Shared AI workbench modules (middle sidebar section).
-    pub const AI_MODULES: [Self; 4] = [Self::Chat, Self::Providers, Self::Gateway, Self::Usage];
+    pub const AI_MODULES: [Self; 5] = [
+        Self::Chat,
+        Self::Runs,
+        Self::Providers,
+        Self::Gateway,
+        Self::Usage,
+    ];
 
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Requests,
         Self::Mock,
         Self::Flows,
         Self::History,
         Self::Environments,
         Self::Chat,
+        Self::Runs,
         Self::Providers,
         Self::Gateway,
         Self::Usage,
@@ -72,7 +80,9 @@ impl NavModule {
             Self::Requests | Self::Mock | Self::Flows | Self::History | Self::Environments => {
                 NavGroup::Workspace
             }
-            Self::Chat | Self::Providers | Self::Gateway | Self::Usage => NavGroup::AiShared,
+            Self::Chat | Self::Runs | Self::Providers | Self::Gateway | Self::Usage => {
+                NavGroup::AiShared
+            }
             Self::Settings => NavGroup::Footer,
         }
     }
@@ -86,6 +96,7 @@ impl NavModule {
             Self::History => "history",
             Self::Environments => "environments",
             Self::Chat => "chat",
+            Self::Runs => "runs",
             Self::Providers => "providers",
             Self::Gateway => "gateway",
             Self::Usage => "usage",
@@ -102,6 +113,7 @@ impl NavModule {
             Self::History => Some(4),
             Self::Environments => Some(5),
             Self::Chat => Some(6),
+            Self::Runs => None,
             Self::Providers => Some(7),
             Self::Gateway => Some(8),
             Self::Usage => Some(9),
@@ -118,6 +130,7 @@ impl NavModule {
             Self::History => "⌘4",
             Self::Environments => "⌘5",
             Self::Chat => "⌘6",
+            Self::Runs => "⌘⇧A",
             Self::Providers => "⌘7",
             Self::Gateway => "⌘8",
             Self::Usage => "⌘9",
@@ -152,6 +165,7 @@ impl NavModule {
             Self::History => sh.nav_history(),
             Self::Environments => sh.nav_environments(),
             Self::Chat => sh.nav_chat(),
+            Self::Runs => sh.nav_runs(),
             Self::Providers => sh.nav_providers(),
             Self::Gateway => sh.nav_gateway(),
             Self::Usage => sh.nav_usage_short(),
@@ -469,7 +483,7 @@ mod tests {
 
     #[test]
     fn exposes_all_20_settings_sections_and_10_modules() {
-        assert_eq!(NavModule::ALL.len(), 10);
+        assert_eq!(NavModule::ALL.len(), 11);
         assert_eq!(SettingsSection::ALL.len(), 20);
         assert_eq!(UtilityDialog::ALL.len(), 2);
     }

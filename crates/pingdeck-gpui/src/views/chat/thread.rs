@@ -13,9 +13,9 @@ use pingdeck_desktop::core::model::hub::HubPart;
 use pingdeck_desktop::services::clipboard;
 
 use crate::ui::{
-    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon,
-    btn_secondary, h_row, icon_xs, kv_chip, markdown_view, palette, status_indicator, to_hsla,
-    v_col,
+    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost,
+    btn_icon, btn_secondary, h_row, icon_xs, kv_chip, markdown_view, palette, status_indicator,
+    to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -442,6 +442,22 @@ fn render_assistant_message(
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.branch_from_message(mid_br.clone(), cx);
             })),
+        )
+        .children(
+            (!tool_calls.is_empty())
+                .then_some(msg.run_id.clone())
+                .flatten()
+                .map(|rid| {
+                    let count = tool_calls.len();
+                    btn_ghost(
+                        SharedString::from(format!("a-wf-{}", msg.id)),
+                        crate::ui::tr(cx).chat().monitor_turn_pill(count),
+                    )
+                    .icon(icon_xs(UiIcon::Activity))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_workflow_modal(Some(rid.clone()), None, cx);
+                    }))
+                }),
         )
         .children(idle.then(|| {
             btn_icon(

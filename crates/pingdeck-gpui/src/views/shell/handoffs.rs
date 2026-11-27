@@ -3,22 +3,27 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use gpui_kit::{App, Context, WeakEntity, Window};
+use gpui_kit::{Context, WeakEntity, Window};
 use pingdeck_desktop::core::app::{
-    agent_session_list_impl, app_running_work_impl, flow_list_impl, llm_provider_list_impl,
-    llm_provider_status_list_impl, mock_server_list_impl, mock_server_status_list_impl,
-    request_list_impl,
+    app_running_work_impl, llm_provider_status_list_impl, mock_server_list_impl,
+    mock_server_status_list_impl, request_list_impl,
 };
 use pingdeck_desktop::core::llm::status::ProviderStatus;
-use pingdeck_desktop::state::{
-    EnvironmentResourceTarget, NavModule, PaletteAction, PaletteDynamicItems, ToastKind,
-};
+use pingdeck_desktop::state::{EnvironmentResourceTarget, NavModule, PaletteAction, ToastKind};
 
 use crate::bridge::{runtime, spawn_async_into};
 use crate::views::{
-    chat::ChatHandoff, environments::state::EnvResourceTab, flows::FlowsHandoff,
-    gateway::GatewayHandoff, history::HistoryHandoff, mock::MockHandoff,
-    providers::ProvidersHandoff, requests::RequestsHandoff, usage::UsageHandoff, utility::IoTab,
+    chat::ChatHandoff,
+    environments::state::EnvResourceTab,
+    flows::FlowsHandoff,
+    gateway::GatewayHandoff,
+    history::HistoryHandoff,
+    mock::MockHandoff,
+    providers::ProvidersHandoff,
+    requests::RequestsHandoff,
+    runs::{RunsHandoff, WorkflowModalHandoff},
+    usage::UsageHandoff,
+    utility::IoTab,
 };
 
 use super::AppShell;
@@ -62,6 +67,11 @@ impl ModuleHost {
     }
     pub fn poll_chat_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<ChatHandoff> {
         self.chat
+            .as_ref()
+            .and_then(|v| v.read(cx).take_pending_handoff())
+    }
+    pub fn poll_runs_handoff<V: 'static>(&self, cx: &Context<V>) -> Option<RunsHandoff> {
+        self.runs
             .as_ref()
             .and_then(|v| v.read(cx).take_pending_handoff())
     }
@@ -346,77 +356,6 @@ impl AppShell {
         cx.notify();
     }
 
-    /// Snapshots dynamic workspace & shared-AI entities for the `⌘K` Command Palette.
-    pub fn collect_palette_dynamic_items(&self, cx: &App) -> PaletteDynamicItems {
-        let rt = runtime(cx);
-        let state = rt.state();
-        let mut out = PaletteDynamicItems::default();
-
-        if let Some(ws_id) = self.state.active_workspace_id.as_deref() {
-            if let Ok(reqs) = request_list_impl(state, ws_id.to_owned()) {
-                out.requests = reqs
-                    .into_iter()
-                    .take(40)
-                    .map(|r| {
-                        (
-                            r.id.as_str().to_owned(),
-                            format!("{:?}", r.method).to_uppercase(),
-                            if r.name.trim().is_empty() {
-                                r.url
-                            } else {
-                                r.name
-                            },
-                        )
-                    })
-                    .collect();
-            }
-            if let Ok(servers) = mock_server_list_impl(state, ws_id.to_owned()) {
-                let statuses =
-                    mock_server_status_list_impl(state, ws_id.to_owned()).unwrap_or_default();
-                out.mocks = servers
-                    .into_iter()
-                    .take(20)
-                    .map(|s| {
-                        let running = statuses.iter().any(|st| st.server_id == s.id && st.running);
-                        (s.id, s.name, running)
-                    })
-                    .collect();
-            }
-            if let Ok(flows) = flow_list_impl(state, ws_id.to_owned()) {
-                out.flows = flows
-                    .into_iter()
-                    .take(20)
-                    .map(|f| (f.flow.id, f.flow.name))
-                    .collect();
-            }
-        }
-
-        if let Ok(page) = agent_session_list_impl(state, None, Some(20), None) {
-            out.chats = page
-                .sessions
-                .into_iter()
-                .map(|c| {
-                    (
-                        c.id,
-                        if c.title.trim().is_empty() {
-                            "Untitled Chat".to_owned()
-                        } else {
-                            c.title
-                        },
-                    )
-                })
-                .collect();
-        }
-        if let Ok(providers) = llm_provider_list_impl(state) {
-            out.providers = providers
-                .into_iter()
-                .take(20)
-                .map(|p| (p.id, p.name))
-                .collect();
-        }
-        out
-    }
-
     /// Polls all mounted modules for cross-module navigation, handoffs, and shared environment changes.
     pub fn poll_all_handoffs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // 1. Settings signals
@@ -587,6 +526,50 @@ impl AppShell {
                 ChatHandoff::OpenSettings(sec) => self.open_settings_section(sec, cx),
                 ChatHandoff::OpenProviders => self.navigate(NavModule::Providers, cx),
                 ChatHandoff::OpenUsageRun(run_id) => {
+                    self.navigate(NavModule::Usage, cx);
+                    self.modules.open_usage_run_id(run_id, window, cx);
+                }
+                ChatHandoff::OpenWorkflowModal {
+                    session_id,
+                    run_id,
+                    initial_tab,
+                } => {
+                    self.open_workflow_modal(session_id, run_id, initial_tab, cx);
+                }
+            }
+        }
+
+        // 11. Standalone Run Monitor handoffs
+        if let Some(handoff) = self.modules.poll_runs_handoff(cx) {
+            match handoff {
+                RunsHandoff::OpenWorkflowModal {
+                    session_id,
+                    run_id,
+                    initial_tab,
+                } => {
+                    self.open_workflow_modal(session_id, run_id, initial_tab, cx);
+                }
+                RunsHandoff::OpenChatSession(session_id) => {
+                    self.navigate(NavModule::Chat, cx);
+                    self.modules
+                        .open_chat_session_mounted(session_id, window, cx);
+                }
+                RunsHandoff::OpenUsageRun(run_id) => {
+                    self.navigate(NavModule::Usage, cx);
+                    self.modules.open_usage_run_id(run_id, window, cx);
+                }
+            }
+        }
+
+        // 12. Shared 90% Workflow Monitor Modal handoffs
+        if let Some(handoff) = self.workflow_modal.read(cx).take_pending_handoff() {
+            match handoff {
+                WorkflowModalHandoff::OpenChatSession(session_id) => {
+                    self.navigate(NavModule::Chat, cx);
+                    self.modules
+                        .open_chat_session_mounted(session_id, window, cx);
+                }
+                WorkflowModalHandoff::OpenUsageRun(run_id) => {
                     self.navigate(NavModule::Usage, cx);
                     self.modules.open_usage_run_id(run_id, window, cx);
                 }

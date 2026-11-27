@@ -9,11 +9,11 @@ use std::collections::{HashMap, HashSet};
 use crate::agent::attention::PendingApprovalSummary;
 use crate::agent::dto::{
     AgentRunTopology, BoardChanges, BoardSubagentCounts, BoardWait, ExecutionWave,
-    TopologySubagent, TopologyToolStep,
+    SessionRunHistoryItem, TopologySubagent, TopologyToolStep,
 };
 use crate::agent::model::{
-    AgentRunKind, AgentRunStatus, AgentRunSummary, AgentTodoStatus, AgentToolCallRecord,
-    LiveRunSnapshot, LiveToolState, ToolCallStatus,
+    AgentMessage, AgentRole, AgentRunKind, AgentRunStatus, AgentRunSummary, AgentTodoStatus,
+    AgentToolCallRecord, FileChange, LiveRunSnapshot, LiveToolState, ToolCallStatus,
 };
 use crate::agent_tools::subagent::TASK;
 use crate::error::AppError;
@@ -24,6 +24,11 @@ use crate::app::{AppState, command_error, current_time_ms};
 
 const LAST_ANSWER_CHARS: usize = 180;
 const SUMMARY_MAX_CHARS: usize = 96;
+const ARGS_PREVIEW_MAX_CHARS: usize = 3_000;
+const OUTPUT_PREVIEW_MAX_CHARS: usize = 4_800;
+const PROMPT_PREVIEW_MAX_CHARS: usize = 1_600;
+const REASONING_PREVIEW_MAX_CHARS: usize = 3_200;
+const REPORT_PREVIEW_MAX_CHARS: usize = 12_000;
 
 /// Returns the full execution topology (serial waves, parallel sub-agent fan-outs, tool steps,
 /// and waterfall timestamps) of one top-level run.
@@ -137,6 +142,28 @@ pub fn agent_run_topology_impl(
             .or_insert(appr);
     }
 
+    let parent_messages = store
+        .list_agent_messages(&parent_summary.session_id)
+        .unwrap_or_default();
+    let parent_outputs = collect_tool_outputs(&parent_messages);
+    let (user_prompt, mut reasoning_preview, mut full_answer) =
+        extract_run_narrative(&parent_messages, run_id, parent_summary.started_at_ms);
+    if let Some(snap) = &parent_live_snap {
+        if reasoning_preview.is_none() {
+            reasoning_preview = extract_live_reasoning(snap);
+        }
+        if full_answer.is_none() {
+            full_answer = extract_live_text(snap);
+        }
+    }
+    let chat_file_changes = store
+        .list_chat_file_changes(&parent_summary.session_id)
+        .unwrap_or_default();
+    let changes_by_call: HashMap<String, FileChange> = chat_file_changes
+        .into_iter()
+        .map(|fc| (fc.call_id.clone(), fc))
+        .collect();
+
     // Parent tool call args lookup by call_id so subagents can read `kind` / `resume` / `description`.
     let parent_records = calls_by_run.remove(run_id).unwrap_or_default();
     let mut parent_args_by_call: HashMap<String, String> = HashMap::new();
@@ -189,7 +216,23 @@ pub fn agent_run_topology_impl(
             }
         }
         let child_records = calls_by_run.remove(&summary.run_id).unwrap_or_default();
-        let child_steps = merge_tool_steps(&child_records, snap.as_ref());
+        let child_messages = store
+            .list_agent_messages(&summary.session_id)
+            .unwrap_or_default();
+        let child_outputs = collect_tool_outputs(&child_messages);
+        let (_, _, mut child_full_report) =
+            extract_run_narrative(&child_messages, &summary.run_id, summary.started_at_ms);
+        if child_full_report.is_none()
+            && let Some(live_s) = snap.as_ref()
+        {
+            child_full_report = extract_live_text(live_s);
+        }
+        let child_steps = merge_tool_steps(
+            &child_records,
+            snap.as_ref(),
+            &child_outputs,
+            &changes_by_call,
+        );
         let parent_call_id = summary.parent_call_id.clone().unwrap_or_default();
         let parsed = parent_args_by_call
             .get(&parent_call_id)
@@ -220,6 +263,8 @@ pub fn agent_run_topology_impl(
             pending_approval: child_approval,
             last_answer: child_answer,
             tool_calls: child_steps,
+            brief: parsed.brief,
+            full_report: child_full_report,
             run: summary,
         };
         if !parent_call_id.is_empty() {
@@ -232,6 +277,8 @@ pub fn agent_run_topology_impl(
     let waves = build_execution_waves(
         &parent_records,
         parent_live_snap.as_ref(),
+        &parent_outputs,
+        &changes_by_call,
         &mut subagents_by_parent_call,
         orphan_subagents,
     );
@@ -302,6 +349,9 @@ pub fn agent_run_topology_impl(
         waves,
         subagent_counts,
         task_graph,
+        user_prompt,
+        reasoning_preview,
+        full_answer,
     })
 }
 
@@ -432,11 +482,176 @@ pub fn agent_session_runs_impl(
     Ok(runs)
 }
 
+/// Lists a chat session's top-level (`main`) runs enriched with prompt snippet, node counts,
+/// parallel/TaskGraph flags, and pending file-change totals for the Run History switcher.
+///
+/// # Errors
+/// [`AppError::Database`] on store error.
+pub fn agent_session_run_history_impl(
+    state: &AppState,
+    session_id: &str,
+    limit: Option<u32>,
+) -> Result<Vec<SessionRunHistoryItem>, AppError> {
+    let runs = agent_session_runs_impl(state, session_id, limit)?;
+    build_run_history_items(state, runs)
+}
+
+/// Lists top-level (`main`) runs across all chat sessions, newest first, for the global Run
+/// Monitor's full-history tab beyond the 24-hour board window.
+///
+/// # Errors
+/// [`AppError::Database`] on store error.
+pub fn agent_all_runs_history_impl(
+    state: &AppState,
+    limit: Option<u32>,
+) -> Result<Vec<SessionRunHistoryItem>, AppError> {
+    let lim = limit.unwrap_or(60).clamp(1, 200);
+    let mut runs: Vec<AgentRunSummary> = state
+        .store()
+        .list_agent_runs(None, false, lim.saturating_mul(2))
+        .map_err(command_error)?
+        .into_iter()
+        .filter(|r| r.kind == AgentRunKind::Main)
+        .collect();
+    for active in state.agent.runs.active_runs() {
+        if active.kind != AgentRunKind::Main {
+            continue;
+        }
+        let live_summary = active.summary();
+        if let Some(slot) = runs.iter_mut().find(|r| r.run_id == live_summary.run_id) {
+            *slot = live_summary;
+        } else {
+            runs.push(live_summary);
+        }
+    }
+    runs.sort_by(|a, b| {
+        b.started_at_ms
+            .cmp(&a.started_at_ms)
+            .then_with(|| b.run_id.cmp(&a.run_id))
+    });
+    runs.truncate(lim as usize);
+    build_run_history_items(state, runs)
+}
+
+fn build_run_history_items(
+    state: &AppState,
+    runs: Vec<AgentRunSummary>,
+) -> Result<Vec<SessionRunHistoryItem>, AppError> {
+    if runs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let snapshot_ms = current_time_ms();
+    let store = state.store();
+    let run_ids: Vec<String> = runs.iter().map(|r| r.run_id.clone()).collect();
+    let mut extras = store.agent_run_extras(&run_ids).map_err(command_error)?;
+    let all_calls = store
+        .list_runs_tool_calls(&run_ids)
+        .map_err(command_error)?;
+    let mut calls_by_run: HashMap<String, Vec<AgentToolCallRecord>> = HashMap::new();
+    for rec in all_calls {
+        calls_by_run
+            .entry(rec.run_id.clone())
+            .or_default()
+            .push(rec);
+    }
+
+    let mut session_meta: HashMap<String, (String, bool, Vec<AgentMessage>)> = HashMap::new();
+    let mut out = Vec::with_capacity(runs.len());
+    for run in runs {
+        let (title, has_task_graph, msgs) = session_meta
+            .entry(run.session_id.clone())
+            .or_insert_with(|| {
+                let sess = store.get_agent_session(&run.session_id).ok().flatten();
+                let title = sess.as_ref().map_or_else(String::new, |s| s.title.clone());
+                let has_tg = sess
+                    .as_ref()
+                    .is_some_and(|s| s.todos.iter().any(|t| t.has_graph_metadata()));
+                let msgs = store
+                    .list_agent_messages(&run.session_id)
+                    .unwrap_or_default();
+                (title, has_tg, msgs)
+            });
+
+        let extra = extras.remove(&run.run_id).unwrap_or_default();
+        let live = state.agent.runs.get(&run.run_id);
+        let awake_ms = live.as_ref().map_or_else(
+            || {
+                if extra.awake_ms > 0 {
+                    extra.awake_ms
+                } else {
+                    run.finished_at_ms
+                        .unwrap_or(snapshot_ms)
+                        .saturating_sub(run.started_at_ms)
+                        .max(0) as u64
+                }
+            },
+            |r| r.awake_ms(),
+        );
+        let records = calls_by_run.remove(&run.run_id).unwrap_or_default();
+        let tool_count = u32::try_from(records.len()).unwrap_or(u32::MAX);
+        let subagent_count =
+            u32::try_from(records.iter().filter(|r| r.name == TASK).count()).unwrap_or(u32::MAX);
+        let has_parallel = detect_parallel_records(&records);
+        let changes = store.agent_pending_changes(&run.run_id).unwrap_or_default();
+        let prompt_preview = extract_user_prompt_first_line(msgs, run.started_at_ms);
+        let cost_currency = extra.cost_currency.or_else(|| run.cost_currency.clone());
+
+        out.push(SessionRunHistoryItem {
+            title: title.clone(),
+            prompt_preview,
+            awake_ms,
+            tool_count,
+            subagent_count,
+            has_parallel,
+            has_task_graph: *has_task_graph,
+            pending_changes: BoardChanges {
+                files: changes.files,
+                added: changes.added,
+                removed: changes.removed,
+            },
+            cost_currency,
+            run,
+        });
+    }
+    Ok(out)
+}
+
+fn detect_parallel_records(records: &[AgentToolCallRecord]) -> bool {
+    let mut i = 0;
+    while i < records.len() {
+        let msg = &records[i].message_id;
+        let is_task = records[i].name == TASK;
+        let is_par = is_parallel_safe_tool(&records[i].name, &records[i].class);
+        if is_task || is_par {
+            let mut j = i + 1;
+            while j < records.len()
+                && &records[j].message_id == msg
+                && (if is_task {
+                    records[j].name == TASK
+                } else {
+                    records[j].name != TASK
+                        && is_parallel_safe_tool(&records[j].name, &records[j].class)
+                })
+            {
+                j += 1;
+            }
+            if j - i >= 2 {
+                return true;
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
 #[derive(Default)]
 struct ParsedTaskArgs {
     description: String,
     kind: String,
     resumed: bool,
+    brief: Option<String>,
 }
 
 fn parse_task_args(raw: &str) -> ParsedTaskArgs {
@@ -445,6 +660,7 @@ fn parse_task_args(raw: &str) -> ParsedTaskArgs {
             description: String::new(),
             kind: "general".to_owned(),
             resumed: false,
+            brief: None,
         };
     };
     let description = val
@@ -462,11 +678,187 @@ fn parse_task_args(raw: &str) -> ParsedTaskArgs {
         .get("resume")
         .and_then(|v| v.as_str())
         .is_some_and(|s| !s.trim().is_empty());
+    let brief = ["prompt", "brief", "instructions", "task"]
+        .iter()
+        .find_map(|k| val.get(*k).and_then(|v| v.as_str()))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| truncate_chars(s, PROMPT_PREVIEW_MAX_CHARS));
     ParsedTaskArgs {
         description,
         kind,
         resumed,
+        brief,
     }
+}
+
+fn collect_tool_outputs(messages: &[AgentMessage]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for msg in messages {
+        for part in &msg.parts {
+            if let HubPart::ToolResult {
+                call_id, content, ..
+            } = part
+            {
+                let mut buf = String::new();
+                for sub in content {
+                    if let HubPart::Text { text, .. } = sub {
+                        if !buf.is_empty() {
+                            buf.push('\n');
+                        }
+                        buf.push_str(text);
+                    }
+                }
+                let trimmed = buf.trim();
+                if !trimmed.is_empty() {
+                    map.insert(call_id.clone(), trimmed.to_owned());
+                }
+            }
+        }
+    }
+    map
+}
+
+fn extract_run_narrative(
+    messages: &[AgentMessage],
+    run_id: &str,
+    run_started_ms: i64,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let mut reasoning_chunks: Vec<&str> = Vec::new();
+    let mut answer_chunks: Vec<&str> = Vec::new();
+    let mut first_run_msg_idx: Option<usize> = None;
+
+    for (idx, msg) in messages.iter().enumerate() {
+        if msg.run_id.as_deref() == Some(run_id) && msg.role == AgentRole::Assistant {
+            if first_run_msg_idx.is_none() {
+                first_run_msg_idx = Some(idx);
+            }
+            for part in &msg.parts {
+                match part {
+                    HubPart::Reasoning { text, .. } if !text.trim().is_empty() => {
+                        reasoning_chunks.push(text.trim());
+                    }
+                    HubPart::Text { text, .. } if !text.trim().is_empty() => {
+                        answer_chunks.push(text.trim());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let user_prompt = first_run_msg_idx
+        .and_then(|idx| {
+            messages[..idx]
+                .iter()
+                .rev()
+                .find(|m| m.role == AgentRole::User)
+        })
+        .or_else(|| {
+            messages
+                .iter()
+                .rev()
+                .find(|m| m.role == AgentRole::User && m.created_at_ms <= run_started_ms + 5_000)
+        })
+        .and_then(extract_message_text)
+        .map(|s| truncate_chars(&s, PROMPT_PREVIEW_MAX_CHARS));
+
+    let reasoning_preview = (!reasoning_chunks.is_empty())
+        .then(|| truncate_chars(&reasoning_chunks.join("\n\n"), REASONING_PREVIEW_MAX_CHARS));
+    let full_answer = answer_chunks
+        .last()
+        .map(|s| truncate_chars(s, REPORT_PREVIEW_MAX_CHARS));
+
+    (user_prompt, reasoning_preview, full_answer)
+}
+
+fn extract_user_prompt_first_line(
+    messages: &[AgentMessage],
+    run_started_ms: i64,
+) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.role == AgentRole::User && m.created_at_ms <= run_started_ms + 5_000)
+        .and_then(extract_message_text)
+        .and_then(|text| {
+            text.lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(|l| truncate_chars(l, SUMMARY_MAX_CHARS))
+        })
+}
+
+fn extract_message_text(msg: &AgentMessage) -> Option<String> {
+    let mut out = String::new();
+    for part in &msg.parts {
+        if let HubPart::Text { text, .. } = part
+            && !text.trim().is_empty()
+        {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(text.trim());
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+fn extract_live_reasoning(snap: &LiveRunSnapshot) -> Option<String> {
+    let mut out = String::new();
+    for part in &snap.parts {
+        if let HubPart::Reasoning { text, .. } = part
+            && !text.trim().is_empty()
+        {
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(text.trim());
+        }
+    }
+    (!out.is_empty()).then(|| truncate_chars(&out, REASONING_PREVIEW_MAX_CHARS))
+}
+
+fn extract_live_text(snap: &LiveRunSnapshot) -> Option<String> {
+    let mut out = String::new();
+    for part in &snap.parts {
+        if let HubPart::Text { text, .. } = part
+            && !text.trim().is_empty()
+        {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(text.trim());
+        }
+    }
+    (!out.is_empty()).then(|| truncate_chars(&out, REPORT_PREVIEW_MAX_CHARS))
+}
+
+fn format_args_preview(args: &str) -> Option<String> {
+    let trimmed = args.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return None;
+    }
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed)
+        && let Ok(pretty) = serde_json::to_string_pretty(&val)
+    {
+        return Some(truncate_chars(&pretty, ARGS_PREVIEW_MAX_CHARS));
+    }
+    Some(truncate_chars(trimmed, ARGS_PREVIEW_MAX_CHARS))
+}
+
+fn format_output_preview(raw: &str, class: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if class == "exec" && trimmed.chars().count() > OUTPUT_PREVIEW_MAX_CHARS {
+        let total = trimmed.chars().count();
+        let skip = total.saturating_sub(OUTPUT_PREVIEW_MAX_CHARS);
+        let tail: String = trimmed.chars().skip(skip).collect();
+        return Some(format!("…\n{tail}"));
+    }
+    Some(truncate_chars(trimmed, OUTPUT_PREVIEW_MAX_CHARS))
 }
 
 fn is_parallel_safe_tool(name: &str, class: &str) -> bool {
@@ -544,11 +936,16 @@ fn truncate_chars(s: &str, max: usize) -> String {
     }
 }
 
-fn record_to_step(rec: &AgentToolCallRecord) -> TopologyToolStep {
+fn record_to_step(
+    rec: &AgentToolCallRecord,
+    outputs: &HashMap<String, String>,
+    changes: &HashMap<String, FileChange>,
+) -> TopologyToolStep {
     let duration_ms = match (rec.started_ms, rec.ended_ms) {
         (Some(s), Some(e)) if e >= s => Some((e - s) as u64),
         _ => None,
     };
+    let fc = changes.get(&rec.call_id);
     TopologyToolStep {
         call_id: rec.call_id.clone(),
         name: rec.name.clone(),
@@ -560,14 +957,33 @@ fn record_to_step(rec: &AgentToolCallRecord) -> TopologyToolStep {
         duration_ms,
         exit_code: rec.exit_code,
         parallel_safe: is_parallel_safe_tool(&rec.name, &rec.class),
+        args_preview: format_args_preview(&rec.args_json),
+        output_preview: outputs
+            .get(&rec.call_id)
+            .and_then(|s| format_output_preview(s, &rec.class)),
+        risk: (!rec.risk.trim().is_empty()).then(|| rec.risk.clone()),
+        decision: rec.decision.clone(),
+        decided_by: rec.decided_by.clone(),
+        sandbox: rec.sandbox.clone(),
+        output_bytes: rec.output_bytes,
+        truncated: rec.truncated || rec.spill_ref.is_some(),
+        file_change_id: fc.map(|c| c.id.clone()),
+        file_path: fc.map(|c| c.path.clone()),
+        file_added: fc.map_or(0, |c| c.added),
+        file_removed: fc.map_or(0, |c| c.removed),
     }
 }
 
 fn merge_tool_steps(
     stored: &[AgentToolCallRecord],
     live: Option<&LiveRunSnapshot>,
+    outputs: &HashMap<String, String>,
+    changes: &HashMap<String, FileChange>,
 ) -> Vec<TopologyToolStep> {
-    let mut steps: Vec<TopologyToolStep> = stored.iter().map(record_to_step).collect();
+    let mut steps: Vec<TopologyToolStep> = stored
+        .iter()
+        .map(|rec| record_to_step(rec, outputs, changes))
+        .collect();
     let mut seen: HashSet<String> = steps.iter().map(|s| s.call_id.clone()).collect();
     if let Some(snap) = live {
         let mut live_args: HashMap<&str, &str> = HashMap::new();
@@ -586,6 +1002,15 @@ fn merge_tool_steps(
             }
             let args = live_args.get(tc.call_id.as_str()).copied().unwrap_or("");
             let class = if tc.name == TASK { "internal" } else { "tool" };
+            let out_prev = outputs
+                .get(&tc.call_id)
+                .and_then(|s| format_output_preview(s, class))
+                .or_else(|| {
+                    tc.result
+                        .as_ref()
+                        .and_then(|r| format_output_preview(&r.summary, class))
+                });
+            let fc = changes.get(&tc.call_id);
             steps.push(TopologyToolStep {
                 call_id: tc.call_id.clone(),
                 name: tc.name.clone(),
@@ -598,6 +1023,13 @@ fn merge_tool_steps(
                 duration_ms: tc.result.as_ref().map(|r| r.duration_ms),
                 exit_code: None,
                 parallel_safe: is_parallel_safe_tool(&tc.name, class),
+                args_preview: format_args_preview(args),
+                output_preview: out_prev,
+                file_change_id: fc.map(|c| c.id.clone()),
+                file_path: fc.map(|c| c.path.clone()),
+                file_added: fc.map_or(0, |c| c.added),
+                file_removed: fc.map_or(0, |c| c.removed),
+                ..TopologyToolStep::default()
             });
         }
     }
@@ -613,6 +1045,8 @@ struct ParentCallItem {
 fn build_execution_waves(
     stored: &[AgentToolCallRecord],
     live: Option<&LiveRunSnapshot>,
+    outputs: &HashMap<String, String>,
+    changes: &HashMap<String, FileChange>,
     subagents_by_call: &mut HashMap<String, TopologySubagent>,
     mut orphan_subagents: Vec<TopologySubagent>,
 ) -> Vec<ExecutionWave> {
@@ -620,7 +1054,7 @@ fn build_execution_waves(
         .iter()
         .map(|rec| ParentCallItem {
             message_id: rec.message_id.clone(),
-            step: record_to_step(rec),
+            step: record_to_step(rec, outputs, changes),
         })
         .collect();
     let mut seen: HashSet<String> = items.iter().map(|i| i.step.call_id.clone()).collect();
@@ -640,6 +1074,15 @@ fn build_execution_waves(
             }
             let args = live_args.get(tc.call_id.as_str()).copied().unwrap_or("");
             let class = if tc.name == TASK { "internal" } else { "tool" };
+            let out_prev = outputs
+                .get(&tc.call_id)
+                .and_then(|s| format_output_preview(s, class))
+                .or_else(|| {
+                    tc.result
+                        .as_ref()
+                        .and_then(|r| format_output_preview(&r.summary, class))
+                });
+            let fc = changes.get(&tc.call_id);
             items.push(ParentCallItem {
                 message_id: None,
                 step: TopologyToolStep {
@@ -654,6 +1097,13 @@ fn build_execution_waves(
                     duration_ms: tc.result.as_ref().map(|r| r.duration_ms),
                     exit_code: None,
                     parallel_safe: is_parallel_safe_tool(&tc.name, class),
+                    args_preview: format_args_preview(args),
+                    output_preview: out_prev,
+                    file_change_id: fc.map(|c| c.id.clone()),
+                    file_path: fc.map(|c| c.path.clone()),
+                    file_added: fc.map_or(0, |c| c.added),
+                    file_removed: fc.map_or(0, |c| c.removed),
+                    ..TopologyToolStep::default()
                 },
             });
         }
@@ -725,7 +1175,7 @@ fn build_execution_waves(
                     wave_index,
                     started_ms,
                     ended_ms,
-                    tool,
+                    tool: Box::new(tool),
                 });
             }
             continue;
@@ -741,7 +1191,7 @@ fn build_execution_waves(
             wave_index,
             started_ms,
             ended_ms,
-            tool,
+            tool: Box::new(tool),
         });
     }
 
@@ -1094,7 +1544,14 @@ mod tests {
             other => panic!("expected ParallelSubagents, got {other:?}"),
         }
         match &topo.waves[2] {
-            ExecutionWave::SerialTool { tool, .. } => assert_eq!(tool.name, "shell"),
+            ExecutionWave::SerialTool { tool, .. } => {
+                assert_eq!(tool.name, "shell");
+                assert!(
+                    tool.args_preview
+                        .as_deref()
+                        .is_some_and(|a| a.contains("cargo test auth"))
+                );
+            }
             other => panic!("expected SerialTool, got {other:?}"),
         }
         match &topo.waves[3] {
@@ -1104,5 +1561,16 @@ mod tests {
             }
             other => panic!("expected SingleSubagent, got {other:?}"),
         }
+
+        let hist = agent_session_run_history_impl(&state, &parent_sess.id, Some(10)).unwrap();
+        assert_eq!(hist.len(), 1);
+        assert_eq!(hist[0].run.run_id, "run_main");
+        assert!(hist[0].has_parallel);
+        assert_eq!(hist[0].subagent_count, 3);
+        assert!(hist[0].tool_count >= 5);
+
+        let all_hist = agent_all_runs_history_impl(&state, Some(10)).unwrap();
+        assert_eq!(all_hist.len(), 1);
+        assert_eq!(all_hist[0].title, "Refactor auth");
     }
 }

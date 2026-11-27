@@ -21,24 +21,16 @@ use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::ChatView;
-use super::types::{ChatModal, ChatSidebarMode, PendingAttachment};
+use super::types::{ChatSidebarMode, PendingAttachment};
 
 impl ChatView {
     pub fn set_sidebar_mode(&mut self, mode: ChatSidebarMode, cx: &mut Context<Self>) {
         self.sidebar_mode = mode;
         match mode {
             ChatSidebarMode::Time => self.refresh_catalog(cx),
-            ChatSidebarMode::Board => {
-                self.load_board(cx);
-                self.start_elapsed_ticker(cx);
-            }
             ChatSidebarMode::Trash => self.load_trash(cx),
         }
         cx.notify();
-    }
-
-    pub fn load_board(&mut self, cx: &mut Context<Self>) {
-        self.refresh_board_and_selection(cx);
     }
 
     pub fn load_trash(&mut self, cx: &mut Context<Self>) {
@@ -444,22 +436,6 @@ impl ChatView {
             },
         );
         self._tasks.push(task);
-    }
-
-    pub fn request_delete_current(&mut self, cx: &mut Context<Self>) {
-        let sid = self.thread.session_id.clone();
-        if sid.is_empty() {
-            return;
-        }
-        if self.is_run_active() {
-            self.active_modal = Some(ChatModal::DeleteRunningConfirm {
-                session_id: sid,
-                title: self.thread.title.clone(),
-            });
-            cx.notify();
-        } else {
-            self.delete_session_by_id(sid, cx);
-        }
     }
 
     pub fn delete_session_by_id(&mut self, sid: String, cx: &mut Context<Self>) {

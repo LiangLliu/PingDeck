@@ -408,9 +408,9 @@ Full access 只省掉对已信任调用的逐次询问，持续到应用重启�
 
 审批、费用暂停、计划批准与向用户提问共用一套人类关卡：等待时释放顶层槽位，状态、超时、注意力计数和回放各只写一次。有活动订阅者且主窗口有焦点才算有人在看，失焦时间计入无人值守的超时。超时或拒绝返回未执行的结果，过期的卡片触发不了旧调用。计划模式持久化，批准后按所选权限开始新的运行。页面重载要及时移除上一页的事件出口，否则无人值守会被误判成有人在看。
 
-运行看板的单运行可视化采用三层解耦。`pingdeck-app-agent` 的 `topology` 汇总实时与持久记录产出 `AgentRunTopology`。`pingdeck-desktop` 的 `state::run_graph` 负责三视图自适应路由与分层 DAG 布局计算。
+运行看板采用三层解耦与“独立全局页 + 90% 视口共享模态框”双入口：`pingdeck-app-agent` 的 `topology` 汇总实时与持久记录产出 `AgentRunTopology` 及按会话/跨会话历史列表；`pingdeck-desktop` 的 `state::run_graph` 负责三视图自适应路由、分层 DAG 布局与默认异常节点聚焦计算。
 
-`pingdeck-gpui` 在 `crates/pingdeck-gpui/src/ui/dag_canvas.rs` 用 GPU 矢量路径绘制平滑依赖线与端口。点选节点后在右侧展开节点详情，审批仍跳对话统一关卡区（[决策 §136](decisions.md#136-运行看板采用三视图自适应与左向右执行图)）。
+`pingdeck-gpui` 在左侧主导航提供独立的 `NavModule::Runs`（`views/runs/`）全宽总览，并在 `AppShell` 持有共享的 90% 视口 `WorkflowMonitorModal`。模态框复用 `ui::viewport_modal` 与 `ui::dag_canvas` GPU 矢量贝塞尔画布，审批仍跳对话统一关卡区（[决策 §136](decisions.md#136-运行看板采用三视图自适应与左向右执行图)）。
 
 结构化任务图随计划批准写入 `todos_json`，不改数据库 schema。`agent_task_node_recover_impl` 支持对失败节点执行重试、安全撤销改动后重试或跳过并继续，复用已完成分支产出（[决策 §137](decisions.md#137-计划与待办扩展为向后兼容的结构化任务图)）。
 

@@ -8,6 +8,7 @@
   "shell.nav.mock_short": "Mock 服务",
   "shell.nav.providers": "服务商",
   "shell.nav.requests": "请求",
+  "shell.nav.runs": "运行看板",
   "shell.nav.settings": "设置",
   "shell.nav.usage_short": "用量与日志",
   "shell.notify.approval.body": "{tool}，{risk}",

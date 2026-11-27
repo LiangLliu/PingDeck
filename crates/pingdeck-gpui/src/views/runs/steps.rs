@@ -1,12 +1,7 @@
-//! High-density `Steps` (`步骤`) view for the Run Monitor detail canvas.
+//! High-density `Steps` (`步骤`) view inside [`WorkflowMonitorModal`].
 //!
-//! Optimized for the two cases where a horizontal Execution Graph adds whitespace rather than
-//! signal:
-//! 1. Zero-tool direct answers: renders a clean answer + telemetry summary card instead of an
-//!    empty graph or placeholder box.
-//! 2. Short linear tool runs (or detailed payload inspection): renders full-width step cards with
-//!    clear parameters, exit codes, and durations, automatically grouping long iterative loops
-//!    into collapsible rounds.
+//! Renders either a clean direct-answer Markdown summary card (0 tools) or a scannable linear /
+//! round-grouped step list whose rows stay synchronized with the docked `Node Inspector`.
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
@@ -17,18 +12,16 @@ use pingdeck_desktop::core::agent::dto::{
 };
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, card, h_row, icon_xs, palette,
-    section_heading, status_indicator, to_hsla, v_col,
+    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, card, h_row, icon_xs, markdown_view,
+    palette, section_heading, status_indicator, to_hsla, v_col,
 };
 
-use super::ChatView;
-use super::run_status::{
-    format_elapsed_short, format_tokens_compact, run_status_meta, subagent_kind_label,
-    subagent_role_label, tool_status_meta,
+use super::modal::WorkflowMonitorModal;
+use super::status::{
+    format_elapsed_short, format_model_short, format_tokens_compact, run_status_meta,
+    subagent_kind_label, subagent_role_label, tool_status_meta,
 };
-use super::types::ChatHandoff;
 
-/// Threshold above which linear steps are grouped into collapsible round sections.
 const ROUND_GROUP_THRESHOLD: usize = 8;
 const STEPS_PER_ROUND: usize = 4;
 
@@ -37,14 +30,13 @@ enum FlatStep<'a> {
     Tool(&'a TopologyToolStep),
 }
 
-/// Renders the `Steps` (`步骤`) view for `topo`.
 pub fn render_steps_view(
-    view: &ChatView,
+    view: &WorkflowMonitorModal,
     topo: &AgentRunTopology,
-    cx: &mut Context<ChatView>,
+    cx: &mut Context<WorkflowMonitorModal>,
 ) -> AnyElement {
     if topo.waves.is_empty() {
-        return render_direct_answer_summary(view, topo, cx);
+        return render_direct_answer_summary(topo, cx);
     }
 
     let ch = crate::ui::tr(cx).chat();
@@ -79,8 +71,7 @@ pub fn render_steps_view(
         for (round_idx, chunk) in flat.chunks(STEPS_PER_ROUND).enumerate() {
             let key = format!("round-{}-{round_idx}", topo.run.run_id);
             let is_last = (round_idx + 1) * STEPS_PER_ROUND >= flat.len();
-            // Keep the latest round expanded by default; older rounds expand on click.
-            let collapsed = !is_last && !view.expanded_topology_nodes.contains(&key);
+            let collapsed = !is_last && !view.expanded_rounds.contains(&key);
             container = container.child(render_round_group(
                 view,
                 round_idx + 1,
@@ -96,7 +87,8 @@ pub fn render_steps_view(
         }
     }
 
-    if let Some(ans) = &topo.last_answer {
+    let answer_md = topo.full_answer.as_deref().or(topo.last_answer.as_deref());
+    if let Some(ans) = answer_md {
         let p = palette(cx);
         container = container
             .child(section_heading(ch.monitor_answer_summary(), cx))
@@ -108,9 +100,10 @@ pub fn render_steps_view(
                     .bg(to_hsla(p.sunken))
                     .border_1()
                     .border_color(to_hsla(p.line.composite_over(p.sunken)))
-                    .text_xs()
-                    .text_color(to_hsla(p.ink_2))
-                    .child(SharedString::from(ans.clone())),
+                    .child(markdown_view(
+                        SharedString::from(format!("wf-steps-ans-{}", topo.run.run_id)),
+                        ans.to_owned(),
+                    )),
             );
     }
 
@@ -118,9 +111,8 @@ pub fn render_steps_view(
 }
 
 fn render_direct_answer_summary(
-    view: &ChatView,
     topo: &AgentRunTopology,
-    cx: &mut Context<ChatView>,
+    cx: &mut Context<WorkflowMonitorModal>,
 ) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
@@ -138,18 +130,17 @@ fn render_direct_answer_summary(
     };
     let total_tok =
         topo.run.usage.input_tokens.unwrap_or(0) + topo.run.usage.output_tokens.unwrap_or(0);
-    let model_lbl = view.format_raw_model_label(&topo.run.model_label);
     let sid_open = topo.run.session_id.clone();
     let rid_logs = topo.run.run_id.clone();
-
     let answer_text = topo
-        .last_answer
+        .full_answer
         .clone()
+        .or_else(|| topo.last_answer.clone())
         .unwrap_or_else(|| ch.monitor_no_waves_yet().to_owned());
 
     card(cx)
         .w_full()
-        .p(px(14.0))
+        .p(px(16.0))
         .child(
             v_col()
                 .w_full()
@@ -186,7 +177,9 @@ fn render_direct_answer_summary(
                         .flex_wrap()
                         .text_xs()
                         .text_color(to_hsla(p.muted))
-                        .child(SharedString::from(model_lbl))
+                        .child(SharedString::from(format_model_short(
+                            &topo.run.model_label,
+                        )))
                         .children((total_tok > 0).then(|| {
                             SharedString::from(format!("{} tok", format_tokens_compact(total_tok)))
                         }))
@@ -198,6 +191,22 @@ fn render_direct_answer_summary(
                             ))
                         })),
                 )
+                .children(topo.user_prompt.as_ref().map(|pr| {
+                    v_col()
+                        .w_full()
+                        .gap(px(4.0))
+                        .child(section_heading(ch.graph_inspector_prompt(), cx))
+                        .child(
+                            div()
+                                .w_full()
+                                .p(px(10.0))
+                                .rounded(px(7.0))
+                                .bg(to_hsla(p.pane))
+                                .text_xs()
+                                .text_color(to_hsla(p.ink_2))
+                                .child(SharedString::from(pr.clone())),
+                        )
+                }))
                 .child(
                     v_col()
                         .w_full()
@@ -206,12 +215,13 @@ fn render_direct_answer_summary(
                         .child(
                             div()
                                 .w_full()
-                                .p(px(11.0))
+                                .p(px(12.0))
                                 .rounded(px(7.0))
                                 .bg(to_hsla(p.sunken))
-                                .text_xs()
-                                .text_color(to_hsla(p.ink_2))
-                                .child(SharedString::from(answer_text)),
+                                .child(markdown_view(
+                                    SharedString::from(format!("wf-direct-{}", topo.run.run_id)),
+                                    answer_text,
+                                )),
                         ),
                 )
                 .child(
@@ -220,19 +230,17 @@ fn render_direct_answer_summary(
                         .justify_end()
                         .gap(px(6.0))
                         .child(
-                            btn_ghost("steps-direct-logs", ch.monitor_view_logs())
+                            btn_ghost("wf-direct-logs", ch.monitor_view_logs())
                                 .icon(icon_xs(UiIcon::Usage))
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.pending_handoff
-                                        .set(Some(ChatHandoff::OpenUsageRun(rid_logs.clone())));
-                                    cx.notify();
+                                    this.open_usage_and_close(rid_logs.clone(), cx);
                                 })),
                         )
                         .child(
-                            btn_primary("steps-direct-open", ch.monitor_open_chat())
+                            btn_primary("wf-direct-open", ch.monitor_open_chat())
                                 .icon(icon_xs(UiIcon::ExternalLink))
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.open_session_from_monitor(sid_open.clone(), cx);
+                                    this.open_chat_and_close(sid_open.clone(), cx);
                                 })),
                         ),
                 ),
@@ -241,12 +249,12 @@ fn render_direct_answer_summary(
 }
 
 fn render_round_group(
-    view: &ChatView,
+    view: &WorkflowMonitorModal,
     round_num: usize,
     key: String,
     collapsed: bool,
     steps: &[FlatStep<'_>],
-    cx: &mut Context<ChatView>,
+    cx: &mut Context<WorkflowMonitorModal>,
 ) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
@@ -261,7 +269,7 @@ fn render_round_group(
         .overflow_hidden()
         .child(
             h_row()
-                .id(SharedString::from(format!("steps-rnd-{key}")))
+                .id(SharedString::from(format!("wf-rnd-{key}")))
                 .w_full()
                 .justify_between()
                 .px(px(10.0))
@@ -269,7 +277,7 @@ fn render_round_group(
                 .cursor_pointer()
                 .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.pane))))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_topology_node(k_click.clone(), cx);
+                    this.toggle_round(k_click.clone(), cx);
                 }))
                 .child(
                     div()
@@ -303,10 +311,10 @@ fn render_round_group(
 }
 
 fn render_flat_step(
-    view: &ChatView,
+    view: &WorkflowMonitorModal,
     seq: usize,
     item: &FlatStep<'_>,
-    cx: &mut Context<ChatView>,
+    cx: &mut Context<WorkflowMonitorModal>,
 ) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
@@ -314,82 +322,111 @@ fn render_flat_step(
     match item {
         FlatStep::Subagent(sub) => {
             let node_id = format!("sub:{}", sub.run.run_id);
-            let selected = view.selected_graph_node_id.as_deref() == Some(node_id.as_str());
+            let selected = view.selected_node_id.as_deref() == Some(node_id.as_str());
             let (shape, tone, status_lbl) =
                 run_status_meta(sub.run.status, None, sub.run.status_detail.as_deref(), cx);
             let stop_id = sub.run.run_id.clone();
-            let is_active = sub.run.status.is_active();
-            let nid = node_id.clone();
+            let nid_click = node_id.clone();
+            let bg = if selected {
+                to_hsla(p.accent_soft)
+            } else {
+                to_hsla(p.surface)
+            };
+            let border = if selected {
+                to_hsla(p.accent)
+            } else {
+                to_hsla(p.line.composite_over(p.surface))
+            };
+            let hover_border = to_hsla(p.accent_line.composite_over(p.surface));
 
             h_row()
                 .id(SharedString::from(format!(
-                    "step-sub-{seq}-{}",
+                    "wf-step-sub-{}",
                     sub.run.run_id
                 )))
                 .w_full()
                 .justify_between()
-                .gap(px(8.0))
-                .px(px(10.0))
+                .gap(px(10.0))
+                .px(px(11.0))
                 .py(px(8.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(if selected { p.accent_soft } else { p.surface }))
+                .rounded(px(8.0))
+                .bg(bg)
                 .border_1()
-                .border_color(to_hsla(if selected {
-                    p.accent
-                } else {
-                    p.line.composite_over(p.surface)
-                }))
+                .border_color(border)
                 .cursor_pointer()
+                .hover(move |s| {
+                    if selected {
+                        s
+                    } else {
+                        s.border_color(hover_border)
+                    }
+                })
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.select_graph_node(Some(nid.clone()), cx);
+                    this.select_node(Some(nid_click.clone()), cx);
                 }))
                 .child(
                     h_row()
                         .flex_1()
                         .min_w_0()
-                        .gap(px(7.0))
+                        .gap(px(8.0))
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .w(px(20.0))
+                                .text_xs()
                                 .text_color(to_hsla(p.faint))
                                 .child(format!("{seq}.")),
                         )
                         .child(status_indicator(shape, cx))
                         .child(
-                            div()
+                            v_col()
                                 .flex_1()
                                 .min_w_0()
-                                .text_xs()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .text_color(to_hsla(p.ink))
-                                .truncate()
-                                .child(SharedString::from(sub.description.clone())),
-                        )
-                        .child(badge(
-                            subagent_kind_label(&sub.subagent_kind, cx),
-                            Tone::Neutral,
-                            cx,
-                        ))
-                        .children(
-                            sub.run
-                                .role
-                                .map(|r| badge(subagent_role_label(r, cx), Tone::Accent, cx)),
+                                .gap(px(2.0))
+                                .child(
+                                    h_row()
+                                        .gap(px(5.0))
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .text_xs()
+                                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                                .text_color(to_hsla(p.ink))
+                                                .truncate()
+                                                .child(SharedString::from(sub.description.clone())),
+                                        )
+                                        .child(badge(
+                                            subagent_kind_label(&sub.subagent_kind, cx),
+                                            Tone::Neutral,
+                                            cx,
+                                        ))
+                                        .children(sub.run.role.map(|r| {
+                                            badge(subagent_role_label(r, cx), Tone::Accent, cx)
+                                        }))
+                                        .child(badge(status_lbl, tone, cx)),
+                                )
+                                .children(sub.last_answer.as_ref().map(|a| {
+                                    div()
+                                        .text_xs()
+                                        .text_color(to_hsla(p.muted))
+                                        .truncate()
+                                        .child(SharedString::from(a.clone()))
+                                })),
                         ),
                 )
                 .child(
                     h_row()
                         .flex_shrink_0()
                         .gap(px(6.0))
-                        .child(badge(status_lbl, tone, cx))
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_xs()
                                 .text_color(to_hsla(p.faint))
                                 .child(SharedString::from(format_elapsed_short(sub.awake_ms))),
                         )
-                        .children(is_active.then(|| {
+                        .children(sub.run.status.is_active().then(|| {
                             btn_danger(
-                                SharedString::from(format!("step-stop-{}", sub.run.run_id)),
+                                SharedString::from(format!("wf-st-stop-{}", sub.run.run_id)),
                                 ch.monitor_stop_subagent(),
                             )
                             .on_click(cx.listener(
@@ -402,42 +439,54 @@ fn render_flat_step(
                 )
                 .into_any_element()
         }
-        FlatStep::Tool(tool) => {
-            let node_id = format!("tool:{}", tool.call_id);
-            let selected = view.selected_graph_node_id.as_deref() == Some(node_id.as_str());
-            let (shape, _) = tool_status_meta(&tool.status);
-            let nid = node_id.clone();
+        FlatStep::Tool(step) => {
+            let node_id = format!("tool:{}", step.call_id);
+            let selected = view.selected_node_id.as_deref() == Some(node_id.as_str());
+            let (shape, _) = tool_status_meta(&step.status);
+            let nid_click = node_id.clone();
+            let bg = if selected {
+                to_hsla(p.accent_soft)
+            } else {
+                to_hsla(p.surface)
+            };
+            let border = if selected {
+                to_hsla(p.accent)
+            } else {
+                to_hsla(p.line.composite_over(p.surface))
+            };
+            let hover_border = to_hsla(p.accent_line.composite_over(p.surface));
 
             h_row()
-                .id(SharedString::from(format!(
-                    "step-tool-{seq}-{}",
-                    tool.call_id
-                )))
+                .id(SharedString::from(format!("wf-step-t-{}", step.call_id)))
                 .w_full()
                 .justify_between()
-                .gap(px(8.0))
-                .px(px(10.0))
+                .gap(px(10.0))
+                .px(px(11.0))
                 .py(px(7.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(if selected { p.accent_soft } else { p.surface }))
+                .rounded(px(8.0))
+                .bg(bg)
                 .border_1()
-                .border_color(to_hsla(if selected {
-                    p.accent
-                } else {
-                    p.line.composite_over(p.surface)
-                }))
+                .border_color(border)
                 .cursor_pointer()
+                .hover(move |s| {
+                    if selected {
+                        s
+                    } else {
+                        s.border_color(hover_border)
+                    }
+                })
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.select_graph_node(Some(nid.clone()), cx);
+                    this.select_node(Some(nid_click.clone()), cx);
                 }))
                 .child(
                     h_row()
                         .flex_1()
                         .min_w_0()
-                        .gap(px(7.0))
+                        .gap(px(8.0))
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .w(px(20.0))
+                                .text_xs()
                                 .text_color(to_hsla(p.faint))
                                 .child(format!("{seq}.")),
                         )
@@ -447,27 +496,34 @@ fn render_flat_step(
                                 .text_xs()
                                 .font_weight(gpui_kit::FontWeight::MEDIUM)
                                 .text_color(to_hsla(p.ink))
-                                .child(SharedString::from(tool.name.clone())),
+                                .child(SharedString::from(step.name.clone())),
                         )
-                        .children((!tool.summary.is_empty()).then(|| {
+                        .children((!step.summary.is_empty()).then(|| {
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .text_size(px(11.0))
+                                .text_xs()
                                 .text_color(to_hsla(p.muted))
                                 .truncate()
-                                .child(SharedString::from(tool.summary.clone()))
+                                .child(SharedString::from(step.summary.clone()))
                         }))
                         .children(
-                            tool.exit_code
+                            step.exit_code
                                 .filter(|c| *c != 0)
                                 .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
-                        ),
+                        )
+                        .children((step.file_change_id.is_some()).then(|| {
+                            badge(
+                                format!("+{} -{}", step.file_added, step.file_removed),
+                                Tone::Success,
+                                cx,
+                            )
+                        })),
                 )
-                .children(tool.duration_ms.map(|ms| {
+                .children(step.duration_ms.map(|ms| {
                     div()
                         .flex_shrink_0()
-                        .text_size(px(11.0))
+                        .text_xs()
                         .text_color(to_hsla(p.faint))
                         .child(SharedString::from(format_elapsed_short(ms)))
                 }))

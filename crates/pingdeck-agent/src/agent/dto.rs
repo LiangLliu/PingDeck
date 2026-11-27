@@ -206,7 +206,8 @@ pub struct AgentBoard {
 }
 
 /// One tool execution step inside a parent run or child sub-agent run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TopologyToolStep {
     pub call_id: String,
     pub name: String,
@@ -220,6 +221,42 @@ pub struct TopologyToolStep {
     pub duration_ms: Option<u64>,
     pub exit_code: Option<i32>,
     pub parallel_safe: bool,
+    /// Bounded formatted JSON arguments or shell command preview for the Node Inspector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args_preview: Option<String>,
+    /// Bounded tool result text preview (tail-biased for long exec output).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_preview: Option<String>,
+    /// Risk assigned by the permission evaluator (`low`, `medium`, `high`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk: Option<String>,
+    /// Recorded permission decision (`allow`, `deny`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
+    /// Who decided (`user`, `rule:...`, `mode`, `timeout`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_by: Option<String>,
+    /// Sandbox mode label recorded for this call when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<String>,
+    /// Total output bytes produced by the tool call.
+    #[serde(default)]
+    pub output_bytes: u64,
+    /// Whether the stored/returned output was truncated or spilled to disk.
+    #[serde(default)]
+    pub truncated: bool,
+    /// Linked file-change journal entry id when this call edited or created a workspace file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_change_id: Option<String>,
+    /// Linked workspace-relative file path when this call edited or created a file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+    /// Lines added by this file edit when applicable.
+    #[serde(default)]
+    pub file_added: u32,
+    /// Lines removed by this file edit when applicable.
+    #[serde(default)]
+    pub file_removed: u32,
 }
 
 /// One sub-agent run spawned by a parent `task` tool call.
@@ -240,6 +277,12 @@ pub struct TopologySubagent {
     pub last_answer: Option<String>,
     /// Tool steps executed inside this child sub-agent.
     pub tool_calls: Vec<TopologyToolStep>,
+    /// Full delegated task prompt/brief passed to this sub-agent when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brief: Option<String>,
+    /// Full Markdown report returned by this sub-agent when completed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_report: Option<String>,
 }
 
 /// One wave in a run's execution topology.
@@ -275,7 +318,7 @@ pub enum ExecutionWave {
         wave_index: u32,
         started_ms: Option<i64>,
         ended_ms: Option<i64>,
-        tool: TopologyToolStep,
+        tool: Box<TopologyToolStep>,
     },
 }
 
@@ -304,6 +347,38 @@ pub struct AgentRunTopology {
     /// live sub-agent runtime bindings when present.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub task_graph: Vec<super::model::AgentTodoItem>,
+    /// User prompt text that triggered this run when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_prompt: Option<String>,
+    /// Bounded reasoning/thinking preview captured during this run when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_preview: Option<String>,
+    /// Bounded full Markdown final answer produced by this run when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_answer: Option<String>,
+}
+
+/// Compact summary row for session-scoped or workspace-wide Run History pickers and feeds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionRunHistoryItem {
+    pub run: AgentRunSummary,
+    /// Parent chat session title.
+    pub title: String,
+    /// First line of the user prompt that triggered this run when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_preview: Option<String>,
+    pub awake_ms: u64,
+    /// Total tool calls recorded on this top-level run.
+    pub tool_count: u32,
+    /// Total sub-agent runs spawned by this top-level run.
+    pub subagent_count: u32,
+    /// Whether this run dispatched parallel sub-agents or parallel tool waves.
+    pub has_parallel: bool,
+    /// Whether the owning session carries a structured Task Graph (`任务图`).
+    pub has_task_graph: bool,
+    pub pending_changes: BoardChanges,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_currency: Option<String>,
 }
 
 /// How the payload is used; it fixes the byte budget.

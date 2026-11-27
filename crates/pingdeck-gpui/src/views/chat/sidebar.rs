@@ -16,45 +16,38 @@ use crate::ui::{
     menu_item, palette, pane_header, popover, search_input, status_indicator, to_hsla, v_col,
 };
 
+use crate::views::runs::status::format_tokens_compact;
+
 use super::ChatView;
-use super::run_status::format_tokens_compact;
-use super::sidebar_board::{group_label, render_monitor_entry, render_trash_list};
+use super::sidebar_board::{group_label, render_trash_list};
 use super::types::{ChatModal, ChatSidebarMode};
 
 pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
-    let monitor_open = view.sidebar_mode == ChatSidebarMode::Board;
     let in_trash = view.sidebar_mode == ChatSidebarMode::Trash;
 
-    let monitor_entry = render_monitor_entry(view, monitor_open, cx);
-
     let below = if in_trash {
-        v_col().w_full().gap(px(6.0)).child(monitor_entry).child(
-            h_row()
-                .w_full()
-                .justify_between()
-                .child(
-                    div()
-                        .text_xs()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink_2))
-                        .child(ch.sidebar_trash()),
-                )
-                .child(
-                    btn_ghost("chat-back-chats", ch.sidebar_back_to_chats())
-                        .icon(icon_xs(UiIcon::ArrowLeft))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_sidebar_mode(ChatSidebarMode::Time, cx);
-                        })),
-                ),
-        )
-    } else {
-        v_col()
+        h_row()
             .w_full()
-            .gap(px(6.0))
-            .child(monitor_entry)
-            .child(search_input(&view.search_input, cx))
+            .justify_between()
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                    .text_color(to_hsla(p.ink_2))
+                    .child(ch.sidebar_trash()),
+            )
+            .child(
+                btn_ghost("chat-back-chats", ch.sidebar_back_to_chats())
+                    .icon(icon_xs(UiIcon::ArrowLeft))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_sidebar_mode(ChatSidebarMode::Time, cx);
+                    })),
+            )
+            .into_any_element()
+    } else {
+        search_input(&view.search_input, cx).into_any_element()
     };
 
     let header = pane_header(
@@ -92,7 +85,7 @@ pub fn render_sidebar(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoE
                 )
                 .into_any_element(),
         ),
-        Some(below.into_any_element()),
+        Some(below),
         cx,
     );
 
@@ -252,7 +245,7 @@ fn render_session_row(
 ) -> impl IntoElement {
     let p = palette(cx);
     let id = s.id.clone();
-    let sel = view.sidebar_mode != ChatSidebarMode::Board && view.thread.session_id == s.id;
+    let sel = view.thread.session_id == s.id;
     let title = if s.title.trim().is_empty() {
         crate::ui::tr(cx).chat().header_new_chat().to_owned()
     } else {
@@ -387,7 +380,7 @@ fn render_session_row(
         SharedString::from(format!("chat-s-{id}")),
         sel,
         cx,
-        cx.listener(move |this, _, _, cx| this.open_session_from_monitor(id.clone(), cx)),
+        cx.listener(move |this, _, _, cx| this.open_session(id.clone(), cx)),
     )
     .items_center()
     .py(px(6.0))

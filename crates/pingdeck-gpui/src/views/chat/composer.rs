@@ -4,14 +4,15 @@
 use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, borderless_multiline, btn_danger, btn_ghost, btn_icon, h_row,
-    icon_xs, palette, pill_btn, round_icon_btn, status_indicator, to_hsla, v_col,
+    Anchor, Disableable as _, StatusShape, Tone, UiIcon, badge, borderless_multiline, btn_danger,
+    btn_ghost, btn_icon, btn_secondary, h_row, icon_xs, palette, pill_btn, popover,
+    popover_trigger_btn, progress_bar, round_icon_btn, section_heading, status_indicator, to_hsla,
+    v_col,
 };
 
 use super::ChatView;
 use super::composer_popovers::{
-    render_context_meter, render_effort_popover, render_model_popover, render_perm_popover,
-    render_skills_popover,
+    render_effort_popover, render_model_popover, render_perm_popover, render_skills_popover,
 };
 use super::gates::{render_approval_gate, render_human_gate};
 use super::gates_extra::{render_cost_pause, render_queued_bar};
@@ -267,4 +268,150 @@ pub fn render_dock(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElem
         );
 
     dock.child(composer_card)
+}
+
+fn render_context_meter(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
+    let p = palette(cx);
+    let used = view.thread.context_used_tokens;
+    let limit = view.thread.context_limit_tokens;
+    let cost_usd = view.thread.cost_micro_usd as f64 / 1_000_000.0;
+    let currency = view
+        .thread
+        .cost_currency
+        .clone()
+        .unwrap_or_else(|| "USD".to_owned());
+    let can_compact = !view.thread.session_id.is_empty() && !view.is_run_active();
+    let sess_usage = view.session.as_ref().map(|s| {
+        (
+            s.total_usage.input_tokens.unwrap_or(0),
+            s.total_usage.output_tokens.unwrap_or(0),
+            s.total_usage.cached_input_tokens.unwrap_or(0),
+        )
+    });
+    let notices = view.thread.notices.clone();
+    let chat_ent = cx.entity().clone();
+
+    let trigger_body = if let Some(lim) = limit.filter(|&l| l > 0) {
+        let pct = ((used as f64 / lim as f64) * 100.0).min(100.0) as f32;
+        h_row()
+            .gap(px(5.0))
+            .child(div().w(px(44.0)).child(progress_bar("ctx-mini-bar", pct)))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(SharedString::from(format!("{pct:.0}%"))),
+            )
+    } else {
+        let label = if used >= 1000 {
+            format!("{:.1}k", used as f64 / 1000.0)
+        } else {
+            format!("{used} tok")
+        };
+        h_row().child(
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.faint))
+                .child(SharedString::from(label)),
+        )
+    };
+
+    popover("chat-context-popover")
+        .anchor(Anchor::BottomRight)
+        .trigger(popover_trigger_btn("chat-context-trigger", trigger_body))
+        .content(move |_, _, pop_cx| {
+            let pp = palette(pop_cx);
+            let pch = crate::ui::tr(pop_cx).chat();
+            let ent = chat_ent.clone();
+            let pop_h = pop_cx.entity().clone();
+            let mut box_el = v_col()
+                .w(px(270.0))
+                .gap(px(8.0))
+                .child(section_heading(pch.inspector_tabs_context_window(), pop_cx))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(pp.ink))
+                        .child(SharedString::from(match limit {
+                            Some(l) if l > 0 => format!("{used} / {l} tokens"),
+                            _ => format!("{used} tokens"),
+                        })),
+                )
+                .children(limit.filter(|&l| l > 0).map(|l| {
+                    let pct = ((used as f64 / l as f64) * 100.0).min(100.0) as f32;
+                    progress_bar("ctx-pop-bar", pct)
+                }))
+                .child(
+                    btn_secondary("chat-ctx-compact", pch.inspector_tabs_compact_context_now())
+                        .disabled(!can_compact)
+                        .on_click(move |_, w, cx| {
+                            ent.update(cx, |this, cx| this.compact_context(cx));
+                            pop_h.update(cx, |s, cx| s.dismiss(w, cx));
+                        }),
+                );
+
+            if let Some((in_tok, out_tok, cached)) = sess_usage {
+                box_el = box_el.child(
+                    v_col()
+                        .gap(px(4.0))
+                        .pt(px(6.0))
+                        .border_t_1()
+                        .border_color(to_hsla(pp.line.composite_over(pp.overlay)))
+                        .child(section_heading(pch.inspector_tabs_session_totals(), pop_cx))
+                        .child(ctx_metric_row(
+                            pch.inspector_tabs_input_tokens(),
+                            super::metrics::format_tokens_int(in_tok),
+                            pop_cx,
+                        ))
+                        .child(ctx_metric_row(
+                            pch.inspector_tabs_output_tokens(),
+                            super::metrics::format_tokens_int(out_tok),
+                            pop_cx,
+                        ))
+                        .child(ctx_metric_row(
+                            pch.inspector_tabs_cached_input(),
+                            super::metrics::format_tokens_int(cached),
+                            pop_cx,
+                        ))
+                        .child(ctx_metric_row(
+                            pch.inspector_tabs_estimated_cost(),
+                            format!("{currency} {cost_usd:.4}"),
+                            pop_cx,
+                        )),
+                );
+            }
+            if !notices.is_empty() {
+                let mut n_col = v_col()
+                    .gap(px(3.0))
+                    .pt(px(6.0))
+                    .border_t_1()
+                    .border_color(to_hsla(pp.line.composite_over(pp.overlay)))
+                    .child(section_heading(pch.inspector_tabs_notices(), pop_cx));
+                for n in &notices {
+                    n_col = n_col.child(
+                        div()
+                            .text_xs()
+                            .text_color(to_hsla(pp.muted))
+                            .child(SharedString::from(n.clone())),
+                    );
+                }
+                box_el = box_el.child(n_col);
+            }
+            box_el
+        })
+}
+
+fn ctx_metric_row(label: &'static str, value: String, cx: &gpui_kit::App) -> gpui_kit::Div {
+    let p = palette(cx);
+    h_row()
+        .justify_between()
+        .text_xs()
+        .child(div().text_color(to_hsla(p.muted)).child(label))
+        .child(
+            div()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .text_color(to_hsla(p.ink))
+                .child(SharedString::from(value)),
+        )
 }

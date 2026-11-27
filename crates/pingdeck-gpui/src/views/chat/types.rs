@@ -1,60 +1,18 @@
-//! Shared chat UI value types: inspector tab enum, sidebar mode, modals, handoffs,
-//! pending attachments, configured model options, and cached provider metadata.
+//! Shared chat UI value types: sidebar mode, modals, handoffs, pending attachments,
+//! configured model options, and cached provider metadata.
 
 use pingdeck_desktop::core::agent::model::AgentTarget;
 use pingdeck_desktop::core::llm::wire::{Protocol, ReasoningStyle};
 use pingdeck_desktop::state::{LiveApproval, SettingsSection};
 
-/// Sidebar / center canvas mode in Chat (`Chats`, full-canvas `Run Monitor`, or `Trash`).
+use crate::views::runs::WorkflowTab;
+
+/// Sidebar mode in Chat (`Chats` list or `Trash`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChatSidebarMode {
     #[default]
     Time,
-    Board,
     Trash,
-}
-
-/// Filter pill active inside the full-canvas Run Monitor feed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum MonitorFilter {
-    #[default]
-    All,
-    Waiting,
-    Running,
-    Failed,
-    Done,
-}
-
-/// Active tab inside the right-hand Chat Details inspector.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DetailsTab {
-    #[default]
-    Progress,
-    Changes,
-    Context,
-    Options,
-}
-
-impl DetailsTab {
-    #[must_use]
-    pub const fn index(self) -> usize {
-        match self {
-            Self::Progress => 0,
-            Self::Changes => 1,
-            Self::Context => 2,
-            Self::Options => 3,
-        }
-    }
-
-    #[must_use]
-    pub const fn from_index(idx: usize) -> Self {
-        match idx {
-            1 => Self::Changes,
-            2 => Self::Context,
-            3 => Self::Options,
-            _ => Self::Progress,
-        }
-    }
 }
 
 /// Cross-module navigation handoff requested from Chat.
@@ -63,6 +21,11 @@ pub enum ChatHandoff {
     OpenSettings(SettingsSection),
     OpenProviders,
     OpenUsageRun(String),
+    OpenWorkflowModal {
+        session_id: String,
+        run_id: Option<String>,
+        initial_tab: Option<WorkflowTab>,
+    },
 }
 
 /// Staged file attachment waiting to be sent with the next prompt.
@@ -86,6 +49,7 @@ pub enum ChatModal {
     RenameSession {
         session_id: String,
     },
+    ChatInstructions,
     ScopeApproval {
         appr: Box<LiveApproval>,
     },
@@ -103,9 +67,6 @@ pub enum ChatModal {
     },
     EditMessage {
         message_id: String,
-    },
-    StopAllConfirm {
-        active_runs: Vec<(String, String)>,
     },
 }
 

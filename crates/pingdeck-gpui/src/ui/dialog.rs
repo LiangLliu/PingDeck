@@ -150,9 +150,104 @@ pub fn modal_dialog(
     .into_any_element()
 }
 
+/// Computes responsive viewport-percentage modal dimensions for large full-canvas modals
+/// (e.g. the 90% Workflow Monitor overlay).
+#[must_use]
+pub fn viewport_modal_bounds(
+    width_ratio: f32,
+    height_ratio: f32,
+    vp_w: f32,
+    vp_h: f32,
+) -> (f32, f32) {
+    let max_w = (vp_w - 32.0).max(360.0);
+    let max_h = (vp_h - 32.0).max(320.0);
+    let w = (vp_w * width_ratio.clamp(0.4, 0.96)).clamp(840.0_f32.min(max_w), max_w);
+    let h = (vp_h * height_ratio.clamp(0.4, 0.96)).clamp(560.0_f32.min(max_h), max_h);
+    (w, h)
+}
+
+/// Renders a spacious viewport-proportional modal overlay anchored over the entire application
+/// window (used for the 90% Workflow Monitor modal), with custom header/body/footer slots.
+///
+/// Clicking the outer scrim backdrop invokes `on_close`.
+#[allow(clippy::too_many_arguments)]
+#[must_use]
+pub fn viewport_modal(
+    id: impl Into<SharedString>,
+    width_ratio: f32,
+    height_ratio: f32,
+    header: AnyElement,
+    body: AnyElement,
+    footer: AnyElement,
+    window: &Window,
+    cx: &App,
+    on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + Clone + 'static,
+) -> AnyElement {
+    let p = palette(cx);
+    let vp = window.viewport_size();
+    let id_s: SharedString = id.into();
+    let (card_w, card_h) = viewport_modal_bounds(
+        width_ratio,
+        height_ratio,
+        f32::from(vp.width),
+        f32::from(vp.height),
+    );
+    let backdrop_id: ElementId = SharedString::from(format!("{id_s}-backdrop")).into();
+    let card_id: ElementId = SharedString::from(format!("{id_s}-card")).into();
+
+    let card_el = div()
+        .id(card_id)
+        .w(px(card_w))
+        .h(px(card_h))
+        .rounded(px(12.0))
+        .shadow_xl()
+        .on_click(|_, _, cx| cx.stop_propagation())
+        .child(
+            v_col()
+                .size_full()
+                .rounded(px(12.0))
+                .overflow_hidden()
+                .bg(to_hsla(p.surface))
+                .border_1()
+                .border_color(to_hsla(p.line_strong.composite_over(p.surface)))
+                .child(header)
+                .child(v_col().w_full().flex_1().min_h_0().child(body))
+                .child(footer),
+        );
+
+    deferred(
+        anchored().position(point(px(0.0), px(0.0))).child(
+            div()
+                .id(backdrop_id)
+                .occlude()
+                .w(vp.width)
+                .h(vp.height)
+                .bg(to_hsla(p.scrim))
+                .flex()
+                .items_center()
+                .justify_center()
+                .p(px(16.0))
+                .on_click(on_close)
+                .child(card_el),
+        ),
+    )
+    .with_priority(10)
+    .into_any_element()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{responsive_modal_bounds, responsive_sheet_width};
+    use super::{responsive_modal_bounds, responsive_sheet_width, viewport_modal_bounds};
+
+    #[test]
+    fn viewport_modal_uses_ninety_percent_and_clamps_safely() {
+        let (w, h) = viewport_modal_bounds(0.90, 0.90, 1280.0, 800.0);
+        assert!((w - 1152.0).abs() < 1.0);
+        assert!((h - 720.0).abs() < 1.0);
+        let (sw, sh) = viewport_modal_bounds(0.90, 0.90, 600.0, 480.0);
+        assert!(sw <= 568.0);
+        assert!(sh <= 448.0);
+    }
 
     #[test]
     fn modal_bounds_scale_proportionally_in_fullscreen_and_clamp_safely() {

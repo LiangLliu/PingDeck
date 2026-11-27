@@ -11,6 +11,7 @@ pub mod history;
 pub mod mock;
 pub mod providers;
 pub mod requests;
+pub mod runs;
 pub mod settings;
 pub mod shell;
 pub mod usage;

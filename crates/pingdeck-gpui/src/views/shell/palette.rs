@@ -5,14 +5,19 @@ use std::collections::BTreeMap;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
+    App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
     KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     px,
+};
+use pingdeck_desktop::core::app::{
+    agent_session_list_impl, flow_list_impl, llm_provider_list_impl, mock_server_list_impl,
+    mock_server_status_list_impl, request_list_impl,
 };
 use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::i18n::tr as tr_lang;
 use pingdeck_desktop::state::{PaletteAction, PaletteCategory, PaletteDynamicItems, PaletteEngine};
 
+use crate::bridge::runtime;
 use crate::ui::{
     InputEvent, InputState, ScrollableElement as _, Tone, UiIcon, active_language, badge, card,
     h_row, icon, kbd_chip, list_row, method_badge, palette, section_heading, text_input, to_hsla,
@@ -273,5 +278,78 @@ impl Render for CommandPaletteView {
                             .child(sh.palette_footer_hint()),
                     ),
             )
+    }
+}
+
+impl super::AppShell {
+    /// Snapshots dynamic workspace & shared-AI entities for the `⌘K` Command Palette.
+    pub fn collect_palette_dynamic_items(&self, cx: &App) -> PaletteDynamicItems {
+        let rt = runtime(cx);
+        let state = rt.state();
+        let mut out = PaletteDynamicItems::default();
+
+        if let Some(ws_id) = self.state.active_workspace_id.as_deref() {
+            if let Ok(reqs) = request_list_impl(state, ws_id.to_owned()) {
+                out.requests = reqs
+                    .into_iter()
+                    .take(40)
+                    .map(|r| {
+                        (
+                            r.id.as_str().to_owned(),
+                            format!("{:?}", r.method).to_uppercase(),
+                            if r.name.trim().is_empty() {
+                                r.url
+                            } else {
+                                r.name
+                            },
+                        )
+                    })
+                    .collect();
+            }
+            if let Ok(servers) = mock_server_list_impl(state, ws_id.to_owned()) {
+                let statuses =
+                    mock_server_status_list_impl(state, ws_id.to_owned()).unwrap_or_default();
+                out.mocks = servers
+                    .into_iter()
+                    .take(20)
+                    .map(|s| {
+                        let running = statuses.iter().any(|st| st.server_id == s.id && st.running);
+                        (s.id, s.name, running)
+                    })
+                    .collect();
+            }
+            if let Ok(flows) = flow_list_impl(state, ws_id.to_owned()) {
+                out.flows = flows
+                    .into_iter()
+                    .take(20)
+                    .map(|f| (f.flow.id, f.flow.name))
+                    .collect();
+            }
+        }
+
+        if let Ok(page) = agent_session_list_impl(state, None, Some(20), None) {
+            out.chats = page
+                .sessions
+                .into_iter()
+                .map(|c| {
+                    (
+                        c.id,
+                        if c.title.trim().is_empty() {
+                            "Untitled Chat".to_owned()
+                        } else {
+                            c.title
+                        },
+                    )
+                })
+                .collect();
+        }
+        if let Ok(providers) = llm_provider_list_impl(state) {
+            out.providers = providers
+                .into_iter()
+                .take(20)
+                .map(|p| (p.id, p.name))
+                .collect();
+        }
+        out
     }
 }

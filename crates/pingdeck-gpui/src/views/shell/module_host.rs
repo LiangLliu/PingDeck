@@ -15,10 +15,10 @@ use pingdeck_desktop::theme::PaletteId;
 use crate::views::{
     chat::ChatView, environments::EnvironmentsView, flows::FlowsView, gateway::GatewayView,
     history::HistoryView, mock::MockView, providers::ProvidersView, requests::RequestsView,
-    settings::SettingsView, usage::UsageView,
+    runs::RunsView, settings::SettingsView, usage::UsageView,
 };
 
-/// Owns lazily-mounted GPUI entities for all 10 navigation destinations.
+/// Owns lazily-mounted GPUI entities for all 11 navigation destinations.
 #[derive(Default)]
 pub struct ModuleHost {
     pub(super) requests: Option<Entity<RequestsView>>,
@@ -27,6 +27,7 @@ pub struct ModuleHost {
     pub(super) history: Option<Entity<HistoryView>>,
     pub(super) environments: Option<Entity<EnvironmentsView>>,
     pub(super) chat: Option<Entity<ChatView>>,
+    pub(super) runs: Option<Entity<RunsView>>,
     pub(super) providers: Option<Entity<ProvidersView>>,
     pub(super) gateway: Option<Entity<GatewayView>>,
     pub(super) usage: Option<Entity<UsageView>>,
@@ -152,6 +153,45 @@ impl ModuleHost {
         )
     }
 
+    pub(super) fn ensure_runs<V: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<RunsView> {
+        ensure_watched(
+            &mut self.runs,
+            &mut self._subscriptions,
+            |cx| RunsView::new(window, cx),
+            |v| cell_has(&v.pending_handoff),
+            cx,
+        )
+    }
+
+    /// Returns `(session_id, active_or_latest_run_id)` for the currently open chat when available.
+    pub fn active_chat_workflow_target<V: 'static>(
+        &self,
+        cx: &Context<V>,
+    ) -> Option<(String, Option<String>)> {
+        let chat = self.chat.as_ref()?.read(cx);
+        if chat.thread.session_id.is_empty() {
+            return None;
+        }
+        let run_id = chat
+            .thread
+            .active_run
+            .as_ref()
+            .map(|r| r.run_id.clone())
+            .or_else(|| chat.latest_session_run_id.clone());
+        Some((chat.thread.session_id.clone(), run_id))
+    }
+
+    /// Refreshes the mounted global `RunsView` if present.
+    pub fn refresh_runs_if_mounted<V: 'static>(&self, cx: &mut Context<V>) {
+        if let Some(v) = &self.runs {
+            v.update(cx, |r, cx| r.reload_all(cx));
+        }
+    }
+
     pub(super) fn ensure_environments<V: 'static>(
         &mut self,
         workspace_id: Option<String>,
@@ -233,6 +273,11 @@ impl ModuleHost {
             NavModule::Chat => {
                 if let Some(v) = &self.chat {
                     v.update(cx, |c, cx| c.refresh_catalog(cx));
+                }
+            }
+            NavModule::Runs => {
+                if let Some(v) = &self.runs {
+                    v.update(cx, |r, cx| r.reload_all(cx));
                 }
             }
             NavModule::Requests => {
@@ -384,6 +429,10 @@ impl ModuleHost {
                 .chat
                 .as_ref()
                 .is_some_and(|v| v.update(cx, |c, cx| c.dismiss_modal_if_open(cx))),
+            NavModule::Runs => self
+                .runs
+                .as_ref()
+                .is_some_and(|v| v.update(cx, |r, cx| r.dismiss_modal_if_open(cx))),
             NavModule::Providers => self
                 .providers
                 .as_ref()
@@ -514,6 +563,7 @@ impl ModuleHost {
                 .ensure_environments(workspace_id, active_env_id, window, cx)
                 .into_any_element(),
             NavModule::Chat => self.ensure_chat(window, cx).into_any_element(),
+            NavModule::Runs => self.ensure_runs(window, cx).into_any_element(),
             NavModule::Providers => self.ensure_providers(window, cx).into_any_element(),
             NavModule::Gateway => self.ensure_gateway(window, cx).into_any_element(),
             NavModule::Usage => self.ensure_usage(window, cx).into_any_element(),

@@ -14,12 +14,12 @@ pub use palette::{
     PaletteAction, PaletteCategory, PaletteDynamicItems, PaletteEngine, PaletteItem,
 };
 pub use run_graph::{
-    ExecutionGraphLayout, GRAPH_GROUP_TAB_H, GRAPH_MEMBER_ROW_H, GRAPH_NODE_W, GraphBuildLabels,
-    GraphEdge, GraphEdgeTone, GraphNode, GraphNodeKind, GraphNodeMember, GraphNodePayload,
-    GraphNodeStatus, GraphStageHeader, PositionedNode, RunViewMode, SelectedGraphTarget,
-    build_graph_from_topology, build_plan_preview_graph, has_structured_task_graph,
-    is_graph_available, layout_dag_nodes, map_run_status, map_todo_status, map_tool_status,
-    select_default_view_mode,
+    ExecutionGraphLayout, GRAPH_GROUP_TAB_H, GRAPH_MAX_INLINE_MEMBERS, GRAPH_MEMBER_ROW_H,
+    GRAPH_NODE_W, GRAPH_OVERFLOW_ROW_H, GraphBuildLabels, GraphEdge, GraphEdgeTone, GraphNode,
+    GraphNodeKind, GraphNodeMember, GraphNodePayload, GraphNodeStatus, GraphStageHeader,
+    PositionedNode, RunViewMode, SelectedGraphTarget, build_graph_from_topology,
+    build_plan_preview_graph, has_structured_task_graph, is_graph_available, layout_dag_nodes,
+    map_run_status, map_todo_status, map_tool_status, select_default_view_mode,
 };
 pub use shell::{
     EnvironmentResourceTarget, NavGroup, NavModule, SettingsGroup, SettingsSection, ShellState,

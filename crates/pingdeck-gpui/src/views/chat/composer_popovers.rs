@@ -3,12 +3,13 @@
 
 use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::agent::model::ReasoningEffort;
+use pingdeck_desktop::core::app::agent_sandbox_test_impl;
 use pingdeck_desktop::core::model::settings::ToolApproval;
 use pingdeck_desktop::state::SettingsSection;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, UiIcon, btn_ghost, h_row, icon_xs, list_row, palette, pill_btn,
-    popover, progress_bar, search_input, section_heading, to_hsla, v_col,
+    Anchor, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, h_row, icon_xs, list_row,
+    palette, pill_btn, popover, search_input, section_heading, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -197,11 +198,24 @@ pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> im
             }
             let ent_link = chat_ref.clone();
             let pop_link = pop_cx.entity().clone();
+            let sb = agent_sandbox_test_impl();
             box_el.child(
-                div()
-                    .pt(px(4.0))
+                v_col()
+                    .gap(px(4.0))
+                    .pt(px(5.0))
                     .border_t_1()
                     .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
+                    .child(
+                        h_row()
+                            .justify_between()
+                            .px(px(6.0))
+                            .child(
+                                div().text_xs().text_color(to_hsla(pop_p.muted)).child(
+                                    crate::ui::tr(pop_cx).chat().inspector_tabs_os_sandbox(),
+                                ),
+                            )
+                            .child(badge(format!("{:?}", sb.tier), Tone::Accent, pop_cx)),
+                    )
                     .child(
                         btn_ghost(
                             "chat-perm-eval-order",
@@ -457,33 +471,4 @@ pub fn render_model_popover(
 
             v_col().w(px(340.0)).gap(px(2.0)).child(header).child(body)
         })
-}
-
-pub fn render_context_meter(view: &ChatView, cx: &gpui_kit::App) -> impl IntoElement {
-    let p = palette(cx);
-    let used = view.thread.context_used_tokens;
-    let limit = view.thread.context_limit_tokens;
-    let label = if let Some(lim) = limit.filter(|&l| l > 0) {
-        let pct = ((used as f64 / lim as f64) * 100.0).min(100.0) as f32;
-        return h_row()
-            .gap(px(5.0))
-            .child(div().w(px(44.0)).child(progress_bar("ctx-mini-bar", pct)))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(to_hsla(p.muted))
-                    .child(SharedString::from(format!("{:.0}%", pct))),
-            );
-    } else if used >= 1000 {
-        format!("{:.1}k", used as f64 / 1000.0)
-    } else {
-        format!("{used} tok")
-    };
-
-    h_row().child(
-        div()
-            .text_xs()
-            .text_color(to_hsla(p.faint))
-            .child(SharedString::from(label)),
-    )
 }

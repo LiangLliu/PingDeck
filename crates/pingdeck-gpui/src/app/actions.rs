@@ -14,6 +14,7 @@ gpui_kit::actions!(
         OpenSettings,
         ToggleSidebar,
         TogglePalette,
+        ToggleRunMonitor,
         Nav1,
         Nav2,
         Nav3,
@@ -113,6 +114,13 @@ pub const SHORTCUT_SPECS: &[ShortcutSpec] = &[
         category: ShortcutCategory::Global,
         title_fn: SettingsTr::shortcut_app_quit_title,
         desc_fn: SettingsTr::shortcut_app_quit_desc,
+    },
+    ShortcutSpec {
+        id: "app.runs",
+        default_key: "cmd-shift-a",
+        category: ShortcutCategory::Navigation,
+        title_fn: SettingsTr::shortcut_app_runs_title,
+        desc_fn: SettingsTr::shortcut_app_runs_desc,
     },
     ShortcutSpec {
         id: "req.send",
@@ -279,6 +287,7 @@ pub fn format_key_display(raw: &str) -> String {
 fn action_for_id(id: &str) -> Option<Box<dyn Action>> {
     Some(match id {
         "app.quit" => Box::new(QuitApp),
+        "app.runs" => Box::new(ToggleRunMonitor),
         "app.settings" => Box::new(OpenSettings),
         "app.sidebar" => Box::new(ToggleSidebar),
         "app.palette" => Box::new(TogglePalette),

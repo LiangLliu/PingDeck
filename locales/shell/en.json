@@ -8,6 +8,7 @@
   "shell.nav.mock_short": "Mock",
   "shell.nav.providers": "Providers",
   "shell.nav.requests": "Requests",
+  "shell.nav.runs": "Run Monitor",
   "shell.nav.settings": "Settings",
   "shell.nav.usage_short": "Usage & Logs",
   "shell.notify.approval.body": "{tool}, {risk}",

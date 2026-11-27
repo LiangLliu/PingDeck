@@ -820,6 +820,8 @@
   "set.shortcut.app.palette.title": "打开命令面板",
   "set.shortcut.app.quit.desc": "停止后台服务、释放端口与子进程并安全退出。",
   "set.shortcut.app.quit.title": "优雅退出 PingDeck",
+  "set.shortcut.app.runs.desc": "在对话内开关 90% 工作流看板弹窗，在其他模块跳转到全局运行看板。",
+  "set.shortcut.app.runs.title": "打开运行看板 / 工作流",
   "set.shortcut.app.settings.desc": "快速进入全局设置或返回之前所在模块。",
   "set.shortcut.app.settings.title": "打开设置",
   "set.shortcut.app.sidebar.desc": "在完整导航栏与紧凑图标窄轨之间切换。",

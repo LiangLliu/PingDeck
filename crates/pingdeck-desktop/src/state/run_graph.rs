@@ -36,8 +36,13 @@ pub const GRAPH_NODE_ALERT_H: f32 = 88.0;
 pub const GRAPH_GROUP_COLLAPSED_BODY_H: f32 = 74.0;
 /// Expanded parallel group card header height (excluding tab flap).
 pub const GRAPH_GROUP_EXPANDED_HEADER_H: f32 = 46.0;
-/// Height of one member row inside an expanded parallel group card.
-pub const GRAPH_MEMBER_ROW_H: f32 = 34.0;
+/// Height of one member row inside an expanded parallel group or sub-agent card.
+pub const GRAPH_MEMBER_ROW_H: f32 = 30.0;
+/// Maximum member rows rendered inline inside a single expanded canvas card (remaining rows are
+/// inspected in the docked `Node Inspector`).
+pub const GRAPH_MAX_INLINE_MEMBERS: usize = 6;
+/// Height of the overflow footer row when a collapsible card has more than [`GRAPH_MAX_INLINE_MEMBERS`].
+pub const GRAPH_OVERFLOW_ROW_H: f32 = 24.0;
 /// Bottom padding inside an expanded parallel group card.
 pub const GRAPH_GROUP_FOOTER_PAD_H: f32 = 10.0;
 /// Vertical clearance below intermediate stages for cross-stage skip edges.
@@ -151,7 +156,7 @@ pub enum GraphNodePayload {
     /// Concrete child sub-agent run with its tool calls, report, and optional pending approval.
     Subagent(Box<TopologySubagent>),
     /// Single serial tool barrier step.
-    ToolStep(TopologyToolStep),
+    ToolStep(Box<TopologyToolStep>),
     /// Collapsible parallel group enclosing multiple concurrent tools or sub-agents.
     ParallelGroup {
         subagents: Vec<TopologySubagent>,
@@ -205,10 +210,17 @@ impl GraphNode {
         if self.group_tab.is_some() && !self.members.is_empty() {
             if self.expanded {
                 let alert_extra = if has_alert { 22.0 } else { 0.0 };
+                let visible_rows = self.members.len().min(GRAPH_MAX_INLINE_MEMBERS);
+                let overflow_extra = if self.members.len() > GRAPH_MAX_INLINE_MEMBERS {
+                    GRAPH_OVERFLOW_ROW_H
+                } else {
+                    0.0
+                };
                 GRAPH_GROUP_TAB_H
                     + GRAPH_GROUP_EXPANDED_HEADER_H
                     + alert_extra
-                    + (self.members.len() as f32 * GRAPH_MEMBER_ROW_H)
+                    + (visible_rows as f32 * GRAPH_MEMBER_ROW_H)
+                    + overflow_extra
                     + GRAPH_GROUP_FOOTER_PAD_H
             } else {
                 GRAPH_GROUP_TAB_H
@@ -325,9 +337,9 @@ impl ExecutionGraphLayout {
         None
     }
 
-    /// Returns titles of immediate upstream dependencies of `node_id`.
+    /// Returns `(node_id, title)` pairs of immediate upstream dependencies of `node_id`.
     #[must_use]
-    pub fn upstream_titles(&self, node_id: &str) -> Vec<String> {
+    pub fn upstream_nodes(&self, node_id: &str) -> Vec<(String, String)> {
         let Some(target) = self.nodes.iter().find(|n| n.node.id == node_id) else {
             return Vec::new();
         };
@@ -339,9 +351,62 @@ impl ExecutionGraphLayout {
                 self.nodes
                     .iter()
                     .find(|n| n.node.id == *dep_id)
-                    .map(|n| n.node.title.clone())
+                    .map(|n| (n.node.id.clone(), n.node.title.clone()))
             })
             .collect()
+    }
+
+    /// Returns `(node_id, title)` pairs of immediate downstream dependents of `node_id`.
+    #[must_use]
+    pub fn downstream_nodes(&self, node_id: &str) -> Vec<(String, String)> {
+        self.nodes
+            .iter()
+            .filter(|n| n.node.depends_on.iter().any(|dep| dep == node_id))
+            .map(|n| (n.node.id.clone(), n.node.title.clone()))
+            .collect()
+    }
+
+    /// Returns titles of immediate upstream dependencies of `node_id`.
+    #[must_use]
+    pub fn upstream_titles(&self, node_id: &str) -> Vec<String> {
+        self.upstream_nodes(node_id)
+            .into_iter()
+            .map(|(_, title)| title)
+            .collect()
+    }
+
+    /// Smart default selection when opening the 90% Workflow Monitor modal:
+    /// automatically focuses the highest-priority anomaly node (`Waiting` > `Failed`/`Interrupted`),
+    /// returning `None` when the run is healthy so the Execution Graph opens at 100% full width.
+    #[must_use]
+    pub fn default_focus_node_id(&self) -> Option<String> {
+        for pnode in &self.nodes {
+            if let Some(m) = pnode
+                .node
+                .members
+                .iter()
+                .find(|m| m.status == GraphNodeStatus::Waiting)
+            {
+                return Some(m.id.clone());
+            }
+            if pnode.node.status == GraphNodeStatus::Waiting {
+                return Some(pnode.node.id.clone());
+            }
+        }
+        for pnode in &self.nodes {
+            if let Some(m) = pnode
+                .node
+                .members
+                .iter()
+                .find(|m| m.status.is_terminal_error())
+            {
+                return Some(m.id.clone());
+            }
+            if pnode.node.status.is_terminal_error() {
+                return Some(pnode.node.id.clone());
+            }
+        }
+        None
     }
 }
 
@@ -1107,7 +1172,7 @@ fn tool_to_member(step: &TopologyToolStep, now_ms: i64) -> GraphNodeMember {
         stop_run_id: None,
         error: (status == GraphNodeStatus::Failed).then(|| step.summary.clone()),
         waiting_summary: (status == GraphNodeStatus::Waiting).then(|| step.summary.clone()),
-        payload: GraphNodePayload::ToolStep(step.clone()),
+        payload: GraphNodePayload::ToolStep(Box::new(step.clone())),
     }
 }
 
@@ -1551,6 +1616,7 @@ mod tests {
             duration_ms: Some(1_000),
             exit_code: None,
             parallel_safe: true,
+            ..TopologyToolStep::default()
         }
     }
 
@@ -1571,6 +1637,8 @@ mod tests {
                 sample_tool(&format!("{id}-t1"), "grep", "ok"),
                 sample_tool(&format!("{id}-t2"), "read_file", "ok"),
             ],
+            brief: Some(format!("Investigate {desc}")),
+            full_report: Some(format!("## Findings\nAll clear for {desc}")),
         }
     }
 
@@ -1602,6 +1670,9 @@ mod tests {
                 ..BoardSubagentCounts::default()
             },
             task_graph: Vec::new(),
+            user_prompt: Some("Audit auth".to_owned()),
+            reasoning_preview: None,
+            full_answer: Some("Done".to_owned()),
         }
     }
 
@@ -1617,13 +1688,13 @@ mod tests {
                     wave_index: 1,
                     started_ms: Some(1_500),
                     ended_ms: Some(2_000),
-                    tool: sample_tool("c1", "get_request", "ok"),
+                    tool: Box::new(sample_tool("c1", "get_request", "ok")),
                 },
                 ExecutionWave::SerialTool {
                     wave_index: 2,
                     started_ms: Some(2_100),
                     ended_ms: Some(2_800),
-                    tool: sample_tool("c2", "send_request", "ok"),
+                    tool: Box::new(sample_tool("c2", "send_request", "ok")),
                 },
             ],
             2,
@@ -1640,7 +1711,7 @@ mod tests {
                 wave_index: i,
                 started_ms: Some(1_000 + i64::from(i) * 500),
                 ended_ms: Some(1_400 + i64::from(i) * 500),
-                tool: sample_tool(&format!("c{i}"), "shell", "ok"),
+                tool: Box::new(sample_tool(&format!("c{i}"), "shell", "ok")),
             })
             .collect();
         let debug_loop = base_topology(waves, 6, 0);

@@ -17,8 +17,9 @@ use crate::ui::{
     to_hsla, top_accent_card, v_col,
 };
 
+use crate::views::runs::graph::render_plan_preview_graph;
+
 use super::ChatView;
-use super::run_graph::render_plan_preview_graph;
 use super::types::ChatModal;
 
 pub fn render_approval_gate(appr: &LiveApproval, cx: &mut Context<ChatView>) -> impl IntoElement {
@@ -367,8 +368,9 @@ pub fn render_human_gate(
             let ch = crate::ui::tr(cx).chat();
             let has_graph = tasks.len() >= 2;
             let show_md = !has_graph || view.plan_gate_show_markdown.contains(&gate.id);
+            let empty_groups = std::collections::HashSet::new();
             let graph_preview =
-                has_graph.then(|| render_plan_preview_graph(view, &gate.id, tasks, cx));
+                has_graph.then(|| render_plan_preview_graph(&gate.id, tasks, &empty_groups, cx));
             let count_badge = match &graph_preview {
                 Some((stages, _)) => ch.gates_plan_graph_summary(*stages, tasks.len()),
                 None => ch.gates_steps(steps),

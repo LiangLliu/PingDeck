@@ -401,7 +401,7 @@ pub fn render_running_work_popover(
             let ph = pop_cx.entity().clone();
             body = body.child(
                 list_row("rw-agents", false, pop_cx, move |_, window, cx| {
-                    s_ent.update(cx, |s, cx| s.navigate(NavModule::Chat, cx));
+                    s_ent.update(cx, |s, cx| s.navigate(NavModule::Runs, cx));
                     ph.update(cx, |st, cx| st.dismiss(window, cx));
                 })
                 .justify_between()
