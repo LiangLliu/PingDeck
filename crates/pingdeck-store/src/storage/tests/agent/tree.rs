@@ -33,6 +33,7 @@ fn todo(id: &str) -> AgentTodoItem {
         id: id.to_owned(),
         content: format!("task {id}"),
         status: AgentTodoStatus::Pending,
+        ..AgentTodoItem::default()
     }
 }
 

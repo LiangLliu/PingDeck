@@ -135,22 +135,60 @@ pub struct AgentSession {
     pub updated_at_ms: i64,
 }
 
-/// Progress of one task of a session's task list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Progress of one task of a session's task list or structured Task Graph (`任务图`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentTodoStatus {
     /// Not started.
+    #[default]
     Pending,
     /// Being worked on.
     InProgress,
     /// Done.
     Completed,
-    /// Dropped.
+    /// Dropped or manually skipped.
     Cancelled,
+    /// Execution failed (eligible for selective node recovery).
+    Failed,
+    /// Blocked by a failed upstream dependency.
+    Blocked,
 }
 
-/// One task of a session's task list.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Semantic category of a node in a structured Task Graph (`任务图`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskNodeKind {
+    /// Read-only investigation or analysis (`调研`).
+    Explore,
+    /// File modification or resource creation (`执行`).
+    Implement,
+    /// Verification, tests, or lint checks (`验证`).
+    Verify,
+    /// Human confirmation or checkpoint gate (`确认`).
+    Gate,
+}
+
+/// Node-level recovery action triggered from the Run Monitor `Node Inspector`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeRecoveryAction {
+    /// Re-run the target node (with optional user guidance) and reset dependent downstream nodes.
+    Retry,
+    /// Safely undo pending file changes from the failed run first, then perform [`Self::Retry`].
+    UndoAndRetry,
+    /// Mark the target node skipped (`Cancelled`) and continue unblocked downstream nodes.
+    Skip,
+}
+
+const fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
+/// One task of a session's task list or structured Task Graph (`任务图`).
+///
+/// All graph metadata fields default cleanly so legacy `todos_json` rows deserialize without
+/// requiring any SQLite schema migration.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentTodoItem {
     /// Task id, unique within the list.
     pub id: String,
@@ -158,6 +196,123 @@ pub struct AgentTodoItem {
     pub content: String,
     /// Progress.
     pub status: AgentTodoStatus,
+    /// Upstream prerequisite task IDs (`from -> self`). Empty for root / flat checklist items.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub depends_on: Vec<String>,
+    /// Semantic role of this node (`explore` / `implement` / `verify` / `gate`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<TaskNodeKind>,
+    /// Optional preferred sub-agent model role (`fast` / `deep` / `vision`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<SubagentRole>,
+    /// Optional parallel group key for folding sibling nodes into a `Parallel Group` card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Optional runtime `agent_runs.id` associated with executing this node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// Number of retry attempts made on this node.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub attempt: u32,
+    /// Concise completion summary / checkpoint deliverable for downstream handoff.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Human-readable error message when `status == Failed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl AgentTodoItem {
+    /// Whether this item carries structured Task Graph metadata (`depends_on`, `group`, `kind`,
+    /// or `role`).
+    #[must_use]
+    pub fn has_graph_metadata(&self) -> bool {
+        !self.depends_on.is_empty()
+            || self.group.is_some()
+            || self.kind.is_some()
+            || self.role.is_some()
+    }
+}
+
+/// Validates dependency integrity and acyclicity (Kahn's topological sort) of a Task Graph.
+///
+/// # Errors
+/// Returns a descriptive validation message when any dependency references an unknown id,
+/// points to itself, or forms a cycle.
+pub fn validate_task_graph_dependencies(items: &[AgentTodoItem]) -> Result<(), String> {
+    let mut index_by_id: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::with_capacity(items.len());
+    for (idx, item) in items.iter().enumerate() {
+        index_by_id.insert(item.id.as_str(), idx);
+    }
+
+    let mut indeg = vec![0usize; items.len()];
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); items.len()];
+    for (idx, item) in items.iter().enumerate() {
+        let mut seen_deps = std::collections::HashSet::new();
+        for dep in &item.depends_on {
+            if dep == &item.id {
+                return Err(format!("task '{}' cannot depend on itself", item.id));
+            }
+            let Some(&u) = index_by_id.get(dep.as_str()) else {
+                return Err(format!(
+                    "task '{}' depends on unknown task '{dep}'",
+                    item.id
+                ));
+            };
+            if seen_deps.insert(u) {
+                adj[u].push(idx);
+                indeg[idx] += 1;
+            }
+        }
+    }
+
+    let mut q: std::collections::VecDeque<usize> = indeg
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &d)| (d == 0).then_some(i))
+        .collect();
+    let mut visited = 0usize;
+    while let Some(u) = q.pop_front() {
+        visited += 1;
+        for &v in &adj[u] {
+            indeg[v] = indeg[v].saturating_sub(1);
+            if indeg[v] == 0 {
+                q.push_back(v);
+            }
+        }
+    }
+    if visited != items.len() {
+        let cycle_ids: Vec<&str> = items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| (indeg[i] > 0).then_some(item.id.as_str()))
+            .collect();
+        return Err(format!(
+            "task dependencies contain a cycle involving: {}",
+            cycle_ids.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Returns all task IDs that transitively depend on `root_id` (excluding `root_id` itself).
+#[must_use]
+pub fn downstream_dependents(items: &[AgentTodoItem], root_id: &str) -> Vec<String> {
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(root_id.to_owned());
+    let mut result = Vec::new();
+
+    while let Some(current) = queue.pop_front() {
+        for item in items {
+            if item.depends_on.iter().any(|d| d == &current) && visited.insert(item.id.clone()) {
+                result.push(item.id.clone());
+                queue.push_back(item.id.clone());
+            }
+        }
+    }
+    result
 }
 
 /// Author of a stored message.
@@ -474,15 +629,18 @@ pub enum HumanGateKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum HumanGateBody {
-    /// The plan the model submitted, as Markdown (the `submit_plan` call's argument).
+    /// The plan the model submitted, as Markdown plus an optional structured Task Graph (`任务图`).
     Plan {
         /// The plan text.
         markdown: String,
         /// The model's title for it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
-        /// Top-level list items of the plan (its steps).
+        /// Top-level list items of the plan (or structured task node count when `tasks` is set).
         steps: u32,
+        /// Optional structured DAG nodes with `depends_on`, `kind`, `role`, and `group`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        tasks: Vec<AgentTodoItem>,
     },
     /// A question the model asked (`ask_user`). Shown as plain text; the UI adds "Other".
     Question {

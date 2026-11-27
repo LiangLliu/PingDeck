@@ -13,9 +13,10 @@ use gpui_kit::{
     SharedString, Styled as _, div, px,
 };
 use pingdeck_desktop::core::agent::dto::AgentRunTopology;
+use pingdeck_desktop::core::agent::model::AgentTodoItem;
 use pingdeck_desktop::state::{
     ExecutionGraphLayout, GraphBuildLabels, GraphEdgeTone, GraphNodeKind, GraphNodeStatus,
-    build_graph_from_topology,
+    build_graph_from_topology, build_plan_preview_graph,
 };
 
 use crate::ui::{
@@ -47,6 +48,95 @@ pub fn build_run_graph_layout(
         kind_tool: ch.graph_kind_tool(),
     };
     build_graph_from_topology(topo, &view.expanded_graph_groups, now_ref, &labels)
+}
+
+/// Renders a compact read-only GPU Task Graph preview inside the Chat `Plan` approval gate card.
+pub fn render_plan_preview_graph(
+    view: &ChatView,
+    gate_id: &str,
+    tasks: &[AgentTodoItem],
+    cx: &mut Context<ChatView>,
+) -> (usize, AnyElement) {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let labels = GraphBuildLabels {
+        trigger_title: ch.graph_trigger_node(),
+        summary_title: ch.graph_summary_node(),
+        joining_title: ch.graph_joining_node(),
+        parallel_group: ch.graph_parallel_group(),
+        kind_tool: ch.graph_kind_tool(),
+    };
+    let layout = build_plan_preview_graph(tasks, &view.expanded_graph_groups, &labels);
+    let stage_count = layout.stages.len();
+    let scale = 0.82f32;
+    let edges: Vec<DagEdgeDraw> = layout
+        .edges
+        .iter()
+        .map(|edge| {
+            let color = edge_color(edge.tone, &p);
+            DagEdgeDraw {
+                points: edge.waypoints.clone(),
+                color,
+                stroke_width: 1.5,
+                dashed: edge.dashed,
+                draw_ports: true,
+                port_color: color,
+            }
+        })
+        .collect();
+
+    let canvas_w = (layout.canvas_width * scale).max(360.0);
+    let canvas_h = (layout.canvas_height * scale).max(130.0);
+    let mut stage_surface = div()
+        .relative()
+        .w(px(canvas_w))
+        .h(px(canvas_h))
+        .flex_shrink_0()
+        .child(dag_edge_canvas(
+            edges,
+            layout.canvas_width,
+            layout.canvas_height,
+            scale,
+        ));
+
+    for stage in &layout.stages {
+        stage_surface = stage_surface.child(
+            h_row()
+                .absolute()
+                .left(px(stage.x * scale))
+                .top(px(10.0 * scale))
+                .w(px(stage.w * scale))
+                .justify_between()
+                .px(px(2.0))
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(to_hsla(p.faint))
+                        .child(SharedString::from(
+                            ch.graph_stage_label(stage.stage_index + 1),
+                        )),
+                ),
+        );
+    }
+
+    for pnode in &layout.nodes {
+        stage_surface = stage_surface.child(render_graph_card(view, pnode, scale, cx));
+    }
+
+    let box_el = div()
+        .id(SharedString::from(format!("plan-dag-scroll-{gate_id}")))
+        .w_full()
+        .h(px(canvas_h.clamp(150.0, 260.0)))
+        .rounded(px(8.0))
+        .bg(to_hsla(p.sunken))
+        .border_1()
+        .border_color(to_hsla(p.line.composite_over(p.sunken)))
+        .overflow_scrollbar()
+        .child(stage_surface)
+        .into_any_element();
+
+    (stage_count, box_el)
 }
 
 /// Renders the Execution Graph toolbar + scrollable GPU-connected stage canvas.

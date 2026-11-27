@@ -28,6 +28,7 @@ mod run;
 mod sessions;
 mod skill_delivery;
 mod subagent;
+mod task_recovery;
 #[cfg(test)]
 mod tests;
 mod title;
@@ -100,6 +101,7 @@ pub use sessions::{
     agent_session_set_head_impl, agent_session_update_impl,
 };
 pub(crate) use subagent::run_subagent;
+pub use task_recovery::agent_task_node_recover_impl;
 pub use title::agent_session_generate_title_impl;
 pub(crate) use tool_output::agent_tool_output_read_all_impl;
 pub use tool_output::{agent_tool_output_delete_impl, agent_tool_output_read_impl};

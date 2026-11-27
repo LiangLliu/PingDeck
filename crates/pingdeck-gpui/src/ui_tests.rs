@@ -1603,6 +1603,7 @@ mod gpui_integration {
                         },
                     ],
                     subagent_counts: counts,
+                    task_graph: Vec::new(),
                 };
                 v.board = Some(AgentBoard {
                     running: vec![AgentBoardRow {
@@ -2492,6 +2493,7 @@ mod gpui_integration {
             queue_paused: false,
             waves: Vec::new(),
             subagent_counts: BoardSubagentCounts::default(),
+            task_graph: Vec::new(),
         };
 
         let parallel_topo = AgentRunTopology {
@@ -2602,6 +2604,7 @@ mod gpui_integration {
                 completed: 2,
                 ..BoardSubagentCounts::default()
             },
+            task_graph: Vec::new(),
         };
 
         let empty_board = AgentBoard {
@@ -2678,6 +2681,103 @@ mod gpui_integration {
                     (RunViewMode::Timeline, false)
                 );
                 assert_eq!(v.selected_graph_node_id.as_deref(), Some("sub:sub_1"));
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 3. Phase 2: Structured Task Graph renders Plan preview in Chat gate + node recovery UI
+        //    inside Run Monitor Node Inspector for a failed task node.
+        let planned_tasks = vec![
+            pingdeck_desktop::core::agent::model::AgentTodoItem {
+                id: "n1".to_owned(),
+                content: "Audit router".to_owned(),
+                status: pingdeck_desktop::core::agent::model::AgentTodoStatus::Completed,
+                kind: Some(pingdeck_desktop::core::agent::model::TaskNodeKind::Explore),
+                role: Some(SubagentRole::Fast),
+                group: Some("Audit".to_owned()),
+                summary: Some("Router inspected".to_owned()),
+                ..Default::default()
+            },
+            pingdeck_desktop::core::agent::model::AgentTodoItem {
+                id: "n2".to_owned(),
+                content: "Audit store".to_owned(),
+                status: pingdeck_desktop::core::agent::model::AgentTodoStatus::Completed,
+                kind: Some(pingdeck_desktop::core::agent::model::TaskNodeKind::Explore),
+                role: Some(SubagentRole::Fast),
+                group: Some("Audit".to_owned()),
+                ..Default::default()
+            },
+            pingdeck_desktop::core::agent::model::AgentTodoItem {
+                id: "n3".to_owned(),
+                content: "Implement fix".to_owned(),
+                status: pingdeck_desktop::core::agent::model::AgentTodoStatus::Failed,
+                depends_on: vec!["n1".to_owned(), "n2".to_owned()],
+                kind: Some(pingdeck_desktop::core::agent::model::TaskNodeKind::Implement),
+                attempt: 1,
+                error: Some("borrow check failed".to_owned()),
+                ..Default::default()
+            },
+            pingdeck_desktop::core::agent::model::AgentTodoItem {
+                id: "n4".to_owned(),
+                content: "Run tests".to_owned(),
+                status: pingdeck_desktop::core::agent::model::AgentTodoStatus::Blocked,
+                depends_on: vec!["n3".to_owned()],
+                kind: Some(pingdeck_desktop::core::agent::model::TaskNodeKind::Verify),
+                ..Default::default()
+            },
+        ];
+
+        let mut task_graph_topo = direct_topo.clone();
+        task_graph_topo.run.run_id = "run_tg".to_owned();
+        task_graph_topo.pending_changes = BoardChanges {
+            files: 1,
+            added: 12,
+            removed: 2,
+        };
+        task_graph_topo.task_graph = planned_tasks.clone();
+
+        visual.update(|window, cx| {
+            chat.update(cx, |v, cx| {
+                v.selected_monitor_run_id = Some("run_tg".to_owned());
+                v.selected_topology = Some(task_graph_topo.clone());
+                assert!(is_graph_available(&task_graph_topo));
+                assert_eq!(
+                    v.effective_monitor_view_mode(&task_graph_topo),
+                    (RunViewMode::Graph, true)
+                );
+                v.select_graph_node(Some("task:n3".to_owned()), cx);
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // Render Plan approval gate with embedded Task Graph preview & switch to Markdown.
+            chat.update(cx, |v, cx| {
+                v.sidebar_mode = ChatSidebarMode::Time;
+                v.thread.open_gates.push((
+                    "run_plan".to_owned(),
+                    pingdeck_desktop::core::agent::model::HumanGateDto {
+                        id: "gate_plan_1".to_owned(),
+                        run_id: "run_plan".to_owned(),
+                        call_id: "tc_plan_1".to_owned(),
+                        kind: pingdeck_desktop::core::agent::model::HumanGateKind::Plan,
+                        created_at_ms: 5_000,
+                        body: pingdeck_desktop::core::agent::model::HumanGateBody::Plan {
+                            markdown: "1. Audit\n2. Fix\n3. Verify".to_owned(),
+                            title: Some("Auth Task Graph".to_owned()),
+                            steps: 4,
+                            tasks: planned_tasks.clone(),
+                        },
+                    },
+                ));
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            chat.update(cx, |v, cx| {
+                v.set_plan_gate_markdown("gate_plan_1".to_owned(), true, cx);
             });
             window.refresh();
             window.draw(cx).clear(cx);

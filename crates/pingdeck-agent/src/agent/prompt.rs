@@ -20,7 +20,7 @@ use pingdeck_model::settings::ToolApproval;
 use super::sandbox::SandboxKind;
 
 /// The version of this prompt's wording, stored with every run; bump it when a text changes.
-pub const PROMPT_VERSION: u32 = 5;
+pub const PROMPT_VERSION: u32 = 6;
 
 /// How many characters of the chat's own instructions reach the prompt.
 const MAX_CHAT_INSTRUCTION_CHARS: usize = 2000;
@@ -47,8 +47,10 @@ summary of older messages, not a new request.";
 
 /// Part 4: when `todo_write` exists.
 const PLAN_PARAGRAPH: &str = "\
-Use todo_write for tasks of three or more steps: keep exactly one item in progress and mark \
-items done when finished. Do not use it for one-step requests.";
+Use todo_write for tasks of three or more steps: write the plan first, mark items completed or \
+failed as you finish them, and for multi-stage or parallelizable work declare `id`, `depends_on`, \
+`kind` (`explore`/`implement`/`verify`/`gate`), and optional `group` so independent branches can \
+run in parallel. Do not use it for one-step requests.";
 
 /// Part 4: when web search or fetch exists.
 const CITATION_RULE: &str = "\
@@ -62,7 +64,9 @@ not an approval of any action.";
 
 /// When `submit_plan` exists.
 const SUBMIT_PLAN_RULE: &str = "\
-When the plan is ready, call submit_plan with it; nothing changes until the user approves it.";
+When the plan is ready, call submit_plan with it (include structured `tasks` with `id`, \
+`depends_on`, `kind`, and optional `role`/`group` for multi-stage or parallel work); nothing \
+changes until the user approves it.";
 
 /// Which agent the prompt is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -250,6 +250,11 @@ pub fn agent_run_topology_impl(
         None
     };
 
+    let task_graph = session
+        .as_ref()
+        .map(|sess| overlay_task_graph_runtime(&sess.todos, &waves))
+        .unwrap_or_default();
+
     let (plan_done, plan_total) = session.as_ref().map_or((0, 0), |sess| {
         let counted = sess
             .todos
@@ -296,7 +301,80 @@ pub fn agent_run_topology_impl(
         queue_paused,
         waves,
         subagent_counts,
+        task_graph,
     })
+}
+
+/// Binds matching runtime sub-agents onto structured Task Graph nodes (`run_id` or normalized
+/// description match) so nodes without an explicit `run_id` still reflect live runtime progress.
+fn overlay_task_graph_runtime(
+    todos: &[crate::agent::model::AgentTodoItem],
+    waves: &[ExecutionWave],
+) -> Vec<crate::agent::model::AgentTodoItem> {
+    if todos.is_empty() {
+        return Vec::new();
+    }
+    let mut sub_by_id: HashMap<&str, &TopologySubagent> = HashMap::new();
+    let mut sub_by_desc: HashMap<String, &TopologySubagent> = HashMap::new();
+    for wave in waves {
+        match wave {
+            ExecutionWave::ParallelSubagents { subagents, .. } => {
+                for sub in subagents {
+                    sub_by_id.insert(sub.run.run_id.as_str(), sub);
+                    sub_by_desc.insert(sub.description.trim().to_lowercase(), sub);
+                }
+            }
+            ExecutionWave::SingleSubagent { subagent, .. } => {
+                sub_by_id.insert(subagent.run.run_id.as_str(), subagent);
+                sub_by_desc.insert(subagent.description.trim().to_lowercase(), subagent);
+            }
+            _ => {}
+        }
+    }
+
+    todos
+        .iter()
+        .cloned()
+        .map(|mut item| {
+            let matched = item
+                .run_id
+                .as_deref()
+                .and_then(|rid| sub_by_id.get(rid).copied())
+                .or_else(|| {
+                    sub_by_desc
+                        .get(&item.content.trim().to_lowercase())
+                        .copied()
+                });
+            if let Some(sub) = matched {
+                if item.run_id.is_none() {
+                    item.run_id = Some(sub.run.run_id.clone());
+                }
+                if item.error.is_none() && sub.run.error.is_some() {
+                    item.error = sub.run.error.clone();
+                }
+                if item.summary.is_none() && sub.last_answer.is_some() {
+                    item.summary = sub.last_answer.clone();
+                }
+                if matches!(
+                    item.status,
+                    AgentTodoStatus::Pending | AgentTodoStatus::InProgress
+                ) {
+                    item.status = match sub.run.status {
+                        AgentRunStatus::Running | AgentRunStatus::WaitingApproval => {
+                            AgentTodoStatus::InProgress
+                        }
+                        AgentRunStatus::Completed => AgentTodoStatus::Completed,
+                        AgentRunStatus::Failed | AgentRunStatus::Interrupted => {
+                            AgentTodoStatus::Failed
+                        }
+                        AgentRunStatus::Cancelled => AgentTodoStatus::Cancelled,
+                        AgentRunStatus::Queued => item.status,
+                    };
+                }
+            }
+            item
+        })
+        .collect()
 }
 
 /// Returns the execution topology of `session_id`'s active top-level run, or its most recent

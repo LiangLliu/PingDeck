@@ -272,8 +272,9 @@ fn render_progress_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit:
             let shape = match item.status {
                 AgentTodoStatus::Completed => StatusShape::Ok,
                 AgentTodoStatus::InProgress => StatusShape::Run,
-                AgentTodoStatus::Cancelled => StatusShape::Bad,
-                AgentTodoStatus::Pending => StatusShape::Idle,
+                AgentTodoStatus::Failed => StatusShape::Bad,
+                AgentTodoStatus::Blocked => StatusShape::Warn,
+                AgentTodoStatus::Cancelled | AgentTodoStatus::Pending => StatusShape::Idle,
             };
             col = col.child(
                 h_row()
@@ -286,10 +287,17 @@ fn render_progress_tab(view: &ChatView, cx: &mut Context<ChatView>) -> gpui_kit:
                             .text_xs()
                             .text_color(if item.status == AgentTodoStatus::Completed {
                                 to_hsla(p.muted)
+                            } else if item.status == AgentTodoStatus::Failed {
+                                to_hsla(p.bad)
                             } else {
                                 to_hsla(p.ink)
                             })
                             .child(SharedString::from(item.content.clone())),
+                    )
+                    .children(
+                        item.group
+                            .as_ref()
+                            .map(|g| badge(g.clone(), Tone::Neutral, cx)),
                     ),
             );
         }

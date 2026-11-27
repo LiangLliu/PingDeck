@@ -1,9 +1,10 @@
-//! The `todo_write` tool: the model's task list for one chat (the plan checklist).
+//! The `todo_write` tool: the model's task list or structured Task Graph (`任务图`) for one chat.
 //!
-//! Single responsibility: validate a whole replacement list, store it on the session
-//! (`save_session_todos`) and publish it as `TodosUpdated` on the run's event stream. The tool has
-//! no side effect outside the session row, so it is `Internal` (never asks) and runs alone
-//! (parallel calls would race on one list).
+//! Single responsibility: validate a whole replacement list (including optional DAG `depends_on`,
+//! `kind`, `role`, `group`, Kahn cycle detection, and parallel-branch progress rules), store it on
+//! the session (`save_session_todos`) and publish it as `TodosUpdated` on the run's event stream.
+//! The tool has no side effect outside the session row, so it is `Internal` (never asks) and runs
+//! alone (parallel calls would race on one list).
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -12,7 +13,10 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::agent::model::{AgentEvent, AgentTodoItem, AgentTodoStatus};
+use crate::agent::model::{
+    AgentEvent, AgentTodoItem, AgentTodoStatus, SubagentRole, TaskNodeKind, downstream_dependents,
+    validate_task_graph_dependencies,
+};
 use crate::agent::tools::{
     AgentTool, CallInspection, ToolClass, ToolContext, ToolOutput, ToolRegistry, ToolSource,
     ToolSpec,
@@ -28,6 +32,10 @@ pub const MAX_TODOS: usize = 50;
 pub const MAX_CONTENT_CHARS: usize = 500;
 /// Longest task id the model may name, in characters.
 const MAX_ID_CHARS: usize = 64;
+/// Longest parallel group label in characters.
+const MAX_GROUP_CHARS: usize = 64;
+/// Longest summary or error text attached to a task node.
+const MAX_META_CHARS: usize = 500;
 
 /// One task as the model writes it.
 #[derive(Debug, Deserialize)]
@@ -36,6 +44,22 @@ struct Item {
     id: Option<String>,
     content: String,
     status: AgentTodoStatus,
+    #[serde(default)]
+    depends_on: Vec<String>,
+    #[serde(default)]
+    kind: Option<TaskNodeKind>,
+    #[serde(default)]
+    role: Option<SubagentRole>,
+    #[serde(default)]
+    group: Option<String>,
+    #[serde(default)]
+    run_id: Option<String>,
+    #[serde(default)]
+    attempt: u32,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 /// The arguments of `todo_write`.
@@ -44,7 +68,7 @@ struct Args {
     todos: Vec<Item>,
 }
 
-/// Checks the list and fills in the ids the model left out.
+/// Checks the list (or structured Task Graph) and fills in any omitted IDs.
 fn validate(arguments: &Value) -> Result<Vec<AgentTodoItem>, AppError> {
     let args: Args = serde_json::from_value(arguments.clone())
         .map_err(|error| AppError::validation(format!("Invalid arguments: {error}")))?;
@@ -52,16 +76,6 @@ fn validate(arguments: &Value) -> Result<Vec<AgentTodoItem>, AppError> {
         return Err(AppError::validation(format!(
             "todos holds {} items; at most {MAX_TODOS} are allowed",
             args.todos.len()
-        )));
-    }
-    let in_progress = args
-        .todos
-        .iter()
-        .filter(|item| item.status == AgentTodoStatus::InProgress)
-        .count();
-    if in_progress > 1 {
-        return Err(AppError::validation(format!(
-            "{in_progress} tasks are in_progress; at most one may be"
         )));
     }
     let mut seen = HashSet::new();
@@ -92,29 +106,106 @@ fn validate(arguments: &Value) -> Result<Vec<AgentTodoItem>, AppError> {
                 "todos[{index}].id {id} is used twice"
             )));
         }
+        let group = item
+            .group
+            .map(|g| g.trim().to_owned())
+            .filter(|g| !g.is_empty());
+        if group
+            .as_ref()
+            .is_some_and(|g| g.chars().count() > MAX_GROUP_CHARS)
+        {
+            return Err(AppError::validation(format!(
+                "todos[{index}].group is longer than {MAX_GROUP_CHARS} characters"
+            )));
+        }
+        let summary = item
+            .summary
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .map(|s| truncate_chars(&s, MAX_META_CHARS));
+        let error = item
+            .error
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .map(|s| truncate_chars(&s, MAX_META_CHARS));
+        let depends_on: Vec<String> = item
+            .depends_on
+            .into_iter()
+            .map(|d| d.trim().to_owned())
+            .filter(|d| !d.is_empty())
+            .collect();
         items.push(AgentTodoItem {
             id,
             content: content.to_owned(),
             status: item.status,
+            depends_on,
+            kind: item.kind,
+            role: item.role,
+            group,
+            run_id: item.run_id.filter(|s| !s.trim().is_empty()),
+            attempt: item.attempt,
+            summary,
+            error,
         });
     }
+
+    validate_task_graph_dependencies(&items).map_err(AppError::validation)?;
+
+    let uses_graph = items
+        .iter()
+        .any(|item| !item.depends_on.is_empty() || item.group.is_some());
+    let in_progress_ids: Vec<&str> = items
+        .iter()
+        .filter(|item| item.status == AgentTodoStatus::InProgress)
+        .map(|item| item.id.as_str())
+        .collect();
+
+    if !uses_graph {
+        if in_progress_ids.len() > 1 {
+            return Err(AppError::validation(format!(
+                "{} tasks are in_progress; at most one may be",
+                in_progress_ids.len()
+            )));
+        }
+    } else {
+        // In a structured Task Graph, independent parallel branches may run concurrently,
+        // but a downstream node cannot be `in_progress` while an upstream dependency is still
+        // `in_progress`.
+        let active_set: HashSet<&str> = in_progress_ids.iter().copied().collect();
+        for &active_id in &in_progress_ids {
+            for down in downstream_dependents(&items, active_id) {
+                if active_set.contains(down.as_str()) {
+                    return Err(AppError::validation(format!(
+                        "task '{down}' cannot be in_progress while upstream dependency '{active_id}' is still in_progress"
+                    )));
+                }
+            }
+        }
+    }
+
     Ok(items)
 }
 
-/// `Task list updated: 3 items (1 completed, 1 in progress, 1 pending).`
+fn truncate_chars(text: &str, max: usize) -> String {
+    text.chars().take(max).collect()
+}
+
+/// `Task list updated: 3 items (1 completed, 1 in progress, 1 pending, 0 failed, 0 blocked, 0 cancelled).`
 fn summary(items: &[AgentTodoItem]) -> String {
     let count = |status| items.iter().filter(|item| item.status == status).count();
     format!(
-        "Task list updated: {} items ({} completed, {} in progress, {} pending, {} cancelled).",
+        "Task list updated: {} items ({} completed, {} in progress, {} pending, {} failed, {} blocked, {} cancelled).",
         items.len(),
         count(AgentTodoStatus::Completed),
         count(AgentTodoStatus::InProgress),
         count(AgentTodoStatus::Pending),
+        count(AgentTodoStatus::Failed),
+        count(AgentTodoStatus::Blocked),
         count(AgentTodoStatus::Cancelled),
     )
 }
 
-/// `todo_write` over the session's task list.
+/// `todo_write` over the session's task list / Task Graph.
 pub struct TodoWriteTool {
     spec: ToolSpec,
 }
@@ -124,20 +215,26 @@ impl TodoWriteTool {
         Self {
             spec: ToolSpec {
                 name: TODO_WRITE.to_owned(),
-                description: "Replace the chat's task list with `todos` (send the whole list every time). Use it for work of three or more steps: write the plan first, keep exactly one task in_progress while you work on it, and mark tasks completed as you finish them.".to_owned(),
+                description: "Replace the chat's task list or structured Task Graph (`todos`; send the whole list every time). Use it for work of three or more steps: write the plan first, declare `depends_on`, `kind`, and optional `group` for multi-stage or parallel branches, and mark items completed, failed, or blocked as work progresses.".to_owned(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "todos": {
                             "type": "array",
                             "maxItems": MAX_TODOS,
-                            "description": "The complete task list, in order.",
+                            "description": "The complete task list or acyclic Task Graph.",
                             "items": {
                                 "type": "object",
                                 "properties": {
                                     "id": {"type": "string", "description": "Stable id of the task; leave it out for a new task."},
                                     "content": {"type": "string", "maxLength": MAX_CONTENT_CHARS, "description": "What to do, in one short sentence."},
-                                    "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"]}
+                                    "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "cancelled", "failed", "blocked"]},
+                                    "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Optional upstream task IDs that must finish before this task starts."},
+                                    "kind": {"type": "string", "enum": ["explore", "implement", "verify", "gate"]},
+                                    "role": {"type": "string", "enum": ["fast", "deep", "vision"]},
+                                    "group": {"type": "string", "maxLength": MAX_GROUP_CHARS, "description": "Optional parallel group label shared by concurrent sibling tasks."},
+                                    "summary": {"type": "string", "maxLength": MAX_META_CHARS, "description": "Short completion summary for downstream handoff."},
+                                    "error": {"type": "string", "maxLength": MAX_META_CHARS, "description": "Failure reason when status is failed."}
                                 },
                                 "required": ["content", "status"]
                             }
@@ -288,6 +385,33 @@ mod tests {
         assert!(rejected(json!([item("a", "started")])).contains("Invalid arguments"));
     }
 
+    #[test]
+    fn structured_task_graph_allows_parallel_branches_and_rejects_cycles_or_dependent_overlap() {
+        let ok = validate(&json!({"todos": [
+            {"id": "root", "content": "Locate files", "status": "completed", "kind": "explore"},
+            {"id": "b1", "content": "Audit auth", "status": "in_progress", "depends_on": ["root"], "group": "Audit"},
+            {"id": "b2", "content": "Audit store", "status": "in_progress", "depends_on": ["root"], "group": "Audit"},
+            {"id": "join", "content": "Implement fix", "status": "pending", "depends_on": ["b1", "b2"], "kind": "implement"}
+        ]}))
+        .expect("independent parallel branches may run simultaneously");
+        assert_eq!(ok.len(), 4);
+        assert_eq!(ok[1].group.as_deref(), Some("Audit"));
+
+        // Dependent nodes cannot both be in_progress simultaneously.
+        let dep_overlap = rejected(json!([
+            {"id": "a", "content": "First", "status": "in_progress"},
+            {"id": "b", "content": "Second", "status": "in_progress", "depends_on": ["a"]}
+        ]));
+        assert!(dep_overlap.contains("upstream dependency"), "{dep_overlap}");
+
+        // Cycles are rejected.
+        let cycle = rejected(json!([
+            {"id": "a", "content": "First", "status": "pending", "depends_on": ["b"]},
+            {"id": "b", "content": "Second", "status": "pending", "depends_on": ["a"]}
+        ]));
+        assert!(cycle.contains("cycle"), "{cycle}");
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn a_call_replaces_the_session_list() {
         let state = AppState::open_in_memory().expect("state");
@@ -320,7 +444,6 @@ mod tests {
             .unwrap();
         assert_eq!(stored.todos.len(), 2);
 
-        // The whole list is replaced, and a refused list leaves the stored one alone.
         let bad = tool
             .call(&ctx, json!({"todos": [item("", "pending")]}))
             .await;
@@ -341,7 +464,6 @@ mod tests {
         ctx_gone(&tool, &state, &settings, &cancel, &parts).await;
     }
 
-    /// A call for a session that does not exist fails instead of claiming success.
     async fn ctx_gone(
         tool: &TodoWriteTool,
         state: &crate::app::AppState,

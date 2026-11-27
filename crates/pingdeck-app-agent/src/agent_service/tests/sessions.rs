@@ -54,6 +54,7 @@ fn todo(id: &str, content: &str, status: AgentTodoStatus) -> AgentTodoItem {
         id: id.to_owned(),
         content: content.to_owned(),
         status,
+        ..AgentTodoItem::default()
     }
 }
 

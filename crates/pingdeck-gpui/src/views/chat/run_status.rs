@@ -5,11 +5,13 @@ use gpui_kit::{
     AnyElement, App, Context, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div,
     px,
 };
-use pingdeck_desktop::core::agent::dto::{AgentBoard, BoardWait};
+use pingdeck_desktop::core::agent::dto::{AgentBoard, BoardWait, TopologyToolStep};
 use pingdeck_desktop::core::agent::model::{AgentRunStatus, SubagentRole};
+use pingdeck_desktop::state::GraphNodeStatus;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, btn_danger, btn_icon, h_row, icon_xs, palette, to_hsla,
+    StatusShape, Tone, UiIcon, badge, btn_danger, btn_icon, h_row, icon_xs, palette,
+    status_indicator, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -335,5 +337,74 @@ fn format_cost_today(board: &AgentBoard) -> String {
             .map(|c| format!("{} {:.3}", c.currency, c.cost_micro as f64 / 1_000_000.0))
             .collect::<Vec<_>>()
             .join(" + ")
+    }
+}
+
+/// Compact read-only tool step card reused by `Node Inspector`.
+pub(super) fn compact_tool_row(step: &TopologyToolStep, cx: &App) -> AnyElement {
+    let p = palette(cx);
+    let (shape, _) = tool_status_meta(&step.status);
+    v_col()
+        .w_full()
+        .gap(px(2.0))
+        .px(px(8.0))
+        .py(px(6.0))
+        .rounded(px(6.0))
+        .bg(to_hsla(p.surface))
+        .border_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(
+            h_row()
+                .w_full()
+                .justify_between()
+                .gap(px(6.0))
+                .child(
+                    h_row()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(6.0))
+                        .child(status_indicator(shape, cx))
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                .text_color(to_hsla(p.ink))
+                                .child(SharedString::from(step.name.clone())),
+                        )
+                        .children(
+                            step.exit_code
+                                .filter(|c| *c != 0)
+                                .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
+                        ),
+                )
+                .children(step.duration_ms.map(|ms| {
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(to_hsla(p.faint))
+                        .child(SharedString::from(format_elapsed_short(ms)))
+                })),
+        )
+        .children((!step.summary.is_empty()).then(|| {
+            div()
+                .text_size(px(11.0))
+                .text_color(to_hsla(p.muted))
+                .truncate()
+                .child(SharedString::from(step.summary.clone()))
+        }))
+        .into_any_element()
+}
+
+/// Localized status label for a [`GraphNodeStatus`].
+#[must_use]
+pub fn graph_status_label(status: GraphNodeStatus, cx: &App) -> &'static str {
+    let ch = crate::ui::tr(cx).chat();
+    match status {
+        GraphNodeStatus::Pending | GraphNodeStatus::Queued => ch.run_status_queued(),
+        GraphNodeStatus::Running => ch.run_status_running(),
+        GraphNodeStatus::Waiting => ch.run_status_waiting_approval(),
+        GraphNodeStatus::Completed => ch.run_status_completed(),
+        GraphNodeStatus::Failed => ch.run_status_failed(),
+        GraphNodeStatus::Cancelled | GraphNodeStatus::Skipped => ch.run_status_cancelled(),
+        GraphNodeStatus::Interrupted => ch.run_status_interrupted(),
     }
 }

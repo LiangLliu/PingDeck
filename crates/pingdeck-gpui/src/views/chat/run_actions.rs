@@ -1,14 +1,16 @@
 //! Run Monitor & Execution Topology controller actions for [`ChatView`].
 
-use gpui_kit::Context;
+use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::agent::dto::AgentRunTopology;
+use pingdeck_desktop::core::agent::model::NodeRecoveryAction;
 use pingdeck_desktop::core::app::{
     agent_board_impl, agent_run_stop_all_impl, agent_run_stop_impl, agent_run_topology_impl,
-    agent_session_latest_topology_impl,
+    agent_session_latest_topology_impl, agent_task_node_recover_impl,
 };
 use pingdeck_desktop::state::{RunViewMode, is_graph_available, select_default_view_mode};
 
-use crate::bridge::spawn_blocking_into;
+use crate::bridge::{spawn_async_into, spawn_blocking_into};
+use crate::ui::Tone;
 
 use super::ChatView;
 use super::run_monitor::all_board_rows;
@@ -107,6 +109,56 @@ impl ChatView {
     pub fn set_graph_zoom(&mut self, zoom: f32, cx: &mut Context<Self>) {
         self.graph_zoom = zoom.clamp(0.75, 1.15);
         cx.notify();
+    }
+
+    /// Toggles between Task Graph preview and Markdown view on a Plan approval gate card.
+    pub fn set_plan_gate_markdown(
+        &mut self,
+        gate_id: String,
+        show_md: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if show_md {
+            self.plan_gate_show_markdown.insert(gate_id);
+        } else {
+            self.plan_gate_show_markdown.remove(&gate_id);
+        }
+        cx.notify();
+    }
+
+    /// Triggers selective node-level recovery (`Retry`, `UndoAndRetry`, or `Skip`) on a Task Graph
+    /// node, preserving completed upstream & sibling nodes.
+    pub fn recover_task_node(
+        &mut self,
+        session_id: String,
+        node_id: String,
+        action: NodeRecoveryAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let guidance = self.node_recovery_input.read(cx).value().trim().to_owned();
+        let guidance_opt = (!guidance.is_empty()).then_some(guidance);
+        self.node_recovery_input
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        let task = spawn_async_into(
+            cx,
+            move |state| async move {
+                agent_task_node_recover_impl(&state, &session_id, &node_id, action, guidance_opt)
+                    .await
+            },
+            |this, res, cx| match res {
+                Ok(started) => {
+                    this.selected_monitor_run_id = Some(started.run_id);
+                    this.selected_graph_node_id = None;
+                    this.refresh_monitor(cx);
+                }
+                Err(err) => {
+                    this.status_msg = Some((Tone::Danger, err.message().to_owned()));
+                    cx.notify();
+                }
+            },
+        );
+        self._tasks.push(task);
     }
 
     /// Jumps from the Run Monitor straight into a chat thread and returns the center stage to chat.

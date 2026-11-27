@@ -419,13 +419,19 @@ impl ServiceHost {
     /// under the gate's timeout rule. Approval and a timeout end the run after this step; a
     /// steer is the user's additions and the run goes on.
     async fn submit_plan(&self, call: &ToolCall, arguments: &Value) -> ToolOutput {
-        let (plan, title) = match submit_plan::parse(arguments) {
+        let parsed = match submit_plan::parse(arguments) {
             Ok(parsed) => parsed,
             Err(error) => return ToolOutput::error(error.message()),
         };
         let runtime = &self.state.agent;
-        let card =
-            submit_plan::plan_card(&self.run.run_id, &call.id, plan, title, current_time_ms());
+        let card = submit_plan::plan_card(
+            &self.run.run_id,
+            &call.id,
+            parsed.plan,
+            parsed.title,
+            parsed.tasks,
+            current_time_ms(),
+        );
         let Some(ticket) = runtime.gates.open(GateRequest {
             gate_id: call.id.clone(),
             run_id: self.run.run_id.clone(),
@@ -1824,8 +1830,19 @@ impl RunHost for ServiceHost {
                     crate::agent::model::AgentTodoStatus::Pending => "pending",
                     crate::agent::model::AgentTodoStatus::Completed => "completed",
                     crate::agent::model::AgentTodoStatus::Cancelled => "cancelled",
+                    crate::agent::model::AgentTodoStatus::Failed => "failed",
+                    crate::agent::model::AgentTodoStatus::Blocked => "blocked",
                 };
-                format!("- [{tag}] {}", t.content)
+                if t.depends_on.is_empty() {
+                    format!("- [{tag}] ({}) {}", t.id, t.content)
+                } else {
+                    format!(
+                        "- [{tag}] ({}; depends_on: {}) {}",
+                        t.id,
+                        t.depends_on.join(", "),
+                        t.content
+                    )
+                }
             })
             .collect();
         if !active_todos.is_empty() {

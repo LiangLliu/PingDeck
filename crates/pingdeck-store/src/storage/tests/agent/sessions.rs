@@ -28,6 +28,7 @@ fn sessions_round_trip_preserve_runtime_columns_and_validate_modes() {
         id: "t1".to_owned(),
         content: "write".to_owned(),
         status: AgentTodoStatus::InProgress,
+        ..AgentTodoItem::default()
     }];
     saved.total_usage = HubUsage {
         input_tokens: Some(5),
@@ -45,6 +46,7 @@ fn sessions_round_trip_preserve_runtime_columns_and_validate_modes() {
         id: "t2".to_owned(),
         content: "done".to_owned(),
         status: AgentTodoStatus::Completed,
+        ..AgentTodoItem::default()
     }];
     assert!(store.save_session_todos("s1", &todos).unwrap());
     assert!(!store.save_session_todos("ghost", &todos).unwrap());

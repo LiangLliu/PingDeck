@@ -18,6 +18,7 @@ use crate::ui::{
 };
 
 use super::ChatView;
+use super::run_graph::render_plan_preview_graph;
 use super::types::ChatModal;
 
 pub fn render_approval_gate(appr: &LiveApproval, cx: &mut Context<ChatView>) -> impl IntoElement {
@@ -355,6 +356,7 @@ pub fn render_human_gate(
             markdown,
             title,
             steps,
+            tasks,
         } => {
             let hdr_title = title.clone().unwrap_or_else(|| {
                 crate::ui::tr(cx)
@@ -362,6 +364,35 @@ pub fn render_human_gate(
                     .gates_plan_ready_for_approval()
                     .to_owned()
             });
+            let ch = crate::ui::tr(cx).chat();
+            let has_graph = tasks.len() >= 2;
+            let show_md = !has_graph || view.plan_gate_show_markdown.contains(&gate.id);
+            let graph_preview =
+                has_graph.then(|| render_plan_preview_graph(view, &gate.id, tasks, cx));
+            let count_badge = match &graph_preview {
+                Some((stages, _)) => ch.gates_plan_graph_summary(*stages, tasks.len()),
+                None => ch.gates_steps(steps),
+            };
+            let gid_graph = gate.id.clone();
+            let gid_md = gate.id.clone();
+
+            let body_el = if !show_md && let Some((_, graph_el)) = graph_preview {
+                graph_el
+            } else {
+                div()
+                    .id(SharedString::from(format!("plan-md-{}", gate.id)))
+                    .max_h(px(220.0))
+                    .p(px(10.0))
+                    .rounded(px(8.0))
+                    .bg(to_hsla(p.sunken))
+                    .overflow_y_scrollbar()
+                    .child(markdown_view(
+                        SharedString::from(format!("plan-body-{}", gate.id)),
+                        markdown.clone(),
+                    ))
+                    .into_any_element()
+            };
+
             top_accent_card(Tone::Accent, cx).child(
                 v_col()
                     .p(px(12.0))
@@ -369,14 +400,11 @@ pub fn render_human_gate(
                     .child(
                         h_row()
                             .justify_between()
+                            .gap(px(8.0))
                             .child(
                                 h_row()
                                     .gap(px(6.0))
-                                    .child(badge(
-                                        crate::ui::tr(cx).chat().composer_plan(),
-                                        Tone::Accent,
-                                        cx,
-                                    ))
+                                    .child(badge(ch.composer_plan(), Tone::Accent, cx))
                                     .child(
                                         div()
                                             .text_xs()
@@ -385,25 +413,53 @@ pub fn render_human_gate(
                                             .child(hdr_title),
                                     ),
                             )
-                            .child(badge(
-                                crate::ui::tr(cx).chat().gates_steps(steps),
-                                Tone::Neutral,
-                                cx,
-                            )),
+                            .child(
+                                h_row()
+                                    .gap(px(5.0))
+                                    .children(has_graph.then(|| {
+                                        h_row()
+                                            .gap(px(4.0))
+                                            .child(
+                                                choice_chip(
+                                                    SharedString::from(format!(
+                                                        "plan-tab-g-{}",
+                                                        gate.id
+                                                    )),
+                                                    ch.gates_plan_view_graph(),
+                                                    !show_md,
+                                                    cx,
+                                                )
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.set_plan_gate_markdown(
+                                                        gid_graph.clone(),
+                                                        false,
+                                                        cx,
+                                                    );
+                                                })),
+                                            )
+                                            .child(
+                                                choice_chip(
+                                                    SharedString::from(format!(
+                                                        "plan-tab-m-{}",
+                                                        gate.id
+                                                    )),
+                                                    ch.gates_plan_view_markdown(),
+                                                    show_md,
+                                                    cx,
+                                                )
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.set_plan_gate_markdown(
+                                                        gid_md.clone(),
+                                                        true,
+                                                        cx,
+                                                    );
+                                                })),
+                                            )
+                                    }))
+                                    .child(badge(count_badge, Tone::Neutral, cx)),
+                            ),
                     )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("plan-md-{}", gate.id)))
-                            .max_h(px(220.0))
-                            .p(px(10.0))
-                            .rounded(px(8.0))
-                            .bg(to_hsla(p.sunken))
-                            .overflow_y_scrollbar()
-                            .child(markdown_view(
-                                SharedString::from(format!("plan-body-{}", gate.id)),
-                                markdown.clone(),
-                            )),
-                    )
+                    .child(body_el)
                     .child(
                         h_row()
                             .justify_end()

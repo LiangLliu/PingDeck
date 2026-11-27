@@ -10,8 +10,8 @@
 //! survives a relaunch; a branch or a sub-agent never inherits it.
 
 use crate::agent::dto::{AgentRunInput, AgentRunStarted};
-use crate::agent::gate::{GateAnswer, GateKind, PlanDecision};
-use crate::agent::model::AgentSessionPatch;
+use crate::agent::gate::{GateAnswer, GateKind, GatePayload, PlanDecision};
+use crate::agent::model::{AgentSessionPatch, AgentTodoItem, HumanGateBody};
 use crate::error::AppError;
 use crate::settings::ToolApproval;
 
@@ -78,9 +78,16 @@ pub async fn agent_plan_approve_impl(
         .map(|text| text.trim().to_owned())
         .filter(|text| !text.is_empty())
         .unwrap_or_else(|| PLAN_APPROVED_TEXT.to_owned());
+    let mut approved_tasks: Vec<AgentTodoItem> = Vec::new();
     match waiting {
         Some((_, None)) => return Err(AppError::conflict("wait for the plan to be written first")),
         Some((run, Some(gate_id))) => {
+            if let Some(GatePayload::Plan(dto)) =
+                state.agent.gates.open_payload(&run.run_id, &gate_id)
+                && let HumanGateBody::Plan { tasks, .. } = dto.body
+            {
+                approved_tasks = tasks;
+            }
             run.hand_over();
             let answer = GateAnswer::Plan {
                 decision: PlanDecision::Approve,
@@ -98,11 +105,25 @@ pub async fn agent_plan_approve_impl(
         set_mode(state, session_id, next).await?;
     }
     store_plan(state, session_id, false).await?;
+    let launch_text = if approved_tasks.is_empty() {
+        text
+    } else {
+        let sid = session_id.to_owned();
+        let to_store = approved_tasks.clone();
+        blocking(state, move |state| {
+            state
+                .store()
+                .save_session_todos(&sid, &to_store)
+                .map_err(command_error)
+        })
+        .await??;
+        format!("{text}\n\n{}", format_task_graph_directive(&approved_tasks))
+    };
     let started = agent_run_start_impl(
         state,
         AgentRunInput {
             session_id: session_id.to_owned(),
-            text,
+            text: launch_text,
             ..AgentRunInput::default()
         },
     )
@@ -116,6 +137,29 @@ pub async fn agent_plan_approve_impl(
         dispatch_next(state, session_id).await;
     }
     started
+}
+
+fn format_task_graph_directive(tasks: &[AgentTodoItem]) -> String {
+    let mut lines = vec![
+        "[Approved Task Graph] Follow the dependencies below (independent branches may run in parallel via `task`), and update `todo_write` as each node transitions to in_progress / completed / failed:".to_owned(),
+    ];
+    for t in tasks {
+        let deps = if t.depends_on.is_empty() {
+            "none".to_owned()
+        } else {
+            t.depends_on.join(", ")
+        };
+        let group = t
+            .group
+            .as_deref()
+            .map(|g| format!(" · group={g}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "- `{}` (depends_on: {deps}{group}): {}",
+            t.id, t.content
+        ));
+    }
+    lines.join("\n")
 }
 
 async fn store_plan(state: &AppState, session_id: &str, on: bool) -> Result<(), AppError> {

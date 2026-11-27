@@ -259,6 +259,14 @@ impl HumanGate {
             .map(|entry| entry.request.gate_id.clone())
     }
 
+    /// Reads a clone of the payload stored on an open gate without claiming or removing it.
+    #[must_use]
+    pub fn open_payload(&self, run_id: &str, gate_id: &str) -> Option<GatePayload> {
+        lock(&self.open)
+            .get(&(run_id.to_owned(), gate_id.to_owned()))
+            .map(|entry| entry.request.payload.clone())
+    }
+
     /// The open gates of `kind`, oldest first.
     #[must_use]
     pub fn list(&self, kind: GateKind) -> Vec<GateRequest> {

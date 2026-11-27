@@ -12,7 +12,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use pingdeck_core::agent::dto::{
     AgentRunTopology, ExecutionWave, TopologySubagent, TopologyToolStep,
 };
-use pingdeck_core::agent::model::{AgentRunStatus, SubagentRole};
+use pingdeck_core::agent::model::{
+    AgentRunStatus, AgentTodoItem, AgentTodoStatus, SubagentRole, TaskNodeKind,
+};
 
 /// Default card width in unscaled logical pixels.
 pub const GRAPH_NODE_W: f32 = 240.0;
@@ -125,6 +127,9 @@ pub enum GraphEdgeTone {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphNodeMember {
     pub id: String,
+    /// When this member corresponds to a persisted Task Graph node, holds its `AgentTodoItem::id`.
+    pub task_id: Option<String>,
+    pub attempt: u32,
     pub title: String,
     pub subtitle: Option<String>,
     pub status: GraphNodeStatus,
@@ -152,14 +157,20 @@ pub enum GraphNodePayload {
         subagents: Vec<TopologySubagent>,
         tools: Vec<TopologyToolStep>,
     },
-    /// Reserved for Phase 2 planned `TaskGraph` nodes that have not started executing yet.
-    PlannedTask { objective: String },
+    /// Planned or persisted Task Graph (`任务图`) node with optional checkpoint summary.
+    PlannedTask {
+        objective: String,
+        summary: Option<String>,
+    },
 }
 
 /// Logical DAG node fed into [`layout_dag_nodes`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphNode {
     pub id: String,
+    /// When this node corresponds to a persisted Task Graph item, holds its `AgentTodoItem::id`.
+    pub task_id: Option<String>,
+    pub attempt: u32,
     /// Optional explicit stage column; when `None`, computed from `depends_on` via longest-path
     /// Kahn topological layering.
     pub stage_hint: Option<usize>,
@@ -334,25 +345,38 @@ impl ExecutionGraphLayout {
     }
 }
 
+/// Whether `tasks` forms a structured Task Graph (`任务图`) worth visualizing as a DAG.
+#[must_use]
+pub fn has_structured_task_graph(tasks: &[AgentTodoItem]) -> bool {
+    if tasks.len() < 2 {
+        return false;
+    }
+    tasks.iter().any(AgentTodoItem::has_graph_metadata) || tasks.len() >= 3
+}
+
 /// Whether the Execution Graph (`执行图`) view is meaningful for `topo`.
 ///
-/// Zero-tool direct answers have no stages or edges to visualize, so the UI disables `Graph` and
-/// routes directly to the concise `Steps` summary card instead of showing a lonely single box.
+/// Zero-tool direct answers without a structured Task Graph have no stages or edges to visualize,
+/// so the UI disables `Graph` and routes directly to the concise `Steps` summary card.
 #[must_use]
 pub fn is_graph_available(topo: &AgentRunTopology) -> bool {
-    !topo.waves.is_empty()
+    !topo.waves.is_empty() || has_structured_task_graph(&topo.task_graph)
 }
 
 /// Deterministic adaptive default view mode for an agent run.
 ///
 /// Priority order:
-/// 1. Parallel sub-agents, multiple sub-agents (`>= 2`), or multi-stage runs (`>= 3` waves) with
+/// 1. Structured Task Graph (`任务图`) with dependencies/groups or `>= 3` items -> [`RunViewMode::Graph`].
+/// 2. Parallel sub-agents, multiple sub-agents (`>= 2`), or multi-stage runs (`>= 3` waves) with
 ///    any parallel batch or sub-agent delegation -> [`RunViewMode::Graph`].
-/// 2. Long iterative serial debug loops (`iterations >= 5` or `waves >= 8`) ->
+/// 3. Long iterative serial debug loops (`iterations >= 5` or `waves >= 8`) ->
 ///    [`RunViewMode::Timeline`].
-/// 3. Direct answers (0 tools) or short linear runs (1-4 serial steps) -> [`RunViewMode::Steps`].
+/// 4. Direct answers (0 tools) or short linear runs (1-4 serial steps) -> [`RunViewMode::Steps`].
 #[must_use]
 pub fn select_default_view_mode(topo: &AgentRunTopology) -> RunViewMode {
+    if has_structured_task_graph(&topo.task_graph) {
+        return RunViewMode::Graph;
+    }
     if topo.waves.is_empty() {
         return RunViewMode::Steps;
     }
@@ -380,7 +404,22 @@ pub fn select_default_view_mode(topo: &AgentRunTopology) -> RunViewMode {
     RunViewMode::Steps
 }
 
+/// Builds a read-only Execution Graph preview directly from a structured `Plan` Task Graph before
+/// execution starts (reused inside the Chat Plan approval gate).
+#[must_use]
+pub fn build_plan_preview_graph(
+    tasks: &[AgentTodoItem],
+    expanded_groups: &HashSet<String>,
+    labels: &GraphBuildLabels<'_>,
+) -> ExecutionGraphLayout {
+    build_task_graph_layout(tasks, None, expanded_groups, 0, labels)
+}
+
 /// Converts a runtime [`AgentRunTopology`] into a laid-out GitHub-Actions-style Execution Graph.
+///
+/// When the session carries a structured Task Graph (`topo.task_graph`), renders the planned DAG
+/// overlaid with live sub-agent runtime status, duration, and errors; otherwise builds the graph
+/// directly from runtime [`ExecutionWave`]s.
 #[must_use]
 pub fn build_graph_from_topology(
     topo: &AgentRunTopology,
@@ -388,6 +427,16 @@ pub fn build_graph_from_topology(
     now_ms: i64,
     labels: &GraphBuildLabels<'_>,
 ) -> ExecutionGraphLayout {
+    if has_structured_task_graph(&topo.task_graph) {
+        return build_task_graph_layout(
+            &topo.task_graph,
+            Some(topo),
+            expanded_groups,
+            now_ms,
+            labels,
+        );
+    }
+
     let mut nodes: Vec<GraphNode> = Vec::new();
     let run_start = topo.run.started_at_ms;
     let first_wave_start = topo
@@ -406,6 +455,8 @@ pub fn build_graph_from_topology(
     };
     nodes.push(GraphNode {
         id: trigger_id.clone(),
+        task_id: None,
+        attempt: 0,
         stage_hint: Some(0),
         kind: GraphNodeKind::Main,
         title: labels.trigger_title.to_owned(),
@@ -474,6 +525,8 @@ pub fn build_graph_from_topology(
                     let error = subagents.iter().find_map(|s| s.run.error.clone());
                     nodes.push(GraphNode {
                         id: gid.clone(),
+                        task_id: None,
+                        attempt: 0,
                         stage_hint: Some(stage_cursor),
                         kind: GraphNodeKind::Group,
                         title: labels.parallel_group.to_owned(),
@@ -537,6 +590,8 @@ pub fn build_graph_from_topology(
                     .map(|t| format!("{} · {}", t.name, t.summary));
                 nodes.push(GraphNode {
                     id: gid.clone(),
+                    task_id: None,
+                    attempt: 0,
                     stage_hint: Some(stage_cursor),
                     kind: GraphNodeKind::Group,
                     title: format!("{} ×{}", labels.kind_tool, tools.len()),
@@ -571,6 +626,8 @@ pub fn build_graph_from_topology(
                 let kind = infer_tool_node_kind(&tool.name, &tool.class);
                 nodes.push(GraphNode {
                     id: nid.clone(),
+                    task_id: None,
+                    attempt: 0,
                     stage_hint: Some(stage_cursor),
                     kind,
                     title: tool.name.clone(),
@@ -624,6 +681,8 @@ pub fn build_graph_from_topology(
         };
         nodes.push(GraphNode {
             id: term_id,
+            task_id: None,
+            attempt: 0,
             stage_hint: Some(stage_cursor),
             kind: GraphNodeKind::Main,
             title: if term_active {
@@ -981,6 +1040,8 @@ fn subagent_to_graph_node(
 
     GraphNode {
         id,
+        task_id: None,
+        attempt: 0,
         stage_hint: Some(stage),
         kind,
         title: sub.description.clone(),
@@ -1011,6 +1072,8 @@ fn subagent_to_member(sub: &TopologySubagent, now_ms: i64) -> GraphNodeMember {
     };
     GraphNodeMember {
         id: format!("sub:{}", sub.run.run_id),
+        task_id: None,
+        attempt: 0,
         title: sub.description.clone(),
         subtitle: Some(sub.run.model_label.clone()),
         status: map_run_status(sub.run.status),
@@ -1032,6 +1095,8 @@ fn tool_to_member(step: &TopologyToolStep, now_ms: i64) -> GraphNodeMember {
     let status = map_tool_status(&step.status);
     GraphNodeMember {
         id: format!("tool:{}", step.call_id),
+        task_id: None,
+        attempt: 0,
         title: step.name.clone(),
         subtitle: (!step.summary.is_empty()).then(|| step.summary.clone()),
         status,
@@ -1083,6 +1148,310 @@ fn wave_started_ms(wave: &ExecutionWave) -> Option<i64> {
 
 fn span_duration_ms(started_ms: Option<i64>, ended_ms: Option<i64>, now_ms: i64) -> Option<u64> {
     started_ms.map(|s| ended_ms.unwrap_or(now_ms).saturating_sub(s).max(0) as u64)
+}
+
+/// Maps a persisted [`AgentTodoStatus`] to [`GraphNodeStatus`].
+#[must_use]
+pub const fn map_todo_status(status: AgentTodoStatus) -> GraphNodeStatus {
+    match status {
+        AgentTodoStatus::Pending => GraphNodeStatus::Pending,
+        AgentTodoStatus::InProgress => GraphNodeStatus::Running,
+        AgentTodoStatus::Completed => GraphNodeStatus::Completed,
+        AgentTodoStatus::Cancelled => GraphNodeStatus::Cancelled,
+        AgentTodoStatus::Failed => GraphNodeStatus::Failed,
+        AgentTodoStatus::Blocked => GraphNodeStatus::Skipped,
+    }
+}
+
+const fn map_task_kind(kind: Option<TaskNodeKind>) -> GraphNodeKind {
+    match kind {
+        Some(TaskNodeKind::Explore) => GraphNodeKind::Explore,
+        Some(TaskNodeKind::Implement) | None => GraphNodeKind::Implement,
+        Some(TaskNodeKind::Verify) => GraphNodeKind::Verify,
+        Some(TaskNodeKind::Gate) => GraphNodeKind::Gate,
+    }
+}
+
+/// Converts a structured [`AgentTodoItem`] Task Graph into a laid-out [`ExecutionGraphLayout`],
+/// optionally overlaying live sub-agent runtime telemetry from `topo_opt`.
+fn build_task_graph_layout(
+    tasks: &[AgentTodoItem],
+    topo_opt: Option<&AgentRunTopology>,
+    expanded_groups: &HashSet<String>,
+    now_ms: i64,
+    labels: &GraphBuildLabels<'_>,
+) -> ExecutionGraphLayout {
+    let mut sub_by_id: HashMap<&str, &TopologySubagent> = HashMap::new();
+    let mut sub_by_desc: HashMap<String, &TopologySubagent> = HashMap::new();
+    if let Some(topo) = topo_opt {
+        for wave in &topo.waves {
+            match wave {
+                ExecutionWave::ParallelSubagents { subagents, .. } => {
+                    for sub in subagents {
+                        sub_by_id.insert(sub.run.run_id.as_str(), sub);
+                        sub_by_desc.insert(sub.description.trim().to_lowercase(), sub);
+                    }
+                }
+                ExecutionWave::SingleSubagent { subagent, .. } => {
+                    sub_by_id.insert(subagent.run.run_id.as_str(), subagent);
+                    sub_by_desc.insert(subagent.description.trim().to_lowercase(), subagent);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Group sibling tasks that share both the same `group` label and identical normalized
+    // `depends_on` set when there are >= 2 members.
+    let mut bucket_order: Vec<(String, Vec<String>)> = Vec::new();
+    let mut buckets: HashMap<(String, Vec<String>), Vec<usize>> = HashMap::new();
+    for (idx, item) in tasks.iter().enumerate() {
+        if let Some(group_lbl) = &item.group {
+            let mut deps = item.depends_on.clone();
+            deps.sort();
+            deps.dedup();
+            let key = (group_lbl.clone(), deps);
+            if !buckets.contains_key(&key) {
+                bucket_order.push(key.clone());
+            }
+            buckets.entry(key).or_default().push(idx);
+        }
+    }
+
+    let mut owner_node_id: HashMap<String, String> = HashMap::with_capacity(tasks.len());
+    let mut grouped_indices: HashSet<usize> = HashSet::new();
+    let mut group_specs: Vec<(String, String, Vec<String>, Vec<usize>)> = Vec::new();
+
+    for (g_ord, key) in bucket_order.into_iter().enumerate() {
+        if let Some(indices) = buckets.remove(&key)
+            && indices.len() >= 2
+        {
+            let gid = format!("tgrp:{}:{g_ord}", key.0);
+            for &i in &indices {
+                grouped_indices.insert(i);
+                owner_node_id.insert(tasks[i].id.clone(), gid.clone());
+            }
+            group_specs.push((gid, key.0, key.1, indices));
+        }
+    }
+    for (idx, item) in tasks.iter().enumerate() {
+        if !grouped_indices.contains(&idx) {
+            owner_node_id.insert(item.id.clone(), format!("task:{}", item.id));
+        }
+    }
+
+    let resolve_deps = |raw_deps: &[String], self_node_id: &str| -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for dep in raw_deps {
+            if let Some(mapped) = owner_node_id.get(dep)
+                && mapped != self_node_id
+                && seen.insert(mapped.clone())
+            {
+                out.push(mapped.clone());
+            }
+        }
+        out
+    };
+
+    let match_sub = |item: &AgentTodoItem| -> Option<&TopologySubagent> {
+        item.run_id
+            .as_deref()
+            .and_then(|rid| sub_by_id.get(rid).copied())
+            .or_else(|| {
+                sub_by_desc
+                    .get(&item.content.trim().to_lowercase())
+                    .copied()
+            })
+    };
+
+    let mut nodes: Vec<GraphNode> = Vec::new();
+    let mut emitted_groups: HashSet<String> = HashSet::new();
+    let group_by_first_idx: HashMap<usize, usize> = group_specs
+        .iter()
+        .enumerate()
+        .filter_map(|(gi, (_, _, _, idxs))| idxs.first().map(|&first| (first, gi)))
+        .collect();
+
+    for (idx, item) in tasks.iter().enumerate() {
+        if let Some(&gi) = group_by_first_idx.get(&idx) {
+            let (gid, group_lbl, raw_deps, indices) = &group_specs[gi];
+            if emitted_groups.insert(gid.clone()) {
+                let expanded = expanded_groups.contains(gid);
+                let mut members = Vec::with_capacity(indices.len());
+                let mut matched_subs = Vec::new();
+                for &mi in indices {
+                    let m_item = &tasks[mi];
+                    let sub_opt = match_sub(m_item);
+                    if let Some(s) = sub_opt {
+                        matched_subs.push((*s).clone());
+                    }
+                    let (status, elapsed_ms, stop_run_id, waiting, error, payload) =
+                        task_runtime_overlay(m_item, sub_opt, now_ms);
+                    members.push(GraphNodeMember {
+                        id: format!("task:{}", m_item.id),
+                        task_id: Some(m_item.id.clone()),
+                        attempt: m_item.attempt,
+                        title: m_item.content.clone(),
+                        subtitle: m_item.summary.clone(),
+                        status,
+                        elapsed_ms,
+                        role: m_item.role.or_else(|| sub_opt.and_then(|s| s.run.role)),
+                        subagent_kind: sub_opt.map(|s| s.subagent_kind.clone()),
+                        exit_code: None,
+                        stop_run_id,
+                        error,
+                        waiting_summary: waiting,
+                        payload,
+                    });
+                }
+                let status = aggregate_member_status(&members);
+                let elapsed_ms = members.iter().filter_map(|m| m.elapsed_ms).max();
+                let waiting = members.iter().find_map(|m| m.waiting_summary.clone());
+                let error = members.iter().find_map(|m| m.error.clone());
+                nodes.push(GraphNode {
+                    id: gid.clone(),
+                    task_id: None,
+                    attempt: 0,
+                    stage_hint: None,
+                    kind: GraphNodeKind::Group,
+                    title: group_lbl.clone(),
+                    subtitle: None,
+                    status,
+                    elapsed_ms,
+                    role: None,
+                    subagent_kind: None,
+                    resumed: false,
+                    step_count: Some(members.len() as u32),
+                    exit_code: None,
+                    error,
+                    waiting_summary: waiting,
+                    stop_run_id: None,
+                    group_tab: Some(format!("{} · {group_lbl}", labels.parallel_group)),
+                    members,
+                    expanded,
+                    depends_on: resolve_deps(raw_deps, gid),
+                    payload: GraphNodePayload::ParallelGroup {
+                        subagents: matched_subs,
+                        tools: Vec::new(),
+                    },
+                });
+            }
+            continue;
+        }
+        if grouped_indices.contains(&idx) {
+            continue;
+        }
+
+        let nid = format!("task:{}", item.id);
+        let sub_opt = match_sub(item);
+        let (status, elapsed_ms, stop_run_id, waiting, error, payload) =
+            task_runtime_overlay(item, sub_opt, now_ms);
+        let members: Vec<GraphNodeMember> = sub_opt
+            .map(|s| {
+                s.tool_calls
+                    .iter()
+                    .map(|t| tool_to_member(t, now_ms))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let expanded = expanded_groups.contains(&nid);
+        let group_tab = if !members.is_empty() {
+            item.group
+                .clone()
+                .or_else(|| sub_opt.map(|s| s.subagent_kind.clone()))
+        } else {
+            None
+        };
+        let subtitle = item
+            .summary
+            .clone()
+            .or_else(|| sub_opt.map(|s| s.run.model_label.clone()));
+
+        nodes.push(GraphNode {
+            id: nid.clone(),
+            task_id: Some(item.id.clone()),
+            attempt: item.attempt,
+            stage_hint: None,
+            kind: map_task_kind(item.kind),
+            title: item.content.clone(),
+            subtitle,
+            status,
+            elapsed_ms,
+            role: item.role.or_else(|| sub_opt.and_then(|s| s.run.role)),
+            subagent_kind: sub_opt.map(|s| s.subagent_kind.clone()),
+            resumed: sub_opt.is_some_and(|s| s.resumed),
+            step_count: sub_opt.map(|s| s.tool_calls.len() as u32),
+            exit_code: None,
+            error,
+            waiting_summary: waiting,
+            stop_run_id,
+            group_tab,
+            members,
+            expanded,
+            depends_on: resolve_deps(&item.depends_on, &nid),
+            payload,
+        });
+    }
+
+    // For legacy linear `todos` with no explicit `depends_on` edges, chain them sequentially
+    // so the Execution Graph shows clean stage progression rather than stacking all items in Stage 0.
+    let any_edge = nodes.iter().any(|n| !n.depends_on.is_empty());
+    if !any_edge && nodes.len() >= 2 {
+        for i in 1..nodes.len() {
+            let prev = nodes[i - 1].id.clone();
+            nodes[i].depends_on.push(prev);
+        }
+    }
+
+    layout_dag_nodes(nodes)
+}
+
+fn task_runtime_overlay(
+    item: &AgentTodoItem,
+    sub_opt: Option<&TopologySubagent>,
+    now_ms: i64,
+) -> (
+    GraphNodeStatus,
+    Option<u64>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    GraphNodePayload,
+) {
+    if let Some(sub) = sub_opt {
+        let status = match item.status {
+            AgentTodoStatus::Completed => GraphNodeStatus::Completed,
+            AgentTodoStatus::Failed => GraphNodeStatus::Failed,
+            AgentTodoStatus::Cancelled => GraphNodeStatus::Cancelled,
+            AgentTodoStatus::Blocked => GraphNodeStatus::Skipped,
+            _ => map_run_status(sub.run.status),
+        };
+        let elapsed = if sub.run.status.is_active() {
+            (now_ms - sub.run.started_at_ms).max(sub.awake_ms as i64) as u64
+        } else {
+            sub.awake_ms
+        };
+        return (
+            status,
+            Some(elapsed),
+            sub.run.status.is_active().then(|| sub.run.run_id.clone()),
+            sub.pending_approval.as_ref().map(|a| a.summary.clone()),
+            item.error.clone().or_else(|| sub.run.error.clone()),
+            GraphNodePayload::Subagent(Box::new(sub.clone())),
+        );
+    }
+    (
+        map_todo_status(item.status),
+        None,
+        None,
+        None,
+        item.error.clone(),
+        GraphNodePayload::PlannedTask {
+            objective: item.content.clone(),
+            summary: item.summary.clone(),
+        },
+    )
 }
 
 #[must_use]
@@ -1232,6 +1601,7 @@ mod tests {
                 completed: sub_total,
                 ..BoardSubagentCounts::default()
             },
+            task_graph: Vec::new(),
         }
     }
 
@@ -1344,6 +1714,8 @@ mod tests {
     fn generic_dag_layout_routes_cross_stage_skip_edges_without_intersecting_middle_cards() {
         let mk = |id: &str, deps: &[&str]| GraphNode {
             id: id.to_owned(),
+            task_id: None,
+            attempt: 0,
             stage_hint: None,
             kind: GraphNodeKind::Implement,
             title: id.to_owned(),
@@ -1364,6 +1736,7 @@ mod tests {
             depends_on: deps.iter().map(|s| (*s).to_owned()).collect(),
             payload: GraphNodePayload::PlannedTask {
                 objective: id.to_owned(),
+                summary: None,
             },
         };
         // A (stage 0) -> B (stage 1) -> C (stage 2), plus direct skip edge A -> C.
@@ -1386,5 +1759,60 @@ mod tests {
             skip.waypoints[1].1,
             node_b.y + node_b.h
         );
+    }
+
+    #[test]
+    fn task_graph_groups_parallel_siblings_routes_default_to_graph_and_overlays_subagents() {
+        let tasks = vec![
+            AgentTodoItem {
+                id: "n1".to_owned(),
+                content: "Audit router".to_owned(),
+                status: AgentTodoStatus::Completed,
+                kind: Some(TaskNodeKind::Explore),
+                role: Some(SubagentRole::Fast),
+                group: Some("Audit".to_owned()),
+                ..AgentTodoItem::default()
+            },
+            AgentTodoItem {
+                id: "n2".to_owned(),
+                content: "Audit store".to_owned(),
+                status: AgentTodoStatus::InProgress,
+                kind: Some(TaskNodeKind::Explore),
+                role: Some(SubagentRole::Fast),
+                group: Some("Audit".to_owned()),
+                ..AgentTodoItem::default()
+            },
+            AgentTodoItem {
+                id: "n3".to_owned(),
+                content: "Implement fix".to_owned(),
+                status: AgentTodoStatus::Pending,
+                depends_on: vec!["n1".to_owned(), "n2".to_owned()],
+                kind: Some(TaskNodeKind::Implement),
+                ..AgentTodoItem::default()
+            },
+            AgentTodoItem {
+                id: "n4".to_owned(),
+                content: "Run tests".to_owned(),
+                status: AgentTodoStatus::Pending,
+                depends_on: vec!["n3".to_owned()],
+                kind: Some(TaskNodeKind::Verify),
+                ..AgentTodoItem::default()
+            },
+        ];
+
+        // Even before any runtime waves arrive, structured TaskGraph enables & defaults to Graph.
+        let mut topo = base_topology(Vec::new(), 1, 0);
+        topo.task_graph = tasks.clone();
+        assert!(is_graph_available(&topo));
+        assert_eq!(select_default_view_mode(&topo), RunViewMode::Graph);
+
+        let preview = build_plan_preview_graph(&tasks, &HashSet::new(), &sample_labels());
+        assert_eq!(preview.stages.len(), 3); // [Group(Audit)] -> [Implement] -> [Verify]
+        assert_eq!(preview.nodes.len(), 3);
+        assert_eq!(preview.collapsible_group_ids.len(), 1);
+        assert!(matches!(
+            preview.find_selection("task:n1"),
+            Some(SelectedGraphTarget::Member { member, .. }) if member.task_id.as_deref() == Some("n1")
+        ));
     }
 }

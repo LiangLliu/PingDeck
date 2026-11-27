@@ -185,3 +185,132 @@ fn a_plan_nobody_answered_reads_timed_out_on_its_first_line_and_ends_the_run() {
     let (cancelled, _, _) = plan_answer(GateOutcome::Cancelled);
     assert!(!cancelled.starts_with('{'));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn structured_task_graph_plan_persists_on_approval_and_supports_node_recovery() {
+    use super::super::{agent_run_topology_impl, agent_task_node_recover_impl};
+    use crate::agent::model::{AgentTodoStatus, NodeRecoveryAction};
+
+    fn graph_planner(_: usize, request: &Recorded) -> Reply {
+        if offers(request, SUBMIT_PLAN) && !has_tool_result(request) {
+            call_answer(
+                "tc_plan_dag",
+                SUBMIT_PLAN,
+                &serde_json::json!({
+                    "title": "Auth Task Graph",
+                    "plan": "1. Audit router\n2. Audit store\n3. Patch auth\n4. Run tests",
+                    "tasks": [
+                        {"id": "n1", "content": "Audit router", "kind": "explore", "role": "fast", "group": "Audit"},
+                        {"id": "n2", "content": "Audit store", "kind": "explore", "role": "fast", "group": "Audit"},
+                        {"id": "n3", "content": "Patch auth", "depends_on": ["n1", "n2"], "kind": "implement"},
+                        {"id": "n4", "content": "Run tests", "depends_on": ["n3"], "kind": "verify"}
+                    ]
+                })
+                .to_string(),
+            )
+        } else {
+            text_answer("done")
+        }
+    }
+
+    let world = world(graph_planner);
+    let session = chat(&world, ToolApproval::AutoReadOnly, None);
+    agent_plan_set_impl(&world.state, &session.id, true)
+        .await
+        .unwrap();
+    let seen = watch(&world, &session);
+    agent_run_start_impl(&world.state, input(&session, "plan the task graph"))
+        .await
+        .unwrap();
+    wait_until("structured plan gate", || {
+        events(&seen)
+            .iter()
+            .any(|e| matches!(e, AgentEvent::GateOpened { .. }))
+    })
+    .await;
+
+    let detail =
+        agent_session_get_impl(&world.state, &session.id, AgentPageRequest::default()).unwrap();
+    let gates = detail.live.unwrap().gates;
+    assert!(matches!(
+        &gates[..],
+        [gate] if matches!(&gate.body, HumanGateBody::Plan { steps: 4, tasks, .. } if tasks.len() == 4)
+    ));
+
+    let exec_run = agent_plan_approve_impl(
+        &world.state,
+        &session.id,
+        Some("批准并执行".to_owned()),
+        Some(ToolApproval::AutoReadOnly),
+    )
+    .await
+    .unwrap();
+    wait_terminal(&seen, 2).await;
+
+    // Approved structured tasks are persisted into session.todos and exposed via topology.
+    let topo = agent_run_topology_impl(&world.state, &exec_run.run_id).unwrap();
+    assert_eq!(topo.task_graph.len(), 4);
+    assert_eq!(topo.task_graph[2].depends_on, vec!["n1", "n2"]);
+    let last_prompt = super::upstream::last_user_text(world.upstream.requests().last().unwrap());
+    assert!(last_prompt.contains("[Approved Task Graph]"));
+
+    // Simulate n1/n2 completed, n3 failed, n4 blocked -> Retry n3 resets n3+n4 while preserving n1+n2.
+    let mut todos = topo.task_graph;
+    todos[0].status = AgentTodoStatus::Completed;
+    todos[0].summary = Some("router ok".to_owned());
+    todos[1].status = AgentTodoStatus::Completed;
+    todos[2].status = AgentTodoStatus::Failed;
+    todos[2].error = Some("borrow checker".to_owned());
+    todos[3].status = AgentTodoStatus::Blocked;
+    world
+        .state
+        .store()
+        .save_session_todos(&session.id, &todos)
+        .unwrap();
+
+    agent_task_node_recover_impl(
+        &world.state,
+        &session.id,
+        "n3",
+        NodeRecoveryAction::Retry,
+        Some("clone the Arc first".to_owned()),
+    )
+    .await
+    .unwrap();
+    wait_terminal(&seen, 3).await;
+
+    let after_retry = world
+        .state
+        .store()
+        .get_agent_session(&session.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_retry.todos[0].status, AgentTodoStatus::Completed);
+    assert_eq!(after_retry.todos[1].status, AgentTodoStatus::Completed);
+    assert_eq!(after_retry.todos[2].status, AgentTodoStatus::Pending);
+    assert_eq!(after_retry.todos[2].attempt, 1);
+    assert!(after_retry.todos[2].error.is_none());
+    assert_eq!(after_retry.todos[3].status, AgentTodoStatus::Pending);
+    let retry_prompt = super::upstream::last_user_text(world.upstream.requests().last().unwrap());
+    assert!(retry_prompt.contains("clone the Arc first"));
+    assert!(retry_prompt.contains("router ok"));
+
+    // Skip n3 marks it Cancelled and launches continuation.
+    agent_task_node_recover_impl(
+        &world.state,
+        &session.id,
+        "n3",
+        NodeRecoveryAction::Skip,
+        None,
+    )
+    .await
+    .unwrap();
+    wait_terminal(&seen, 4).await;
+    let after_skip = world
+        .state
+        .store()
+        .get_agent_session(&session.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_skip.todos[2].status, AgentTodoStatus::Cancelled);
+}

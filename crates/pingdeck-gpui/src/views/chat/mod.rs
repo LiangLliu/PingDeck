@@ -82,6 +82,8 @@ pub struct ChatView {
     pub selected_graph_node_id: Option<String>,
     pub expanded_graph_groups: HashSet<String>,
     pub graph_zoom: f32,
+    pub plan_gate_show_markdown: HashSet<String>,
+    pub node_recovery_input: Entity<InputState>,
     pub search_input: Entity<InputState>,
     pub model_search_input: Entity<InputState>,
     pub question_other_input: Entity<InputState>,
@@ -145,6 +147,9 @@ impl ChatView {
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_search()));
         let monitor_search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder(ch.monitor_search_ph()));
+        let node_recovery_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(ch.graph_node_recovery_guidance_ph())
+        });
         let model_search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder(ch.ph_filter_models()));
         let question_other_input =
@@ -216,6 +221,8 @@ impl ChatView {
             selected_graph_node_id: None,
             expanded_graph_groups: HashSet::new(),
             graph_zoom: 1.0,
+            plan_gate_show_markdown: HashSet::new(),
+            node_recovery_input,
             search_input,
             model_search_input,
             question_other_input,

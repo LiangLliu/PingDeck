@@ -10,6 +10,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::agent::dto::{AgentRunTopology, TopologySubagent, TopologyToolStep};
+use pingdeck_desktop::core::agent::model::NodeRecoveryAction;
 use pingdeck_desktop::state::{
     ExecutionGraphLayout, GraphNodeKind, GraphNodeMember, GraphNodePayload, GraphNodeStatus,
     SelectedGraphTarget,
@@ -17,13 +18,15 @@ use pingdeck_desktop::state::{
 
 use crate::ui::{
     ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger, btn_ghost, btn_icon,
-    btn_secondary, h_row, icon_xs, palette, section_heading, status_indicator, to_hsla, v_col,
+    btn_primary, btn_secondary, h_row, icon_xs, palette, section_heading, status_indicator,
+    text_input, to_hsla, v_col,
 };
 
 use super::ChatView;
 use super::run_graph::{graph_kind_label, graph_status_visual};
 use super::run_status::{
-    format_elapsed_short, subagent_kind_label, subagent_role_label, tool_status_meta,
+    compact_tool_row, format_elapsed_short, graph_status_label, subagent_kind_label,
+    subagent_role_label,
 };
 use super::types::ChatHandoff;
 
@@ -39,40 +42,56 @@ pub fn render_node_inspector(
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
 
-    let (title, status, kind, stage_idx, elapsed_ms, upstream, stop_id, waiting, error, payload) =
-        match target {
-            SelectedGraphTarget::Node(pnode) => {
-                let n = &pnode.node;
-                (
-                    n.title.clone(),
-                    n.status,
-                    n.kind,
-                    pnode.stage,
-                    n.elapsed_ms,
-                    layout.upstream_titles(&n.id),
-                    n.stop_run_id.clone(),
-                    n.waiting_summary.clone(),
-                    n.error.clone(),
-                    &n.payload,
-                )
-            }
-            SelectedGraphTarget::Member { parent, member } => (
-                member.title.clone(),
-                member.status,
-                if matches!(member.payload, GraphNodePayload::Subagent(_)) {
-                    GraphNodeKind::Explore
-                } else {
-                    GraphNodeKind::Tool
-                },
-                parent.stage,
-                member.elapsed_ms,
-                vec![parent.node.title.clone()],
-                member.stop_run_id.clone(),
-                member.waiting_summary.clone(),
-                member.error.clone(),
-                &member.payload,
-            ),
-        };
+    let (
+        title,
+        status,
+        kind,
+        stage_idx,
+        elapsed_ms,
+        upstream,
+        stop_id,
+        task_id,
+        attempt,
+        waiting,
+        error,
+        payload,
+    ) = match target {
+        SelectedGraphTarget::Node(pnode) => {
+            let n = &pnode.node;
+            (
+                n.title.clone(),
+                n.status,
+                n.kind,
+                pnode.stage,
+                n.elapsed_ms,
+                layout.upstream_titles(&n.id),
+                n.stop_run_id.clone(),
+                n.task_id.clone(),
+                n.attempt,
+                n.waiting_summary.clone(),
+                n.error.clone(),
+                &n.payload,
+            )
+        }
+        SelectedGraphTarget::Member { parent, member } => (
+            member.title.clone(),
+            member.status,
+            if matches!(member.payload, GraphNodePayload::Subagent(_)) {
+                GraphNodeKind::Explore
+            } else {
+                GraphNodeKind::Tool
+            },
+            parent.stage,
+            member.elapsed_ms,
+            vec![parent.node.title.clone()],
+            member.stop_run_id.clone(),
+            member.task_id.clone(),
+            member.attempt,
+            member.waiting_summary.clone(),
+            member.error.clone(),
+            &member.payload,
+        ),
+    };
 
     let (shape, tone) = graph_status_visual(status);
     let sid_chat = topo.run.session_id.clone();
@@ -142,8 +161,12 @@ pub fn render_node_inspector(
                         .w_full()
                         .gap(px(5.0))
                         .flex_wrap()
-                        .child(badge(status_label(status, cx), tone, cx))
+                        .child(badge(graph_status_label(status, cx), tone, cx))
                         .child(badge(graph_kind_label(kind, cx), Tone::Neutral, cx))
+                        .children(
+                            (attempt > 0)
+                                .then(|| badge(ch.graph_attempt_badge(attempt), Tone::Warning, cx)),
+                        )
                         .children(
                             elapsed_ms.map(|ms| badge(format_elapsed_short(ms), Tone::Neutral, cx)),
                         ),
@@ -219,6 +242,80 @@ pub fn render_node_inspector(
         );
     }
 
+    if !topo.run.status.is_active()
+        && let Some(tid) = task_id
+        && matches!(
+            status,
+            GraphNodeStatus::Failed
+                | GraphNodeStatus::Interrupted
+                | GraphNodeStatus::Cancelled
+                | GraphNodeStatus::Skipped
+        )
+    {
+        let sid_r = topo.run.session_id.clone();
+        let sid_u = topo.run.session_id.clone();
+        let sid_s = topo.run.session_id.clone();
+        let tid_r = tid.clone();
+        let tid_u = tid.clone();
+        let tid_s = tid;
+        let has_changes = topo.pending_changes.files > 0;
+        body = body.child(
+            v_col()
+                .w_full()
+                .gap(px(6.0))
+                .p(px(10.0))
+                .rounded(px(8.0))
+                .bg(to_hsla(p.surface))
+                .border_1()
+                .border_color(to_hsla(p.line.composite_over(p.surface)))
+                .child(section_heading(ch.graph_node_recovery_heading(), cx))
+                .child(text_input(&view.node_recovery_input))
+                .child(
+                    h_row()
+                        .w_full()
+                        .gap(px(5.0))
+                        .flex_wrap()
+                        .child(
+                            btn_primary("node-rec-retry", ch.graph_action_retry()).on_click(
+                                cx.listener(move |this, _, window, cx| {
+                                    this.recover_task_node(
+                                        sid_r.clone(),
+                                        tid_r.clone(),
+                                        NodeRecoveryAction::Retry,
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ),
+                        )
+                        .children(has_changes.then(|| {
+                            btn_secondary("node-rec-undo", ch.graph_action_undo_retry()).on_click(
+                                cx.listener(move |this, _, window, cx| {
+                                    this.recover_task_node(
+                                        sid_u.clone(),
+                                        tid_u.clone(),
+                                        NodeRecoveryAction::UndoAndRetry,
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            )
+                        }))
+                        .child(btn_ghost("node-rec-skip", ch.graph_action_skip()).on_click(
+                            cx.listener(move |this, _, window, cx| {
+                                this.recover_task_node(
+                                    sid_s.clone(),
+                                    tid_s.clone(),
+                                    NodeRecoveryAction::Skip,
+                                    window,
+                                    cx,
+                                );
+                            }),
+                        )),
+                ),
+        );
+    }
+
     body = match payload {
         GraphNodePayload::MainRun { is_summary } => {
             render_main_payload(body, view, topo, *is_summary, cx)
@@ -228,16 +325,33 @@ pub fn render_node_inspector(
         GraphNodePayload::ParallelGroup { subagents, tools } => {
             render_group_payload(body, target, subagents, tools, cx)
         }
-        GraphNodePayload::PlannedTask { objective } => body.child(
-            div()
-                .w_full()
-                .p(px(9.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(p.sunken))
-                .text_xs()
-                .text_color(to_hsla(p.ink_2))
-                .child(SharedString::from(objective.clone())),
-        ),
+        GraphNodePayload::PlannedTask { objective, summary } => {
+            let mut c = body.child(
+                div()
+                    .w_full()
+                    .p(px(9.0))
+                    .rounded(px(7.0))
+                    .bg(to_hsla(p.sunken))
+                    .text_xs()
+                    .text_color(to_hsla(p.ink_2))
+                    .child(SharedString::from(objective.clone())),
+            );
+            if let Some(sum) = summary {
+                c = c
+                    .child(section_heading(ch.graph_node_summary_heading(), cx))
+                    .child(
+                        div()
+                            .w_full()
+                            .p(px(9.0))
+                            .rounded(px(7.0))
+                            .bg(to_hsla(p.sunken))
+                            .text_xs()
+                            .text_color(to_hsla(p.ink_2))
+                            .child(SharedString::from(sum.clone())),
+                    );
+            }
+            c
+        }
     };
 
     Some(
@@ -455,70 +569,4 @@ fn clickable_member_row(member: &GraphNodeMember, cx: &mut Context<ChatView>) ->
                 .child(SharedString::from(format_elapsed_short(ms)))
         }))
         .into_any_element()
-}
-
-fn compact_tool_row(step: &TopologyToolStep, cx: &gpui_kit::App) -> AnyElement {
-    let p = palette(cx);
-    let (shape, _) = tool_status_meta(&step.status);
-    v_col()
-        .w_full()
-        .gap(px(2.0))
-        .px(px(8.0))
-        .py(px(6.0))
-        .rounded(px(6.0))
-        .bg(to_hsla(p.surface))
-        .border_1()
-        .border_color(to_hsla(p.line.composite_over(p.surface)))
-        .child(
-            h_row()
-                .w_full()
-                .justify_between()
-                .gap(px(6.0))
-                .child(
-                    h_row()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(6.0))
-                        .child(status_indicator(shape, cx))
-                        .child(
-                            div()
-                                .text_xs()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .text_color(to_hsla(p.ink))
-                                .child(SharedString::from(step.name.clone())),
-                        )
-                        .children(
-                            step.exit_code
-                                .filter(|c| *c != 0)
-                                .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
-                        ),
-                )
-                .children(step.duration_ms.map(|ms| {
-                    div()
-                        .text_size(px(10.5))
-                        .text_color(to_hsla(p.faint))
-                        .child(SharedString::from(format_elapsed_short(ms)))
-                })),
-        )
-        .children((!step.summary.is_empty()).then(|| {
-            div()
-                .text_size(px(11.0))
-                .text_color(to_hsla(p.muted))
-                .truncate()
-                .child(SharedString::from(step.summary.clone()))
-        }))
-        .into_any_element()
-}
-
-fn status_label(status: GraphNodeStatus, cx: &gpui_kit::App) -> &'static str {
-    let ch = crate::ui::tr(cx).chat();
-    match status {
-        GraphNodeStatus::Pending | GraphNodeStatus::Queued => ch.run_status_queued(),
-        GraphNodeStatus::Running => ch.run_status_running(),
-        GraphNodeStatus::Waiting => ch.run_status_waiting_approval(),
-        GraphNodeStatus::Completed => ch.run_status_completed(),
-        GraphNodeStatus::Failed => ch.run_status_failed(),
-        GraphNodeStatus::Cancelled | GraphNodeStatus::Skipped => ch.run_status_cancelled(),
-        GraphNodeStatus::Interrupted => ch.run_status_interrupted(),
-    }
 }

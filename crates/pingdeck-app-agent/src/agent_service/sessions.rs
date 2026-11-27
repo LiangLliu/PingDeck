@@ -82,6 +82,7 @@ fn validate_todos(todos: &[AgentTodoItem]) -> Result<(), AppError> {
              1 to {MAX_TODO_CHARS} characters of text"
         )));
     }
+    crate::agent::model::validate_task_graph_dependencies(todos).map_err(AppError::validation)?;
     Ok(())
 }
 
@@ -893,6 +894,8 @@ fn push_todos(out: &mut String, todos: &[AgentTodoItem]) {
             AgentTodoStatus::Pending => (" ", ""),
             AgentTodoStatus::InProgress => (" ", " (in progress)"),
             AgentTodoStatus::Cancelled => (" ", " (cancelled)"),
+            AgentTodoStatus::Failed => ("!", " (failed)"),
+            AgentTodoStatus::Blocked => (" ", " (blocked)"),
         };
         let _ = writeln!(out, "- [{mark}] {}{note}", todo.content);
     }

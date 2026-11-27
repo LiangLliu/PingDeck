@@ -300,6 +300,10 @@ pub struct AgentRunTopology {
     pub queue_paused: bool,
     pub waves: Vec<ExecutionWave>,
     pub subagent_counts: BoardSubagentCounts,
+    /// Structured Task Graph (`任务图`) persisted on the session (`todos_json`), overlaid with
+    /// live sub-agent runtime bindings when present.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub task_graph: Vec<super::model::AgentTodoItem>,
 }
 
 /// How the payload is used; it fixes the byte budget.
