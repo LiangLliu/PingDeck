@@ -154,6 +154,13 @@ pub fn popover(id: impl Into<ElementId>) -> Popover {
     Popover::new(id)
 }
 
+/// Native anchored floating popover menu whose trigger container fills its parent width (`w_full`),
+/// keeping full-width sidebar pills and their anchored dropdowns flush on both edges.
+#[must_use]
+pub fn popover_full_trigger(id: impl Into<ElementId>) -> Popover {
+    Popover::new(id).trigger_style(gpui_kit::StyleRefinement::default().w_full())
+}
+
 /// Native underline tab bar for sub-views and inspectors.
 #[must_use]
 pub fn tab_bar_underline(id: impl Into<ElementId>) -> TabBar {

@@ -5,7 +5,7 @@ use spanbay_desktop::core::model::{HttpMethod, VariableResolutionSource};
 
 use crate::ui::{
     Anchor, Popover, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_danger,
-    btn_icon, btn_primary, empty_inline, h_row, icon_xs, list_row, method_badge, method_pill,
+    btn_icon, btn_primary, empty_inline, h_row, icon_xs, menu_option, method_badge, method_pill,
     palette, pill_btn, popover, popover_header, select_pill, status_indicator, text_input, to_hsla,
     toolbar_strip, v_col,
 };
@@ -35,6 +35,8 @@ pub fn render_http_url_strip(view: &RequestsView, cx: &mut Context<RequestsView>
     };
 
     let method_picker = popover("req-method-pop")
+        .p(px(6.0))
+        .rounded(px(10.0))
         .anchor(Anchor::TopLeft)
         .trigger(method_pill(
             "req-method-trigger",
@@ -49,7 +51,7 @@ pub fn render_http_url_strip(view: &RequestsView, cx: &mut Context<RequestsView>
                 let ent = view_ref_m.clone();
                 let pop_h = pop_cx.entity().clone();
                 list = list.child(
-                    list_row(
+                    menu_option(
                         SharedString::from(format!("m-pick-{m:?}")),
                         sel,
                         pop_cx,
@@ -128,6 +130,8 @@ pub fn render_env_picker(view: &RequestsView, cx: &mut Context<RequestsView>) ->
         .unwrap_or_else(|| crate::ui::tr(cx).requests().toolbar_url_no_env().into());
 
     popover("req-env-pop")
+        .p(px(6.0))
+        .rounded(px(10.0))
         .anchor(Anchor::TopRight)
         .trigger(select_pill(
             "req-env-trigger",
@@ -158,7 +162,7 @@ pub fn render_env_picker(view: &RequestsView, cx: &mut Context<RequestsView>) ->
             let ent0 = view_ref_e.clone();
             let ph0 = pop_cx.entity().clone();
             list = list.child(
-                list_row(
+                menu_option(
                     "env-pick-none",
                     active_env.is_none(),
                     pop_cx,
@@ -192,7 +196,7 @@ pub fn render_env_picker(view: &RequestsView, cx: &mut Context<RequestsView>) ->
                     StatusShape::Ok
                 };
                 list = list.child(
-                    list_row(
+                    menu_option(
                         SharedString::from(format!("env-pick-{eid}")),
                         sel,
                         pop_cx,

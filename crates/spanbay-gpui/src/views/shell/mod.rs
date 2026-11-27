@@ -65,8 +65,8 @@ pub struct AppShell {
     pub(crate) import_export_view: Entity<ImportExportModal>,
     pub(crate) diagnostics_view: Entity<DiagnosticsSheet>,
     pub(crate) workflow_modal: Entity<WorkflowMonitorModal>,
-    pub(crate) workspace_menu_open: bool,
     pub(crate) new_workspace_input: Option<Entity<InputState>>,
+    pub(crate) new_workspace_sub: Option<Subscription>,
     pub(crate) proxy_url_input: Entity<InputState>,
     pub(crate) proxy_testing: bool,
     pub(crate) proxy_test_result: Option<ProxyTestDto>,
@@ -286,8 +286,8 @@ impl AppShell {
             import_export_view,
             diagnostics_view,
             workflow_modal,
-            workspace_menu_open: false,
             new_workspace_input: None,
+            new_workspace_sub: None,
             proxy_url_input,
             proxy_testing: false,
             proxy_test_result: None,
@@ -331,7 +331,8 @@ impl AppShell {
         self.state.navigate(module);
         self.modules.on_enter_module(module, cx);
         self.refresh_running_work(cx);
-        self.workspace_menu_open = false;
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
         self.persist_local(cx);
         cx.notify();
     }
@@ -347,7 +348,8 @@ impl AppShell {
     pub fn close_overlays(&mut self, cx: &mut Context<Self>) {
         self.state.palette_open = false;
         self.state.active_utility = None;
-        self.workspace_menu_open = false;
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
         if self.workflow_modal.read(cx).is_open() {
             self.workflow_modal.update(cx, |m, cx| m.close(cx));
         }
@@ -383,7 +385,8 @@ impl AppShell {
     pub fn switch_workspace(&mut self, id: String, cx: &mut Context<Self>) {
         self.state.active_workspace_id = Some(id.clone());
         self.modules.set_workspace(Some(id.clone()), cx);
-        self.workspace_menu_open = false;
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
         self.refresh_running_work(cx);
         self.persist_local(cx);
         let task = spawn_blocking_into(
@@ -581,7 +584,7 @@ impl Render for AppShell {
         if let Some(overlay) = render_palette_overlay(self, cx) {
             root = root.child(overlay);
         }
-        if let Some(overlay) = render_utility_overlay(self, cx) {
+        if let Some(overlay) = render_utility_overlay(self, window, cx) {
             root = root.child(overlay);
         }
         if self.workflow_modal.read(cx).is_open() {

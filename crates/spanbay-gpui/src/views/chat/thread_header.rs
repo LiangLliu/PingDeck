@@ -9,9 +9,9 @@ use gpui_kit::{
 };
 
 use crate::ui::{
-    Anchor, StatusShape, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, list_row, palette,
-    pill_btn, popover, popover_header, section_heading, status_indicator, text_tooltip, to_hsla,
-    v_col,
+    Anchor, StatusShape, UiIcon, badge, btn_ghost, btn_icon, h_row, icon_xs, menu_divider,
+    menu_item, menu_option, palette, pill_btn, popover, popover_header, section_heading,
+    status_indicator, text_tooltip, to_hsla, v_col,
 };
 use crate::views::runs::WorkflowTab;
 use spanbay_desktop::core::agent::model::{AgentRunStatus, AgentTodoStatus, FileChangeStatus};
@@ -432,7 +432,7 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
                     let pop_h = pop_cx.entity().clone();
                     let eid = bound_env_id.clone();
                     m = m.child(
-                        list_row(
+                        menu_option(
                             SharedString::from(format!("chat-bws-{wid}")),
                             sel,
                             pop_cx,
@@ -445,7 +445,11 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
                         )
                         .justify_between()
                         .child(div().text_xs().child(ws.name.clone()))
-                        .children(sel.then(|| icon_xs(UiIcon::Check))),
+                        .children(sel.then(|| {
+                            div()
+                                .text_color(to_hsla(pp.accent))
+                                .child(icon_xs(UiIcon::Check))
+                        })),
                     );
                 }
             }
@@ -463,7 +467,7 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
                     let pop_h = pop_cx.entity().clone();
                     let wid = wid_active.clone();
                     m = m.child(
-                        list_row(
+                        menu_option(
                             SharedString::from(format!("chat-benv-{eid}")),
                             sel,
                             pop_cx,
@@ -476,36 +480,32 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
                         )
                         .justify_between()
                         .child(div().text_xs().child(env.name.clone()))
-                        .children(sel.then(|| icon_xs(UiIcon::Check))),
+                        .children(sel.then(|| {
+                            div()
+                                .text_color(to_hsla(pp.accent))
+                                .child(icon_xs(UiIcon::Check))
+                        })),
                     );
                 }
             }
             let ent_inst = chat_ent.clone();
             let pop_inst = pop_cx.entity().clone();
-            m = m.child(
-                div()
-                    .pt(px(6.0))
-                    .border_t_1()
-                    .border_color(to_hsla(pp.line.composite_over(pp.overlay)))
-                    .child(
-                        btn_ghost(
-                            "chat-bind-instructions",
-                            crate::ui::tr(pop_cx)
-                                .chat()
-                                .thread_header_chat_instructions(),
-                        )
-                        .icon(icon_xs(UiIcon::Sliders))
-                        .w_full()
-                        .justify_start()
-                        .on_click(move |_, w, cx| {
-                            ent_inst.update(cx, |this, cx| {
-                                this.active_modal = Some(ChatModal::ChatInstructions);
-                                cx.notify();
-                            });
-                            pop_inst.update(cx, |s, cx| s.dismiss(w, cx));
-                        }),
-                    ),
-            );
+            m = m.child(menu_divider(pop_cx)).child(menu_item(
+                "chat-bind-instructions",
+                UiIcon::Sliders,
+                crate::ui::tr(pop_cx)
+                    .chat()
+                    .thread_header_chat_instructions(),
+                false,
+                pop_cx,
+                move |_, w, cx| {
+                    ent_inst.update(cx, |this, cx| {
+                        this.active_modal = Some(ChatModal::ChatInstructions);
+                        cx.notify();
+                    });
+                    pop_inst.update(cx, |s, cx| s.dismiss(w, cx));
+                },
+            ));
             m
         })
 }

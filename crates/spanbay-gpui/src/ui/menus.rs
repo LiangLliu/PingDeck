@@ -127,6 +127,48 @@ pub fn menu_divider(cx: &App) -> Div {
         .bg(to_hsla(p.line.composite_over(p.overlay)))
 }
 
+/// Selectable option row designed specifically for floating popover menus (`--overlay` surface).
+///
+/// Unlike [`super::primitives::list_row`] (whose `--selected` fill is calibrated against
+/// `--canvas`/`--pane` sidebars and blends invisibly into `--overlay`), `menu_option` highlights
+/// active rows with `--accent-soft`, hovers cleanly over `--overlay`, and aligns flush with
+/// [`popover_header`] and [`menu_item`].
+pub fn menu_option(
+    id: impl Into<ElementId>,
+    selected: bool,
+    cx: &App,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let p = palette(cx);
+    let compact = super::theme::is_compact(cx);
+    let py_px = if compact { 5.0 } else { 6.5 };
+    let hover_bg = to_hsla(p.hover.composite_over(p.overlay));
+    let mut row = div()
+        .id(id)
+        .w_full()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(8.0))
+        .py(px(py_px))
+        .rounded(px(7.0))
+        .cursor_pointer()
+        .on_click(on_click);
+    if selected {
+        row = row
+            .bg(to_hsla(p.accent_soft))
+            .text_color(to_hsla(p.ink))
+            .font_weight(gpui_kit::FontWeight::SEMIBOLD);
+    } else {
+        let hover_fg = to_hsla(p.ink);
+        row = row
+            .text_color(to_hsla(p.ink_2))
+            .hover(move |s| s.bg(hover_bg).text_color(hover_fg));
+    }
+    row
+}
+
 /// Standard clickable popover menu item with leading icon and optional danger red tint.
 ///
 /// Builds its own `Stateful<Div>` with a single `.hover(...)` style (never layering on top of
@@ -155,18 +197,25 @@ pub fn menu_item(
     };
     div()
         .id(id)
+        .w_full()
         .flex()
         .flex_row()
         .items_center()
-        .gap(px(7.0))
-        .pl(px(10.0))
-        .pr(px(8.0))
+        .gap(px(8.0))
+        .px(px(8.0))
         .py(px(py_px))
         .rounded(px(7.0))
         .cursor_pointer()
         .text_color(fg)
         .hover(move |s| s.bg(hover_bg).text_color(hover_fg))
         .on_click(on_click)
-        .child(icon_xs(glyph))
-        .child(div().flex_1().text_xs().truncate().child(label.into()))
+        .child(div().flex_shrink_0().child(icon_xs(glyph)))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .truncate()
+                .child(label.into()),
+        )
 }

@@ -62,7 +62,7 @@ pub use layout::{
     setting_row, settings_section, settings_section_flush, settings_section_padded,
     settings_sub_well, subtab_strip, toolbar_strip,
 };
-pub use menus::{menu_divider, menu_item, method_color, method_pill, popover_header};
+pub use menus::{menu_divider, menu_item, menu_option, method_color, method_pill, popover_header};
 pub use pagination::{
     CursorPaginationBar, DEFAULT_PAGE_SIZES, PaginationBar, cursor_pagination_bar, page_slice,
     pagination_bar,
@@ -86,7 +86,8 @@ pub use theme::{
 };
 pub use widgets::{
     StatusShape, borderless_multiline, checkbox, collapsible_box, diff_lines_preview, filter_chip,
-    kv_chip, metric_datum, pill_btn, popover, popover_trigger_btn, progress_bar, round_icon_btn,
-    search_input, select_pill, slider, spinner_xs, status_indicator, tab_bar_segmented,
-    tab_bar_underline, tab_item, text_tooltip, titlebar_icon_btn, top_accent_card, wrap_root,
+    kv_chip, metric_datum, pill_btn, popover, popover_full_trigger, popover_trigger_btn,
+    progress_bar, round_icon_btn, search_input, select_pill, slider, spinner_xs, status_indicator,
+    tab_bar_segmented, tab_bar_underline, tab_item, text_tooltip, titlebar_icon_btn,
+    top_accent_card, wrap_root,
 };

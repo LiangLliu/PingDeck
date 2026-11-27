@@ -16,7 +16,7 @@ use spanbay_desktop::state::SettingsSection;
 
 use crate::ui::{
     Anchor, Disableable as _, Popover, StatusShape, Tone, UiIcon, app_title_bar, badge,
-    btn_primary, btn_secondary, h_row, icon_xs, list_row, palette, popover, popover_header,
+    btn_primary, btn_secondary, h_row, icon_xs, menu_option, palette, popover, popover_header,
     spinner_xs, status_indicator, text_input, titlebar_icon_btn, to_hsla, tr, v_col,
 };
 
@@ -210,7 +210,7 @@ fn render_proxy_popover(shell: &AppShell, cx: &mut Context<AppShell>) -> Popover
 
             // 1. System proxy option
             menu = menu.child(
-                list_row(
+                menu_option(
                     "tb-proxy-mode-system",
                     mode == GlobalProxyMode::System,
                     pop_cx,
@@ -254,7 +254,7 @@ fn render_proxy_popover(shell: &AppShell, cx: &mut Context<AppShell>) -> Popover
 
             // 2. Direct (no proxy) option
             menu = menu.child(
-                list_row(
+                menu_option(
                     "tb-proxy-mode-direct",
                     mode == GlobalProxyMode::Direct,
                     pop_cx,

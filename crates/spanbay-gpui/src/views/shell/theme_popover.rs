@@ -16,7 +16,7 @@ use spanbay_desktop::theme::{
 };
 
 use crate::ui::{
-    Anchor, Popover, Tone, UiIcon, badge, btn_ghost, choice_chip, h_row, icon_xs, menu_divider,
+    Anchor, Popover, Tone, UiIcon, badge, choice_chip, h_row, icon_xs, menu_divider, menu_item,
     palette, popover, tab_bar_segmented, tab_item, text_tooltip, titlebar_icon_btn, to_hsla, tr,
     v_col,
 };
@@ -332,18 +332,19 @@ pub(super) fn render_theme_popover(shell: &AppShell, cx: &mut Context<AppShell>)
                         .child(syn_grid),
                 )
                 .child(menu_divider(pop_cx))
-                .child(
-                    btn_ghost("tb-theme-open-settings", sh.titlebar_theme_open_settings())
-                        .icon(icon_xs(UiIcon::Settings))
-                        .w_full()
-                        .justify_start()
-                        .on_click(move |_, window, cx| {
-                            e_open.update(cx, |this, cx| {
-                                this.open_settings_section(SettingsSection::Appearance, cx);
-                            });
-                            pop_handle.update(cx, |s, cx| s.dismiss(window, cx));
-                        }),
-                )
+                .child(menu_item(
+                    "tb-theme-open-settings",
+                    UiIcon::Settings,
+                    sh.titlebar_theme_open_settings(),
+                    false,
+                    pop_cx,
+                    move |_, window, cx| {
+                        e_open.update(cx, |this, cx| {
+                            this.open_settings_section(SettingsSection::Appearance, cx);
+                        });
+                        pop_handle.update(cx, |s, cx| s.dismiss(window, cx));
+                    },
+                ))
         })
 }
 

@@ -7,8 +7,9 @@ use gpui_kit::{
 use spanbay_desktop::state::{NavModule, ToastKind, UtilityDialog};
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, WindowExt as _, btn_icon, dismissible_banner, h_row, icon_xs,
-    palette, status_indicator, to_hsla, tr, v_col,
+    Disableable as _, StatusShape, Tone, UiIcon, WindowExt as _, btn_icon, btn_primary,
+    btn_secondary, dismissible_banner, h_row, icon_xs, modal_dialog, palette, status_indicator,
+    text_input, to_hsla, tr, v_col,
 };
 use crate::views::utility::{ImportExportOutcome, IoTab};
 
@@ -24,7 +25,8 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) {
         self.state.palette_open = false;
-        self.workspace_menu_open = false;
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
         self.state.active_utility = Some(UtilityDialog::ImportExport);
         let ws_id = self.state.active_workspace_id.clone();
         let ws_name = self
@@ -52,7 +54,8 @@ impl AppShell {
     pub fn open_diagnostics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.state.palette_open = false;
         self.state.active_utility = None;
-        self.workspace_menu_open = false;
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
         self.diagnostics_view
             .update(cx, |diag, cx| diag.reload_diagnostics(cx));
         let diag_ent = self.diagnostics_view.clone();
@@ -160,13 +163,85 @@ pub fn render_palette_overlay(
     )
 }
 
-pub fn render_utility_overlay(shell: &AppShell, _cx: &mut Context<AppShell>) -> Option<AnyElement> {
+pub fn render_utility_overlay(
+    shell: &AppShell,
+    window: &Window,
+    cx: &mut Context<AppShell>,
+) -> Option<AnyElement> {
+    if let Some(input) = &shell.new_workspace_input {
+        return Some(render_new_workspace_modal(input, window, cx));
+    }
     match shell.state.active_utility {
         Some(UtilityDialog::ImportExport) => {
             Some(shell.import_export_view.clone().into_any_element())
         }
         _ => None,
     }
+}
+
+fn render_new_workspace_modal(
+    input: &gpui_kit::Entity<crate::ui::InputState>,
+    window: &Window,
+    cx: &mut Context<AppShell>,
+) -> AnyElement {
+    let p = palette(cx);
+    let t = tr(cx);
+    let sh = t.shell();
+    let c = t.common();
+    let name_empty = input.read(cx).value().trim().is_empty();
+
+    let body = v_col()
+        .w_full()
+        .gap(px(12.0))
+        .child(
+            v_col()
+                .w_full()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .text_color(to_hsla(p.ink_2))
+                        .child(sh.workspace_name_label()),
+                )
+                .child(div().w_full().min_w_0().child(text_input(input))),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(sh.workspace_modal_desc()),
+        )
+        .into_any_element();
+
+    let footer = h_row()
+        .gap(px(8.0))
+        .child(
+            btn_secondary("ws-create-cancel", c.cancel())
+                .on_click(cx.listener(|this, _, _, cx| this.cancel_create_workspace(cx))),
+        )
+        .child(
+            btn_primary("ws-create-ok", sh.workspace_create_short())
+                .disabled(name_empty)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.submit_create_workspace(cx);
+                })),
+        )
+        .into_any_element();
+
+    let ent = cx.entity().clone();
+    modal_dialog(
+        "new-workspace-dialog",
+        sh.workspace_modal_title(),
+        440.0,
+        body,
+        footer,
+        window,
+        cx,
+        move |_, _, cx| {
+            ent.update(cx, |this, cx| this.cancel_create_workspace(cx));
+        },
+    )
 }
 
 pub fn render_toast_stack(shell: &AppShell, cx: &mut Context<AppShell>) -> Option<gpui_kit::Div> {

@@ -2924,4 +2924,99 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn workspace_switcher_create_cancel_and_counts_lifecycle(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let _ = workspace_create_impl(rt.state(), "ws-init".into(), "Initial".into());
+        let settings = settings_get_impl(rt.state());
+        let (host, rx) = GpuiHostWindow::pair();
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let mut shell_slot = None;
+        let (_root, visual) = cx.add_window_view(|window, cx| {
+            let s = cx.new(|cx| AppShell::new(rx, host, window, cx));
+            shell_slot = Some(s.clone());
+            Root::new(s, window, cx)
+        });
+        let shell = shell_slot.expect("mounted AppShell");
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            // 1. Open New Workspace modal -> renders modal dialog cleanly, blank submit rejected, cancel closes.
+            shell.update(cx, |s, cx| s.open_new_workspace_modal(window, cx));
+            assert!(shell.read(cx).new_workspace_input.is_some());
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert!(
+                !shell.update(cx, |s, cx| s.submit_create_workspace(cx)),
+                "blank workspace name must not submit"
+            );
+            assert!(
+                shell.read(cx).new_workspace_input.is_some(),
+                "modal stays open when submit is rejected"
+            );
+
+            shell.update(cx, |s, cx| s.cancel_create_workspace(cx));
+            assert!(shell.read(cx).new_workspace_input.is_none());
+
+            // 2. Re-open modal, type a valid name, and submit -> creates, switches, populates counts, closes modal.
+            shell.update(cx, |s, cx| s.open_new_workspace_modal(window, cx));
+            let input = shell
+                .read(cx)
+                .new_workspace_input
+                .clone()
+                .expect("new workspace modal input");
+            input.update(cx, |st, cx| st.set_value("Payments API", window, cx));
+            assert!(shell.update(cx, |s, cx| s.submit_create_workspace(cx)));
+            assert!(shell.read(cx).new_workspace_input.is_none());
+            window.refresh();
+        });
+
+        // Wait for blocking workspace_create_impl task to land on foreground shell.
+        for _ in 0..80 {
+            visual.run_until_parked();
+            let created = visual.update(|_window, cx| {
+                shell
+                    .read(cx)
+                    .state
+                    .workspaces
+                    .iter()
+                    .any(|w| w.name == "Payments API")
+            });
+            if created {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        visual.update(|window, cx| {
+            let s = shell.read(cx);
+            let created = s
+                .state
+                .workspaces
+                .iter()
+                .find(|w| w.name == "Payments API")
+                .expect("created workspace must appear in shell state");
+            assert_eq!(
+                s.state.active_workspace_id.as_deref(),
+                Some(created.id.as_str()),
+                "newly created workspace must become active"
+            );
+            assert!(
+                s.workspace_counts.contains_key(created.id.as_str()),
+                "workspace counts must refresh immediately after creation"
+            );
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        rt.shutdown_blocking();
+    }
 }

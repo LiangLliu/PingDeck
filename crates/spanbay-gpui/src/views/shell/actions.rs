@@ -1,7 +1,7 @@
-//! Shell actions for theme/language toggling, global outbound proxy control, and inline
-//! workspace creation.
+//! Shell actions for theme/language toggling, global outbound proxy control, and New Workspace
+//! modal creation.
 
-use gpui_kit::{AppContext as _, Context, Window};
+use gpui_kit::{AppContext as _, Context, Focusable as _, Window};
 use spanbay_desktop::core::app::{
     network_proxy_test_impl, settings_update_impl, workspace_create_impl,
 };
@@ -12,7 +12,7 @@ use spanbay_desktop::core::proxy_url;
 use spanbay_desktop::state::{NavModule, ToastKind};
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
-use crate::ui::{InputState, apply_language, palette as active_palette, tr};
+use crate::ui::{InputEvent, InputState, apply_language, palette as active_palette, tr};
 use crate::views::runs::WorkflowTab;
 
 use super::AppShell;
@@ -77,23 +77,45 @@ impl AppShell {
         self._tasks.push(task);
     }
 
-    pub fn start_create_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Opens the full-window New Workspace modal dialog and focuses its name field.
+    pub fn open_new_workspace_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.palette_open = false;
+        self.state.active_utility = None;
         let placeholder = tr(cx).shell().workspace_new_placeholder();
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+        input.update(cx, |s, cx| s.focus_handle(cx).focus(window, cx));
+        let sub = cx.subscribe_in(
+            &input,
+            window,
+            move |this, _, ev: &InputEvent, _window, cx| match ev {
+                InputEvent::Change => cx.notify(),
+                InputEvent::PressEnter { .. } => {
+                    this.submit_create_workspace(cx);
+                }
+                _ => {}
+            },
+        );
         self.new_workspace_input = Some(input);
-        self.workspace_menu_open = true;
+        self.new_workspace_sub = Some(sub);
         cx.notify();
     }
 
-    pub fn submit_create_workspace(&mut self, cx: &mut Context<Self>) {
-        let Some(input) = self.new_workspace_input.take() else {
-            return;
+    pub fn cancel_create_workspace(&mut self, cx: &mut Context<Self>) {
+        if self.new_workspace_input.take().is_some() || self.new_workspace_sub.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    pub fn submit_create_workspace(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(input) = &self.new_workspace_input else {
+            return false;
         };
         let name = input.read(cx).value().trim().to_owned();
         if name.is_empty() {
-            cx.notify();
-            return;
+            return false;
         }
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
         let id = format!("ws-{}", spanbay_desktop::core::app::current_time_ms());
         let task = spawn_blocking_into(
             cx,
@@ -104,7 +126,7 @@ impl AppShell {
                     this.state.workspaces.insert(0, ws);
                     this.state.active_workspace_id = Some(ws_id.clone());
                     this.modules.set_workspace(Some(ws_id), cx);
-                    this.workspace_menu_open = false;
+                    this.refresh_running_work(cx);
                     this.persist_local(cx);
                     this.push_toast_auto(
                         ToastKind::Success,
@@ -120,6 +142,7 @@ impl AppShell {
         );
         self._tasks.push(task);
         cx.notify();
+        true
     }
 
     pub fn set_global_proxy_url(&mut self, url: String, cx: &mut Context<Self>) {
