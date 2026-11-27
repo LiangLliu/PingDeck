@@ -13,8 +13,10 @@ pub mod icons;
 pub mod layout;
 pub mod menus;
 pub mod pagination;
+pub mod payload_viewer;
 pub mod primitives;
 pub mod process_chrome;
+pub mod syntax_theme;
 pub mod theme;
 pub mod widgets;
 
@@ -65,6 +67,10 @@ pub use pagination::{
     CursorPaginationBar, DEFAULT_PAGE_SIZES, PaginationBar, cursor_pagination_bar, page_slice,
     pagination_bar,
 };
+pub use payload_viewer::{
+    PayloadBlockOptions, PayloadViewer, format_payload_bytes, highlighter_for_format,
+    payload_block, payload_format_picker,
+};
 pub use primitives::{
     Tone, app_title_bar, badge, btn_danger, btn_ghost, btn_icon, btn_primary, btn_secondary, card,
     code_editor, field_row, h_row, kbd_chip, list_row, markdown_view, method_badge,
@@ -75,8 +81,8 @@ pub use process_chrome::{
     lane_draw_spec, process_edge_label_pill, process_lane_header, process_segmented_waterfall_bar,
 };
 pub use theme::{
-    PingDeckPalette, apply_palette, is_compact, palette, resolve_is_dark, sync_window_scale,
-    to_hsla,
+    PingDeckPalette, apply_palette, apply_theme, is_compact, mono_font_size, palette,
+    resolve_is_dark, sync_window_scale, syntax_palette, theme_prefs, to_hsla,
 };
 pub use widgets::{
     StatusShape, borderless_multiline, checkbox, collapsible_box, diff_lines_preview, filter_chip,

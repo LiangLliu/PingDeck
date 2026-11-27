@@ -318,9 +318,10 @@
                       <button class="tab-btn" data-tab="cookies">Cookie <span class="tab-cnt">1</span></button>
                       <button class="tab-btn" data-tab="trace">追踪 <span class="tab-cnt">5</span></button>
                       <button class="tab-btn" data-tab="tests">测试 <span class="tag tag-ok" style="height:17px;padding:0 5px">2/2</span></button>
-                      <div class="ml-auto row-center">
+                      <div class="ml-auto row-center" style="gap:6px">
                         <div class="seg"><button class="active" data-action="seg-pick">格式化</button><button data-action="seg-pick">原文</button></div>
-                        <span class="tag">JSON ▾</span>
+                        <span class="tag" title="支持自动识别 JSON / XML / HTML / YAML / Text / Hex / Base64">JSON ▾</span>
+                        <button class="tag tag-accent" data-action="toggle-wrap-code" data-wrap-target="req-resp-code">换行</button>
                       </div>
                     </div>
 
@@ -832,6 +833,11 @@
                 <button class="tab-btn" data-tab="def">请求定义（快照）</button>
                 <button class="tab-btn" data-tab="trace">耗时追踪</button>
                 <button class="tab-btn" data-tab="tests">断言与测试 <span class="tag tag-bad" style="height:17px;padding:0 5px">1/2</span></button>
+                <div class="ml-auto row-center" style="gap:6px">
+                  <div class="seg"><button class="active" data-action="seg-pick">格式化</button><button data-action="seg-pick">原文</button></div>
+                  <span class="tag">JSON ▾</span>
+                  <button class="tag tag-accent" data-action="toggle-wrap-code" data-wrap-target="hist-resp-body">换行</button>
+                </div>
               </div>
               <div id="hist-resp-body" class="code-view">
                 <div class="code-line"><span class="code-ln">1</span><span>{</span></div>
@@ -1650,35 +1656,71 @@
               </div>
 
               <div class="set-body">
-                <!-- Appearance Page -->
+                <!-- Appearance Page (Refactored 4-Band Studio: zero vertical stacking) -->
                 <div id="set-page-appearance" class="set-col">
                   <div class="set-page-hero">
                     <h2 class="set-page-title">外观</h2>
-                    <p class="set-page-sub">配置明暗模式、8 套护眼 OKLCH 色系、字号密度与界面动效偏好。</p>
+                    <p class="set-page-sub">配置明暗模式、护眼色板、主题强调色、代码高亮配色、字号排版与工作区布局。</p>
                   </div>
 
+                  <!-- Band 1: Theme & Accent Studio -->
                   <div class="set-section">
                     <div class="set-section-head">
-                      <span class="set-section-title">主题与外观</span>
+                      <span class="set-section-title">主题与配色</span>
                       <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>
                     </div>
-                    <div class="set-card">
-                    <div class="set-row">
-                      <div class="set-row-info">
-                        <span class="set-row-label">主题</span>
-                        <span class="set-row-desc">跟随系统时随系统外观切换；系统的“增强对比度”也会生效。</span>
-                      </div>
-                      <div class="seg">
-                        <button data-set-mode="system">跟随系统</button>
-                        <button class="active" data-set-mode="light">浅色</button>
-                        <button data-set-mode="dark">深色</button>
-                      </div>
-                    </div>
+                    <div class="set-card set-card-studio">
+                      <div class="app-studio-split">
+                        <div class="app-sub-well">
+                          <div class="set-row-info">
+                            <span class="set-row-label">外观模式 <span class="set-meta-pill">仅这台电脑</span></span>
+                            <span class="set-row-desc">跟随操作系统浅色/深色外观，或固定为其中一种。</span>
+                          </div>
+                          <div class="app-mode-grid">
+                            <button class="app-mode-card" data-set-mode="system">
+                              <span class="app-mode-mini app-mode-mini-split" aria-hidden="true"><span></span><span></span></span>
+                              <span class="app-mode-label">跟随系统</span>
+                            </button>
+                            <button class="app-mode-card active" data-set-mode="light">
+                              <span class="app-mode-mini app-mode-mini-light" aria-hidden="true"><span></span></span>
+                              <span class="app-mode-label">浅色</span>
+                            </button>
+                            <button class="app-mode-card" data-set-mode="dark">
+                              <span class="app-mode-mini app-mode-mini-dark" aria-hidden="true"><span></span></span>
+                              <span class="app-mode-label">深色</span>
+                            </button>
+                          </div>
+                        </div>
 
-                    <div class="set-row-block">
+                        <div class="app-sub-well">
+                          <div class="set-row-info">
+                            <span class="set-row-label">主题强调色 <span class="set-meta-pill">仅这台电脑</span></span>
+                            <span class="set-row-desc">可在任意护眼色板中独立设定主题强调色，自动校准 OKLCH 对比度。</span>
+                          </div>
+                          <div class="app-accent-swatches">
+                            <button class="btn btn-sm active" data-set-accent="follow">跟随色板</button>
+                            <button class="app-accent-dot" data-set-accent="indigo" style="--sw:#3B66F5" title="靛蓝"></button>
+                            <button class="app-accent-dot" data-set-accent="ocean" style="--sw:#0B7AC2" title="深海青"></button>
+                            <button class="app-accent-dot" data-set-accent="teal" style="--sw:#0D877E" title="青碧"></button>
+                            <button class="app-accent-dot" data-set-accent="emerald" style="--sw:#148A5A" title="松石绿"></button>
+                            <button class="app-accent-dot" data-set-accent="amber" style="--sw:#B46509" title="暖琥珀"></button>
+                            <button class="app-accent-dot" data-set-accent="coral" style="--sw:#C84B24" title="珊瑚橙"></button>
+                            <button class="app-accent-dot" data-set-accent="rose" style="--sw:#CC2B56" title="绯玫瑰"></button>
+                            <button class="app-accent-dot" data-set-accent="violet" style="--sw:#7A42DF" title="星云紫"></button>
+                          </div>
+                          <div class="app-accent-custom">
+                            <span class="text-muted fs-xs">自定义色值</span>
+                            <span id="accent-custom-chip" class="app-accent-preview"></span>
+                            <input id="accent-custom-input" class="input input-sm mono" style="width:104px" value="#3B66F5" placeholder="#3B82F6" />
+                            <button class="btn btn-sm" data-action="apply-custom-accent">应用</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="app-studio-divider"></div>
+
                       <div class="set-row-info">
-                        <span class="set-row-label">色彩主题 <span class="set-meta-pill">仅这台电脑</span></span>
-                        <span class="set-row-desc">全局统一切换浅色与深色模式下的低眩光护眼底色、文字层级与主题强调色。</span>
+                        <span class="set-row-label">护眼基底色板（8 套 OKLCH 低眩光色系） <span class="set-meta-pill">仅这台电脑</span></span>
                       </div>
                       <div class="palette-cards">
                         <button class="palette-card active" data-set-palette="slate">
@@ -1771,74 +1813,146 @@
                         </button>
                       </div>
                     </div>
+                  </div>
 
-                    <div class="set-row">
-                      <div class="set-row-info">
-                        <span class="set-row-label">减少动态效果</span>
-                        <span class="set-row-desc">跟随系统时使用系统的辅助功能设置。开启后不播放任何过渡，包括跳转链接后的高亮。</span>
-                      </div>
-                      <div class="seg">
-                        <button class="active" data-action="seg-pick">跟随系统</button>
-                        <button data-action="seg-pick">开启</button>
-                        <button data-action="seg-pick">关闭</button>
-                      </div>
+                  <!-- Band 2: Code Syntax Studio (Side-by-Side) -->
+                  <div class="set-section">
+                    <div class="set-section-head">
+                      <span class="set-section-title">代码高亮配色</span>
+                      <span class="set-meta-pill">仅这台电脑</span>
                     </div>
+                    <div class="set-card set-card-studio">
+                      <div class="app-studio-split">
+                        <div class="app-syntax-grid">
+                          <button class="app-syntax-card active" data-set-syntax="catppuccin">
+                            <div class="row-between"><span class="fw-600 fs-sm">Catppuccin</span><span class="fs-xs text-muted">Latte / Mocha</span></div>
+                            <div class="app-syntax-dots"><i style="background:#1E66F5"></i><i style="background:#2B7A2C"></i><i style="background:#BD4D0C"></i><i style="background:#7C3AED"></i><i style="background:#0F766E"></i></div>
+                            <span class="fs-xs text-muted">柔和低眩光 · 默认推荐</span>
+                          </button>
+                          <button class="app-syntax-card" data-set-syntax="rose_pine">
+                            <div class="row-between"><span class="fw-600 fs-sm">Rosé Pine</span><span class="fs-xs text-muted">Dawn / Moon</span></div>
+                            <div class="app-syntax-dots"><i style="background:#286983"></i><i style="background:#A35D12"></i><i style="background:#B44C6B"></i><i style="background:#6D5494"></i><i style="background:#3B7380"></i></div>
+                            <span class="fs-xs text-muted">温润纸感 · 适配暖砂</span>
+                          </button>
+                          <button class="app-syntax-card" data-set-syntax="tokyo_night">
+                            <div class="row-between"><span class="fw-600 fs-sm">Tokyo Night</span><span class="fs-xs text-muted">Day / Storm</span></div>
+                            <div class="app-syntax-dots"><i style="background:#2E5EC9"></i><i style="background:#38701D"></i><i style="background:#A85700"></i><i style="background:#7847BD"></i><i style="background:#B83B3B"></i></div>
+                            <span class="fs-xs text-muted">现代 IDE · 高速扫读</span>
+                          </button>
+                          <button class="app-syntax-card" data-set-syntax="github">
+                            <div class="row-between"><span class="fw-600 fs-sm">GitHub Clean</span><span class="fs-xs text-muted">Light / Dim</span></div>
+                            <div class="app-syntax-dots"><i style="background:#0550AE"></i><i style="background:#0A3069"></i><i style="background:#0550AE"></i><i style="background:#CF222E"></i><i style="background:#116329"></i></div>
+                            <span class="fs-xs text-muted">极简中性 · 工程清晰</span>
+                          </button>
+                          <button class="app-syntax-card" data-set-syntax="one_pro">
+                            <div class="row-between"><span class="fw-600 fs-sm">One Pro</span><span class="fs-xs text-muted">Light / Dark</span></div>
+                            <div class="app-syntax-dots"><i style="background:#BC382E"></i><i style="background:#367A37"></i><i style="background:#8F6100"></i><i style="background:#97279B"></i><i style="background:#3264D6"></i></div>
+                            <span class="fs-xs text-muted">经典均衡 · 层次分明</span>
+                          </button>
+                          <button class="app-syntax-card" data-set-syntax="follow_palette">
+                            <div class="row-between"><span class="fw-600 fs-sm">跟随应用色板</span><span class="fs-xs text-muted">OKLCH</span></div>
+                            <div class="app-syntax-dots"><i style="background:var(--tk-key)"></i><i style="background:var(--tk-str)"></i><i style="background:var(--tk-num)"></i><i style="background:var(--tk-kw)"></i><i style="background:var(--tk-fn)"></i></div>
+                            <span class="fs-xs text-muted">OKLCH 同源自适应</span>
+                          </button>
+                        </div>
+
+                        <div class="app-sub-well">
+                          <div class="row-between">
+                            <span class="fw-600 fs-sm">实时语法预览</span>
+                            <span id="syntax-active-badge" class="tag tag-accent">Catppuccin · Latte</span>
+                          </div>
+                          <div id="syntax-preview-box" class="code-box" style="background:var(--bg-surface);margin:0">{
+  <span class="tk-key">"service"</span>: <span class="tk-str">"pingdeck-gateway"</span>,
+  <span class="tk-key">"status"</span>: <span class="tk-str">"healthy"</span>,
+  <span class="tk-key">"latency_ms"</span>: <span class="tk-num">42</span>,
+  <span class="tk-key">"stream"</span>: <span class="tk-kw">true</span>,
+  <span class="tk-key">"model"</span>: { <span class="tk-key">"id"</span>: <span class="tk-str">"gpt-4.1-mini"</span>, <span class="tk-key">"cached"</span>: <span class="tk-kw">false</span> }
+}</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
+                  <!-- Band 3: Typography (Side-by-Side Sliders + Live Specimen) -->
                   <div class="set-section">
                     <div class="set-section-head">
-                      <span class="set-section-title">文字与密度</span>
-                      <button class="btn btn-sm btn-ghost" data-modal="restore-page">恢复本区默认值</button>
+                      <span class="set-section-title">字体与排版</span>
                     </div>
-                    <div class="set-card">
-                    <div class="set-row">
-                      <div class="set-row-info">
-                        <span class="set-row-label">密度</span>
-                        <span class="set-row-desc">紧凑会把表格、日志和列表的行高从 30 px 收紧到 26 px。</span>
-                      </div>
-                      <div class="seg">
-                        <button class="active" data-set-density="comfortable">舒适</button>
-                        <button data-set-density="compact">紧凑</button>
-                      </div>
-                    </div>
-                    <div class="set-row">
-                      <div class="set-row-info">
-                        <span class="set-row-label">界面字号</span>
-                        <span class="set-row-desc">同时缩放标签、表格和对话文字（10–26 px）。</span>
-                      </div>
-                      <div class="set-slider-wrap">
-                        <input id="slider-ui-fs" type="range" min="10" max="26" value="13" />
-                        <span id="val-ui-fs" class="set-slider-val">13 px</span>
-                      </div>
-                    </div>
-                    <div class="set-row">
-                      <div class="set-row-info">
-                        <span class="set-row-label">代码字号</span>
-                        <span class="set-row-desc">用于请求体、响应、日志和代码块，行高随之变化（10–24 px）。</span>
-                      </div>
-                      <div class="set-slider-wrap">
-                        <input id="slider-mono-fs" type="range" min="10" max="24" value="12" />
-                        <span id="val-mono-fs" class="set-slider-val">12 px</span>
-                      </div>
-                    </div>
+                    <div class="set-card set-card-studio">
+                      <div class="app-studio-split">
+                        <div class="app-slider-stack">
+                          <div class="app-slider-card">
+                            <div class="row-between"><span class="fw-600 fs-sm">界面字号</span><span id="val-ui-fs" class="tag tag-accent">13 px</span></div>
+                            <span class="set-row-desc">实时按比例缩放全局界面字体（10–26 px）。</span>
+                            <input id="slider-ui-fs" type="range" min="10" max="26" value="13" />
+                          </div>
+                          <div class="app-slider-card">
+                            <div class="row-between"><span class="fw-600 fs-sm">等宽代码字号</span><span id="val-mono-fs" class="tag tag-accent">12 px</span></div>
+                            <span class="set-row-desc">用于请求编辑器、响应体、脚本与日志（10–24 px）。</span>
+                            <input id="slider-mono-fs" type="range" min="10" max="24" value="12" />
+                          </div>
+                        </div>
 
-                    <div class="set-sub-well">
-                      <div class="row-center" id="sample-ui-row">
-                        <span class="m-get">GET</span>
-                        <span class="mono flex-1">/invoices?status=open</span>
-                        <span class="tag tag-ok">✓ 200</span>
-                        <span class="text-muted fs-xs">184 ms</span>
+                        <div class="app-sub-well">
+                          <div class="row-between"><span class="fw-600 fs-sm">实时排版与请求预览</span><span class="text-muted fs-xs">148 ms · 实时预览</span></div>
+                          <div class="row-center" id="sample-ui-row" style="background:var(--bg-surface);padding:7px 10px;border-radius:6px;border:1px solid var(--border-subtle)">
+                            <span class="m-get">GET</span>
+                            <span class="mono flex-1">/v1/invoices?status=open</span>
+                            <span class="tag tag-ok">✓ 200 OK</span>
+                          </div>
+                          <div class="wire-mini" style="width:100%;height:7px" title="示例耗时：共 148 ms">
+                            <i style="width:6%;background:var(--ph-dns)"></i>
+                            <i style="width:9%;background:var(--ph-connect)"></i>
+                            <i style="width:11%;background:var(--ph-tls)"></i>
+                            <i style="width:55%;background:var(--ph-wait)"></i>
+                            <i style="width:19%;background:var(--ph-recv)"></i>
+                          </div>
+                          <div id="sample-code-box" class="code-box" style="background:var(--bg-surface);margin:0">{ <span class="tk-key">"id"</span>: <span class="tk-str">"inv_9f2a"</span>, <span class="tk-key">"paid"</span>: <span class="tk-kw">true</span>, <span class="tk-key">"total"</span>: <span class="tk-num">4200</span> }</div>
+                        </div>
                       </div>
-                      <div class="wire-mini" style="width:100%;height:7px" title="示例耗时：共 184 ms">
-                        <i style="width:5%;background:var(--ph-dns)"></i>
-                        <i style="width:8%;background:var(--ph-connect)"></i>
-                        <i style="width:10%;background:var(--ph-tls)"></i>
-                        <i style="width:58%;background:var(--ph-wait)"></i>
-                        <i style="width:19%;background:var(--ph-recv)"></i>
-                      </div>
-                      <div id="sample-code-box" class="code-box" style="background:var(--bg-surface)">{ <span class="tk-key">"id"</span>: <span class="tk-str">"inv_2f9"</span>, <span class="tk-key">"total"</span>: <span class="tk-num">12400</span> }</div>
                     </div>
+                  </div>
+
+                  <!-- Band 4: Workspace Layout & Motion (3-Column Domain Cards) -->
+                  <div class="set-section">
+                    <div class="set-section-head">
+                      <span class="set-section-title">工作区布局与动效</span>
+                    </div>
+                    <div class="set-card set-card-studio">
+                      <div class="app-layout-grid">
+                        <div class="app-sub-well">
+                          <div class="set-row-info">
+                            <span class="set-row-label">界面密度</span>
+                            <span class="set-row-desc">紧凑模式缩小行距与内边距，适合多面板高信息量调试。</span>
+                          </div>
+                          <div class="seg">
+                            <button class="active" data-set-density="comfortable">舒适</button>
+                            <button data-set-density="compact">紧凑</button>
+                          </div>
+                        </div>
+                        <div class="app-sub-well">
+                          <div class="set-row-info">
+                            <span class="set-row-label">侧栏呈现</span>
+                            <span class="set-row-desc">自动模式沿用 ⌘B 切换状态；也可锁定展开或窄轨。</span>
+                          </div>
+                          <div class="seg">
+                            <button class="active" data-action="seg-pick">自动</button>
+                            <button data-action="seg-pick">展开</button>
+                            <button data-action="seg-pick">窄轨</button>
+                          </div>
+                        </div>
+                        <div class="app-sub-well">
+                          <div class="set-row-info">
+                            <span class="set-row-label">减少动态效果</span>
+                            <span class="set-row-desc">降低面板折叠、流式淡入与过渡动画强度。</span>
+                          </div>
+                          <div class="seg">
+                            <button class="active" data-action="seg-pick">跟随系统</button>
+                            <button data-action="seg-pick">开启</button>
+                            <button data-action="seg-pick">关闭</button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

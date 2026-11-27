@@ -139,6 +139,23 @@
   padding: 8px 10px; font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
   background: var(--bg-surface); overflow: auto;
 }
+/* Unified PayloadViewer / payload_block (mirrors crates/pingdeck-gpui/src/ui/payload_viewer.rs) */
+.plv-box {
+  border: 1px solid var(--border-default); border-radius: var(--r-md);
+  background: var(--bg-sunken); overflow: hidden; display: flex; flex-direction: column;
+}
+.plv-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px; background: var(--bg-pane); border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px; color: var(--ink-3);
+}
+.plv-head-left, .plv-head-right { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.plv-body {
+  padding: 8px 10px; overflow: auto; max-height: 280px;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55; color: var(--ink-1);
+  white-space: pre;
+}
+.plv-body.wrap { white-space: pre-wrap; word-break: break-word; }
 .code-line { display: flex; gap: 14px; }
 .code-ln { width: 22px; text-align: right; color: var(--ink-4); user-select: none; flex: none; }
 .tk-key { color: var(--tk-key); }

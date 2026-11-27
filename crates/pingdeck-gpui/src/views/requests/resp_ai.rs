@@ -6,10 +6,10 @@ use pingdeck_desktop::core::llm::ai_run::{AiResultDto, AiRunStatus, CostNoteCode
 use pingdeck_desktop::services::clipboard;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_icon,
-    btn_primary, btn_secondary, card, choice_chip, empty_state_with_actions, h_row, icon_xs,
-    kbd_chip, kv_chip, markdown_view, palette, section_heading, status_indicator, subtab_strip,
-    tab_bar_underline, tab_item, to_hsla, v_col,
+    PayloadBlockOptions, ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge,
+    btn_ghost, btn_icon, btn_primary, btn_secondary, card, choice_chip, empty_state_with_actions,
+    h_row, icon_xs, kbd_chip, kv_chip, markdown_view, palette, payload_block, section_heading,
+    status_indicator, subtab_strip, tab_bar_underline, tab_item, to_hsla, v_col,
 };
 
 use super::RequestsView;
@@ -423,11 +423,11 @@ fn render_ai_merged(
                 .resp_ai_tool_calls(ai.tool_calls.len()),
             cx,
         ));
-        for tc in &ai.tool_calls {
+        for (idx, tc) in ai.tool_calls.iter().enumerate() {
             tc_col = tc_col.child(
                 card(cx).p(px(8.0)).child(
                     v_col()
-                        .gap(px(4.0))
+                        .gap(px(6.0))
                         .child(
                             h_row()
                                 .gap(px(6.0))
@@ -439,12 +439,16 @@ fn render_ai_merged(
                                         .child(SharedString::from(tc.id.clone())),
                                 ),
                         )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(to_hsla(p.ink_2))
-                                .child(SharedString::from(tc.arguments.clone())),
-                        ),
+                        .child(payload_block(
+                            format!("ai-tc-args-{idx}"),
+                            &tc.arguments,
+                            PayloadBlockOptions {
+                                content_type: Some("application/json"),
+                                max_height_px: Some(200.0),
+                                ..Default::default()
+                            },
+                            cx,
+                        )),
                 ),
             );
         }
@@ -504,27 +508,17 @@ fn render_ai_merged(
                     ))
                     .child(chips)
                     .children(inspected.map(|f| {
-                        v_col()
-                            .gap(px(3.0))
-                            .p(px(8.0))
-                            .rounded(px(6.0))
-                            .bg(to_hsla(p.sunken))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                    .text_color(to_hsla(p.accent_ink))
-                                    .child(SharedString::from(format!(
-                                        "Frame #{} · +{} ms · {}",
-                                        f.index, f.t_ms, f.event
-                                    ))),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(to_hsla(p.ink))
-                                    .child(SharedString::from(f.data.clone())),
-                            )
+                        let title = format!("Frame #{} · +{} ms · {}", f.index, f.t_ms, f.event);
+                        payload_block(
+                            format!("ai-sse-frame-{}", f.index),
+                            &f.data,
+                            PayloadBlockOptions {
+                                title: Some(&title),
+                                max_height_px: Some(220.0),
+                                ..Default::default()
+                            },
+                            cx,
+                        )
                     })),
             ),
         );

@@ -103,10 +103,7 @@ window.PingDeckOverlays = (() => {
             <div class="fs-xs text-muted">模型：<code class="text-ink1">${selNode.model || "—"}</code></div>
             <div class="fs-xs text-muted">统计：<b class="mono text-ink1">${selNode.meta || selNode.metric || "—"}</b></div>
           </div>
-          <div class="card-panel">
-            <div class="card-panel-head"><span>节点摘要与日志</span></div>
-            <div class="code-box fs-2xs" style="white-space:pre-wrap">${selNode.log || "无日志"}</div>
-          </div>
+          ${window.PD?.renderPayloadBlock ? window.PD.renderPayloadBlock(selNode.log || "无日志", { title: "节点摘要与输出" }) : `<div class="code-box fs-2xs" style="white-space:pre-wrap">${selNode.log || "无日志"}</div>`}
           ${selNode.status === "warn" ? `<button type="button" class="btn btn-sm btn-primary" data-action="close-dialog" data-nav-to="chat">前往对话关卡区审批 →</button>` : ""}
         </div>`;
     }

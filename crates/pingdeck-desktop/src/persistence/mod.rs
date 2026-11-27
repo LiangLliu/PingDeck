@@ -14,7 +14,7 @@ use pingdeck_core::error::AppError;
 use serde::{Deserialize, Serialize};
 
 use crate::state::{NavModule, SettingsSection};
-use crate::theme::PaletteId;
+use crate::theme::{AccentChoice, PaletteId, SyntaxThemeId, ThemePreferences};
 
 /// Persisted local desktop shell preferences & layout state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -22,6 +22,8 @@ use crate::theme::PaletteId;
 pub struct UiLocalState {
     pub version: u32,
     pub palette: PaletteId,
+    pub accent: AccentChoice,
+    pub syntax_theme: SyntaxThemeId,
     pub active_module: NavModule,
     pub active_settings_section: SettingsSection,
     pub sidebar_collapsed: bool,
@@ -40,6 +42,8 @@ impl Default for UiLocalState {
         Self {
             version: 2,
             palette: PaletteId::Slate,
+            accent: AccentChoice::FollowPalette,
+            syntax_theme: SyntaxThemeId::Catppuccin,
             active_module: NavModule::Requests,
             active_settings_section: SettingsSection::General,
             sidebar_collapsed: false,
@@ -55,6 +59,15 @@ impl Default for UiLocalState {
 }
 
 impl UiLocalState {
+    /// Returns the consolidated local visual theme preferences.
+    #[must_use]
+    pub const fn theme_prefs(&self) -> ThemePreferences {
+        ThemePreferences {
+            palette: self.palette,
+            accent: self.accent,
+            syntax_theme: self.syntax_theme,
+        }
+    }
     #[must_use]
     pub fn load_or_default(path: &Path) -> Self {
         fs::read_to_string(path)
@@ -162,6 +175,8 @@ mod tests {
         let ui_path = dir.join("ui_state.json");
         let ui = UiLocalState {
             palette: PaletteId::Nord,
+            accent: AccentChoice::Custom(0xE11D48),
+            syntax_theme: SyntaxThemeId::RosePine,
             active_module: NavModule::Chat,
             sidebar_collapsed: true,
             ..UiLocalState::default()

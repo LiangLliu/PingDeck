@@ -7,7 +7,7 @@ use pingdeck_desktop::core::app::{EnvironmentDto, UndoToken};
 use pingdeck_desktop::core::model::settings::Language;
 use pingdeck_desktop::core::model::{ExecutionHistoryEntry, HistoryFilter, Request};
 
-use crate::ui::{InputState, Tone};
+use crate::ui::{InputState, PayloadViewer, Tone};
 
 /// Detail inspector sub-tabs for a selected history entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,7 +110,8 @@ pub struct HistoryView {
     pub run_children_total: Option<u64>,
     pub run_children_loading: bool,
     pub detail_tab: HistoryDetailTab,
-    pub body_pretty: bool,
+    pub body_viewer: Entity<PayloadViewer>,
+    pub body_viewer_sig: Option<(String, usize)>,
 
     // Undo & overlays
     pub last_undo: Option<(UndoToken, usize)>,

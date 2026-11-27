@@ -97,6 +97,8 @@ fn oversized_bodies_are_returned_exact() {
 fn format_names_are_lowercase_and_closed() {
     let yaml: ResponseBodyFormat = serde_json::from_str("\"yaml\"").expect("known format");
     assert_eq!(yaml, ResponseBodyFormat::Yaml);
+    let text: ResponseBodyFormat = serde_json::from_str("\"text\"").expect("known format");
+    assert_eq!(text, ResponseBodyFormat::Text);
     for hex_and_base64 in ["hex", "base64"] {
         assert!(
             serde_json::from_str::<ResponseBodyFormat>(&format!("\"{hex_and_base64}\"")).is_ok()
@@ -105,6 +107,50 @@ fn format_names_are_lowercase_and_closed() {
     for removed in ["raw", "javascript", "markdown"] {
         assert!(serde_json::from_str::<ResponseBodyFormat>(&format!("\"{removed}\"")).is_err());
     }
+}
+
+#[test]
+fn detect_response_format_handles_headers_sniffing_and_fallbacks() {
+    use super::detect_response_format;
+    assert_eq!(
+        detect_response_format(Some("application/json; charset=utf-8"), r#"{"ok":true}"#),
+        ResponseBodyFormat::Json
+    );
+    assert_eq!(
+        detect_response_format(Some("text/plain"), r#"{"id":42,"name":"alice"}"#),
+        ResponseBodyFormat::Json
+    );
+    assert_eq!(
+        detect_response_format(None, "[1, 2, 3]"),
+        ResponseBodyFormat::Json
+    );
+    assert_eq!(
+        detect_response_format(Some("text/plain"), "hello world"),
+        ResponseBodyFormat::Text
+    );
+    assert_eq!(
+        detect_response_format(None, "{not json at all"),
+        ResponseBodyFormat::Text
+    );
+    assert_eq!(
+        detect_response_format(
+            Some("application/json"),
+            "<!DOCTYPE html><html><body>502 Bad Gateway</body></html>"
+        ),
+        ResponseBodyFormat::Html
+    );
+    assert_eq!(
+        detect_response_format(None, "<?xml version=\"1.0\"?><root/>"),
+        ResponseBodyFormat::Xml
+    );
+    assert_eq!(
+        detect_response_format(Some("application/yaml"), "a: 1\nb: 2\n"),
+        ResponseBodyFormat::Yaml
+    );
+    assert_eq!(
+        format("plain output", ResponseBodyFormat::Text).text,
+        "plain output"
+    );
 }
 
 #[test]

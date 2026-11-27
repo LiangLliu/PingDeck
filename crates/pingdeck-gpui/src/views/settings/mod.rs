@@ -42,7 +42,10 @@ use pingdeck_desktop::core::model::settings::{
 use pingdeck_desktop::core::sync::SyncStatus;
 use pingdeck_desktop::state::{NavModule, SettingsGroup, SettingsSection};
 use pingdeck_desktop::streams::channel_sink;
-use pingdeck_desktop::theme::PaletteId;
+use pingdeck_desktop::theme::{
+    AccentChoice, PaletteId, SyntaxThemeId, ThemePreferences, format_hex_rgb, parse_hex_rgb,
+    resolve_palette_with_accent,
+};
 
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::{
@@ -55,7 +58,8 @@ use state_inputs::{ProxyModeChoice, SettingsInputs, SettingsModal};
 pub struct SettingsView {
     pub active: SettingsSection,
     pub settings: Settings,
-    pub active_palette: PaletteId,
+    pub theme_prefs: ThemePreferences,
+    pub syntax_preview: appearance::SyntaxPreviewSample,
     pub mcp_servers: Vec<AgentMcpServerView>,
     pub flash: Option<(Tone, String)>,
     pub last_save_error: bool,
@@ -84,7 +88,7 @@ pub struct SettingsView {
     pub(crate) agent_view: Option<Entity<agent::AgentSettingsView>>,
     pub(crate) catalog_view: Option<Entity<catalog::CatalogSettingsView>>,
     pub(super) search_input: Entity<InputState>,
-    pending_palette: Cell<Option<PaletteId>>,
+    pending_theme_prefs: Cell<Option<ThemePreferences>>,
     pub(super) pending_back: Cell<bool>,
     pending_navigate: Cell<Option<NavModule>>,
     _subscriptions: Vec<Subscription>,
@@ -94,7 +98,7 @@ pub struct SettingsView {
 impl SettingsView {
     pub fn new(
         initial_section: SettingsSection,
-        active_palette: PaletteId,
+        theme_prefs: ThemePreferences,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -106,11 +110,29 @@ impl SettingsView {
                 .placeholder(crate::ui::tr(cx).settings().nav_search_placeholder())
         });
         let inputs = SettingsInputs::new(&settings, window, cx);
+        let cur_accent_hex = {
+            let is_dark = palette(cx).is_dark;
+            let resolved = resolve_palette_with_accent(
+                theme_prefs.palette,
+                theme_prefs.accent,
+                is_dark,
+                false,
+            );
+            format_hex_rgb(resolved.accent)
+        };
+        inputs
+            .accent_hex
+            .update(cx, |i, cx| i.set_value(cur_accent_hex, window, cx));
         let proxy_mode = ProxyModeChoice::from_proxy_url(&settings.network.proxy_url);
 
         let search_sub = cx.subscribe(&search_input, |_, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
                 cx.notify();
+            }
+        });
+        let accent_hex_sub = cx.subscribe(&inputs.accent_hex, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::PressEnter { .. }) {
+                this.apply_custom_accent_hex(cx);
             }
         });
         let sc_filter_sub = cx.subscribe(&inputs.shortcut_filter, |_, _, ev: &InputEvent, cx| {
@@ -164,7 +186,8 @@ impl SettingsView {
         let mut view = Self {
             active: initial_section,
             settings,
-            active_palette,
+            theme_prefs,
+            syntax_preview: appearance::SyntaxPreviewSample::Json,
             mcp_servers: Vec::new(),
             flash: None,
             last_save_error: false,
@@ -193,10 +216,16 @@ impl SettingsView {
             agent_view: None,
             catalog_view: None,
             search_input,
-            pending_palette: Cell::new(None),
+            pending_theme_prefs: Cell::new(None),
             pending_back: Cell::new(false),
             pending_navigate: Cell::new(None),
-            _subscriptions: vec![search_sub, sc_filter_sub, ui_slider_sub, mono_slider_sub],
+            _subscriptions: vec![
+                search_sub,
+                accent_hex_sub,
+                sc_filter_sub,
+                ui_slider_sub,
+                mono_slider_sub,
+            ],
             _tasks: vec![settings_task],
         };
         view.reload_aux(cx);
@@ -248,13 +277,13 @@ impl SettingsView {
     }
 
     pub fn has_pending_shell_signal(&self) -> bool {
-        self.pending_palette.get().is_some()
+        self.pending_theme_prefs.get().is_some()
             || self.pending_back.get()
             || self.pending_navigate.get().is_some()
     }
 
-    pub fn take_pending_palette(&self) -> Option<PaletteId> {
-        self.pending_palette.take()
+    pub fn take_pending_theme_prefs(&self) -> Option<ThemePreferences> {
+        self.pending_theme_prefs.take()
     }
 
     pub fn take_pending_back(&self) -> bool {
@@ -282,10 +311,72 @@ impl SettingsView {
         false
     }
 
-    pub fn choose_palette(&mut self, pid: PaletteId, cx: &mut Context<Self>) {
-        self.active_palette = pid;
-        self.pending_palette.set(Some(pid));
+    pub fn sync_theme_prefs(&mut self, prefs: ThemePreferences, cx: &mut Context<Self>) {
+        if self.theme_prefs != prefs {
+            self.theme_prefs = prefs;
+            cx.notify();
+        }
+    }
+
+    pub fn choose_palette(&mut self, pid: PaletteId, window: &mut Window, cx: &mut Context<Self>) {
+        self.theme_prefs.palette = pid;
+        self.sync_accent_hex_input(window, cx);
+        self.pending_theme_prefs.set(Some(self.theme_prefs));
         cx.notify();
+    }
+
+    pub fn choose_accent(
+        &mut self,
+        accent: AccentChoice,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.theme_prefs.accent = accent;
+        self.sync_accent_hex_input(window, cx);
+        self.pending_theme_prefs.set(Some(self.theme_prefs));
+        cx.notify();
+    }
+
+    pub fn apply_custom_accent_hex(&mut self, cx: &mut Context<Self>) {
+        let raw = self.inputs.accent_hex.read(cx).value().to_string();
+        if let Some(rgb) = parse_hex_rgb(&raw) {
+            self.theme_prefs.accent = AccentChoice::Custom(rgb);
+            self.pending_theme_prefs.set(Some(self.theme_prefs));
+            cx.notify();
+        } else {
+            self.set_flash(
+                Tone::Warning,
+                crate::ui::tr(cx).settings().appearance_accent_invalid_hex(),
+                cx,
+            );
+        }
+    }
+
+    pub fn choose_syntax_theme(&mut self, st: SyntaxThemeId, cx: &mut Context<Self>) {
+        self.theme_prefs.syntax_theme = st;
+        self.pending_theme_prefs.set(Some(self.theme_prefs));
+        cx.notify();
+    }
+
+    pub fn reset_appearance_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.theme_prefs = ThemePreferences::default();
+        self.sync_accent_hex_input(window, cx);
+        self.pending_theme_prefs.set(Some(self.theme_prefs));
+        self.reset_section(CoreSection::Appearance, cx);
+    }
+
+    fn sync_accent_hex_input(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let is_dark = palette(cx).is_dark;
+        let resolved = resolve_palette_with_accent(
+            self.theme_prefs.palette,
+            self.theme_prefs.accent,
+            is_dark,
+            false,
+        );
+        let hex = format_hex_rgb(resolved.accent);
+        self.inputs
+            .accent_hex
+            .update(cx, |i, cx| i.set_value(hex, window, cx));
     }
 }
 

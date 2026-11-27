@@ -1,13 +1,12 @@
 //! Redacted diagnostics copy & selectable inline preview section for Settings › About.
 
-use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, div, px,
-};
+use gpui_kit::{Context, IntoElement, ParentElement as _, Styled as _, div, px};
 use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
 
 use crate::ui::{
-    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, btn_ghost, btn_secondary,
-    dismissible_banner, h_row, icon_xs, markdown_view, palette, settings_section_flush,
+    Disableable as _, PayloadBlockOptions, StatusShape, Tone, UiIcon, btn_ghost, btn_secondary,
+    dismissible_banner, h_row, icon_xs, palette, payload_block, settings_section_flush,
     status_indicator, to_hsla, v_col,
 };
 
@@ -167,15 +166,21 @@ fn render_preview_panel(
             )
             .into_any_element()
     } else if let Some(text) = &view.diag_text {
-        let fenced = fence_plain_text(text.trim_end());
         div()
-            .id("about-diag-scroll")
             .w_full()
-            .max_h(px(300.0))
-            .overflow_y_scrollbar()
-            .px(px(12.0))
-            .py(px(8.0))
-            .child(markdown_view("about-diag-md", fenced))
+            .p(px(10.0))
+            .child(payload_block(
+                "about-diag-payload",
+                text.trim_end(),
+                PayloadBlockOptions {
+                    format_override: Some(ResponseBodyFormat::Text),
+                    max_height_px: Some(300.0),
+                    show_header: false,
+                    show_copy: false,
+                    ..Default::default()
+                },
+                cx,
+            ))
             .into_any_element()
     } else {
         div().into_any_element()
@@ -187,12 +192,4 @@ fn render_preview_panel(
         .border_color(to_hsla(p.line.composite_over(p.sunken)))
         .child(preview_bar)
         .child(preview_body)
-}
-
-fn fence_plain_text(text: &str) -> String {
-    let mut fence = String::from("````");
-    while text.contains(&fence) {
-        fence.push('`');
-    }
-    format!("{fence}text\n{text}\n{fence}")
 }

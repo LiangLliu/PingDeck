@@ -64,6 +64,7 @@ pub enum SettingsModal {
 pub struct SettingsInputs {
     pub ui_font_slider: Entity<SliderState>,
     pub mono_font_slider: Entity<SliderState>,
+    pub accent_hex: Entity<InputState>,
 
     pub shortcut_filter: Entity<InputState>,
     pub shortcut_key: Entity<InputState>,
@@ -158,6 +159,7 @@ impl SettingsInputs {
         Self {
             ui_font_slider,
             mono_font_slider,
+            accent_hex: new_input(String::new(), "#3B82F6", window, cx),
             shortcut_filter: new_input(
                 String::new(),
                 crate::ui::tr(cx).settings().shortcut_filter_placeholder(),

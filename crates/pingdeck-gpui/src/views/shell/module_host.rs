@@ -10,7 +10,7 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::llm::capture::ApiClientDraft;
 use pingdeck_desktop::state::{NavModule, SettingsSection};
-use pingdeck_desktop::theme::PaletteId;
+use pingdeck_desktop::theme::ThemePreferences;
 
 use crate::views::{
     chat::ChatView, environments::EnvironmentsView, flows::FlowsView, gateway::GatewayView,
@@ -497,17 +497,29 @@ impl ModuleHost {
         }
     }
 
-    /// Polls settings view for palette-change, back-button, or cross-module jump signals.
+    /// Syncs external theme-preference updates (e.g. Titlebar Quick Theme Popover) into the
+    /// mounted Settings view so both surfaces stay identical.
+    pub fn sync_settings_theme_prefs<V: 'static>(
+        &self,
+        prefs: ThemePreferences,
+        cx: &mut Context<V>,
+    ) {
+        if let Some(v) = &self.settings {
+            v.update(cx, |s, cx| s.sync_theme_prefs(prefs, cx));
+        }
+    }
+
+    /// Polls settings view for theme-preference, back-button, or cross-module jump signals.
     pub fn poll_settings_signals<V: 'static>(
         &self,
         cx: &Context<V>,
-    ) -> (Option<PaletteId>, bool, Option<NavModule>) {
+    ) -> (Option<ThemePreferences>, bool, Option<NavModule>) {
         let Some(v) = &self.settings else {
             return (None, false, None);
         };
         let s = v.read(cx);
         (
-            s.take_pending_palette(),
+            s.take_pending_theme_prefs(),
             s.take_pending_back(),
             s.take_pending_navigate(),
         )
@@ -521,7 +533,7 @@ impl ModuleHost {
         workspace_id: Option<String>,
         active_env_id: Option<String>,
         settings_section: SettingsSection,
-        palette: PaletteId,
+        theme_prefs: ThemePreferences,
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> AnyElement {
@@ -570,7 +582,7 @@ impl ModuleHost {
             NavModule::Settings => ensure_watched(
                 &mut self.settings,
                 &mut self._subscriptions,
-                |cx| SettingsView::new(settings_section, palette, window, cx),
+                |cx| SettingsView::new(settings_section, theme_prefs, window, cx),
                 SettingsView::has_pending_shell_signal,
                 cx,
             )

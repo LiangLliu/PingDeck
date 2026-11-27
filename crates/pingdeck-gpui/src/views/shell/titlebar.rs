@@ -21,6 +21,7 @@ use crate::ui::{
 };
 
 use super::AppShell;
+use super::theme_popover::render_theme_popover;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GlobalProxyMode {
@@ -115,19 +116,7 @@ pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl In
                     this.open_diagnostics(window, cx);
                 })),
         )
-        .child(
-            titlebar_icon_btn(
-                "tb-theme",
-                if p.is_dark { UiIcon::Sun } else { UiIcon::Moon },
-                None,
-                cx,
-            )
-            .tooltip(sh.titlebar_toggle_theme())
-            .on_click(cx.listener(|this, _, _, cx| {
-                cx.stop_propagation();
-                this.toggle_theme_mode(cx);
-            })),
-        );
+        .child(render_theme_popover(shell, cx));
 
     if !cfg!(target_os = "macos") {
         // Subtle divider separating app global actions from Windows/Linux window controls.

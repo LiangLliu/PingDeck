@@ -8,8 +8,8 @@ use pingdeck_desktop::core::llm::ai_run::{AiResultDto, AiRunStatus};
 use pingdeck_desktop::core::llm::capture_record::CapturedFrame;
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, badge, card, h_row, kv_chip, palette,
-    section_heading, status_indicator, to_hsla, v_col,
+    PayloadBlockOptions, ScrollableElement as _, StatusShape, Tone, badge, card, h_row, kv_chip,
+    palette, payload_block, section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::RequestsView;
@@ -63,7 +63,11 @@ pub(super) fn render_ai_events(
 }
 
 pub(super) fn render_ai_raw(ai: &AiResultDto, cx: &Context<RequestsView>) -> impl IntoElement {
-    let p = palette(cx);
+    let resp_ct = ai
+        .response_headers
+        .iter()
+        .find(|h| h.name.eq_ignore_ascii_case("content-type"))
+        .map(|h| h.value.as_str());
     v_col()
         .size_full()
         .w_full()
@@ -73,7 +77,7 @@ pub(super) fn render_ai_raw(ai: &AiResultDto, cx: &Context<RequestsView>) -> imp
         .child(
             card(cx).p(px(10.0)).child(
                 v_col()
-                    .gap(px(4.0))
+                    .gap(px(6.0))
                     .child(section_heading(
                         crate::ui::tr(cx).exchange().resp_ai_tabs_sent_request(),
                         cx,
@@ -91,12 +95,18 @@ pub(super) fn render_ai_raw(ai: &AiResultDto, cx: &Context<RequestsView>) -> imp
                             cx,
                         )
                     }))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .child(SharedString::from(ai.request.body.clone())),
-                    ),
+                    .children((!ai.request.body.is_empty()).then(|| {
+                        payload_block(
+                            "ai-raw-req-body",
+                            &ai.request.body,
+                            PayloadBlockOptions {
+                                content_type: Some("application/json"),
+                                max_height_px: Some(300.0),
+                                ..Default::default()
+                            },
+                            cx,
+                        )
+                    })),
             ),
         )
         .children(
@@ -106,12 +116,21 @@ pub(super) fn render_ai_raw(ai: &AiResultDto, cx: &Context<RequestsView>) -> imp
                 .map(|txt| {
                     card(cx).p(px(10.0)).child(
                         v_col()
-                            .gap(px(4.0))
+                            .gap(px(6.0))
                             .child(section_heading(
                                 crate::ui::tr(cx).exchange().resp_ai_tabs_raw_response(),
                                 cx,
                             ))
-                            .child(div().text_xs().child(SharedString::from(txt.clone()))),
+                            .child(payload_block(
+                                "ai-raw-resp-body",
+                                txt,
+                                PayloadBlockOptions {
+                                    content_type: resp_ct,
+                                    max_height_px: Some(360.0),
+                                    ..Default::default()
+                                },
+                                cx,
+                            )),
                     )
                 }),
         )

@@ -53,10 +53,115 @@ pub enum ResponseBodyFormat {
     Html,
     /// Convert JSON to YAML.
     Yaml,
+    /// Plain text without structural reformatting.
+    Text,
     /// Hex dump of the first 64 KiB of the bytes.
     Hex,
     /// Base64 of the first 2 MiB of the bytes.
     Base64,
+}
+
+/// Canonical ordered list of all user-selectable response body formats.
+pub const ALL_RESPONSE_FORMATS: [ResponseBodyFormat; 7] = [
+    ResponseBodyFormat::Json,
+    ResponseBodyFormat::Xml,
+    ResponseBodyFormat::Html,
+    ResponseBodyFormat::Yaml,
+    ResponseBodyFormat::Text,
+    ResponseBodyFormat::Hex,
+    ResponseBodyFormat::Base64,
+];
+
+/// Short uppercase/canonical UI badge label for a [`ResponseBodyFormat`].
+#[must_use]
+pub const fn format_label(format: ResponseBodyFormat) -> &'static str {
+    match format {
+        ResponseBodyFormat::Json => "JSON",
+        ResponseBodyFormat::Xml => "XML",
+        ResponseBodyFormat::Html => "HTML",
+        ResponseBodyFormat::Yaml => "YAML",
+        ResponseBodyFormat::Text => "Text",
+        ResponseBodyFormat::Hex => "Hex",
+        ResponseBodyFormat::Base64 => "Base64",
+    }
+}
+
+/// Maximum byte size to run full strict JSON validation while auto-sniffing format.
+const SNIFF_JSON_PARSE_CAP: usize = 512 * 1024;
+
+/// Detects the most appropriate [`ResponseBodyFormat`] from an optional HTTP `Content-Type`
+/// header and body text.
+///
+/// Priority:
+/// 1. Explicit `Content-Type` (`json`/`+json`, `xml`, `html`, `yaml`), with automatic fallback if
+///    a server mislabels an HTML error page as `application/json`.
+/// 2. Content sniffing when `Content-Type` is absent or generic (`text/plain`,
+///    `application/octet-stream`): valid JSON objects/arrays promote to `Json`; `<?xml` to `Xml`;
+///    `<!doctype html` / `<html` to `Html`.
+/// 3. Falls back cleanly to [`ResponseBodyFormat::Text`].
+#[must_use]
+pub fn detect_response_format(content_type: Option<&str>, body: &str) -> ResponseBodyFormat {
+    let trimmed = body.trim();
+    let media = content_type
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+
+    if media.contains("json") {
+        // Guard against proxies returning an HTML gateway error with a JSON header.
+        if looks_like_html(trimmed) && !looks_like_json(trimmed) {
+            return ResponseBodyFormat::Html;
+        }
+        return ResponseBodyFormat::Json;
+    }
+    if media.contains("xml") {
+        return ResponseBodyFormat::Xml;
+    }
+    if media.contains("html") {
+        return ResponseBodyFormat::Html;
+    }
+    if media.contains("yaml") || media.contains("yml") {
+        return ResponseBodyFormat::Yaml;
+    }
+
+    // Sniff content when Content-Type is missing or generic (e.g. text/plain).
+    if trimmed.is_empty() {
+        return ResponseBodyFormat::Text;
+    }
+    if looks_like_json(trimmed) {
+        return ResponseBodyFormat::Json;
+    }
+    if trimmed.starts_with("<?xml") {
+        return ResponseBodyFormat::Xml;
+    }
+    if looks_like_html(trimmed) {
+        return ResponseBodyFormat::Html;
+    }
+    ResponseBodyFormat::Text
+}
+
+fn looks_like_json(trimmed: &str) -> bool {
+    let bytes = trimmed.as_bytes();
+    let Some(&first) = bytes.first() else {
+        return false;
+    };
+    if first != b'{' && first != b'[' {
+        return false;
+    }
+    if bytes.len() <= SNIFF_JSON_PARSE_CAP {
+        is_valid_json(trimmed)
+    } else {
+        matches!(bytes.last(), Some(b'}' | b']'))
+    }
+}
+
+fn looks_like_html(trimmed: &str) -> bool {
+    let prefix: String = trimmed.chars().take(16).collect();
+    let lower = prefix.to_ascii_lowercase();
+    lower.starts_with("<!doctype html") || lower.starts_with("<html")
 }
 
 /// Result of formatting a response body for one view format.
@@ -138,6 +243,7 @@ pub fn format_response_body(
         ResponseBodyFormat::Xml => format_markup(body_text, false),
         ResponseBodyFormat::Html => format_markup(body_text, true),
         ResponseBodyFormat::Yaml => format_yaml(body_text),
+        ResponseBodyFormat::Text => exact_body(body_text, "Plain text"),
         ResponseBodyFormat::Hex | ResponseBodyFormat::Base64 => exact_body(body_text, "Exact body"),
     }
 }

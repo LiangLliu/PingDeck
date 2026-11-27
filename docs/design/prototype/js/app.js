@@ -15,7 +15,42 @@
   const state = {
     module: "requests", reqMode: "http", provView: "relay",
     envName: "Staging", envTab: "vars", usageView: "overview", usageScope: "全部服务商", setPage: "appearance",
-    palette: "slate", mode: "light", density: "comfortable", platform: "macos", rail: false, frameless: false,
+    palette: "slate", accent: "follow", customAccentHex: null, syntaxTheme: "catppuccin",
+    mode: "light", density: "comfortable", platform: "macos", rail: false, frameless: false,
+  };
+
+  const ACCENT_HEX = {
+    indigo: "#3B66F5", ocean: "#0B7AC2", teal: "#0D877E", emerald: "#148A5A",
+    amber: "#B46509", coral: "#C84B24", rose: "#CC2B56", violet: "#7A42DF",
+  };
+
+  const SYNTAX_SCHEMES = {
+    catppuccin: {
+      name: "Catppuccin",
+      light: { pair: "Latte", key: "#1E66F5", str: "#2B7A2C", num: "#BD4D0C", kw: "#7C3AED", com: "#6C6F85", fn: "#0F766E" },
+      dark: { pair: "Mocha", key: "#89B4FA", str: "#A6E3A1", num: "#FAB387", kw: "#CBA6F7", com: "#9399B2", fn: "#89DCEB" },
+    },
+    rose_pine: {
+      name: "Rosé Pine",
+      light: { pair: "Dawn", key: "#286983", str: "#A35D12", num: "#B44C6B", kw: "#6D5494", com: "#797593", fn: "#9E5049" },
+      dark: { pair: "Moon", key: "#9CCFD8", str: "#F6C177", num: "#EB6F92", kw: "#C4A7E7", com: "#908CAA", fn: "#EA9A97" },
+    },
+    tokyo_night: {
+      name: "Tokyo Night",
+      light: { pair: "Day", key: "#2E5EC9", str: "#38701D", num: "#A85700", kw: "#7847BD", com: "#6E7494", fn: "#006A83" },
+      dark: { pair: "Storm", key: "#7AA2F7", str: "#9ECE6A", num: "#FF9E64", kw: "#BB9AF7", com: "#828FB8", fn: "#7DCFFF" },
+    },
+    github: {
+      name: "GitHub Clean",
+      light: { pair: "Light", key: "#0550AE", str: "#0A3069", num: "#0550AE", kw: "#CF222E", com: "#57606A", fn: "#7A42D8" },
+      dark: { pair: "Dark Dimmed", key: "#6CB6FF", str: "#96D0FF", num: "#79C0FF", kw: "#F47067", com: "#8B949E", fn: "#DCBDFB" },
+    },
+    one_pro: {
+      name: "One Pro",
+      light: { pair: "One Light", key: "#BC382E", str: "#367A37", num: "#8F6100", kw: "#97279B", com: "#696C77", fn: "#3264D6" },
+      dark: { pair: "One Dark Pro", key: "#E06C75", str: "#98C379", num: "#D19A66", kw: "#C678DD", com: "#848B98", fn: "#61AFEF" },
+    },
+    follow_palette: { name: "跟随应用色板", follow: true },
   };
 
   const TAB_TARGETS = {
@@ -70,6 +105,34 @@
       el.classList.toggle("active", el.dataset.setMode === (el.closest(".proto-seg") ? effective : state.mode));
     });
     document.querySelectorAll("[data-set-density]").forEach((el) => el.classList.toggle("active", el.dataset.setDensity === state.density));
+    document.querySelectorAll("[data-set-accent]").forEach((el) => el.classList.toggle("active", el.dataset.setAccent === state.accent));
+    document.querySelectorAll("[data-set-syntax]").forEach((el) => el.classList.toggle("active", el.dataset.setSyntax === state.syntaxTheme));
+
+    const accHex = state.accent === "custom" ? state.customAccentHex : ACCENT_HEX[state.accent];
+    if (accHex) {
+      root.style.setProperty("--accent", accHex);
+      root.style.setProperty("--accent-mark", accHex);
+      root.style.setProperty("--accent-ink", accHex);
+      root.style.setProperty("--accent-soft", `color-mix(in srgb, ${accHex} 14%, transparent)`);
+    } else {
+      ["--accent", "--accent-mark", "--accent-ink", "--accent-soft"].forEach((k) => root.style.removeProperty(k));
+    }
+
+    const syn = SYNTAX_SCHEMES[state.syntaxTheme] || SYNTAX_SCHEMES.catppuccin;
+    const badge = byId("syntax-active-badge");
+    if (syn.follow) {
+      ["--tk-key", "--tk-str", "--tk-num", "--tk-kw", "--tk-com", "--tk-fn"].forEach((k) => root.style.removeProperty(k));
+      if (badge) badge.textContent = `${syn.name} · ${effective === "dark" ? "OKLCH Dark" : "OKLCH Light"}`;
+    } else {
+      const v = effective === "dark" ? syn.dark : syn.light;
+      root.style.setProperty("--tk-key", v.key);
+      root.style.setProperty("--tk-str", v.str);
+      root.style.setProperty("--tk-num", v.num);
+      root.style.setProperty("--tk-kw", v.kw);
+      root.style.setProperty("--tk-com", v.com);
+      root.style.setProperty("--tk-fn", v.fn);
+      if (badge) badge.textContent = `${syn.name} · ${v.pair}`;
+    }
   }
 
   function setModule(id) {
@@ -178,6 +241,53 @@
     if (byId("mock-branch-body")) byId("mock-branch-body").innerHTML = spec.body;
   }
 
+  // ── Unified PayloadBlock Renderer (mirrors ui/payload_viewer.rs) ─────────
+  function renderPayloadBlock(raw, opts = {}) {
+    const text = String(raw ?? "");
+    const trimmed = text.trim();
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let fmt = opts.format || "Text";
+    let display = text;
+    if (!opts.format && (trimmed.startsWith("{") || trimmed.startsWith("["))) {
+      try {
+        display = JSON.stringify(JSON.parse(trimmed), null, 2);
+        fmt = "JSON";
+      } catch (_) {}
+    } else if (!opts.format && trimmed.startsWith("<?xml")) {
+      fmt = "XML";
+    } else if (!opts.format && /^<!doctype html|^<html/i.test(trimmed)) {
+      fmt = "HTML";
+    }
+    const highlightJson = (s) =>
+      esc(s).replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+        (m) => {
+          if (m.startsWith("\"")) return m.endsWith(":") ? `<span class="tk-key">${m}</span>` : `<span class="tk-str">${m}</span>`;
+          if (/true|false|null/.test(m)) return `<span class="tk-kw">${m}</span>`;
+          return `<span class="tk-num">${m}</span>`;
+        }
+      );
+    const bodyHtml = fmt === "JSON" ? highlightJson(display) : esc(display);
+    const lines = display ? display.split("\n").length : 0;
+    const size = text.length < 1024 ? `${text.length} B` : `${(text.length / 1024).toFixed(1)} KB`;
+    const toneCls = fmt === "Text" ? "" : " tag-accent";
+    return `
+      <div class="plv-box">
+        <div class="plv-head">
+          <div class="plv-head-left">
+            ${opts.title ? `<b class="text-ink1">${esc(opts.title)}</b>` : ""}
+            <span class="tag${toneCls}" style="height:17px;padding:0 5px">${fmt}</span>
+            <span>${lines}行 · ${size}</span>
+          </div>
+          <div class="plv-head-right">
+            <button type="button" class="btn btn-sm btn-ghost" data-toast="已复制 ${fmt} 内容到剪贴板">复制</button>
+          </div>
+        </div>
+        <div class="plv-body wrap">${bodyHtml}</div>
+      </div>`;
+  }
+  window.PD.renderPayloadBlock = renderPayloadBlock;
+
   // ── Unified ProcessView Flows Controller ──────────────────────────────────
   const flowUi = {
     presetId: "ecommerce",
@@ -279,8 +389,8 @@
           ${node.assert ? `<div class="fs-2xs ${node.status === "bad" ? "text-bad" : "text-ink2"}">断言：${node.assert}</div>` : ""}
         </div>
         <div class="card-panel">
-          <div class="card-panel-head"><span>响应快照（脱敏预览）</span><button type="button" class="text-accent" data-nav-to="history">查看历史 ↗</button></div>
-          <div class="code-box fs-2xs" style="white-space:pre-wrap">${node.body || "// 控制节点（无 HTTP 响应体）"}</div>
+          <div class="card-panel-head"><span>响应快照（统一 PayloadViewer）</span><button type="button" class="text-accent" data-nav-to="history">查看历史 ↗</button></div>
+          ${renderPayloadBlock(node.body || "// 控制节点（无 HTTP 响应体）")}
         </div>`;
     } else {
       body.innerHTML = `
@@ -666,7 +776,7 @@
       return;
     }
 
-    const t = e.target.closest("button, tr[data-usage-view], [data-nav-to], [data-req-mode], [data-prov-view], [data-env-tab], [data-env-pick], [data-usage-view], [data-usage-scope], [data-tab-jump], [data-tab], [data-mock-server], [data-set-page], [data-set-palette], [data-set-mode], [data-set-density], [data-set-platform], [data-action]");
+    const t = e.target.closest("button, tr[data-usage-view], [data-nav-to], [data-req-mode], [data-prov-view], [data-env-tab], [data-env-pick], [data-usage-view], [data-usage-scope], [data-tab-jump], [data-tab], [data-mock-server], [data-set-page], [data-set-palette], [data-set-accent], [data-set-syntax], [data-set-mode], [data-set-density], [data-set-platform], [data-action]");
     if (!t) { if (wirePop && !wirePop.hidden && !e.target.closest("#wire-popover")) wirePop.hidden = true; return; }
 
     if (t.dataset.navTo) {
@@ -705,6 +815,8 @@
       return;
     }
     if (t.dataset.setPalette) { state.palette = t.dataset.setPalette; applyTheme(); return; }
+    if (t.dataset.setAccent) { state.accent = t.dataset.setAccent; applyTheme(); return; }
+    if (t.dataset.setSyntax) { state.syntaxTheme = t.dataset.setSyntax; applyTheme(); return; }
     if (t.dataset.setMode) { state.mode = t.dataset.setMode; applyTheme(); return; }
     if (t.dataset.setDensity) { state.density = t.dataset.setDensity; applyTheme(); return; }
     if (t.dataset.setPlatform) {
@@ -720,8 +832,26 @@
         state.mode = root.dataset.mode === "dark" ? "light" : "dark";
         applyTheme();
         break;
+      case "apply-custom-accent": {
+        const raw = (byId("accent-custom-input")?.value || "").trim();
+        if (/^#?[0-9a-fA-F]{6}$/.test(raw)) {
+          state.accent = "custom";
+          state.customAccentHex = raw.startsWith("#") ? raw : `#${raw}`;
+          applyTheme();
+          ov()?.toast(`已应用自定义主题色 ${state.customAccentHex.toUpperCase()}`, { tone: "ok" });
+        } else {
+          ov()?.toast("请输入有效的十六进制色值，例如 #3B82F6", { tone: "warn" });
+        }
+        break;
+      }
       case "open-cmd": toggleCmd(true); break;
       case "close-cmd": toggleCmd(false); break;
+      case "toggle-wrap-code": {
+        const on = t.classList.toggle("tag-accent");
+        const target = byId(t.dataset.wrapTarget);
+        if (target) target.style.whiteSpace = on ? "pre-wrap" : "pre";
+        break;
+      }
       case "toggle-console": togglePanel("console-drawer"); break;
       case "close-flow-inspector": flowUi.selectedId = null; renderFlowsWorkbench(); break;
       case "flow-toggle-lanes": flowUi.swimlanes = !flowUi.swimlanes; renderFlowsWorkbench(); break;

@@ -2,13 +2,32 @@
 //!
 //! Resolves all 8 eye-care palettes (`slate` + 7 named palettes) in light/dark and optional
 //! high-contrast modes into concrete [`RgbaColor`] / [`HslaColor`] values with Björn Ottosson's
-//! OKLCH→sRGB gamut mapping (exact parity with `xtask check-tokens`).
+//! OKLCH→sRGB gamut mapping (exact parity with `xtask check-tokens`), plus optional theme accent
+//! overrides ([`AccentChoice`]) and light/dark-paired code syntax themes ([`SyntaxThemeId`]).
+
+pub mod accent;
+pub mod syntax;
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub use accent::{
+    AccentChoice, AccentPreset, apply_accent_override, format_hex_rgb, parse_hex_rgb,
+};
+pub use syntax::{ResolvedSyntaxPalette, SyntaxThemeId, resolve_syntax_palette};
+
+/// Cohesive local visual theme configuration combining surface palette, theme accent color,
+/// and code syntax highlighting scheme.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ThemePreferences {
+    pub palette: PaletteId,
+    pub accent: AccentChoice,
+    pub syntax_theme: SyntaxThemeId,
+}
 
 const TOKENS_JSON: &str = include_str!("../../../../tokens/tokens.json");
 
@@ -471,12 +490,65 @@ fn parse_solid(v: &Value) -> Option<RgbaColor> {
     Some(RgbaColor::rgb(r, g, b))
 }
 
+/// Resolves a concrete semantic colour palette with an optional theme accent override applied.
+#[must_use]
+pub fn resolve_palette_with_accent(
+    palette: PaletteId,
+    accent: AccentChoice,
+    is_dark: bool,
+    high_contrast: bool,
+) -> ResolvedPalette {
+    let mut resolved = resolve_palette(palette, is_dark, high_contrast);
+    apply_accent_override(&mut resolved, accent);
+    resolved
+}
+
 fn to_gam(v: f64) -> f64 {
     if v <= 0.003_130_8 {
         12.92 * v
     } else {
         1.055 * v.powf(1.0 / 2.4) - 0.055
     }
+}
+
+fn from_gam(v: f64) -> f64 {
+    if v <= 0.040_45 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// Converts sRGB `u8` channels into perceptual OKLCH `(L, C, H_deg)` (Björn Ottosson's OKLab).
+#[must_use]
+pub(crate) fn rgb_to_oklch(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    let lr = from_gam(f64::from(r) / 255.0);
+    let lg = from_gam(f64::from(g) / 255.0);
+    let lb = from_gam(f64::from(b) / 255.0);
+    let l_ = (0.412_221_470_8 * lr + 0.536_332_536_3 * lg + 0.051_445_992_9 * lb).cbrt();
+    let m_ = (0.211_903_498_2 * lr + 0.680_699_545_1 * lg + 0.107_396_956_6 * lb).cbrt();
+    let s_ = (0.088_302_461_9 * lr + 0.281_718_837_6 * lg + 0.629_978_700_5 * lb).cbrt();
+    let l = 0.210_454_255_3 * l_ + 0.793_617_785_0 * m_ - 0.004_072_046_8 * s_;
+    let a = 1.977_998_495_1 * l_ - 2.428_592_205_0 * m_ + 0.450_593_709_9 * s_;
+    let b_ = 0.025_904_037_1 * l_ + 0.782_771_766_2 * m_ - 0.808_675_766_0 * s_;
+    let c = a.hypot(b_);
+    let h = b_.atan2(a).to_degrees().rem_euclid(360.0);
+    (l, c, h)
+}
+
+/// Computes the WCAG 2.1 contrast ratio (`1.0..=21.0`) between two opaque sRGB colors.
+#[must_use]
+pub fn wcag_contrast(a: RgbaColor, b: RgbaColor) -> f64 {
+    let lum = |c: RgbaColor| -> f64 {
+        let r = from_gam(f64::from(c.r) / 255.0);
+        let g = from_gam(f64::from(c.g) / 255.0);
+        let bl = from_gam(f64::from(c.b) / 255.0);
+        0.2126 * r + 0.7152 * g + 0.0722 * bl
+    };
+    let la = lum(a);
+    let lb = lum(b);
+    let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
 }
 
 fn oklch_to_linear(l: f64, c: f64, h: f64) -> [f64; 3] {
@@ -493,7 +565,7 @@ fn oklch_to_linear(l: f64, c: f64, h: f64) -> [f64; 3] {
     ]
 }
 
-fn oklch_to_rgb(l: f64, c: f64, h: f64) -> [u8; 3] {
+pub(crate) fn oklch_to_rgb(l: f64, c: f64, h: f64) -> [u8; 3] {
     let mut cur_c = c;
     for _ in 0..GAMUT_STEPS {
         let lin = oklch_to_linear(l, cur_c, h);
@@ -535,6 +607,65 @@ mod tests {
                     assert!((0.0..=1.0).contains(&s));
                     assert!((0.0..=1.0).contains(&l));
                     assert!((a - 1.0).abs() < 1e-4);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn accent_overrides_guarantee_wcag_aa_across_all_palettes_and_custom_hexes() {
+        let custom_samples = [0xFFEB3B, 0x00E5FF, 0xE11D48, 0x10B981, 0x6366F1, 0x18181B];
+        let mut choices: Vec<AccentChoice> = AccentPreset::ALL
+            .into_iter()
+            .map(AccentChoice::Preset)
+            .collect();
+        choices.extend(custom_samples.into_iter().map(AccentChoice::Custom));
+
+        for pid in [PaletteId::Slate, PaletteId::Amber, PaletteId::Sage] {
+            for dark in [false, true] {
+                for choice in &choices {
+                    let p = resolve_palette_with_accent(pid, *choice, dark, false);
+                    let btn_ratio = wcag_contrast(p.accent, p.on_accent);
+                    let ink_surface = wcag_contrast(p.accent_ink, p.surface);
+                    let ink_soft = wcag_contrast(p.accent_ink, p.accent_soft);
+                    assert!(
+                        btn_ratio >= 4.5,
+                        "{pid:?} dark={dark} {choice:?} button contrast {btn_ratio:.2} < 4.5"
+                    );
+                    assert!(
+                        ink_surface >= 4.5 && ink_soft >= 4.5,
+                        "{pid:?} dark={dark} {choice:?} ink contrast ({ink_surface:.2}, {ink_soft:.2}) < 4.5"
+                    );
+                }
+            }
+        }
+
+        assert_eq!(parse_hex_rgb("#3b82f6"), Some(0x3B82F6));
+        assert_eq!(parse_hex_rgb("f0a"), Some(0xFF00AA));
+        assert_eq!(parse_hex_rgb("not-hex"), None);
+    }
+
+    #[test]
+    fn syntax_themes_keep_legible_contrast_on_all_16_palettes() {
+        for pid in PaletteId::ALL {
+            for dark in [false, true] {
+                let p = resolve_palette(pid, dark, false);
+                for st in SyntaxThemeId::ALL {
+                    let syn = resolve_syntax_palette(st, &p);
+                    for (name, fg) in [
+                        ("key", syn.key),
+                        ("string", syn.string),
+                        ("number", syn.number),
+                        ("boolean", syn.boolean),
+                        ("keyword", syn.keyword),
+                    ] {
+                        let ratio_surface = wcag_contrast(fg, p.surface);
+                        let ratio_sunken = wcag_contrast(fg, p.sunken);
+                        assert!(
+                            ratio_surface >= 4.0 && ratio_sunken >= 3.8,
+                            "{st:?}.{name} on {pid:?} dark={dark}: surface={ratio_surface:.2}, sunken={ratio_sunken:.2}"
+                        );
+                    }
                 }
             }
         }

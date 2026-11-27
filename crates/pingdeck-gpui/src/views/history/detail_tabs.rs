@@ -4,15 +4,11 @@ use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
     div, px,
 };
-use pingdeck_desktop::core::app::{BodySource, response_format_body_impl};
 use pingdeck_desktop::core::model::ExecutionHistoryEntry;
-use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
-use pingdeck_desktop::services::clipboard;
 
-use crate::bridge::runtime;
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_secondary, card, choice_chip,
-    empty_inline, h_row, icon_xs, kv_line, palette, section_header, to_hsla, v_col,
+    PayloadBlockOptions, ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_secondary,
+    card, empty_inline, icon_xs, kv_line, payload_block, section_header, v_col,
 };
 
 use super::detail_trace::{render_checks_tab, render_trace_tab};
@@ -46,8 +42,6 @@ fn render_body_tab(
     entry: &ExecutionHistoryEntry,
     cx: &mut Context<HistoryView>,
 ) -> AnyElement {
-    let p = palette(cx);
-    let body_copy = entry.response_body_preview.clone();
     let mut col = v_col().w_full().gap(px(10.0));
 
     if let Some(msg) = &entry.error_message {
@@ -79,37 +73,6 @@ fn render_body_tab(
         ));
     }
 
-    let display_body = if view.body_pretty && !entry.response_body_preview.is_empty() {
-        let ct = entry
-            .response_headers
-            .iter()
-            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
-            .map(|h| h.value.to_ascii_lowercase())
-            .unwrap_or_default();
-        let trimmed = entry.response_body_preview.trim_start();
-        let fmt = if ct.contains("xml") || trimmed.starts_with("<?xml") {
-            ResponseBodyFormat::Xml
-        } else if ct.contains("html")
-            || trimmed.starts_with("<!DOCTYPE")
-            || trimmed.starts_with("<html")
-        {
-            ResponseBodyFormat::Html
-        } else if ct.contains("yaml") {
-            ResponseBodyFormat::Yaml
-        } else {
-            ResponseBodyFormat::Json
-        };
-        response_format_body_impl(
-            runtime(cx).state(),
-            BodySource::Text(entry.response_body_preview.clone()),
-            fmt,
-        )
-        .map(|f| f.text)
-        .unwrap_or_else(|_| entry.response_body_preview.clone())
-    } else {
-        entry.response_body_preview.clone()
-    };
-
     let body_card = card(cx)
         .p(px(12.0))
         .gap(px(8.0))
@@ -117,53 +80,7 @@ fn render_body_tab(
             crate::ui::Tr(view.lang)
                 .history()
                 .detail_tabs_response_body_preview(),
-            Some(
-                h_row()
-                    .gap(px(6.0))
-                    .child(
-                        choice_chip(
-                            "hist-body-pretty",
-                            crate::ui::Tr(view.lang).history().detail_tabs_pretty(),
-                            view.body_pretty,
-                            cx,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.body_pretty = true;
-                            cx.notify();
-                        })),
-                    )
-                    .child(
-                        choice_chip(
-                            "hist-body-raw",
-                            crate::ui::Tr(view.lang).history().detail_tabs_raw(),
-                            !view.body_pretty,
-                            cx,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.body_pretty = false;
-                            cx.notify();
-                        })),
-                    )
-                    .child(
-                        btn_secondary(
-                            "hist-copy-body",
-                            crate::ui::Tr(view.lang).history().detail_tabs_copy_body(),
-                        )
-                        .icon(icon_xs(UiIcon::Copy))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let _ = clipboard::set_text(&body_copy);
-                            this.status_msg = Some((
-                                Tone::Success,
-                                crate::ui::Tr(this.lang)
-                                    .history()
-                                    .detail_tabs_copied_response_body()
-                                    .to_owned(),
-                            ));
-                            cx.notify();
-                        })),
-                    )
-                    .into_any_element(),
-            ),
+            None,
             cx,
         ))
         .child(if entry.response_body_preview.is_empty() {
@@ -175,15 +92,13 @@ fn render_body_tab(
                 None,
                 cx,
             )
+            .into_any_element()
         } else {
             div()
                 .w_full()
-                .p(px(10.0))
-                .rounded(px(6.0))
-                .bg(to_hsla(p.sunken))
-                .text_xs()
-                .text_color(to_hsla(p.ink_2))
-                .child(display_body)
+                .h(px(460.0))
+                .child(view.body_viewer.clone())
+                .into_any_element()
         });
 
     col.child(body_card).into_any_element()
@@ -223,7 +138,6 @@ fn render_sent_tab(
     entry: &ExecutionHistoryEntry,
     cx: &mut Context<HistoryView>,
 ) -> AnyElement {
-    let p = palette(cx);
     let Some(sent) = &entry.sent_request else {
         return empty_inline(
             crate::ui::Tr(view.lang)
@@ -270,28 +184,26 @@ fn render_sent_tab(
     }
 
     if !sent.body_preview.is_empty() {
-        col = col.child(
-            card(cx)
-                .p(px(12.0))
-                .gap(px(6.0))
-                .child(section_header(
+        let sent_ct = sent
+            .headers
+            .iter()
+            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+            .map(|h| h.value.as_str());
+        col = col.child(payload_block(
+            "hist-sent-body",
+            &sent.body_preview,
+            PayloadBlockOptions {
+                title: Some(
                     crate::ui::Tr(view.lang)
                         .history()
                         .detail_tabs_request_body_preview(),
-                    None,
-                    cx,
-                ))
-                .child(
-                    div()
-                        .w_full()
-                        .p(px(10.0))
-                        .rounded(px(6.0))
-                        .bg(to_hsla(p.sunken))
-                        .text_xs()
-                        .text_color(to_hsla(p.ink_2))
-                        .child(sent.body_preview.clone()),
                 ),
-        );
+                content_type: sent_ct,
+                max_height_px: Some(320.0),
+                ..Default::default()
+            },
+            cx,
+        ));
     }
     col.into_any_element()
 }

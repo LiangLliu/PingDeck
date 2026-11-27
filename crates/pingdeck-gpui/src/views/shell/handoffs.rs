@@ -359,9 +359,9 @@ impl AppShell {
     /// Polls all mounted modules for cross-module navigation, handoffs, and shared environment changes.
     pub fn poll_all_handoffs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // 1. Settings signals
-        let (pending_pal, pending_back, pending_nav) = self.modules.poll_settings_signals(cx);
-        if let Some(pid) = pending_pal {
-            self.set_palette(pid, cx);
+        let (pending_theme, pending_back, pending_nav) = self.modules.poll_settings_signals(cx);
+        if let Some(prefs) = pending_theme {
+            self.set_theme_prefs(prefs, cx);
         }
         if let Some(target_mod) = pending_nav {
             self.navigate(target_mod, cx);

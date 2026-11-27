@@ -1,6 +1,12 @@
 {
   "ex.body.pretty": "Pretty",
   "ex.body.raw": "Raw",
+  "ex.payload.copied": "Copied",
+  "ex.payload.copy": "Copy",
+  "ex.payload.filter_placeholder": "Filter JSONPath ($.data) or text…",
+  "ex.payload.lines_size": "{lines} lines · {size}",
+  "ex.payload.truncated_preview": "Showing preview ({shown} / {total}) — Copy gets full content",
+  "ex.payload.wrap": "Wrap",
   "ex.cookie.foreign_domain": "Foreign domain rejected",
   "ex.cookie.malformed": "Malformed",
   "ex.cookie.public_suffix": "Public suffix rejected",

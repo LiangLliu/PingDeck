@@ -454,7 +454,12 @@ mod gpui_integration {
         });
 
         let (view, visual) = cx.add_window_view(|window, cx| {
-            SettingsView::new(SettingsSection::General, PaletteId::Slate, window, cx)
+            SettingsView::new(
+                SettingsSection::General,
+                pingdeck_desktop::theme::ThemePreferences::default(),
+                window,
+                cx,
+            )
         });
         visual.run_until_parked();
 
@@ -2219,6 +2224,66 @@ mod gpui_integration {
             assert!(u.scope_provider_id.is_none());
         });
 
+        // 3. Verify unified `PayloadViewer` (auto-detect, Pretty/Raw, Wrap) & `payload_block`.
+        {
+            use crate::ui::{
+                PayloadBlockOptions, PayloadViewer, highlighter_for_format, payload_block,
+            };
+            use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
+
+            let (viewer, pv_visual) =
+                cx.add_window_view(|window, cx| PayloadViewer::new("test-pv", true, window, cx));
+            pv_visual.update(|window, cx| {
+                // JSON delivered with generic text/plain header auto-promotes to Pretty JSON.
+                viewer.update(cx, |v, cx| {
+                    v.set_text(
+                        r#"{"data":[{"id":"ord_1"}],"ok":true}"#,
+                        Some("text/plain"),
+                        window,
+                        cx,
+                    );
+                });
+                window.refresh();
+                let v = viewer.read(cx);
+                assert_eq!(v.format(), ResponseBodyFormat::Json);
+                assert!(v.is_pretty());
+                assert!(v.displayed_text(cx).contains("\n  \"data\""));
+
+                // Toggle Raw restores exact compact string; toggle Wrap flips soft-wrap state.
+                viewer.update(cx, |v, cx| {
+                    v.set_format(ResponseBodyFormat::Json, false, window, cx);
+                    v.toggle_wrap(window, cx);
+                });
+                let v = viewer.read(cx);
+                assert!(!v.is_pretty());
+                assert!(!v.is_soft_wrap());
+                assert_eq!(
+                    v.displayed_text(cx),
+                    r#"{"data":[{"id":"ord_1"}],"ok":true}"#
+                );
+
+                // Plain text stays Text; XML detects Xml and maps to compiled HTML highlighter.
+                viewer.update(cx, |v, cx| {
+                    v.set_text("pong", Some("text/plain"), window, cx)
+                });
+                assert_eq!(viewer.read(cx).format(), ResponseBodyFormat::Text);
+                viewer.update(cx, |v, cx| {
+                    v.set_text("<?xml version=\"1.0\"?><root><a/></root>", None, window, cx)
+                });
+                assert_eq!(viewer.read(cx).format(), ResponseBodyFormat::Xml);
+                assert_eq!(highlighter_for_format(ResponseBodyFormat::Xml), "html");
+
+                // Compact `payload_block` handles JSON, Diff, and plain text cleanly.
+                let _ = payload_block("pb-json", r#"{"a":1}"#, PayloadBlockOptions::default(), cx);
+                let _ = payload_block(
+                    "pb-diff",
+                    "--- a/foo.rs\n+++ b/foo.rs\n@@ -1 +1 @@\n-old\n+new\n",
+                    PayloadBlockOptions::default(),
+                    cx,
+                );
+            });
+        }
+
         rt.shutdown_blocking();
     }
 
@@ -2761,6 +2826,99 @@ mod gpui_integration {
 
             chat.update(cx, |v, cx| {
                 v.set_plan_gate_markdown("gate_plan_1".to_owned(), true, cx);
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn appearance_studio_accent_and_syntax_highlight_themes(cx: &mut TestAppContext) {
+        use std::sync::Arc;
+
+        use pingdeck_desktop::core::app::settings_get_impl;
+        use pingdeck_desktop::runtime::DesktopRuntime;
+        use pingdeck_desktop::state::SettingsSection;
+        use pingdeck_desktop::theme::{
+            AccentChoice, AccentPreset, PaletteId, SyntaxThemeId, ThemePreferences,
+        };
+
+        use crate::bridge::CoreBridge;
+        use crate::ui::{apply_theme, palette, syntax_palette};
+        use crate::views::settings::{SettingsView, appearance::SyntaxPreviewSample};
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        let custom_prefs = ThemePreferences {
+            palette: PaletteId::Amber,
+            accent: AccentChoice::Custom(0xE11D48),
+            syntax_theme: SyntaxThemeId::RosePine,
+        };
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_theme(custom_prefs, false, false, &settings.appearance, cx);
+
+            let base_amber =
+                pingdeck_desktop::theme::resolve_palette(PaletteId::Amber, false, false);
+            let active = palette(cx);
+            assert_ne!(
+                active.accent, base_amber.accent,
+                "custom theme accent must override the base palette accent"
+            );
+            assert_eq!(syntax_palette(cx).id, SyntaxThemeId::RosePine);
+
+            // Switch through all 6 syntax themes in both light and dark modes.
+            for st in SyntaxThemeId::ALL {
+                for dark in [false, true] {
+                    let prefs = ThemePreferences {
+                        palette: PaletteId::Slate,
+                        accent: AccentChoice::Preset(AccentPreset::Emerald),
+                        syntax_theme: st,
+                    };
+                    apply_theme(prefs, dark, false, &settings.appearance, cx);
+                    assert_eq!(syntax_palette(cx).id, st);
+                    assert_eq!(syntax_palette(cx).is_dark, dark);
+                }
+            }
+            apply_theme(custom_prefs, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(|window, cx| {
+            SettingsView::new(SettingsSection::Appearance, custom_prefs, window, cx)
+        });
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // Exercise palette, accent preset, custom hex, syntax theme, and preview sample toggles.
+            view.update(cx, |v, cx| {
+                v.choose_accent(AccentChoice::Preset(AccentPreset::Violet), window, cx);
+                assert_eq!(
+                    v.take_pending_theme_prefs().map(|p| p.accent),
+                    Some(AccentChoice::Preset(AccentPreset::Violet))
+                );
+                v.choose_syntax_theme(SyntaxThemeId::TokyoNight, cx);
+                assert_eq!(
+                    v.take_pending_theme_prefs().map(|p| p.syntax_theme),
+                    Some(SyntaxThemeId::TokyoNight)
+                );
+                v.syntax_preview = SyntaxPreviewSample::Xml;
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            view.update(cx, |v, cx| {
+                v.syntax_preview = SyntaxPreviewSample::Diff;
+                cx.notify();
             });
             window.refresh();
             window.draw(cx).clear(cx);

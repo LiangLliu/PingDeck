@@ -3,19 +3,18 @@
 use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
 use pingdeck_desktop::core::app::current_time_ms;
 use pingdeck_desktop::core::executor::BodyIncomplete;
-use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
 use pingdeck_desktop::services::clipboard;
 use pingdeck_desktop::time::format_relative_age;
 
 use crate::ui::{
-    Anchor, ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost,
-    btn_icon, btn_primary, btn_secondary, empty_state_with_actions, h_row, icon_xs, kbd_chip,
-    kv_chip, list_row, palette, popover, select_pill, status_indicator, subtab_strip,
-    tab_bar_segmented, tab_bar_underline, tab_item, to_hsla, top_accent_card, v_col,
+    ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge, btn_ghost, btn_icon,
+    btn_primary, btn_secondary, empty_state_with_actions, h_row, icon_xs, kbd_chip, kv_chip,
+    palette, payload_format_picker, status_indicator, subtab_strip, tab_bar_underline, tab_item,
+    to_hsla, top_accent_card, v_col,
 };
 
 use super::RequestsView;
-use super::model::{ALL_RESPONSE_FORMATS, HttpRespTab, RequestFailureInfo, format_bytes};
+use super::model::{HttpRespTab, RequestFailureInfo, format_bytes};
 use super::resp_http_tabs::{
     render_resp_body, render_resp_cookies, render_resp_headers, render_resp_tests,
     render_resp_trace,
@@ -236,56 +235,34 @@ pub fn render_http_response(
         });
 
     let cur_pretty = tab.http_pretty;
+    let cur_wrap = tab.http_soft_wrap;
     let cur_fmt = tab.http_format;
     let ent_pr = cx.entity().clone();
     let ent_fm = cx.entity().clone();
+    let ent_wr = cx.entity().clone();
 
-    let format_controls = h_row()
-        .gap(px(6.0))
-        .child(
-            tab_bar_segmented("resp-pretty-seg")
-                .selected_index(usize::from(!cur_pretty))
-                .child(tab_item(crate::ui::tr(cx).exchange().body_pretty()))
-                .child(tab_item(crate::ui::tr(cx).exchange().body_raw()))
-                .on_click(move |idx, window, cx| {
-                    ent_pr.update(cx, |this, cx| {
-                        this.set_http_response_format(cur_fmt, *idx == 0, window, cx);
-                    });
-                }),
-        )
-        .child(
-            popover("resp-fmt-pop")
-                .anchor(Anchor::TopRight)
-                .trigger(select_pill(
-                    "resp-fmt-btn",
-                    format_label(cur_fmt),
-                    false,
-                    cx,
-                ))
-                .content(move |_, _, pop_cx| {
-                    let mut col = v_col().w(px(120.0)).gap(px(2.0));
-                    for fmt in ALL_RESPONSE_FORMATS {
-                        let sel = fmt == cur_fmt;
-                        let ent_c = ent_fm.clone();
-                        let ph = pop_cx.entity().clone();
-                        col = col.child(
-                            list_row(
-                                SharedString::from(format!("fmt-opt-{fmt:?}")),
-                                sel,
-                                pop_cx,
-                                move |_, window, cx| {
-                                    ent_c.update(cx, |this, cx| {
-                                        this.set_http_response_format(fmt, true, window, cx);
-                                    });
-                                    ph.update(cx, |s, cx| s.dismiss(window, cx));
-                                },
-                            )
-                            .child(div().text_xs().child(format_label(fmt))),
-                        );
-                    }
-                    col
-                }),
-        );
+    let format_controls = payload_format_picker(
+        "resp",
+        cur_fmt,
+        cur_pretty,
+        cur_wrap,
+        move |pretty, window, cx| {
+            ent_pr.update(cx, |this, cx| {
+                this.set_http_response_format(cur_fmt, pretty, window, cx);
+            });
+        },
+        move |fmt, window, cx| {
+            ent_fm.update(cx, |this, cx| {
+                this.set_http_response_format(fmt, true, window, cx);
+            });
+        },
+        move |window, cx| {
+            ent_wr.update(cx, |this, cx| {
+                this.toggle_http_response_wrap(window, cx);
+            });
+        },
+        cx,
+    );
 
     let mut root = v_col().size_full().bg(to_hsla(p.surface)).child(resp_head);
 
@@ -419,15 +396,4 @@ pub(super) fn warning_strip(msg: &str, cx: &Context<RequestsView>) -> gpui_kit::
         None,
         cx,
     ))
-}
-
-fn format_label(fmt: ResponseBodyFormat) -> &'static str {
-    match fmt {
-        ResponseBodyFormat::Json => "JSON",
-        ResponseBodyFormat::Xml => "XML",
-        ResponseBodyFormat::Html => "HTML",
-        ResponseBodyFormat::Yaml => "YAML",
-        ResponseBodyFormat::Hex => "Hex",
-        ResponseBodyFormat::Base64 => "Base64",
-    }
 }

@@ -1,7 +1,7 @@
 //! Tab enums and public model re-exports for `RequestsView`.
 
 use pingdeck_desktop::core::model::{AuthConfig, HttpMethod, RequestBody};
-use pingdeck_desktop::core::response_viewer::ResponseBodyFormat;
+pub use pingdeck_desktop::core::response_viewer::ALL_RESPONSE_FORMATS;
 
 pub use super::model_ai::*;
 pub use super::model_tabs::*;
@@ -14,15 +14,6 @@ pub const ALL_METHODS: [HttpMethod; 7] = [
     HttpMethod::Delete,
     HttpMethod::Head,
     HttpMethod::Options,
-];
-
-pub const ALL_RESPONSE_FORMATS: [ResponseBodyFormat; 6] = [
-    ResponseBodyFormat::Json,
-    ResponseBodyFormat::Xml,
-    ResponseBodyFormat::Html,
-    ResponseBodyFormat::Yaml,
-    ResponseBodyFormat::Hex,
-    ResponseBodyFormat::Base64,
 ];
 
 /// HTTP request editor sub-tabs (matching PingDeck prototype & `TabSession::EditorTab`).

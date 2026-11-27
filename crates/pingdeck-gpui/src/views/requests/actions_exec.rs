@@ -16,7 +16,9 @@ use pingdeck_desktop::core::app::{
 use pingdeck_desktop::core::error::AppError;
 use pingdeck_desktop::core::executor::ExecutionResult;
 use pingdeck_desktop::core::model::script_result::ConsoleLevel;
-use pingdeck_desktop::core::response_viewer::{JsonPathFilterOutcomeDto, ResponseBodyFormat};
+use pingdeck_desktop::core::response_viewer::{
+    JsonPathFilterOutcomeDto, ResponseBodyFormat, detect_response_format,
+};
 use pingdeck_desktop::services::{HostDialog as _, RfdDialog, SaveFileSpec};
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
@@ -94,20 +96,16 @@ impl RequestsView {
                                 Some(c.source.clone()),
                             );
                         }
+                        let resp_ct = exec
+                            .headers
+                            .iter()
+                            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+                            .map(|h| h.value.as_str());
                         let default_fmt = match exec.suggested_view {
-                            pingdeck_desktop::core::executor::SuggestedView::Xml => {
-                                ResponseBodyFormat::Xml
-                            }
-                            pingdeck_desktop::core::executor::SuggestedView::Html => {
-                                ResponseBodyFormat::Html
-                            }
-                            pingdeck_desktop::core::executor::SuggestedView::Yaml => {
-                                ResponseBodyFormat::Yaml
-                            }
                             pingdeck_desktop::core::executor::SuggestedView::Image => {
                                 ResponseBodyFormat::Hex
                             }
-                            _ => ResponseBodyFormat::Json,
+                            _ => detect_response_format(resp_ct, &exec.body_text),
                         };
                         let body_src = body_source_of(&exec);
                         let pretty =
@@ -131,7 +129,10 @@ impl RequestsView {
                         if this.active_tab_id.as_deref() == Some(tid.as_str()) {
                             let _ = win.update(cx, |_, window, cx| {
                                 this.response_editor.update(cx, |e, cx| {
-                                    e.set_highlighter(highlighter_for_format(default_fmt), cx);
+                                    e.set_highlighter(
+                                        crate::ui::highlighter_for_format(default_fmt),
+                                        cx,
+                                    );
                                     e.set_value(display_text, window, cx);
                                 });
                             });
@@ -243,9 +244,20 @@ impl RequestsView {
             }
         };
         self.response_editor.update(cx, |e, cx| {
-            e.set_highlighter(highlighter_for_format(format), cx);
+            e.set_highlighter(crate::ui::highlighter_for_format(format), cx);
             e.set_value(text, window, cx);
         });
+        cx.notify();
+    }
+
+    pub fn toggle_http_response_wrap(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.active_req_mut() else {
+            return;
+        };
+        tab.http_soft_wrap = !tab.http_soft_wrap;
+        let wrap = tab.http_soft_wrap;
+        self.response_editor
+            .update(cx, |e, cx| e.set_soft_wrap(wrap, window, cx));
         cx.notify();
     }
 
@@ -452,16 +464,6 @@ pub(super) fn body_source_of(resp: &ExecutionResult) -> BodySource {
         BodySource::Base64(b64.clone())
     } else {
         BodySource::Text(resp.body_text.clone())
-    }
-}
-
-pub(super) fn highlighter_for_format(format: ResponseBodyFormat) -> &'static str {
-    match format {
-        ResponseBodyFormat::Json => "json",
-        ResponseBodyFormat::Xml => "xml",
-        ResponseBodyFormat::Html => "html",
-        ResponseBodyFormat::Yaml => "yaml",
-        ResponseBodyFormat::Hex | ResponseBodyFormat::Base64 => "plain",
     }
 }
 

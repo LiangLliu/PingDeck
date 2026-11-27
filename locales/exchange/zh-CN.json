@@ -1,6 +1,12 @@
 {
   "ex.body.pretty": "格式化",
   "ex.body.raw": "原文",
+  "ex.payload.copied": "已复制",
+  "ex.payload.copy": "复制",
+  "ex.payload.filter_placeholder": "输入 JSONPath ($.data) 或关键词筛选…",
+  "ex.payload.lines_size": "{lines}行 · {size}",
+  "ex.payload.truncated_preview": "当前显示预览（{shown} / {total}），点击复制可获取完整内容",
+  "ex.payload.wrap": "换行",
   "ex.cookie.foreign_domain": "跨域名拒绝",
   "ex.cookie.malformed": "格式无效",
   "ex.cookie.public_suffix": "公共后缀拒绝",

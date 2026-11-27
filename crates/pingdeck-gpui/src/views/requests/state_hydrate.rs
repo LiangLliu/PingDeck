@@ -37,7 +37,7 @@ impl RequestsView {
                                 "javascript"
                             }
                             Some(pingdeck_desktop::core::model::RawLanguage::Html) => "html",
-                            Some(pingdeck_desktop::core::model::RawLanguage::Xml) => "xml",
+                            Some(pingdeck_desktop::core::model::RawLanguage::Xml) => "html",
                             _ => "plain",
                         };
                         (content.clone(), h, String::new(), String::new())
@@ -135,8 +135,13 @@ impl RequestsView {
                 } else {
                     crate::ui::tr(cx).requests().ph_resp_init().into()
                 };
-                self.response_editor
-                    .update(cx, |e, cx| e.set_value(resp_txt, window, cx));
+                let resp_hl = crate::ui::highlighter_for_format(tab.http_format);
+                let resp_wrap = tab.http_soft_wrap;
+                self.response_editor.update(cx, |e, cx| {
+                    e.set_highlighter(resp_hl, cx);
+                    e.set_soft_wrap(resp_wrap, window, cx);
+                    e.set_value(resp_txt, window, cx);
+                });
                 self.resp_filter_input.update(cx, |i, cx| {
                     i.set_value(tab.http_jsonpath_query.clone(), window, cx)
                 });

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::tr;
 use crate::persistence::UiLocalState;
-use crate::theme::PaletteId;
+use crate::theme::{AccentChoice, PaletteId, SyntaxThemeId, ThemePreferences};
 
 /// Sidebar navigation group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,6 +362,8 @@ pub struct ShellState {
     pub previous_non_settings_module: NavModule,
     pub active_settings_section: SettingsSection,
     pub palette: PaletteId,
+    pub accent: AccentChoice,
+    pub syntax_theme: SyntaxThemeId,
     pub sidebar_collapsed: bool,
     pub sidebar_width: f32,
     pub workspaces: Vec<Workspace>,
@@ -399,6 +401,8 @@ impl ShellState {
             previous_non_settings_module: prev,
             active_settings_section: ui.active_settings_section,
             palette: ui.palette,
+            accent: ui.accent,
+            syntax_theme: ui.syntax_theme,
             sidebar_collapsed: ui.sidebar_collapsed,
             sidebar_width: ui.sidebar_width.clamp(180.0, 320.0),
             workspaces,
@@ -455,9 +459,21 @@ impl ShellState {
         self.toasts.retain(|t| t.id != id);
     }
 
+    /// Returns the consolidated local visual theme preferences.
+    #[must_use]
+    pub const fn theme_prefs(&self) -> ThemePreferences {
+        ThemePreferences {
+            palette: self.palette,
+            accent: self.accent,
+            syntax_theme: self.syntax_theme,
+        }
+    }
+
     /// Exports persistent fields back into [`UiLocalState`] for atomic disk save.
     pub fn sync_to_local(&self, local: &mut UiLocalState) {
         local.palette = self.palette;
+        local.accent = self.accent;
+        local.syntax_theme = self.syntax_theme;
         local.active_module = self.active_module;
         local.active_settings_section = self.active_settings_section;
         local.sidebar_collapsed = self.sidebar_collapsed;

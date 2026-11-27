@@ -6,12 +6,11 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::core::agent::dto::{AgentRunTopology, TopologySubagent, TopologyToolStep};
-use pingdeck_desktop::services::clipboard;
 use pingdeck_desktop::state::{GraphNodeMember, SelectedGraphTarget};
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_secondary, h_row, icon_xs, palette,
-    section_heading, status_indicator, to_hsla, v_col,
+    PayloadBlockOptions, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_secondary, h_row, icon_xs,
+    palette, payload_block, section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::modal::WorkflowMonitorModal;
@@ -413,57 +412,38 @@ pub(super) fn collapsible_text_block(
     with_copy: bool,
     cx: &mut Context<WorkflowMonitorModal>,
 ) -> AnyElement {
-    let p = palette(cx);
     let toggled = view.expanded_sections.contains(&key);
     let open = if default_open { !toggled } else { toggled };
     let k_click = key.clone();
-    let copy_str = content.to_owned();
 
     let mut box_col = v_col().w_full().gap(px(4.0)).child(
         h_row()
+            .id(SharedString::from(format!("wf-sec-{key}")))
             .w_full()
-            .justify_between()
-            .gap(px(6.0))
-            .child(
-                h_row()
-                    .id(SharedString::from(format!("wf-sec-{key}")))
-                    .gap(px(4.0))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.toggle_section(k_click.clone(), cx);
-                    }))
-                    .child(icon_xs(if open {
-                        UiIcon::ChevronDown
-                    } else {
-                        UiIcon::ChevronRight
-                    }))
-                    .child(section_heading(heading, cx)),
-            )
-            .children((open && with_copy).then(|| {
-                btn_ghost(
-                    SharedString::from(format!("wf-cp-{key}")),
-                    crate::ui::tr(cx).chat().thread_copy_2(),
-                )
-                .icon(icon_xs(UiIcon::Copy))
-                .on_click(cx.listener(move |_, _, _, _| {
-                    let _ = clipboard::set_text(&copy_str);
-                }))
-            })),
+            .gap(px(4.0))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.toggle_section(k_click.clone(), cx);
+            }))
+            .child(icon_xs(if open {
+                UiIcon::ChevronDown
+            } else {
+                UiIcon::ChevronRight
+            }))
+            .child(section_heading(heading, cx)),
     );
 
     if open {
-        box_col = box_col.child(
-            div()
-                .w_full()
-                .p(px(9.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(p.sunken))
-                .border_1()
-                .border_color(to_hsla(p.line.composite_over(p.sunken)))
-                .text_xs()
-                .text_color(to_hsla(p.ink_2))
-                .child(SharedString::from(content.to_owned())),
-        );
+        box_col = box_col.child(payload_block(
+            format!("wf-pb-{key}"),
+            content,
+            PayloadBlockOptions {
+                max_height_px: Some(260.0),
+                show_copy: with_copy,
+                ..Default::default()
+            },
+            cx,
+        ));
     }
     box_col.into_any_element()
 }

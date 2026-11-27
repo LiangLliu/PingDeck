@@ -7,10 +7,10 @@ use gpui_kit::{
 use pingdeck_desktop::core::model::items::{MockLogOutcome, MockTransactionLog};
 
 use crate::ui::{
-    PaginationBar, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_primary,
-    btn_secondary, card, choice_chip, empty_inline, empty_state, h_row, icon_xs, kv_line, list_row,
-    meta_pill, method_badge, page_slice, pagination_bar, palette, search_input, section_header,
-    to_hsla, toolbar_strip, v_col,
+    PaginationBar, PayloadBlockOptions, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost,
+    btn_primary, btn_secondary, card, choice_chip, empty_inline, empty_state, h_row, icon_xs,
+    kv_line, list_row, meta_pill, method_badge, page_slice, pagination_bar, palette, payload_block,
+    search_input, section_header, to_hsla, toolbar_strip, v_col,
 };
 
 use super::state::{MockView, TrafficFilter};
@@ -391,16 +391,21 @@ fn render_log_inspector(
         req_card = req_card.child(kv_line(h.key.clone(), h.value.clone(), 160.0, cx));
     }
     if !log.request_body.is_empty() {
-        req_card = req_card.child(
-            div()
-                .w_full()
-                .p(px(10.0))
-                .rounded(px(6.0))
-                .bg(to_hsla(p.sunken))
-                .text_xs()
-                .text_color(to_hsla(p.ink_2))
-                .child(log.request_body.clone()),
-        );
+        let req_ct = log
+            .request_headers
+            .iter()
+            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+            .map(|h| h.value.as_str());
+        req_card = req_card.child(payload_block(
+            format!("mock-log-req-{}", log.id),
+            &log.request_body,
+            PayloadBlockOptions {
+                content_type: req_ct,
+                max_height_px: Some(260.0),
+                ..Default::default()
+            },
+            cx,
+        ));
     }
     content = content.child(req_card);
 
@@ -414,16 +419,21 @@ fn render_log_inspector(
         resp_card = resp_card.child(kv_line(h.key.clone(), h.value.clone(), 160.0, cx));
     }
     if !log.response_body.is_empty() {
-        resp_card = resp_card.child(
-            div()
-                .w_full()
-                .p(px(10.0))
-                .rounded(px(6.0))
-                .bg(to_hsla(p.sunken))
-                .text_xs()
-                .text_color(to_hsla(p.ink_2))
-                .child(log.response_body.clone()),
-        );
+        let resp_ct = log
+            .response_headers
+            .iter()
+            .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+            .map(|h| h.value.as_str());
+        resp_card = resp_card.child(payload_block(
+            format!("mock-log-resp-{}", log.id),
+            &log.response_body,
+            PayloadBlockOptions {
+                content_type: resp_ct,
+                max_height_px: Some(320.0),
+                ..Default::default()
+            },
+            cx,
+        ));
     }
     content = content.child(resp_card);
 

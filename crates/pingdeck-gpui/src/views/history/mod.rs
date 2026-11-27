@@ -25,8 +25,8 @@ use pingdeck_desktop::core::model::HistoryFilter;
 
 use crate::bridge::runtime;
 use crate::ui::{
-    InputEvent, InputState, btn_danger, btn_secondary, h_resizable, h_row, modal_dialog, palette,
-    resizable_panel, to_hsla,
+    InputEvent, InputState, PayloadViewer, btn_danger, btn_secondary, h_resizable, h_row,
+    modal_dialog, palette, resizable_panel, to_hsla,
 };
 
 use state::{HistoryDetailTab, HistoryModal};
@@ -42,6 +42,8 @@ impl HistoryView {
                 this.reload_page(true, cx);
             }
         });
+
+        let body_viewer = cx.new(|cx| PayloadViewer::new("hist-body", true, window, cx));
 
         let mut view = Self {
             workspace_id: workspace_id.clone(),
@@ -64,7 +66,8 @@ impl HistoryView {
             run_children_total: None,
             run_children_loading: false,
             detail_tab: HistoryDetailTab::Body,
-            body_pretty: true,
+            body_viewer,
+            body_viewer_sig: None,
             last_undo: None,
             active_modal: None,
             status_msg: None,
@@ -128,6 +131,24 @@ impl HistoryView {
 impl Render for HistoryView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.lang = crate::ui::active_language(cx);
+        if let Some(entry) = self.active_entry() {
+            let sig = (
+                entry.id.as_str().to_owned(),
+                entry.response_body_preview.len(),
+            );
+            if self.body_viewer_sig.as_ref() != Some(&sig) {
+                let preview = entry.response_body_preview.clone();
+                let ct = entry
+                    .response_headers
+                    .iter()
+                    .find(|h| h.key.eq_ignore_ascii_case("content-type"))
+                    .map(|h| h.value.clone());
+                self.body_viewer_sig = Some(sig);
+                self.body_viewer.update(cx, |v, cx| {
+                    v.set_text(preview, ct.as_deref(), window, cx);
+                });
+            }
+        }
         let p = palette(cx);
         let left = sidebar::render_sidebar(self, cx);
         let right = detail::render_detail(self, cx);

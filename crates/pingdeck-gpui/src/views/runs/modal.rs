@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, SharedString, Styled as _, Task, Window, div, px,
+    IntoElement, ParentElement as _, Render, Styled as _, Task, Window, div, px,
 };
 use pingdeck_desktop::core::agent::dto::{AgentRunTopology, SessionRunHistoryItem};
 use pingdeck_desktop::core::agent::model::FileChange;
@@ -18,8 +18,8 @@ use pingdeck_desktop::state::{
 };
 
 use crate::ui::{
-    InputState, ScrollableElement as _, Tone, btn_secondary, empty_inline, h_resizable,
-    modal_dialog, palette, resizable_panel, to_hsla, v_col, viewport_modal,
+    InputState, PayloadViewer, ScrollableElement as _, Tone, btn_secondary, empty_inline,
+    h_resizable, modal_dialog, palette, resizable_panel, to_hsla, v_col, viewport_modal,
 };
 
 use super::changes::render_changes_tab;
@@ -62,6 +62,8 @@ pub struct WorkflowMonitorModal {
     pub drag_suppress_click: bool,
     pub node_recovery_input: Entity<InputState>,
     pub full_output_dialog: Option<(String, String)>,
+    pub full_output_viewer: Entity<PayloadViewer>,
+    pub full_output_sig: Option<(String, usize)>,
     pub status_msg: Option<(Tone, String)>,
     pub pending_handoff: Cell<Option<WorkflowModalHandoff>>,
     pub(super) tick_task: Option<Task<()>>,
@@ -74,6 +76,7 @@ impl WorkflowMonitorModal {
         let node_recovery_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder(ch.graph_node_recovery_guidance_ph())
         });
+        let full_output_viewer = cx.new(|cx| PayloadViewer::new("wf-full-out", true, window, cx));
         Self {
             open: false,
             session_id: String::new(),
@@ -101,6 +104,8 @@ impl WorkflowMonitorModal {
             drag_suppress_click: false,
             node_recovery_input,
             full_output_dialog: None,
+            full_output_viewer,
+            full_output_sig: None,
             status_msg: None,
             pending_handoff: Cell::new(None),
             tick_task: None,
@@ -505,29 +510,30 @@ impl Render for WorkflowMonitorModal {
         ));
 
         if let Some((title, content)) = self.full_output_dialog.clone() {
+            let sig = (title.clone(), content.len());
+            if self.full_output_sig.as_ref() != Some(&sig) {
+                self.full_output_sig = Some(sig);
+                self.full_output_viewer.update(cx, |v, cx| {
+                    v.set_text(content, None, window, cx);
+                });
+            }
             let ent = cx.entity().clone();
             let sub_body = div()
-                .id("wf-full-out-scroll")
                 .w_full()
-                .max_h(px(480.0))
-                .p(px(10.0))
-                .rounded(px(8.0))
-                .bg(to_hsla(p.sunken))
-                .overflow_scrollbar()
-                .text_xs()
-                .text_color(to_hsla(p.ink))
-                .child(SharedString::from(content))
+                .h(px(480.0))
+                .child(self.full_output_viewer.clone())
                 .into_any_element();
             let sub_foot = btn_secondary("wf-full-out-close", ch.monitor_close())
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.full_output_dialog = None;
+                    this.full_output_sig = None;
                     cx.notify();
                 }))
                 .into_any_element();
             root = root.child(modal_dialog(
                 "wf-full-out-modal",
                 title,
-                760.0,
+                820.0,
                 sub_body,
                 sub_foot,
                 window,
@@ -535,6 +541,7 @@ impl Render for WorkflowMonitorModal {
                 move |_, _, cx| {
                     ent.update(cx, |this, cx| {
                         this.full_output_dialog = None;
+                        this.full_output_sig = None;
                         cx.notify();
                     });
                 },

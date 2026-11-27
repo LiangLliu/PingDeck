@@ -8,6 +8,7 @@ pub mod module_host;
 pub mod palette;
 pub mod sidebar;
 pub mod sidebar_popovers;
+pub mod theme_popover;
 pub mod titlebar;
 
 use std::collections::HashMap;
@@ -29,7 +30,7 @@ use pingdeck_desktop::core::proxy_url;
 use pingdeck_desktop::persistence::UiLocalState;
 use pingdeck_desktop::state::{NavModule, SettingsSection, ShellState, ToastKind};
 use pingdeck_desktop::streams::{StreamReceiver, channel_sink};
-use pingdeck_desktop::theme::PaletteId;
+use pingdeck_desktop::theme::{PaletteId, ThemePreferences};
 
 use crate::app::actions::{
     CloseOverlay, CloseTab, HideWindow, Nav1, Nav2, Nav3, Nav4, Nav5, Nav6, Nav7, Nav8, Nav9,
@@ -39,7 +40,7 @@ use crate::app::actions::{
 use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
 use crate::ui::{
-    InputState, WindowExt as _, apply_language, apply_palette, h_row, palette as active_palette,
+    InputState, WindowExt as _, apply_language, apply_theme, h_row, palette as active_palette,
     resolve_is_dark, sync_window_scale, to_hsla, tr, v_col,
 };
 use crate::views::runs::WorkflowMonitorModal;
@@ -311,8 +312,8 @@ impl AppShell {
 
     pub(super) fn reapply_theme(&self, cx: &mut Context<Self>) {
         let is_dark = resolve_is_dark(self.state.settings.appearance.theme, self.system_is_dark);
-        apply_palette(
-            self.state.palette,
+        apply_theme(
+            self.state.theme_prefs(),
             is_dark,
             false,
             &self.state.settings.appearance,
@@ -395,9 +396,19 @@ impl AppShell {
     }
 
     pub fn set_palette(&mut self, palette_id: PaletteId, cx: &mut Context<Self>) {
-        self.state.palette = palette_id;
+        let mut prefs = self.state.theme_prefs();
+        prefs.palette = palette_id;
+        self.set_theme_prefs(prefs, cx);
+    }
+
+    pub fn set_theme_prefs(&mut self, prefs: ThemePreferences, cx: &mut Context<Self>) {
+        self.state.palette = prefs.palette;
+        self.state.accent = prefs.accent;
+        self.state.syntax_theme = prefs.syntax_theme;
+        self.modules.sync_settings_theme_prefs(prefs, cx);
         self.persist_local(cx);
         self.reapply_theme(cx);
+        cx.refresh_windows();
         cx.notify();
     }
 
@@ -407,7 +418,7 @@ impl AppShell {
             self.state.active_workspace_id.clone(),
             self.state.active_environment_id.clone(),
             self.state.active_settings_section,
-            self.state.palette,
+            self.state.theme_prefs(),
             window,
             cx,
         )

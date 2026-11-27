@@ -24,6 +24,10 @@ impl AppShell {
         } else {
             SettingsTheme::Dark
         };
+        self.set_theme_mode(next, cx);
+    }
+
+    pub fn set_theme_mode(&mut self, next: SettingsTheme, cx: &mut Context<Self>) {
         let patch = serde_json::json!({
             "theme": match next {
                 SettingsTheme::Light => "light",
@@ -38,6 +42,7 @@ impl AppShell {
                 Ok(settings) => {
                     this.state.settings = settings;
                     this.reapply_theme(cx);
+                    cx.refresh_windows();
                     cx.notify();
                 }
                 Err(err) => {

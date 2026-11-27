@@ -5,8 +5,8 @@ use pingdeck_desktop::core::llm::capture::MergedReply;
 use pingdeck_desktop::time::format_local_datetime;
 
 use crate::ui::{
-    Tone, alert_banner, badge, card, empty_inline, kv_line, meta_pill, palette, section_header,
-    to_hsla, v_col,
+    PayloadBlockOptions, Tone, alert_banner, badge, card, empty_inline, kv_line, markdown_view,
+    meta_pill, palette, payload_block, section_header, to_hsla, v_col,
 };
 
 use super::call_drawer::CallDetailSheet;
@@ -176,16 +176,20 @@ fn render_merged_reply_card(
                 .p(px(10.0))
                 .rounded(px(6.0))
                 .bg(to_hsla(p.pane))
-                .text_xs()
-                .text_color(to_hsla(p.ink))
-                .child(reply.text.clone()),
+                .child(markdown_view("call-reply-md", reply.text.clone())),
         );
     }
-    for tc in &reply.tool_calls {
-        c = c.child(kv_line(
-            format!("tool: {}", tc.name),
-            tc.arguments.clone(),
-            140.0,
+    for (idx, tc) in reply.tool_calls.iter().enumerate() {
+        let tc_title = format!("tool: {}", tc.name);
+        c = c.child(payload_block(
+            format!("call-reply-tc-{idx}"),
+            &tc.arguments,
+            PayloadBlockOptions {
+                title: Some(&tc_title),
+                content_type: Some("application/json"),
+                max_height_px: Some(200.0),
+                ..Default::default()
+            },
             cx,
         ));
     }
@@ -196,7 +200,6 @@ pub fn render_payloads_section(
     sheet: &CallDetailSheet,
     cx: &Context<CallDetailSheet>,
 ) -> AnyElement {
-    let p = palette(cx);
     let Some(cap) = &sheet.detail.capture else {
         return empty_inline(
             crate::ui::Tr(sheet.lang)
@@ -234,7 +237,7 @@ pub fn render_payloads_section(
         }
         col = col.child(n_card);
     }
-    for (title, body_opt) in [
+    for (idx, (title, body_opt)) in [
         (
             crate::ui::Tr(sheet.lang)
                 .usage()
@@ -253,27 +256,24 @@ pub fn render_payloads_section(
                 .usage_call_drawer_tabs_response_body(),
             &cap.client_resp_body,
         ),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         if let Some(body) = body_opt
             && let Some(text) = &body.text
         {
-            let preview: String = text.chars().take(4000).collect();
-            col = col.child(
-                card(cx)
-                    .p(px(10.0))
-                    .gap(px(6.0))
-                    .child(section_header(title, None, cx))
-                    .child(
-                        div()
-                            .w_full()
-                            .p(px(8.0))
-                            .rounded(px(6.0))
-                            .bg(to_hsla(p.sunken))
-                            .text_xs()
-                            .text_color(to_hsla(p.ink_2))
-                            .child(preview),
-                    ),
-            );
+            col = col.child(payload_block(
+                format!("call-payload-{idx}"),
+                text,
+                PayloadBlockOptions {
+                    title: Some(title),
+                    content_type: Some("application/json"),
+                    max_height_px: Some(320.0),
+                    ..Default::default()
+                },
+                cx,
+            ));
         }
     }
     col.into_any_element()

@@ -9,15 +9,24 @@ use gpui_kit::{App, Global, Hsla, Window, hsla, px};
 use pingdeck_desktop::core::model::settings::{
     AppearanceSettings, Density, Theme as SettingsTheme,
 };
-use pingdeck_desktop::theme::{PaletteId, ResolvedPalette, RgbaColor, resolve_palette};
+use pingdeck_desktop::theme::{
+    PaletteId, ResolvedPalette, ResolvedSyntaxPalette, RgbaColor, ThemePreferences,
+    resolve_palette_with_accent, resolve_syntax_palette,
+};
 
-/// GPUI global storing the resolved PingDeck OKLCH semantic palette and density mode so views
-/// can style domain visuals without importing `gpui-component`.
+use super::syntax_theme::build_highlight_theme;
+
+/// GPUI global storing the resolved PingDeck OKLCH semantic palette, syntax highlighting palette,
+/// local theme preferences, and typography/density mode so views can style domain visuals without
+/// importing `gpui-component`.
 #[derive(Clone)]
 pub struct PingDeckPalette {
     pub colors: Arc<ResolvedPalette>,
+    pub syntax: ResolvedSyntaxPalette,
+    pub prefs: ThemePreferences,
     pub density: Density,
     pub ui_font_size: u8,
+    pub mono_font_size: u8,
 }
 
 impl Global for PingDeckPalette {}
@@ -36,10 +45,28 @@ pub fn palette(cx: &App) -> Arc<ResolvedPalette> {
     Arc::clone(&cx.global::<PingDeckPalette>().colors)
 }
 
+/// Reads the currently active code syntax highlighting token palette.
+#[must_use]
+pub fn syntax_palette(cx: &App) -> ResolvedSyntaxPalette {
+    cx.global::<PingDeckPalette>().syntax
+}
+
+/// Reads the currently active consolidated [`ThemePreferences`] (`palette`, `accent`, `syntax_theme`).
+#[must_use]
+pub fn theme_prefs(cx: &App) -> ThemePreferences {
+    cx.global::<PingDeckPalette>().prefs
+}
+
 /// Returns whether compact UI density is currently active.
 #[must_use]
 pub fn is_compact(cx: &App) -> bool {
     cx.global::<PingDeckPalette>().density == Density::Compact
+}
+
+/// Returns the active monospace code font size in logical pixels.
+#[must_use]
+pub fn mono_font_size(cx: &App) -> u8 {
+    cx.global::<PingDeckPalette>().mono_font_size
 }
 
 /// Synchronizes GPUI's window root `rem` scale with `AppearanceSettings::ui_font_size`
@@ -61,8 +88,7 @@ pub fn resolve_is_dark(setting: SettingsTheme, system_is_dark: bool) -> bool {
     }
 }
 
-/// Applies one of the 16 PingDeck eye-care palettes (`PaletteId` × light/dark) to both
-/// [`PingDeckPalette`] and `gpui-component`'s global [`Theme`] atomically.
+/// Applies one of the 16 PingDeck eye-care palettes using the default accent and code syntax theme.
 pub fn apply_palette(
     palette_id: PaletteId,
     is_dark: bool,
@@ -70,11 +96,39 @@ pub fn apply_palette(
     appearance: &AppearanceSettings,
     cx: &mut App,
 ) {
-    let resolved = resolve_palette(palette_id, is_dark, high_contrast);
+    apply_theme(
+        ThemePreferences {
+            palette: palette_id,
+            ..ThemePreferences::default()
+        },
+        is_dark,
+        high_contrast,
+        appearance,
+        cx,
+    );
+}
+
+/// Applies the full PingDeck visual theme (`palette` × `accent` × `syntax_theme` × light/dark) to
+/// both [`PingDeckPalette`] and `gpui-component`'s global [`Theme`] (including [`HighlightTheme`])
+/// atomically so every surface, slider, button, code editor, and Markdown/payload block updates in
+/// a single frame.
+pub fn apply_theme(
+    prefs: ThemePreferences,
+    is_dark: bool,
+    high_contrast: bool,
+    appearance: &AppearanceSettings,
+    cx: &mut App,
+) {
+    let resolved = resolve_palette_with_accent(prefs.palette, prefs.accent, is_dark, high_contrast);
+    let syntax = resolve_syntax_palette(prefs.syntax_theme, &resolved);
+    let highlight = build_highlight_theme(&resolved, &syntax);
     cx.set_global(PingDeckPalette {
         colors: Arc::new(resolved.clone()),
+        syntax,
+        prefs,
         density: appearance.density,
         ui_font_size: appearance.ui_font_size,
+        mono_font_size: appearance.mono_font_size,
     });
 
     let mode = if is_dark {
@@ -91,6 +145,7 @@ pub fn apply_palette(
         // Disable the 3px outer focus ring (which paints a thick unblurred halo and clips inside
         // scroll containers); focused inputs show a crisp 1px accent border via `c.ring` instead.
         theme.focus_ring = false;
+        theme.highlight_theme = highlight;
 
         let c = &mut theme.colors;
         c.background = to_hsla(resolved.surface);
@@ -186,6 +241,10 @@ pub fn apply_palette(
 
         c.switch = to_hsla(resolved.line_control.composite_over(resolved.surface));
         c.switch_thumb = to_hsla(resolved.on_accent);
+        c.slider_bar = to_hsla(resolved.accent);
+        c.slider_thumb = to_hsla(resolved.surface);
+        c.progress_bar = to_hsla(resolved.accent);
+        c.list_highlight_foreground = to_hsla(resolved.accent_ink);
         c.group_box = to_hsla(resolved.pane);
         c.group_box_foreground = to_hsla(resolved.ink);
 

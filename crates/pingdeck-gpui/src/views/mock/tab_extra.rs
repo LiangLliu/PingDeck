@@ -7,9 +7,10 @@ use gpui_kit::{
 use pingdeck_desktop::core::model::KeyValue;
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary, card,
-    checkbox, code_editor, data_row, empty_inline, empty_state, h_row, icon_xs, list_row,
-    meta_pill, palette, section_header, setting_row, text_input, to_hsla, toggle_switch, v_col,
+    PayloadBlockOptions, ScrollableElement as _, Tone, UiIcon, badge, btn_ghost, btn_icon,
+    btn_secondary, card, checkbox, code_editor, data_row, empty_inline, empty_state, h_row,
+    icon_xs, list_row, meta_pill, palette, payload_block, section_header, setting_row, text_input,
+    to_hsla, toggle_switch, v_col,
 };
 
 use super::state::MockView;
@@ -217,16 +218,16 @@ pub fn render_data_tab(view: &MockView, cx: &mut Context<MockView>) -> AnyElemen
                 } else {
                     m_tr.bucket_meta_unchanged(&head)
                 };
-                live_card = live_card.child(meta_pill(meta, cx)).child(
-                    div()
-                        .w_full()
-                        .p(px(10.0))
-                        .rounded(px(6.0))
-                        .bg(to_hsla(p.sunken))
-                        .text_xs()
-                        .text_color(to_hsla(p.ink_2))
-                        .child(lb.value_json.clone()),
-                );
+                live_card = live_card.child(meta_pill(meta, cx)).child(payload_block(
+                    format!("mock-bucket-live-{}", lb.id),
+                    &lb.value_json,
+                    PayloadBlockOptions {
+                        content_type: Some("application/json"),
+                        max_height_px: Some(300.0),
+                        ..Default::default()
+                    },
+                    cx,
+                ));
             }
             col = col.child(live_card);
         }

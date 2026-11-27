@@ -9,9 +9,9 @@ use pingdeck_desktop::core::model::Assertion;
 use pingdeck_desktop::core::model::items::{FlowExtraction, FlowRetryOn, FlowStep};
 
 use crate::ui::{
-    Tone, UiIcon, alert_banner, badge, btn_icon, btn_secondary, card, choice_chip, data_row,
-    empty_inline, h_row, kv_line, meta_pill, number_field, palette, section_header, setting_row,
-    text_input, to_hsla, toggle_switch, v_col,
+    PayloadBlockOptions, Tone, UiIcon, alert_banner, badge, btn_icon, btn_secondary, card,
+    choice_chip, data_row, empty_inline, h_row, kv_line, meta_pill, number_field, palette,
+    payload_block, section_header, setting_row, text_input, to_hsla, toggle_switch, v_col,
 };
 
 use super::state::FlowsView;
@@ -273,16 +273,15 @@ pub fn render_output_tab(
     }
 
     if !res.response_body_preview.is_empty() {
-        box_el = box_el.child(
-            div()
-                .w_full()
-                .p(px(10.0))
-                .rounded(px(6.0))
-                .bg(to_hsla(p.sunken))
-                .text_xs()
-                .text_color(to_hsla(p.ink_2))
-                .child(res.response_body_preview.clone()),
-        );
+        box_el = box_el.child(payload_block(
+            format!("flow-step-out-{}", step.id),
+            &res.response_body_preview,
+            PayloadBlockOptions {
+                max_height_px: Some(320.0),
+                ..Default::default()
+            },
+            cx,
+        ));
     }
 
     box_el.into_any_element()
