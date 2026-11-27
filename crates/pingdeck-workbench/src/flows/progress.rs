@@ -99,6 +99,8 @@ fn step_summary(index: usize, result: &FlowStepResult) -> FlowStepSummary {
         condition: result.condition.clone(),
         explanation: result.explanation.clone(),
         ai: result.ai.clone(),
+        matched_branch_id: result.matched_branch_id.clone(),
+        started_offset_ms: result.started_offset_ms,
     }
 }
 
@@ -266,6 +268,8 @@ mod tests {
                 condition: None,
                 explanation: None,
                 ai: None,
+                matched_branch_id: None,
+                started_offset_ms: None,
             }],
         }
     }

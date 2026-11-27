@@ -135,6 +135,11 @@
             <span class="nav-item-label">对话</span>
             <span class="nav-badge-warn">1 待批</span>
           </button>
+          <button class="nav-item" data-nav-to="runs">
+            <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+            <span class="nav-item-label">运行看板</span>
+            <span class="nav-badge-count">1</span>
+          </button>
           <button class="nav-item" data-nav-to="providers">
             <span class="nav-ico"><svg class="icon" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></span>
             <span class="nav-item-label">服务商</span>
@@ -647,7 +652,7 @@
           </section>
 
           <!-- ================================================================ -->
-          <!-- MODULE 3: FLOWS (Visual Step Pipeline + Interactive Inspector)   -->
+          <!-- MODULE 3: FLOWS (Unified ProcessView DAG + Swimlanes + Timeline) -->
           <!-- ================================================================ -->
           <section class="module-view" data-module="flows">
             <div class="pane">
@@ -656,169 +661,100 @@
                 <button class="btn btn-sm" data-modal="new-flow">+ 新建流程</button>
               </div>
               <div class="pane-search">
-                <div class="input-box sunken"><input placeholder="搜索流程…" /></div>
+                <div class="input-box sunken"><input data-filter-rows="#flow-preset-list .list-row" placeholder="搜索流程…" /></div>
               </div>
-              <div class="pane-body" data-select-list="flows">
-                <button class="list-row">
+              <div id="flow-preset-list" class="pane-body" data-select-list="flows">
+                <button class="list-row selected" data-flow-preset="ecommerce">
+                  <div class="list-row-col">
+                    <span class="list-row-title">电商下单支付全链路</span>
+                    <span class="list-row-sub"><span>12 个节点 · 条件+并行+泳道</span><span>·</span><span class="text-ok">● 通过</span></span>
+                  </div>
+                </button>
+                <button class="list-row" data-flow-preset="linear8">
+                  <div class="list-row-col">
+                    <span class="list-row-title">线性注册到交易（8 步折行）</span>
+                    <span class="list-row-sub"><span>8 个步骤 · 自动 4 步折行</span><span>·</span><span class="text-ok">● 通过</span></span>
+                  </div>
+                </button>
+                <button class="list-row" data-flow-preset="billing">
                   <div class="list-row-col">
                     <span class="list-row-title">Create invoice then refund</span>
                     <span class="list-row-sub"><span>3 个步骤</span><span>·</span><span class="text-bad">◆ 未通过</span><span>2 分钟前</span></span>
                   </div>
                 </button>
-                <button class="list-row selected">
-                  <div class="list-row-col">
-                    <span class="list-row-title">Nightly billing smoke</span>
-                    <span class="list-row-sub"><span>6 个步骤</span><span>·</span><span class="text-accent">↻ 运行中 2/6</span></span>
-                  </div>
-                </button>
-                <button class="list-row">
-                  <div class="list-row-col">
-                    <span class="list-row-title">Webhook replay</span>
-                    <span class="list-row-sub"><span>2 个步骤</span><span>·</span><span class="text-ok">● 通过</span><span>昨天</span></span>
-                  </div>
-                </button>
-                <button class="list-row">
-                  <div class="list-row-col">
-                    <span class="list-row-title">Customer onboarding</span>
-                    <span class="list-row-sub"><span>3 个步骤</span><span>·</span><span class="text-ok">● 通过</span><span>昨天</span></span>
-                  </div>
-                </button>
               </div>
-              <div class="pane-foot"><span>按顺序执行集合请求或内联请求</span></div>
+              <div class="pane-foot"><span>与智能体工作流共用统一 ProcessView 引擎</span></div>
             </div>
 
             <div class="work">
               <div class="work-head">
-                <span class="work-title">Nightly billing smoke</span>
-                <span class="status-mark"><span class="dot dot-run"></span>运行中</span>
-                <span class="work-meta">6 个步骤</span>
+                <span id="flow-work-title" class="work-title">电商下单支付全链路</span>
+                <span id="flow-work-status" class="tag tag-ok">● 全部通过</span>
                 <div class="work-actions">
                   <button class="select-pill" data-popover="env-pick"><span class="dot dot-ok"></span> Staging ▾</button>
-                  <button class="btn btn-sm" data-action="show-flow-inputs">流程输入</button>
-                  <button class="btn btn-sm" data-action="toggle-flow-inspector">检查器</button>
-                  <button class="btn btn-sm btn-danger" data-toast="已停止流程「Nightly billing smoke」（已发出 2 个请求）" data-toast-tone="warn">■ 停止流程</button>
+                  <div class="pv-hist-nav" title="切换历史运行回放">
+                    <button type="button" data-action="flow-hist-prev" title="上一次运行">‹</button>
+                    <button type="button" id="flow-hist-label" data-popover="flow-runs">#12 全部通过 · 1.42s ▾</button>
+                    <button type="button" data-action="flow-hist-next" title="下一次运行">›</button>
+                  </div>
+                  <button class="btn btn-sm" data-modal="flow-vars">变量 (4)</button>
+                  <button class="btn btn-sm" data-modal="flow-opts">选项</button>
+                  <button class="btn btn-sm" data-toast="已保存流程拓扑与布局偏好">保存</button>
+                  <button id="flow-run-btn" class="btn btn-sm btn-primary" data-action="toggle-flow-run">▶ 运行流程</button>
                 </div>
               </div>
-              <div class="flow-run-bar">
-                <span class="fw-600 text-ink1">正在执行第 3 步 / 6</span>
-                <div class="prog-track"><div class="prog-fill" style="width:45%"></div></div>
-                <span class="mono text-muted">312 ms</span>
-                <span class="tag ml-auto">整次运行 · 隔离 Cookie 会话</span>
+
+              <!-- Unified ProcessView Second-Row Toolbar -->
+              <div class="pv-bar">
+                <div id="flow-view-seg" class="seg">
+                  <button type="button" data-flow-view="steps">步骤</button>
+                  <button type="button" class="active" data-flow-view="graph">执行图</button>
+                  <button type="button" data-flow-view="timeline">时间轴</button>
+                </div>
+                <span class="pv-bar-sep"></span>
+                <button type="button" class="btn btn-sm" data-flow-add="inline">+ 内联</button>
+                <button type="button" class="btn btn-sm" data-flow-add="saved">+ 引用</button>
+                <button type="button" class="btn btn-sm" data-flow-add="condition">+ 分支</button>
+                <button type="button" class="btn btn-sm" data-flow-add="join">+ 汇合</button>
+                <span class="pv-bar-sep"></span>
+                <div id="flow-dir-seg" class="seg">
+                  <button type="button" class="active" data-flow-dir="lr">横排</button>
+                  <button type="button" data-flow-dir="tb">竖排</button>
+                  <button type="button" data-flow-dir="serpentine">折行</button>
+                </div>
+                <button type="button" id="flow-toggle-lanes" class="tag tag-accent" data-action="flow-toggle-lanes">泳道</button>
+                <button type="button" id="flow-toggle-align" class="tag tag-accent" data-action="flow-toggle-align">居中</button>
+                <button type="button" id="flow-toggle-data" class="tag tag-accent" data-action="flow-toggle-data">数据流</button>
+                <button type="button" id="flow-reset-layout" class="btn btn-sm" hidden data-action="flow-reset-layout">↺ 重置排版</button>
+                <div class="row-center ml-auto" style="gap:4px">
+                  <button type="button" class="btn-icon" data-flow-zoom="-0.15" title="缩小">−</button>
+                  <span id="flow-zoom-lbl" class="mono fs-2xs text-muted" style="min-width:36px;text-align:center">100%</span>
+                  <button type="button" class="btn-icon" data-flow-zoom="0.15" title="放大">+</button>
+                </div>
               </div>
 
-              <div class="flow-canvas">
-                <div class="flow-step is-ok" data-flow-step="1">
-                  <div class="flow-rail"><span class="flow-num">✓</span><span class="flow-line"></span></div>
-                  <div class="flow-card">
-                    <span class="m-get">GET</span>
-                    <div class="flex-1"><b>Health</b> <span class="mono text-muted fs-2xs">/healthz · 断言 status == 200</span></div>
-                    <span class="tag tag-ok">200 · 42 ms</span>
+              <!-- Shared ProcessView Stage + Slide-out Dual-Mode Node Inspector -->
+              <div class="pv-stage-shell">
+                <div id="flow-stage-main" class="pv-main-pane"></div>
+                <aside id="flow-inspector" class="pv-inspector">
+                  <div class="pane-head">
+                    <span id="flow-insp-title" class="pane-title truncate" style="font-size:13px">金额与会员路由</span>
+                    <button type="button" class="btn-icon" data-action="close-flow-inspector" title="关闭检查器">×</button>
                   </div>
-                </div>
-                <div class="flow-step is-ok" data-flow-step="2">
-                  <div class="flow-rail"><span class="flow-num">✓</span><span class="flow-line"></span></div>
-                  <div class="flow-card">
-                    <span class="m-post">POST</span>
-                    <div class="flex-1"><b>Login</b> <span class="mono text-muted fs-2xs">/auth/token · 提取 token ← $.access_token</span></div>
-                    <span class="tag tag-ok">200 · 118 ms</span>
+                  <div id="flow-insp-tabs" class="tabs-row" style="padding:0 10px">
+                    <button type="button" class="tab-btn active" data-flow-insp-tab="config">配置</button>
+                    <button type="button" class="tab-btn" data-flow-insp-tab="topology">拓扑与分支</button>
+                    <button type="button" class="tab-btn" data-flow-insp-tab="result">运行结果</button>
                   </div>
-                </div>
-                <div class="flow-step is-run selected" data-flow-step="3">
-                  <div class="flow-rail"><span class="flow-num">3</span><span class="flow-line"></span></div>
-                  <div class="flow-card">
-                    <span class="m-get">GET</span>
-                    <div class="flex-1"><b>List invoices</b> <span class="mono text-muted fs-2xs">/invoices?status=open · 提取 invoice_id ← $.data[0].id</span></div>
-                    <span class="status-mark"><span class="dot dot-run"></span>请求中…</span>
-                  </div>
-                </div>
-                <div class="flow-step" data-flow-step="4">
-                  <div class="flow-rail"><span class="flow-num">4</span><span class="flow-line"></span></div>
-                  <div class="flow-card">
-                    <span class="m-post">POST</span>
-                    <div class="flex-1"><b>Create invoice</b> <span class="mono text-muted fs-2xs">/invoices · 断言 201 · 使用 {{amount}}</span></div>
-                    <span class="status-mark"><span class="dot dot-idle"></span>等待</span>
-                  </div>
-                </div>
-                <div class="flow-step" data-flow-step="5">
-                  <div class="flow-rail"><span class="flow-num">5</span><span class="flow-line"></span></div>
-                  <div class="flow-card">
-                    <span class="m-post">POST</span>
-                    <div class="flex-1"><b>Cleanup</b> <span class="mono text-muted fs-2xs">/refunds · 失败自动重试 2 次</span></div>
-                    <span class="status-mark"><span class="dot dot-idle"></span>等待</span>
-                  </div>
-                </div>
-                <div class="flow-step last-step" data-flow-step="6">
-                  <div class="flow-rail"><span class="flow-num">6</span><span class="flow-line"></span></div>
-                  <div class="flow-card">
-                    <span class="m-get">GET</span>
-                    <div class="flex-1"><b>Verify</b> <span class="mono text-muted fs-2xs">/invoices/{{invoice_id}} · 断言 $.status == "refunded"</span></div>
-                    <span class="status-mark"><span class="dot dot-idle"></span>等待</span>
-                  </div>
-                </div>
+                  <div id="flow-insp-body" class="pv-inspector-body"></div>
+                </aside>
+              </div>
 
-                <!-- Lower Action & Execution Contract Strip -->
-                <div class="card-panel" style="margin-top:8px;margin-left:36px">
-                  <div class="row-between">
-                    <div class="row-center">
-                      <button class="btn btn-sm" data-toast="已打开集合请求选择器">+ 从集合添加步骤…</button>
-                      <button class="btn btn-sm" data-toast="已添加内联 HTTP 请求步骤">+ 新建内联步骤</button>
-                    </div>
-                    <span class="fs-2xs text-muted">持久化模式：<code>HistoryOnly</code>（写历史记录，不污染工作区 Cookie 罐）</span>
-                  </div>
-                </div>
+              <div class="pane-foot" style="background:var(--bg-surface);border-top:1px solid var(--border-subtle)">
+                <span>持久化模式：<code>HistoryOnly</code>（写历史记录，不污染工作区 Cookie 罐）</span>
+                <span class="ml-auto text-muted">拖拽卡片手动调位 · 跨泳道自动重归属 · 悬停连线 <code>+</code> 插入步骤</span>
               </div>
             </div>
-
-            <aside id="flow-inspector" class="inspector">
-              <div class="pane-head">
-                <span id="flow-insp-title" class="pane-title" style="font-size:13.5px">List invoices · 第 3 步</span>
-                <button class="btn btn-sm btn-ghost" data-action="show-flow-inputs">输入</button>
-                <button class="btn-icon" data-action="toggle-flow-inspector" title="收起检查器">×</button>
-              </div>
-
-              <!-- Step Inspector View (matches src/features/flows/inspector/Inspector.tsx) -->
-              <div id="flow-insp-step" class="pad-pane col-stack fs-xs" style="overflow-y:auto">
-                <div class="card-panel">
-                  <div class="card-panel-head"><span>请求来源</span><button class="text-accent" data-nav-to="requests">打开原请求 ↗</button></div>
-                  <div id="flow-step-src"><span class="m-get">GET</span> <code class="text-ink1">/invoices?status=open</code></div>
-                  <span class="fs-2xs text-muted">集合：Billing API / Invoices / List invoices</span>
-                </div>
-                <div class="card-panel">
-                  <div class="card-panel-head"><span>提取变量 (Extract)</span><span class="tag">JSONPath</span></div>
-                  <div id="flow-step-extract" class="mono fs-2xs text-ink2">invoice_id ← $.data[0].id（等待响应）</div>
-                </div>
-                <div class="card-panel">
-                  <div class="card-panel-head"><span>步骤断言与校验</span><span class="tag tag-ok">继承开启</span></div>
-                  <div id="flow-step-assert" class="fs-2xs text-ink2">继承原请求 2 条断言 + status == 200</div>
-                </div>
-                <div class="card-panel">
-                  <div class="card-panel-head"><span>运行控制与当前结果</span></div>
-                  <div id="flow-step-retry" class="fs-2xs text-muted">重试 2 次 · 间隔 500 ms</div>
-                  <div id="flow-step-status" class="tag tag-accent" style="align-self:flex-start">运行中 · 已耗时 312 ms</div>
-                  <div id="flow-step-body" class="code-box fs-2xs">// 正在等待 billing.staging.acme.dev 响应...</div>
-                </div>
-              </div>
-
-              <!-- Flow Inputs View (when "流程输入" is clicked) -->
-              <div id="flow-insp-inputs" hidden class="pad-pane col-stack fs-xs">
-                <div class="field-col">
-                  <span class="field-label">运行输入变量（优先于当前环境）</span>
-                  <div class="code-box" style="height:88px;white-space:pre-wrap">amount=1290
-currency=USD</div>
-                </div>
-                <div class="card-panel">
-                  <div class="row-between"><b>运行内 Cookie 会话</b><span class="tag tag-accent">已开启</span></div>
-                  <p class="set-row-desc">前置步骤收到的 Set-Cookie 自动传递到后续步骤，结束后自动丢弃。</p>
-                </div>
-                <div class="field-col">
-                  <span class="field-label">已提取变量（实时）</span>
-                  <div class="list-row" style="background:var(--bg-surface);border-color:var(--border-subtle)">
-                    <span class="mono text-accent">token</span>
-                    <span class="mono ml-auto text-muted">eyJhbG…9kQ</span>
-                  </div>
-                </div>
-              </div>
-            </aside>
           </section>
 
           <!-- ================================================================ -->
@@ -1068,9 +1004,8 @@ currency=USD</div>
                     <span class="work-title chat-head-title-trigger" title="点击修改标题">修复网关 429 熔断与退避</span>
                   </div>
                   <div class="work-actions">
-                    <button class="btn btn-sm" data-modal="run-monitor">运行看板</button>
                     <button class="btn btn-sm btn-ghost" data-toast="已导出对话 Markdown">导出</button>
-                    <button class="btn btn-sm" data-action="toggle-chat-details">详情栏</button>
+                    <button class="btn btn-sm" data-modal="run-monitor" data-rm-run-idx="0">工作流 1/3</button>
                   </div>
                 </div>
                 <div class="chat-head-meta">
@@ -1089,7 +1024,7 @@ currency=USD</div>
                     <div class="trace-head">
                       <span class="dot dot-ok"></span>
                       <span>已执行 3 步 · 11.4 秒</span>
-                      <button class="tag ml-auto" data-action="toggle-chat-details">+18 -4 · 1 个文件</button>
+                      <button class="tag ml-auto" data-modal="run-monitor" data-rm-run-idx="0" data-rm-initial-tab="changes">+18 -4 · 1 个文件</button>
                     </div>
                     <div class="trace-body">
                       <div class="trace-step">
@@ -1101,7 +1036,7 @@ currency=USD</div>
                         <div class="flex-1">
                           <div>已编辑 <b class="mono">crates/pingdeck-core/src/llm/router.rs</b></div>
                           <div class="diff-box">
-                            <div class="diff-head"><span>@@ -212,7 +212,8 @@ impl Router</span><button class="text-accent" data-action="toggle-chat-details">在改动页审阅</button></div>
+                            <div class="diff-head"><span>@@ -212,7 +212,8 @@ impl Router</span><button class="text-accent" data-modal="run-monitor" data-rm-run-idx="0" data-rm-initial-tab="changes">在改动页审阅</button></div>
                             <div class="diff-row">  214   match status {</div>
                             <div class="diff-row del">- 215     429 | 500..=599 =&gt; breaker.trip(target, Duration::from_secs(60)),</div>
                             <div class="diff-row add">+ 215     429 =&gt; honor_retry_after(&amp;headers, MAX_RETRY_WAIT),</div>
@@ -1189,27 +1124,99 @@ currency=USD</div>
                 </div>
               </div>
             </div>
+          </section>
 
-            <!-- Toggleable Chat Right Details Panel -->
-            <aside id="chat-details-panel" class="chat-details" hidden>
-              <div class="pane-head">
-                <span class="pane-title" style="font-size:13.5px">对话详情</span>
-                <button class="btn-icon" data-action="toggle-chat-details">×</button>
-              </div>
-              <div class="tabs-row" style="padding:0 10px" data-tab-group="chat-det">
-                <button class="tab-btn active" data-tab="changes">改动 <span class="tab-cnt">1</span></button>
-                <button class="tab-btn" data-tab="progress">进展 3/5</button>
-                <button class="tab-btn" data-tab="context">上下文</button>
-                <button class="tab-btn" data-tab="opts">设置</button>
-              </div>
-              <div id="chat-det-body" class="pad-pane col-stack fs-xs" style="flex:1;overflow-y:auto">
-                <div class="card-panel">
-                  <div class="row-between"><b>router.rs</b><span class="mono"><span class="text-ok">+18</span> <span class="text-bad">-4</span></span></div>
-                  <span class="mono text-muted fs-2xs">crates/pingdeck-core/src/llm/router.rs</span>
-                  <div><button class="btn btn-sm" data-toast="已从编辑前快照撤销 router.rs 改动">撤销改动</button></div>
+          <!-- ================================================================ -->
+          <!-- MODULE 6B: GLOBAL RUNS WORKBENCH (Cross-Workspace Agent Runs)    -->
+          <!-- ================================================================ -->
+          <section class="module-view" data-module="runs">
+            <div class="runs-work">
+              <div class="work-head">
+                <span class="work-title">运行看板</span>
+                <span class="runs-slots" title="当前全局并发槽位">
+                  <span class="runs-slot-dot busy"></span>
+                  <span class="runs-slot-dot"></span>
+                  <span class="runs-slot-dot"></span>
+                  <span>并发槽位 1/3</span>
+                </span>
+                <span class="work-meta">24h 成功 2 · 失败 0</span>
+                <div class="work-actions">
+                  <span class="mono fs-xs text-muted">今日 1.6M tok · USD 0.061</span>
+                  <button type="button" class="btn btn-sm" data-toast="已刷新全局运行快照">刷新</button>
                 </div>
               </div>
-            </aside>
+              <div class="runs-filter-bar">
+                <div class="input-box sm sunken" style="width:260px">
+                  <input data-filter-rows="#runs-card-list .runs-card" placeholder="按对话标题、模型或错误筛选…" />
+                </div>
+                <div class="row-wrap" data-pill-group="runs-status">
+                  <button type="button" class="tag tag-accent" data-pill-pick>全部</button>
+                  <button type="button" class="tag" data-pill-pick>待处理 (1)</button>
+                  <button type="button" class="tag" data-pill-pick>运行中 (0)</button>
+                  <button type="button" class="tag" data-pill-pick>失败 (0)</button>
+                  <button type="button" class="tag" data-pill-pick>已完成</button>
+                </div>
+                <div class="seg ml-auto">
+                  <button type="button" class="active" data-action="seg-pick">近期 24h</button>
+                  <button type="button" data-action="seg-pick">全部历史</button>
+                </div>
+              </div>
+              <div id="runs-card-list" class="runs-list-scroll">
+                <div class="fs-2xs fw-600 text-warn">需要你处理 (1)</div>
+                <div class="runs-card" style="border-color:var(--warn-border)">
+                  <div class="runs-card-info">
+                    <div class="runs-card-head">
+                      <span class="dot dot-warn"></span>
+                      <b>修复网关 429 熔断与退避</b>
+                      <span class="tag tag-warn">待审批</span>
+                      <span class="tag tag-accent">计划 3/4</span>
+                      <span class="tag">2 子智能体</span>
+                    </div>
+                    <div class="fs-xs text-ink2">等待批准：<code>cargo clippy -p pingdeck-core -- -D warnings</code></div>
+                    <div class="runs-card-meta mono">
+                      <span>DeepSeek/deepseek-v4-pro</span>
+                      <span>~/me/PingDeck</span>
+                      <span>5/20 步</span>
+                      <span>11.4 s</span>
+                      <span>28.9K tok</span>
+                      <span>¥0.025</span>
+                      <span>刚刚</span>
+                    </div>
+                  </div>
+                  <div class="row-center" style="flex:none">
+                    <button type="button" class="btn btn-sm" data-nav-to="chat">进入对话</button>
+                    <button type="button" class="btn btn-sm btn-primary" data-modal="run-monitor" data-rm-run-idx="0">查看工作流</button>
+                  </div>
+                </div>
+
+                <div class="fs-2xs fw-600 text-muted" style="margin-top:6px">近期结束 (24h) (1)</div>
+                <div class="runs-card">
+                  <div class="runs-card-info">
+                    <div class="runs-card-head">
+                      <span class="dot dot-ok"></span>
+                      <b>password-cracking 开发</b>
+                      <span class="tag tag-ok">成功</span>
+                      <span class="tag tag-accent">计划 3/3</span>
+                      <span class="tag">3 子智能体</span>
+                    </div>
+                    <div class="fs-xs text-ink2"># 第四轮深度分析：并行复核密码路径、CLI 边界与仓库资产</div>
+                    <div class="runs-card-meta mono">
+                      <span>my-sub2api/gpt-6-luna</span>
+                      <span>password-cracking</span>
+                      <span>9/20 步</span>
+                      <span>3m 50s</span>
+                      <span>1.1M tok</span>
+                      <span>USD 0.0298</span>
+                      <span>1 时前</span>
+                    </div>
+                  </div>
+                  <div class="row-center" style="flex:none">
+                    <button type="button" class="btn btn-sm" data-nav-to="chat">进入对话</button>
+                    <button type="button" class="btn btn-sm btn-primary" data-modal="run-monitor" data-rm-run-idx="1">查看工作流</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
           <!-- ================================================================ -->
@@ -1869,7 +1876,9 @@ currency=USD</div>
         <div class="list-group-head"><span>快速跳转</span></div>
         <button class="palette-item active" data-nav-to="requests" data-sub-view="http"><span class="m-get">GET</span><span class="flex-1">List invoices</span><span class="text-faint fs-2xs">请求</span></button>
         <button class="palette-item" data-nav-to="requests" data-sub-view="ai"><span class="tag tag-accent">AI</span><span class="flex-1">Ping test (deepseek-v4-flash)</span><span class="text-faint fs-2xs">AI 请求</span></button>
-        <button class="palette-item" data-nav-to="chat"><span class="dot dot-warn"></span><span class="flex-1">429s from the gateway（待审批）</span><span class="text-faint fs-2xs">对话</span></button>
+        <button class="palette-item" data-nav-to="flows"><span class="tag tag-ok">流程</span><span class="flex-1">电商下单支付全链路（条件分支 + 并行汇合 + 泳道）</span><span class="text-faint fs-2xs">流程</span></button>
+        <button class="palette-item" data-nav-to="chat"><span class="dot dot-warn"></span><span class="flex-1">修复网关 429 熔断与退避（待审批）</span><span class="text-faint fs-2xs">对话</span></button>
+        <button class="palette-item" data-nav-to="runs"><span class="tag tag-accent">看板</span><span class="flex-1">全局运行看板（并发槽位 1/3）</span><span class="text-faint fs-2xs">运行看板</span></button>
         <button class="palette-item" data-nav-to="gateway"><span class="dot dot-live"></span><span class="flex-1">本地网关 :4141</span><span class="kbd">⌘8</span></button>
         <button class="palette-item" data-nav-to="settings"><span class="flex-1">外观与多主题设置</span><span class="kbd">⌘,</span></button>
         <div class="list-group-head"><span>快捷向导与弹窗</span></div>
@@ -1889,6 +1898,8 @@ currency=USD</div>
 
   <script src="./js/data-settings.js"></script>
   <script src="./js/data-subtabs.js"></script>
+  <script src="./js/process-canvas.js"></script>
+  <script src="./js/data-process.js"></script>
   <script src="./js/data-overlays.js"></script>
   <script src="./js/overlays.js"></script>
   <script src="./js/app.js"></script>

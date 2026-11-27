@@ -1,169 +1,142 @@
-//! Ordered step pipeline list for `FlowsView` with reorder, duplicate, partial run, and live step statuses.
+//! High-density stage-grouped Steps view for `FlowsView`, sharing selection & overlays with
+//! the unified Process Graph and Timeline views.
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     Styled as _, div, px,
 };
+use pingdeck_desktop::core::model::items::FlowStepKind;
+use pingdeck_desktop::state::{FlowGraphLayout, ProcessNodeStatus};
 
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary,
-    empty_inline, h_row, list_row, meta_pill, method_badge, palette, status_indicator, to_hsla,
-    v_col,
+    ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_icon, empty_inline, h_row,
+    list_row, meta_pill, method_badge, palette, section_heading, status_indicator, to_hsla, v_col,
 };
 
-use super::state::{FlowModal, FlowsView};
+use super::state::FlowsView;
 
-pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
+pub fn render_steps_view(
+    view: &FlowsView,
+    layout: &FlowGraphLayout,
+    cx: &mut Context<FlowsView>,
+) -> AnyElement {
     let p = palette(cx);
-    let Some(flow) = &view.draft else {
-        return div().into_any_element();
-    };
+    let fl = crate::ui::Tr(view.lang).flows();
+    if layout.nodes.is_empty() {
+        return div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(empty_inline(
+                fl.steps_pane_no_steps_in_this_flow(),
+                Some(SharedString::from(fl.steps_pane_add_an_inline_http_step())),
+                None,
+                cx,
+            ))
+            .into_any_element();
+    }
 
-    let mut list = v_col().w_full().p(px(8.0)).gap(px(5.0));
-    if flow.steps.is_empty() {
-        list = list.child(empty_inline(
-            crate::ui::Tr(view.lang)
-                .flows()
-                .steps_pane_no_steps_in_this_flow(),
-            Some(SharedString::from(
-                crate::ui::Tr(view.lang)
-                    .flows()
-                    .steps_pane_add_an_inline_http_step(),
-            )),
-            None,
-            cx,
-        ));
-    } else {
-        let total = flow.steps.len();
-        for (idx, step) in flow.steps.iter().enumerate() {
+    let total = layout.nodes.len();
+    let max_stage = layout.nodes.iter().map(|n| n.stage).max().unwrap_or(0);
+    let mut body = v_col().w_full().gap(px(10.0)).px(px(18.0)).py(px(14.0));
+
+    for stage_idx in 0..=max_stage {
+        let stage_nodes: Vec<_> = layout
+            .nodes
+            .iter()
+            .filter(|n| n.stage == stage_idx)
+            .collect();
+        if stage_nodes.is_empty() {
+            continue;
+        }
+        let mut group = v_col().w_full().gap(px(5.0));
+        if layout.has_dag || max_stage > 0 {
+            group = group.child(
+                h_row()
+                    .gap(px(8.0))
+                    .child(section_heading(fl.graph_stage_label(stage_idx + 1), cx))
+                    .children((stage_nodes.len() >= 2).then(|| {
+                        badge(fl.steps_parallel_badge(stage_nodes.len()), Tone::Accent, cx)
+                    })),
+            );
+        }
+
+        for node in stage_nodes {
+            let step = &node.step;
+            let idx = node.order_index;
             let sid = step.id.clone();
             let sid_dup = step.id.clone();
             let sid_del = step.id.clone();
             let active = view.selected_step_id.as_deref() == Some(step.id.as_str());
 
-            let linked_req = view.request_of(&step.request_id);
-            let method_str = step
-                .method_override
-                .or_else(|| linked_req.map(|r| r.method))
-                .map(|m| format!("{m:?}").to_uppercase())
-                .unwrap_or_else(|| "GET".to_owned());
-            let target_label = step
-                .url_override
-                .as_deref()
-                .filter(|u| !u.trim().is_empty())
-                .map(str::to_owned)
-                .or_else(|| linked_req.map(|r| r.url.clone()))
-                .unwrap_or_else(|| {
-                    crate::ui::Tr(view.lang)
-                        .flows()
-                        .steps_pane_no_url_set()
-                        .to_owned()
-                });
+            let shape = match node.overlay.status {
+                ProcessNodeStatus::Completed => StatusShape::Ok,
+                ProcessNodeStatus::Failed | ProcessNodeStatus::Interrupted => StatusShape::Bad,
+                ProcessNodeStatus::Running | ProcessNodeStatus::Queued => StatusShape::Run,
+                ProcessNodeStatus::Skipped | ProcessNodeStatus::Cancelled => StatusShape::Warn,
+                _ => StatusShape::Idle,
+            };
 
-            // Live or last run status for this step
-            let live = view.live_steps.get(&step.id);
-            let res = view.step_result_of(&step.id);
-            let (shape, status_pill) = if let Some(s) = live {
-                let sh = if s.skipped {
-                    StatusShape::Warn
-                } else if s.passed {
-                    StatusShape::Ok
-                } else {
-                    StatusShape::Bad
-                };
-                let pill = if s.skipped {
+            let status_pill: Option<AnyElement> = if node.overlay.skipped {
+                Some(badge(fl.steps_pane_skip(), Tone::Warning, cx).into_any_element())
+            } else if let Some(code) = node.overlay.status_code {
+                let ms = node.overlay.elapsed_ms.unwrap_or(0);
+                Some(
                     badge(
-                        crate::ui::Tr(view.lang).flows().steps_pane_skip(),
-                        Tone::Warning,
-                        cx,
-                    )
-                } else if let Some(code) = s.status_code {
-                    badge(
-                        format!("{code} · {}ms", s.elapsed_ms),
-                        if s.passed {
+                        format!("{code} · {ms}ms"),
+                        if node.overlay.passed.unwrap_or(true) {
                             Tone::Success
                         } else {
                             Tone::Danger
                         },
                         cx,
                     )
-                } else {
-                    badge(
-                        crate::ui::Tr(view.lang).flows().steps_pane_err(),
-                        Tone::Danger,
-                        cx,
-                    )
-                };
-                (sh, Some(pill))
-            } else if let Some(r) = res {
-                let sh = if r.skipped {
-                    StatusShape::Warn
-                } else if r.passed {
-                    StatusShape::Ok
-                } else {
-                    StatusShape::Bad
-                };
-                let pill = if r.skipped {
-                    badge(
-                        crate::ui::Tr(view.lang).flows().steps_pane_skip(),
-                        Tone::Warning,
-                        cx,
-                    )
-                } else if let Some(code) = r.status_code {
-                    badge(
-                        format!("{code} · {}ms", r.elapsed_ms),
-                        if r.passed {
-                            Tone::Success
-                        } else {
-                            Tone::Danger
-                        },
-                        cx,
-                    )
-                } else {
-                    badge(
-                        crate::ui::Tr(view.lang).flows().steps_pane_err(),
-                        Tone::Danger,
-                        cx,
-                    )
-                };
-                (sh, Some(pill))
-            } else if view.running {
-                (StatusShape::Run, None)
+                    .into_any_element(),
+                )
+            } else if node.overlay.error.is_some() {
+                Some(badge(fl.steps_pane_err(), Tone::Danger, cx).into_any_element())
             } else {
-                (StatusShape::Idle, None)
+                None
+            };
+
+            let kind_badge: AnyElement = match step.step_kind {
+                FlowStepKind::Request => method_badge(&node.method, cx).into_any_element(),
+                FlowStepKind::Condition => {
+                    badge(fl.kind_condition(), Tone::Accent, cx).into_any_element()
+                }
+                FlowStepKind::Join => badge(fl.kind_join(), Tone::Neutral, cx).into_any_element(),
             };
 
             let mut meta_row = h_row()
-                .gap(px(4.0))
+                .gap(px(5.0))
                 .flex_wrap()
-                .child(method_badge(&method_str, cx))
+                .child(kind_badge)
                 .children(status_pill)
                 .children((!step.extractions.is_empty()).then(|| {
                     let names: Vec<String> = step
                         .extractions
                         .iter()
-                        .take(2)
+                        .take(3)
                         .map(|e| format!("→ {{{{{}}}}}", e.variable_name))
                         .collect();
-                    let suffix = if step.extractions.len() > 2 {
-                        format!(" +{}", step.extractions.len() - 2)
+                    let suffix = if step.extractions.len() > 3 {
+                        format!(" +{}", step.extractions.len() - 3)
                     } else {
                         String::new()
                     };
                     meta_pill(format!("{}{suffix}", names.join(" ")), cx)
                 }))
-                .children((!step.assertions.is_empty()).then(|| {
-                    meta_pill(
-                        crate::ui::tr(cx)
-                            .flows()
-                            .steps_pane_assert(step.assertions.len()),
-                        cx,
-                    )
-                }))
+                .children(
+                    (!step.assertions.is_empty())
+                        .then(|| meta_pill(fl.steps_pane_assert(step.assertions.len()), cx)),
+                )
                 .children(
                     (!step.condition_expression.trim().is_empty()).then(|| meta_pill("if", cx)),
                 );
-            let _ = &mut meta_row;
+            if !step.depends_on.is_empty() {
+                meta_row = meta_row.child(meta_pill(fl.join_deps_count(step.depends_on.len()), cx));
+            }
 
             let mut actions = h_row().gap(px(2.0)).flex_shrink_0();
             if idx > 0 {
@@ -172,7 +145,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         SharedString::from(format!("flow-up-{idx}")),
                         UiIcon::ChevronUp,
                     )
-                    .tooltip(crate::ui::Tr(view.lang).flows().steps_pane_move_up())
+                    .tooltip(fl.steps_pane_move_up())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.move_step(idx, idx - 1, cx);
@@ -185,7 +158,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         SharedString::from(format!("flow-dn-{idx}")),
                         UiIcon::ChevronDown,
                     )
-                    .tooltip(crate::ui::Tr(view.lang).flows().steps_pane_move_down())
+                    .tooltip(fl.steps_pane_move_down())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.move_step(idx, idx + 1, cx);
@@ -195,11 +168,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
             actions = actions
                 .child(
                     btn_icon(SharedString::from(format!("flow-run1-{idx}")), UiIcon::Play)
-                        .tooltip(
-                            crate::ui::Tr(view.lang)
-                                .flows()
-                                .steps_pane_run_only_this_step(),
-                        )
+                        .tooltip(fl.steps_pane_run_only_this_step())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.run_flow(None, Some(idx), None, cx);
@@ -207,11 +176,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 )
                 .child(
                     btn_icon(SharedString::from(format!("flow-upto-{idx}")), UiIcon::Zap)
-                        .tooltip(
-                            crate::ui::Tr(view.lang)
-                                .flows()
-                                .steps_pane_run_up_to_this_step(),
-                        )
+                        .tooltip(fl.steps_pane_run_up_to_this_step())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.run_flow(Some(idx + 1), None, None, cx);
@@ -219,7 +184,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                 )
                 .child(
                     btn_icon(SharedString::from(format!("flow-sdup-{idx}")), UiIcon::Copy)
-                        .tooltip(crate::ui::Tr(view.lang).flows().insp_duplicate())
+                        .tooltip(fl.insp_duplicate())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.duplicate_step(sid_dup.clone(), cx);
@@ -230,30 +195,48 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                         SharedString::from(format!("flow-sdel-{idx}")),
                         UiIcon::Trash,
                     )
-                    .tooltip(crate::ui::Tr(view.lang).flows().insp_delete())
+                    .tooltip(fl.insp_delete())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.remove_step(sid_del.clone(), cx);
                     })),
                 );
 
-            list = list.child(
+            let url_sub = match step.step_kind {
+                FlowStepKind::Request => {
+                    if node.target_url.is_empty() {
+                        fl.steps_pane_no_url_set().to_owned()
+                    } else {
+                        node.target_url.clone()
+                    }
+                }
+                FlowStepKind::Condition => fl.branch_count(step.branches.len()),
+                FlowStepKind::Join => fl.join_deps_count(step.depends_on.len()),
+            };
+
+            group = group.child(
                 list_row(
                     SharedString::from(format!("flow-step-{}", step.id)),
                     active,
                     cx,
                     cx.listener(move |this, _, _, cx| {
-                        this.snapshot_inputs(cx);
-                        this.selected_step_id = Some(sid.clone());
-                        this.pending_sync = true;
-                        cx.notify();
+                        this.select_step(Some(sid.clone()), cx);
                     }),
                 )
                 .items_start()
-                .py(px(8.0))
+                .px(px(12.0))
+                .py(px(9.0))
+                .bg(to_hsla(if active { p.accent_soft } else { p.surface }))
+                .border_1()
+                .border_color(to_hsla(if active {
+                    p.accent
+                } else {
+                    p.line.composite_over(p.surface)
+                }))
+                .rounded(px(8.0))
                 .child(
                     h_row()
-                        .gap(px(5.0))
+                        .gap(px(6.0))
                         .pt(px(2.0))
                         .child(status_indicator(shape, cx))
                         .child(meta_pill(format!("#{}", idx + 1), cx)),
@@ -267,7 +250,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                             h_row()
                                 .w_full()
                                 .justify_between()
-                                .gap(px(6.0))
+                                .gap(px(8.0))
                                 .child(
                                     div()
                                         .flex_1()
@@ -276,7 +259,7 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                         .text_color(to_hsla(p.ink))
                                         .truncate()
-                                        .child(step.name.clone()),
+                                        .child(SharedString::from(step.name.clone())),
                                 )
                                 .child(actions),
                         )
@@ -285,66 +268,21 @@ pub fn render_steps_pane(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyEl
                                 .text_size(px(11.0))
                                 .text_color(to_hsla(p.muted))
                                 .truncate()
-                                .child(target_label),
+                                .child(SharedString::from(url_sub)),
                         )
                         .child(meta_row),
                 ),
             );
         }
+
+        body = body.child(group);
     }
 
-    v_col()
-        .w(px(330.0))
-        .flex_shrink_0()
-        .h_full()
-        .bg(to_hsla(p.pane))
-        .border_r_1()
-        .border_color(to_hsla(p.line.composite_over(p.pane)))
-        .child(
-            h_row()
-                .w_full()
-                .justify_between()
-                .gap(px(6.0))
-                .px(px(10.0))
-                .py(px(8.0))
-                .border_b_1()
-                .border_color(to_hsla(p.line.composite_over(p.pane)))
-                .child(
-                    div()
-                        .text_xs()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .child(crate::ui::tr(cx).flows().steps_pane_steps(flow.steps.len())),
-                )
-                .child(
-                    h_row()
-                        .gap(px(4.0))
-                        .child(
-                            btn_secondary(
-                                "flow-add-inline",
-                                crate::ui::Tr(view.lang).flows().steps_pane_inline(),
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| this.add_inline_step(cx))),
-                        )
-                        .child(
-                            btn_ghost(
-                                "flow-add-saved",
-                                crate::ui::Tr(view.lang).flows().steps_pane_saved(),
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.active_modal = Some(FlowModal::AddSavedStep);
-                                cx.notify();
-                            })),
-                        ),
-                ),
-        )
-        .child(
-            div()
-                .id("flow-steps-scroll")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scrollbar()
-                .child(list),
-        )
+    div()
+        .id("flow-steps-scroll")
+        .size_full()
+        .bg(to_hsla(p.sunken))
+        .overflow_y_scrollbar()
+        .child(body)
         .into_any_element()
 }

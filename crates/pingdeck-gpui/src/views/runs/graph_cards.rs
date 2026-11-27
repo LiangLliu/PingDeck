@@ -1,20 +1,20 @@
-//! Card renderers for the GitHub-Actions-style Execution Graph (`执行图`) inside the 90%
-//! [`WorkflowMonitorModal`] and read-only Plan preview cards.
+//! Interactive Process Graph node cards inside [`WorkflowMonitorModal`].
 //!
-//! Supports Tier 1 in-canvas micro-expansion for both `Parallel Group` cards and multi-tool
-//! `Subagent` / bound `Planned Task` cards (bounded to `GRAPH_MAX_INLINE_MEMBERS = 6` inline rows
-//! with a clean overflow footer row).
+//! Supports Tier 1 in-canvas micro-expansion (`GRAPH_MAX_INLINE_MEMBERS = 6`), drag-to-reposition
+//! initiation with 4px click discrimination, and per-node unpin affordances when manually pinned.
 
 use gpui_kit::{
-    AnyElement, App, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
+    AnyElement, App, Context, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use pingdeck_desktop::state::{
     GRAPH_GROUP_TAB_H, GRAPH_MAX_INLINE_MEMBERS, GRAPH_MEMBER_ROW_H, GRAPH_OVERFLOW_ROW_H,
     GraphNodeKind, GraphNodeMember, PositionedNode,
 };
 
-use crate::ui::{Tone, badge, h_row, palette, status_indicator, to_hsla, v_col};
+use crate::ui::{
+    Tone, UiIcon, badge, h_row, icon_xs, palette, status_indicator, text_tooltip, to_hsla, v_col,
+};
 
 use super::graph::card_border_color;
 use super::modal::WorkflowMonitorModal;
@@ -38,126 +38,25 @@ pub(super) fn render_modal_graph_card(
     }
 }
 
-/// Static read-only graph card rendered inside the Chat `Plan` approval gate preview.
-pub(super) fn render_preview_graph_card(
-    pnode: &PositionedNode,
-    scale: f32,
-    cx: &App,
-) -> AnyElement {
+fn pin_button(node_id: &str, scale: f32, cx: &mut Context<WorkflowMonitorModal>) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
-    let node = &pnode.node;
-    let (shape, tone) = graph_status_visual(node.status);
-    let border = card_border_color(false, tone, &p);
-
-    if let Some(tab_text) = &node.group_tab
-        && !node.members.is_empty()
-    {
-        let (done, total) = node.member_progress();
-        let tab_h = GRAPH_GROUP_TAB_H * scale;
-        let body_h = (pnode.h - GRAPH_GROUP_TAB_H) * scale;
-        return v_col()
-            .absolute()
-            .left(px(pnode.x * scale))
-            .top(px(pnode.y * scale))
-            .w(px(pnode.w * scale))
-            .h(px(pnode.h * scale))
-            .items_start()
-            .child(
-                h_row()
-                    .h(px(tab_h))
-                    .max_w(px((pnode.w * 0.78) * scale))
-                    .px(px(8.0 * scale))
-                    .bg(to_hsla(p.pane))
-                    .border_t_1()
-                    .border_l_1()
-                    .border_r_1()
-                    .border_color(border)
-                    .rounded_t(px(6.0 * scale))
-                    .child(
-                        div()
-                            .text_size(px((10.0 * scale).clamp(9.0, 11.0)))
-                            .text_color(to_hsla(p.muted))
-                            .truncate()
-                            .child(SharedString::from(tab_text.clone())),
-                    ),
-            )
-            .child(
-                v_col()
-                    .w_full()
-                    .h(px(body_h))
-                    .px(px(9.0 * scale))
-                    .py(px(7.0 * scale))
-                    .gap(px(4.0 * scale))
-                    .bg(to_hsla(p.surface))
-                    .border_1()
-                    .border_color(border)
-                    .rounded_b(px(8.0 * scale))
-                    .rounded_tr(px(8.0 * scale))
-                    .overflow_hidden()
-                    .child(
-                        h_row()
-                            .gap(px(6.0))
-                            .child(status_indicator(shape, cx))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_size(px((11.5 * scale).clamp(9.5, 12.5)))
-                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                    .text_color(to_hsla(p.ink))
-                                    .truncate()
-                                    .child(SharedString::from(node.title.clone())),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(to_hsla(p.muted))
-                            .child(SharedString::from(ch.graph_group_progress(done, total))),
-                    ),
-            )
-            .into_any_element();
-    }
-
-    v_col()
-        .absolute()
-        .left(px(pnode.x * scale))
-        .top(px(pnode.y * scale))
-        .w(px(pnode.w * scale))
-        .h(px(pnode.h * scale))
-        .px(px(9.0 * scale))
-        .py(px(7.0 * scale))
-        .gap(px(4.0 * scale))
-        .rounded(px(8.0 * scale))
-        .bg(to_hsla(p.surface))
-        .border_1()
-        .border_color(border)
-        .overflow_hidden()
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .child(status_indicator(shape, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px((11.5 * scale).clamp(9.5, 12.5)))
-                        .font_weight(gpui_kit::FontWeight::MEDIUM)
-                        .text_color(to_hsla(p.ink))
-                        .truncate()
-                        .child(SharedString::from(node.title.clone())),
-                ),
-        )
-        .child(
-            h_row()
-                .gap(px(4.0))
-                .child(badge(graph_kind_label(node.kind, cx), Tone::Neutral, cx))
-                .children(
-                    node.role
-                        .map(|r| badge(subagent_role_label(r, cx), Tone::Accent, cx)),
-                ),
-        )
+    let nid = node_id.to_owned();
+    div()
+        .id(SharedString::from(format!("wf-gunpin-{node_id}")))
+        .flex_shrink_0()
+        .p(px(2.0 * scale))
+        .rounded(px(4.0))
+        .text_color(to_hsla(p.accent_ink))
+        .hover(|s| s.bg(to_hsla(p.accent_soft)))
+        .cursor_pointer()
+        .tooltip(text_tooltip(ch.graph_unpin_node()))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.unpin_node(&nid, cx);
+        }))
+        .child(icon_xs(UiIcon::Pin))
         .into_any_element()
 }
 
@@ -180,6 +79,9 @@ fn render_single_card(
         to_hsla(p.surface)
     };
     let nid = node.id.clone();
+    let nid_drag = node.id.clone();
+    let npos = (pnode.x, pnode.y);
+    let nsize = (pnode.w, pnode.h);
 
     let mut body = v_col()
         .id(SharedString::from(format!("wf-gnode-{}", node.id)))
@@ -204,15 +106,26 @@ fn render_single_card(
                 s.border_color(hover_border)
             }
         })
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                this.begin_node_drag(nid_drag.clone(), npos, nsize, scale, ev);
+            }),
+        )
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
+            if this.drag_suppress_click {
+                this.drag_suppress_click = false;
+                return;
+            }
             this.select_node(Some(nid.clone()), cx);
         }))
         .child(
             h_row()
                 .w_full()
                 .justify_between()
-                .gap(px(6.0))
+                .gap(px(5.0))
                 .child(
                     h_row()
                         .flex_1()
@@ -230,6 +143,7 @@ fn render_single_card(
                                 .child(SharedString::from(node.title.clone())),
                         ),
                 )
+                .children(pnode.pinned.then(|| pin_button(&node.id, scale, cx)))
                 .children(node.elapsed_ms.map(|ms| {
                     div()
                         .flex_shrink_0()
@@ -303,8 +217,11 @@ fn render_group_card(
     };
     let (done, total) = node.member_progress();
     let nid_sel = node.id.clone();
+    let nid_drag = node.id.clone();
     let nid_toggle = node.id.clone();
     let nid_more = node.id.clone();
+    let npos = (pnode.x, pnode.y);
+    let nsize = (pnode.w, pnode.h);
     let tab_text = node.group_tab.clone().unwrap_or_default();
     let tab_h = GRAPH_GROUP_TAB_H * scale;
     let body_h = (pnode.h - GRAPH_GROUP_TAB_H) * scale;
@@ -327,15 +244,26 @@ fn render_group_card(
                 s.border_color(hover_border)
             }
         })
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                this.begin_node_drag(nid_drag.clone(), npos, nsize, scale, ev);
+            }),
+        )
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
+            if this.drag_suppress_click {
+                this.drag_suppress_click = false;
+                return;
+            }
             this.select_node(Some(nid_sel.clone()), cx);
         }))
         .child(
             h_row()
                 .w_full()
                 .justify_between()
-                .gap(px(6.0))
+                .gap(px(5.0))
                 .px(px(10.0 * scale))
                 .pt(px(8.0 * scale))
                 .pb(px(4.0 * scale))
@@ -360,6 +288,7 @@ fn render_group_card(
                                 })),
                         ),
                 )
+                .children(pnode.pinned.then(|| pin_button(&node.id, scale, cx)))
                 .children(node.elapsed_ms.map(|ms| {
                     div()
                         .flex_shrink_0()
@@ -404,6 +333,7 @@ fn render_group_card(
                     .font_weight(gpui_kit::FontWeight::MEDIUM)
                     .text_color(to_hsla(p.accent_ink))
                     .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.toggle_group(nid_toggle.clone(), cx);
@@ -428,6 +358,7 @@ fn render_group_card(
                     .h(px(GRAPH_OVERFLOW_ROW_H * scale))
                     .px(px(10.0 * scale))
                     .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.select_node(Some(nid_more.clone()), cx);
@@ -456,6 +387,7 @@ fn render_group_card(
                     .text_color(to_hsla(p.muted))
                     .hover(|s| s.text_color(to_hsla(p.accent_ink)))
                     .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.toggle_group(nid_toggle.clone(), cx);
@@ -532,6 +464,7 @@ fn render_member_row(
         .border_color(to_hsla(p.line.composite_over(p.surface)))
         .cursor_pointer()
         .hover(move |s| if selected { s } else { s.bg(hover_bg) })
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
             this.select_node(Some(mid.clone()), cx);

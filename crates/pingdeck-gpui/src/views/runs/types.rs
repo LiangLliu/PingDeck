@@ -56,3 +56,14 @@ pub enum WorkflowModalHandoff {
     OpenChatSession(String),
     OpenUsageRun(String),
 }
+
+/// Active mouse-drag session while manually repositioning a node card on the Process Graph canvas.
+#[derive(Debug, Clone)]
+pub struct GraphDragState {
+    pub node_id: String,
+    pub start_mouse: (f32, f32),
+    pub start_node_pos: (f32, f32),
+    pub node_size: (f32, f32),
+    pub scale: f32,
+    pub dragging: bool,
+}

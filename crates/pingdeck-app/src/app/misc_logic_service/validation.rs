@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app::{EnvironmentVariableInput, environment_service::duplicate_key_message},
     error::AppError,
-    flows::check_condition,
+    flows::{check_condition, check_flow_dag_cycles, has_dag_topology},
     regex::regex_check,
     workspace::{
         MockRouteType,
@@ -351,6 +351,17 @@ pub fn validate_flow(flow: &Flow) -> Vec<ValidationIssue> {
                 format!("flow step \"{label}\" condition: {reason}"),
             ));
         }
+        for (bi, branch) in step.branches.iter().enumerate() {
+            if let Some(reason) = check_condition(&branch.expression) {
+                issues.push(issue(
+                    format!("steps[{index}].branches[{bi}].expression"),
+                    format!(
+                        "flow step \"{label}\", branch \"{}\": {reason}",
+                        branch.label
+                    ),
+                ));
+            }
+        }
         for (position, extraction) in step.extractions.iter().enumerate() {
             if extraction.source == FlowExtractionSource::BodyRegex
                 && let Some(reason) = regex_check(&extraction.expression)
@@ -365,6 +376,17 @@ pub fn validate_flow(flow: &Flow) -> Vec<ValidationIssue> {
                 ));
             }
         }
+    }
+    if has_dag_topology(flow)
+        && let Err(cyclic) = check_flow_dag_cycles(flow)
+    {
+        issues.push(issue(
+            "steps",
+            format!(
+                "flow contains a dependency cycle involving: {}",
+                cyclic.join(", ")
+            ),
+        ));
     }
     issues
 }

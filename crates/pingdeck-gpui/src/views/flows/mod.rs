@@ -1,20 +1,25 @@
-//! Complete Flows orchestration module (`NavModule::Flows`).
-//!
-//! Multi-step API pipeline builder & runner backed by `pingdeck_core::app::flow_service`:
-//! - Master sidebar with search, step counts, and last-run pass/fail/cancelled badges
-//! - Ordered step pipeline with inline or saved-request steps, reorder, duplicate, partial run
-//!   ("Run up to step" / "Run only this step"), and live streaming `FlowEvent` progress
-//! - Step inspector for Request Overrides, Extractions, Assertions, Condition/Retries, and Output
-//! - Execution console showing live run progress, masked captured variables, and past 20 runs.
+//! Complete Flows orchestration module (`NavModule::Flows`) powered by the unified
+//! ProcessView Engine:
+//! - Left sidebar with search, step counts, and last-run pass/fail/cancelled badges
+//! - Top bar with environment picker, history playback switcher (`[‹] [#N ▾] [›]`), captured
+//!   variables inspector modal, options/swimlanes, save, and run/stop
+//! - Unified 3-view workspace (`Steps | Graph | Timeline`) with `LR / TB / Wrap`, swimlanes,
+//!   auto `{{var}}` dataflow arcs, hoverable `+` edge insertion, hybrid drag-to-reposition,
+//!   and a docked slide-out dual-mode `Node Inspector`.
 
 pub mod actions;
+pub mod actions_topology;
+pub mod graph;
+pub mod graph_cards;
 pub mod inspector;
 pub mod inspector_exec;
+pub mod inspector_topology;
 pub mod modals;
-pub mod run_panel;
 pub mod sidebar;
 pub mod state;
 pub mod steps_pane;
+pub mod timeline;
+pub mod toolbar;
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -25,17 +30,17 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::app::settings_get_impl;
 use pingdeck_desktop::core::model::items::FlowExtractionSource;
+use pingdeck_desktop::state::{FlowViewMode, build_flow_graph_layout};
 
 use crate::bridge::runtime;
 use crate::ui::{
     Anchor, EditorState, InputEvent, InputState, StatusShape, Tone, UiIcon, badge, btn_danger,
-    btn_ghost, btn_icon, btn_primary, btn_secondary, dismissible_banner, empty_state_with_actions,
+    btn_icon, btn_primary, btn_secondary, dismissible_banner, empty_state_with_actions,
     h_resizable, h_row, icon_xs, list_row, meta_pill, palette, popover, progress_bar,
     resizable_panel, select_pill, status_indicator, text_input, to_hsla, toolbar_strip, v_col,
-    v_resizable,
 };
 
-use state::{FlowModal, FlowRunTab, FlowStepTab};
+use state::{FlowModal, FlowStepTab};
 pub use state::{FlowsHandoff, FlowsView};
 
 impl FlowsView {
@@ -73,6 +78,12 @@ impl FlowsView {
             cx.new(|cx| InputState::new(window, cx).placeholder("Expected value (e.g. 200)"));
         let seed_key_input = cx.new(|cx| InputState::new(window, cx).placeholder("Variable key"));
         let seed_val_input = cx.new(|cx| InputState::new(window, cx).placeholder("Seed value"));
+        let lane_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_lane_name()));
+        let branch_label_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_branch_label()));
+        let branch_expr_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("{{tier}} == vip (blank = Else)"));
         let req_picker_search =
             cx.new(|cx| InputState::new(window, cx).placeholder(f_tr.ph_search_requests()));
         let new_flow_name_input =
@@ -124,16 +135,20 @@ impl FlowsView {
             dirty: false,
             selected_step_id: None,
             selected_env_id: None,
+            view_mode: FlowViewMode::Graph,
             step_tab: FlowStepTab::Request,
-            run_tab: FlowRunTab::LiveRun,
-            inspector_open: true,
+            inspector_open: false,
+            graph_zoom: 1.0,
+            drag_state: None,
+            alignment_guides: Vec::new(),
+            drag_suppress_click: false,
             running: false,
             cancel_token: None,
             live_total: 0,
             live_steps: HashMap::new(),
             last_result: None,
             past_runs: Vec::new(),
-            selected_past_run_id: None,
+            active_history_run_id: None,
             new_ext_source: FlowExtractionSource::BodyJsonPath,
             new_ext_secret: false,
             new_assert_kind_idx: 0,
@@ -156,6 +171,9 @@ impl FlowsView {
             assert_path_input,
             seed_key_input,
             seed_val_input,
+            lane_name_input,
+            branch_label_input,
+            branch_expr_input,
             req_picker_search,
             new_flow_name_input,
             active_modal: None,
@@ -184,10 +202,14 @@ impl FlowsView {
         self.draft = None;
         self.dirty = false;
         self.selected_step_id = None;
+        self.inspector_open = false;
         self.selected_env_id = None;
         self.live_steps.clear();
         self.last_result = None;
         self.past_runs.clear();
+        self.active_history_run_id = None;
+        self.drag_state = None;
+        self.alignment_guides.clear();
         self.active_modal = None;
         if let Some(ws) = workspace_id {
             self.reload(ws, cx);
@@ -202,13 +224,19 @@ impl FlowsView {
         }
     }
 
+    /// Layered `Esc` dismissal: closes an open dialog first, then collapses the Node Inspector.
     pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
         if self.active_modal.take().is_some() {
             cx.notify();
-            true
-        } else {
-            false
+            return true;
         }
+        if self.inspector_open {
+            self.inspector_open = false;
+            self.selected_step_id = None;
+            cx.notify();
+            return true;
+        }
+        false
     }
 
     #[must_use]
@@ -231,11 +259,15 @@ impl Render for FlowsView {
             self.sync_inputs(window, cx);
         }
         let p = palette(cx);
+        let fl = crate::ui::Tr(self.lang).flows();
         let left = sidebar::render_sidebar(self, cx);
 
         let right = if let Some(flow) = self.draft.clone() {
             let fid_del = flow.id.clone();
             let fname_del = flow.name.clone();
+            let overlay = self.active_overlay_source();
+            let graph_layout =
+                build_flow_graph_layout(&flow, &self.requests, overlay, self.running);
 
             let ent_env = cx.entity().clone();
             let envs_pop = self.environments.clone();
@@ -246,12 +278,12 @@ impl Render for FlowsView {
             let env_label = sel_env
                 .map(|e| {
                     if e.confirm_before_send {
-                        format!("● {} ({})", e.name, crate::ui::tr(cx).flows().flows_guard())
+                        format!("● {} ({})", e.name, fl.flows_guard())
                     } else {
                         e.name.clone()
                     }
                 })
-                .unwrap_or_else(|| crate::ui::tr(cx).flows().flows_no_env().to_owned());
+                .unwrap_or_else(|| fl.flows_no_env().to_owned());
 
             let env_picker = popover("flow-env-pop")
                 .anchor(Anchor::TopLeft)
@@ -337,7 +369,7 @@ impl Render for FlowsView {
                         .flex_1()
                         .min_w_0()
                         .gap(px(8.0))
-                        .child(div().w(px(210.0)).child(text_input(&self.flow_name_input)))
+                        .child(div().w(px(196.0)).child(text_input(&self.flow_name_input)))
                         .child(
                             div()
                                 .flex_1()
@@ -347,33 +379,18 @@ impl Render for FlowsView {
                 )
                 .child(
                     h_row()
-                        .gap(px(6.0))
+                        .gap(px(5.0))
                         .flex_shrink_0()
                         .child(env_picker)
+                        .child(toolbar::render_history_switcher(self, cx))
+                        .child(toolbar::render_variables_btn(self, cx))
                         .child(
-                            btn_ghost(
-                                "flow-insp-tog",
-                                if self.inspector_open {
-                                    crate::ui::Tr(self.lang).flows().flows_hide_inspector()
-                                } else {
-                                    crate::ui::Tr(self.lang).flows().flows_inspector()
-                                },
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.inspector_open = !this.inspector_open;
-                                cx.notify();
-                            })),
-                        )
-                        .child(
-                            btn_secondary(
-                                "flow-opt-btn",
-                                crate::ui::Tr(self.lang).flows().flows_options(),
-                            )
-                            .icon(icon_xs(UiIcon::Sliders))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.active_modal = Some(FlowModal::Options);
-                                cx.notify();
-                            })),
+                            btn_secondary("flow-opt-btn", fl.flows_options())
+                                .icon(icon_xs(UiIcon::Sliders))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.active_modal = Some(FlowModal::Options);
+                                    cx.notify();
+                                })),
                         )
                         .child(if self.dirty {
                             btn_primary("flow-save-btn", crate::ui::Tr(self.lang).common().save())
@@ -387,32 +404,26 @@ impl Render for FlowsView {
                             .on_click(cx.listener(|this, _, _, cx| this.save_flow(cx)))
                         })
                         .child(if self.running {
-                            btn_danger(
-                                "flow-run-btn",
-                                crate::ui::Tr(self.lang).flows().flows_stop(),
-                            )
-                            .icon(icon_xs(UiIcon::Stop))
-                            .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx)))
+                            btn_danger("flow-run-btn", fl.flows_stop())
+                                .icon(icon_xs(UiIcon::Stop))
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_run(cx)))
                         } else {
-                            btn_primary(
-                                "flow-run-btn",
-                                crate::ui::Tr(self.lang).flows().flows_run_flow(),
-                            )
-                            .icon(icon_xs(UiIcon::Play))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.run_flow(None, None, None, cx);
-                            }))
+                            btn_primary("flow-run-btn", fl.flows_run_flow())
+                                .icon(icon_xs(UiIcon::Play))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.run_flow(None, None, None, cx);
+                                }))
                         })
                         .child(
                             btn_icon("flow-dup-btn", UiIcon::Copy)
-                                .tooltip(crate::ui::Tr(self.lang).flows().head_duplicate())
+                                .tooltip(fl.head_duplicate())
                                 .on_click(
                                     cx.listener(|this, _, _, cx| this.duplicate_selected(cx)),
                                 ),
                         )
                         .child(
                             btn_icon("flow-del-btn", UiIcon::Trash)
-                                .tooltip(crate::ui::Tr(self.lang).flows().head_delete())
+                                .tooltip(fl.head_delete())
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.active_modal = Some(FlowModal::DeleteFlow {
                                         id: fid_del.clone(),
@@ -423,19 +434,29 @@ impl Render for FlowsView {
                         ),
                 );
 
-            let editor_split = h_row()
-                .size_full()
-                .min_h_0()
-                .child(steps_pane::render_steps_pane(self, cx))
-                .children(self.inspector_open.then(|| {
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .h_full()
-                        .child(inspector::render_step_inspector(self, cx))
-                }));
+            let view_bar = toolbar::render_view_toolbar(self, &flow, &graph_layout, cx);
 
-            let mut detail = v_col().size_full().min_h_0().child(top_bar);
+            let main_stage = match self.view_mode {
+                FlowViewMode::Graph => graph::render_flow_graph(self, &graph_layout, cx),
+                FlowViewMode::Steps => steps_pane::render_steps_view(self, &graph_layout, cx),
+                FlowViewMode::Timeline => timeline::render_flow_timeline(self, &graph_layout, cx),
+            };
+
+            let workspace_stage = if self.inspector_open && self.selected_step_id.is_some() {
+                h_resizable("flow-stage-split")
+                    .child(resizable_panel().child(main_stage))
+                    .child(
+                        resizable_panel()
+                            .size(px(430.0))
+                            .size_range(px(340.0)..px(580.0))
+                            .child(inspector::render_step_inspector(self, cx)),
+                    )
+                    .into_any_element()
+            } else {
+                div().size_full().child(main_stage).into_any_element()
+            };
+
+            let mut detail = v_col().size_full().min_h_0().child(top_bar).child(view_bar);
             if self.running {
                 let pct = if self.live_total > 0 {
                     (self.live_steps.len() as f32 / self.live_total as f32) * 100.0
@@ -453,18 +474,12 @@ impl Render for FlowsView {
                         .child(
                             h_row()
                                 .justify_between()
-                                .child(
-                                    div().text_xs().text_color(to_hsla(p.ink)).child(
-                                        SharedString::from(
-                                            crate::ui::tr(cx)
-                                                .flows()
-                                                .flows_running_flow_steps_complete(
-                                                    self.live_steps.len(),
-                                                    self.live_total,
-                                                ),
-                                        ),
-                                    ),
-                                )
+                                .child(div().text_xs().text_color(to_hsla(p.ink)).child(
+                                    SharedString::from(fl.flows_running_flow_steps_complete(
+                                        self.live_steps.len(),
+                                        self.live_total,
+                                    )),
+                                ))
                                 .child(meta_pill("HistoryOnly", cx)),
                         )
                         .child(progress_bar("flow-live-prog", pct)),
@@ -483,18 +498,7 @@ impl Render for FlowsView {
                 )));
             }
             detail
-                .child(
-                    div().flex_1().min_h_0().w_full().child(
-                        v_resizable("flow-vert-split")
-                            .child(resizable_panel().child(editor_split))
-                            .child(
-                                resizable_panel()
-                                    .size(px(210.0))
-                                    .size_range(px(120.0)..px(420.0))
-                                    .child(run_panel::render_run_panel(self, cx)),
-                            ),
-                    ),
-                )
+                .child(div().flex_1().min_h_0().w_full().child(workspace_stage))
                 .child(
                     h_row()
                         .flex_shrink_0()
@@ -506,29 +510,21 @@ impl Render for FlowsView {
                         .border_color(to_hsla(p.line.composite_over(p.pane)))
                         .text_size(px(10.5))
                         .text_color(to_hsla(p.faint))
-                        .child(
-                            crate::ui::Tr(self.lang)
-                                .flows()
-                                .flows_persistence_historyonly_writes_history_doe(),
-                        ),
+                        .child(fl.flows_persistence_historyonly_writes_history_doe())
+                        .child(SharedString::from(fl.footer_hint())),
                 )
         } else {
             v_col().size_full().child(empty_state_with_actions(
                 UiIcon::Workflow,
-                crate::ui::Tr(self.lang).flows().flows_no_flow_selected(),
-                crate::ui::Tr(self.lang)
-                    .flows()
-                    .flows_create_multi_step_api_flows(),
+                fl.flows_no_flow_selected(),
+                fl.flows_create_multi_step_api_flows(),
                 Some(
-                    btn_primary(
-                        "flow-empty-new",
-                        crate::ui::Tr(self.lang).flows().flows_new_flow(),
-                    )
-                    .icon(icon_xs(UiIcon::Plus))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_create_flow_modal(window, cx);
-                    }))
-                    .into_any_element(),
+                    btn_primary("flow-empty-new", fl.flows_new_flow())
+                        .icon(icon_xs(UiIcon::Plus))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_create_flow_modal(window, cx);
+                        }))
+                        .into_any_element(),
                 ),
                 cx,
             ))
@@ -538,8 +534,8 @@ impl Render for FlowsView {
             h_resizable("flow-main-split")
                 .child(
                     resizable_panel()
-                        .size(px(250.0))
-                        .size_range(px(200.0)..px(360.0))
+                        .size(px(240.0))
+                        .size_range(px(200.0)..px(340.0))
                         .child(left),
                 )
                 .child(resizable_panel().child(right)),
@@ -547,7 +543,6 @@ impl Render for FlowsView {
         if let Some(modal) = modals::render_modal(self, window, cx) {
             root = root.child(modal);
         }
-        let _ = Tone::Neutral;
         root
     }
 }

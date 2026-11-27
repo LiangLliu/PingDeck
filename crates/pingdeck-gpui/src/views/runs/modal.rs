@@ -12,7 +12,10 @@ use gpui_kit::{
 use pingdeck_desktop::core::agent::dto::{AgentRunTopology, SessionRunHistoryItem};
 use pingdeck_desktop::core::agent::model::FileChange;
 use pingdeck_desktop::core::agent::tools::process::{BackgroundProcess, ProcessState};
-use pingdeck_desktop::state::{RunViewMode, is_graph_available, select_default_view_mode};
+use pingdeck_desktop::state::{
+    AlignmentGuide, CrossAlignment, LayoutDirection, LayoutPolicy, RunViewMode, is_graph_available,
+    select_default_view_mode,
+};
 
 use crate::ui::{
     InputState, ScrollableElement as _, Tone, btn_secondary, empty_inline, h_resizable,
@@ -28,7 +31,7 @@ use super::modal_header::render_modal_header;
 use super::node_inspector::render_node_inspector;
 use super::steps::render_steps_view;
 use super::timeline::render_timeline_view;
-use super::types::{HistoryPickerFilter, WorkflowModalHandoff, WorkflowTab};
+use super::types::{GraphDragState, HistoryPickerFilter, WorkflowModalHandoff, WorkflowTab};
 
 /// Reusable 90% viewport overlay displaying one session/run's Execution Graph, Steps, Timeline,
 /// File Changes Diff workbench, background processes, and deep 7-archetype Node Inspector.
@@ -52,6 +55,11 @@ pub struct WorkflowMonitorModal {
     pub expanded_rounds: HashSet<String>,
     pub expanded_sections: HashSet<String>,
     pub graph_zoom: f32,
+    pub layout_policy: LayoutPolicy,
+    pub pinned_positions: HashMap<String, (f32, f32)>,
+    pub drag_state: Option<GraphDragState>,
+    pub alignment_guides: Vec<AlignmentGuide>,
+    pub drag_suppress_click: bool,
     pub node_recovery_input: Entity<InputState>,
     pub full_output_dialog: Option<(String, String)>,
     pub status_msg: Option<(Tone, String)>,
@@ -86,6 +94,11 @@ impl WorkflowMonitorModal {
             expanded_rounds: HashSet::new(),
             expanded_sections: HashSet::new(),
             graph_zoom: 1.0,
+            layout_policy: LayoutPolicy::default(),
+            pinned_positions: HashMap::new(),
+            drag_state: None,
+            alignment_guides: Vec::new(),
+            drag_suppress_click: false,
             node_recovery_input,
             full_output_dialog: None,
             status_msg: None,
@@ -133,6 +146,9 @@ impl WorkflowMonitorModal {
             self.selected_node_id = None;
             self.user_cleared_selection = false;
             self.expanded_sections.clear();
+            self.pinned_positions.clear();
+            self.drag_state = None;
+            self.alignment_guides.clear();
         }
         if session_changed {
             self.session_history.clear();
@@ -195,6 +211,9 @@ impl WorkflowMonitorModal {
         self.selected_node_id = None;
         self.user_cleared_selection = false;
         self.expanded_sections.clear();
+        self.pinned_positions.clear();
+        self.drag_state = None;
+        self.alignment_guides.clear();
         self.load_topology(cx);
         cx.notify();
     }
@@ -296,6 +315,51 @@ impl WorkflowMonitorModal {
     pub fn set_zoom(&mut self, zoom: f32, cx: &mut Context<Self>) {
         self.graph_zoom = zoom.clamp(0.75, 1.15);
         cx.notify();
+    }
+
+    pub fn set_layout_direction(&mut self, direction: LayoutDirection, cx: &mut Context<Self>) {
+        if self.layout_policy.direction != direction {
+            self.layout_policy.direction = direction;
+            if direction.is_serpentine() {
+                self.layout_policy.swimlanes = false;
+            }
+            self.pinned_positions.clear();
+            self.drag_state = None;
+            self.alignment_guides.clear();
+            cx.notify();
+        }
+    }
+
+    pub fn toggle_alignment(&mut self, cx: &mut Context<Self>) {
+        self.layout_policy.alignment = match self.layout_policy.alignment {
+            CrossAlignment::Start => CrossAlignment::Center,
+            CrossAlignment::Center | CrossAlignment::Barycenter => CrossAlignment::Start,
+        };
+        cx.notify();
+    }
+
+    pub fn toggle_swimlanes(&mut self, cx: &mut Context<Self>) {
+        self.layout_policy.swimlanes = !self.layout_policy.swimlanes;
+        if self.layout_policy.swimlanes && self.layout_policy.direction.is_serpentine() {
+            self.layout_policy.direction = LayoutDirection::LeftToRight;
+        }
+        self.pinned_positions.clear();
+        self.drag_state = None;
+        self.alignment_guides.clear();
+        cx.notify();
+    }
+
+    pub fn reset_pinned_layout(&mut self, cx: &mut Context<Self>) {
+        self.pinned_positions.clear();
+        self.drag_state = None;
+        self.alignment_guides.clear();
+        cx.notify();
+    }
+
+    pub fn unpin_node(&mut self, node_id: &str, cx: &mut Context<Self>) {
+        if self.pinned_positions.remove(node_id).is_some() {
+            cx.notify();
+        }
     }
 
     pub fn open_chat_and_close(&mut self, session_id: String, cx: &mut Context<Self>) {

@@ -7,6 +7,110 @@ window.PingDeckOverlays = (() => {
   const toastRoot = () => byId("toast-root");
 
   const wizardState = { sniffStep: 1, connectTool: "claude", snippetLang: "curl", importTab: "import" };
+  const rmState = {
+    runIdx: 0,
+    view: "graph",
+    direction: "lr",
+    align: "center",
+    swimlanes: true,
+    zoom: 1,
+    selectedId: "root",
+    pinned: {},
+  };
+
+  function renderRunMonitor() {
+    const runs = window.PD?.AGENT_WORKFLOWS || [];
+    const model = runs[rmState.runIdx] || runs[0];
+    const stage = byId("rm-stage-main");
+    const detail = byId("rm-node-detail");
+    if (!model || !stage || !detail) return;
+    if (!model.nodes.some((n) => n.id === rmState.selectedId)) {
+      rmState.selectedId = model.nodes[0]?.id || null;
+    }
+
+    const lbl = byId("rm-run-label");
+    if (lbl) lbl.textContent = model.runLabel;
+    const kpiBox = byId("rm-kpis");
+    if (kpiBox) {
+      kpiBox.innerHTML = model.kpis
+        .map((k) => `<span class="tag ${k.tone === "text-warn" ? "tag-warn" : k.tone === "text-ok" ? "tag-ok" : ""}"><b>${k.label}</b> ${k.val}</span>`)
+        .join("");
+    }
+    const root = byId("rm-canvas-root");
+    root?.querySelectorAll("[data-rm-view]").forEach((b) => b.classList.toggle("active", b.dataset.rmView === rmState.view));
+    root?.querySelectorAll("[data-rm-dir]").forEach((b) => b.classList.toggle("active", b.dataset.rmDir === rmState.direction));
+    const lanesBtn = byId("rm-toggle-lanes");
+    if (lanesBtn) lanesBtn.classList.toggle("tag-accent", rmState.swimlanes);
+    const alignBtn = byId("rm-toggle-align");
+    if (alignBtn) {
+      alignBtn.classList.toggle("tag-accent", rmState.align === "center");
+      alignBtn.textContent = rmState.align === "center" ? "居中" : "顶对齐";
+    }
+    const resetBtn = byId("rm-reset-layout");
+    if (resetBtn) resetBtn.hidden = Object.keys(rmState.pinned).length === 0;
+    const zoomLbl = byId("rm-zoom-lbl");
+    if (zoomLbl) zoomLbl.textContent = `${Math.round(rmState.zoom * 100)}%`;
+
+    const pv = window.PD?.ProcessView;
+    const opts = {
+      instanceId: "rm",
+      editable: false,
+      onSelect: (id) => { rmState.selectedId = id; renderRunMonitor(); },
+      onBlankClick: () => { rmState.selectedId = null; renderRunMonitor(); },
+      onMutate: () => renderRunMonitor(),
+      onLaneChange: (node, band) => toast(`已将「${node.title}」移入泳道「${band.label}」`),
+    };
+
+    if (rmState.view === "changes") {
+      stage.innerHTML = `
+        <div class="pv-steps-wrap">
+          <div class="card-panel">
+            <div class="card-panel-head">
+              <span><b>crates/pingdeck-core/src/llm/router.rs</b></span>
+              <span class="mono"><span class="text-ok">+18</span> <span class="text-bad">-4</span></span>
+            </div>
+            <div class="diff-box" style="margin-top:0">
+              <div class="diff-head"><span>@@ -212,7 +212,8 @@ impl Router</span><button type="button" class="btn btn-sm" data-toast="已从编辑前快照撤销 router.rs 改动">撤销此文件改动</button></div>
+              <div class="diff-row">  214   match status {</div>
+              <div class="diff-row del">- 215     429 | 500..=599 =&gt; breaker.trip(target, Duration::from_secs(60)),</div>
+              <div class="diff-row add">+ 215     429 =&gt; honor_retry_after(&amp;headers, MAX_RETRY_WAIT),</div>
+              <div class="diff-row add">+ 216     500..=599 =&gt; breaker.record_failure(target, FAILURES_BEFORE_TRIP),</div>
+            </div>
+          </div>
+        </div>`;
+    } else if (rmState.view === "steps") {
+      pv?.renderSteps(stage, model, rmState, opts);
+    } else if (rmState.view === "timeline") {
+      pv?.renderTimeline(stage, model, rmState, opts);
+    } else {
+      pv?.renderGraph(stage, model, rmState, opts);
+    }
+
+    const selNode = model.nodes.find((n) => n.id === rmState.selectedId);
+    detail.hidden = !selNode || rmState.view === "changes";
+    if (selNode) {
+      const toneCls = selNode.status === "warn" ? "tag-warn" : selNode.status === "bad" ? "tag-bad" : "tag-ok";
+      const laneName = model.lanes?.find((l) => l.id === selNode.lane)?.label || "默认";
+      detail.innerHTML = `
+        <div class="pane-head">
+          <span class="pane-title truncate" style="font-size:13px">${selNode.title}</span>
+          <button type="button" class="btn-icon" data-rm-close-detail title="关闭详情">×</button>
+        </div>
+        <div class="pv-inspector-body">
+          <div class="row-between"><span class="tag ${toneCls}">${selNode.metric || "已完成"}</span><span class="tag">泳道：${laneName}</span></div>
+          <div class="card-panel">
+            <div class="card-panel-head"><span>执行信息</span></div>
+            <div class="fs-xs text-muted">模型：<code class="text-ink1">${selNode.model || "—"}</code></div>
+            <div class="fs-xs text-muted">统计：<b class="mono text-ink1">${selNode.meta || selNode.metric || "—"}</b></div>
+          </div>
+          <div class="card-panel">
+            <div class="card-panel-head"><span>节点摘要与日志</span></div>
+            <div class="code-box fs-2xs" style="white-space:pre-wrap">${selNode.log || "无日志"}</div>
+          </div>
+          ${selNode.status === "warn" ? `<button type="button" class="btn btn-sm btn-primary" data-action="close-dialog" data-nav-to="chat">前往对话关卡区审批 →</button>` : ""}
+        </div>`;
+    }
+  }
 
   function toast(msg, opts = {}) {
     const { tone = "ok", undo } = opts;
@@ -99,6 +203,7 @@ window.PingDeckOverlays = (() => {
     }
     bindConfirmGate("full-access-ack", "full-access-confirm");
     bindConfirmGate("secret-export-ack", "secret-export-confirm");
+    if (id === "run-monitor") renderRunMonitor();
   }
 
   function openDrawer(id) {
@@ -133,7 +238,7 @@ window.PingDeckOverlays = (() => {
       return;
     }
 
-    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-rm-node], [data-rm-view], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
+    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-pick-flow-run], [data-rm-view], [data-rm-dir], [data-rm-toggle], [data-rm-reset], [data-rm-zoom], [data-rm-run-prev], [data-rm-run-next], [data-rm-close-detail], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
     if (!t) {
       if (!e.target.closest(".pop-box")) closeAllPopovers();
       return;
@@ -143,6 +248,11 @@ window.PingDeckOverlays = (() => {
     if (t.dataset.modal) {
       if (t.dataset.modal === "add-provider") wizardState.sniffStep = 1;
       if (t.dataset.modal === "import-export") wizardState.importTab = "import";
+      if (t.dataset.modal === "run-monitor") {
+        if (t.dataset.rmRunIdx !== undefined) rmState.runIdx = Number(t.dataset.rmRunIdx) || 0;
+        rmState.view = t.dataset.rmInitialTab || "graph";
+        rmState.pinned = {};
+      }
       openDialog(t.dataset.modal);
       return;
     }
@@ -280,28 +390,32 @@ window.PingDeckOverlays = (() => {
       closeAllPopovers();
       return;
     }
-    if (t.dataset.rmView) {
-      const target = t.dataset.rmView;
-      const canvas = t.closest(".rm-canvas");
-      canvas?.querySelectorAll("[data-rm-view]").forEach((b) => b.classList.toggle("active", b === t));
-      canvas?.querySelectorAll("[data-rm-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.rmPanel !== target));
+    if (t.dataset.pickFlowRun !== undefined) {
+      window.PD?.flowUi?.selectRun?.(Number(t.dataset.pickFlowRun));
+      closeAllPopovers();
       return;
     }
-    if (t.dataset.rmNode) {
-      const nodes = {
-        root: { title: "节点详情 · 主智能体 · 启动", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-pro", meta: "1.20 s · 4,210 tok", log: "并行派生 2 个子智能体：\n1. 调研：定位 router.rs 中 429 与 5xx 熔断分支\n2. 调研：核对 DeepSeek Retry-After 响应头格式" },
-        explore: { title: "节点详情 · 检索 router.rs", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-flash", meta: "1.80 s · 3,200 tok", log: "read_file crates/pingdeck-core/src/llm/router.rs:205-248\n定位到 match status 中 429 与 500..=599 合并触发 60s 熔断。" },
-        search: { title: "节点详情 · 核对 429 规范", tag: "已完成", tone: "tag-ok", model: "web_search（只读）", meta: "1.70 s · 1,920 tok", log: "检索 3 个来源：确认 Retry-After 秒数头与退避上限 15s 策略。" },
-        edit: { title: "节点详情 · 编辑与验证", tag: "待审批", tone: "tag-warn", model: "DeepSeek/deepseek-v4-pro", meta: "7.20 s · 19,570 tok", log: "edit_file router.rs (+18 -4)\ncargo test -p pingdeck-core router → 14 passed\n等待用户批准：cargo clippy -p pingdeck-core -- -D warnings" },
-      };
-      const info = nodes[t.dataset.rmNode];
-      t.closest(".rm-canvas")?.querySelectorAll("[data-rm-node]").forEach((n) => n.classList.toggle("selected", n.dataset.rmNode === t.dataset.rmNode));
-      const det = byId("rm-node-detail");
-      if (info && det) {
-        det.innerHTML = `<div class="card-panel-head"><span>${info.title}</span><span class="tag ${info.tone}">${info.tag}</span></div><div class="fs-xs text-muted">模型：<code class="text-ink1">${info.model}</code></div><div class="fs-xs text-muted">耗时与消耗：<b class="mono text-ink1">${info.meta}</b></div><div class="code-box" style="white-space:pre-wrap">${info.log}</div>`;
-      }
+    if (t.dataset.rmView) { rmState.view = t.dataset.rmView; renderRunMonitor(); return; }
+    if (t.dataset.rmDir) { rmState.direction = t.dataset.rmDir; renderRunMonitor(); return; }
+    if (t.dataset.rmToggle === "lanes") { rmState.swimlanes = !rmState.swimlanes; renderRunMonitor(); return; }
+    if (t.dataset.rmToggle === "align") { rmState.align = rmState.align === "center" ? "top" : "center"; renderRunMonitor(); return; }
+    if (t.dataset.rmReset !== undefined) { rmState.pinned = {}; renderRunMonitor(); toast("已恢复自动排版"); return; }
+    if (t.dataset.rmZoom) { rmState.zoom = Math.min(1.6, Math.max(0.55, +(rmState.zoom + Number(t.dataset.rmZoom)).toFixed(2))); renderRunMonitor(); return; }
+    if (t.dataset.rmRunPrev !== undefined) {
+      const n = (window.PD?.AGENT_WORKFLOWS || []).length || 1;
+      rmState.runIdx = (rmState.runIdx + n - 1) % n;
+      rmState.pinned = {};
+      renderRunMonitor();
       return;
     }
+    if (t.dataset.rmRunNext !== undefined) {
+      const n = (window.PD?.AGENT_WORKFLOWS || []).length || 1;
+      rmState.runIdx = (rmState.runIdx + 1) % n;
+      rmState.pinned = {};
+      renderRunMonitor();
+      return;
+    }
+    if (t.dataset.rmCloseDetail !== undefined) { rmState.selectedId = null; renderRunMonitor(); return; }
 
     switch (t.dataset.action) {
       case "close-dialog": closeDialog(); break;

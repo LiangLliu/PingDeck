@@ -109,10 +109,16 @@ pub fn flow_step_duplicate(mut steps: Vec<FlowStep>, id: &str) -> Result<Vec<Flo
     Ok(steps)
 }
 
-/// Removes step `id`; the remaining steps are renumbered.
+/// Removes step `id`; cleans dangling DAG references and renumbers remaining steps.
 pub fn flow_step_remove(mut steps: Vec<FlowStep>, id: &str) -> Result<Vec<FlowStep>, AppError> {
     let index = step_index(&steps, id)?;
     steps.remove(index);
+    for step in &mut steps {
+        step.depends_on.retain(|dep| dep != id);
+        for branch in &mut step.branches {
+            branch.target_step_ids.retain(|t| t != id);
+        }
+    }
     reindex_steps(&mut steps);
     Ok(steps)
 }
@@ -124,15 +130,41 @@ fn step_index(steps: &[FlowStep], id: &str) -> Result<usize, AppError> {
         .ok_or_else(|| AppError::not_found(format!("flow step {id} not found")))
 }
 
-/// Returns an unsaved copy of `flow`: fresh flow and step ids, name suffixed ` copy`.
+/// Returns an unsaved copy of `flow`: fresh flow and step ids with DAG references and pinned
+/// positions remapped, name suffixed ` copy`.
 #[must_use]
 pub fn flow_duplicate(mut flow: Flow) -> Flow {
     flow.id = new_entity_id("flow");
     flow.name = format!("{} copy", flow.name);
     flow.updated_at_ms = 0;
+    let mut id_map = std::collections::HashMap::with_capacity(flow.steps.len());
     for step in &mut flow.steps {
-        step.id = new_entity_id("step");
+        let old = step.id.clone();
+        let fresh = new_entity_id("step");
+        step.id = fresh.clone();
+        id_map.insert(old, fresh);
     }
+    for step in &mut flow.steps {
+        for dep in &mut step.depends_on {
+            if let Some(mapped) = id_map.get(dep) {
+                *dep = mapped.clone();
+            }
+        }
+        for branch in &mut step.branches {
+            branch.id = new_entity_id("br");
+            for target in &mut branch.target_step_ids {
+                if let Some(mapped) = id_map.get(target) {
+                    *target = mapped.clone();
+                }
+            }
+        }
+    }
+    flow.options.pinned_positions = flow
+        .options
+        .pinned_positions
+        .into_iter()
+        .map(|(k, v)| (id_map.get(&k).cloned().unwrap_or(k), v))
+        .collect();
     reindex_steps(&mut flow.steps);
     flow
 }

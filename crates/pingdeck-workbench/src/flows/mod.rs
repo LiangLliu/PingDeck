@@ -11,6 +11,7 @@
 //! can be debugged without replaying it.
 
 mod condition;
+mod dag;
 mod explain;
 mod progress;
 
@@ -19,6 +20,7 @@ mod eval;
 mod tests;
 
 pub use condition::{MAX_CONDITION_BYTES, check_condition};
+pub use dag::{MAX_FLOW_CONCURRENCY, check_flow_dag_cycles, has_dag_topology};
 pub use explain::explain_failure;
 pub use progress::{FlowEvent, forward_flow_events, summarize_run};
 
@@ -37,7 +39,7 @@ use crate::executor::ExecutionResult;
 use crate::workspace::items::{
     ExecutedRequestSummary, ExplanationAction, FailureExplanation, FailureKind, Flow,
     FlowAttemptResult, FlowBodyKind, FlowRetryOn, FlowRunInput, FlowRunResult, FlowStep,
-    FlowStepResult,
+    FlowStepKind, FlowStepResult,
 };
 use crate::workspace::models::{
     HISTORY_BODY_PREVIEW_LIMIT_BYTES, NetworkField, RawLanguage, bounded_body_preview,
@@ -155,6 +157,21 @@ where
             ..variable
         })
         .collect();
+
+    if has_dag_topology(flow) && input.only_step.is_none() && input.max_steps.is_none() {
+        return dag::run_flow_dag(
+            flow,
+            requests,
+            input,
+            run,
+            started,
+            flow_variables,
+            condition_scopes,
+            execute_step,
+        )
+        .await;
+    }
+
     let mut results = Vec::with_capacity(steps.len());
     let mut passed = true;
     let mut cancelled = false;
@@ -175,207 +192,47 @@ where
             cancelled = true;
             break;
         }
-
-        let step_started = Instant::now();
-
-        // Conditions see the same variables the step's request will: scopes are rebuilt per step
-        // (script and earlier-step changes included), with the flow variables as the narrowest.
-        // A skipped step never waits for its delay.
-        if !step.condition_expression.trim().is_empty() {
-            let step_scopes = condition_scopes(
-                resolve_step_request(flow, step, requests).ok(),
-                flow_variables.clone(),
-            )
-            .await;
-            let rendered = || Some(render_condition(&step.condition_expression, &step_scopes));
-            match evaluate_condition(&step.condition_expression, &step_scopes) {
-                Ok(true) => {}
-                Ok(false) => {
-                    let skipped = FlowStepResult {
-                        skipped: true,
-                        condition: rendered(),
-                        ..blank_result(step, elapsed_ms(step_started))
-                    };
-                    record(&mut results, run, index, skipped);
-                    continue;
-                }
-                Err(reason) => {
-                    let failed = FlowStepResult {
-                        passed: false,
-                        error: Some(format!("condition cannot be evaluated: {reason}")),
-                        condition: rendered(),
-                        ..blank_result(step, elapsed_ms(step_started))
-                    };
-                    record(&mut results, run, index, failed);
-                    passed = false;
-                    if !step.continue_on_error {
-                        break;
-                    }
-                    continue;
-                }
-            }
+        if step.step_kind != FlowStepKind::Request {
+            let res = blank_result(step, 0, Some(elapsed_ms(started)));
+            record(&mut results, run, index, res);
+            continue;
         }
 
-        let delay = Duration::from_millis(step.delay_ms);
-        if until_cancelled(cancel, sleep(delay)).await.is_none() {
-            cancelled = true;
-            break;
-        }
-
-        let mut request = match resolve_step_request(flow, step, requests) {
-            Ok(request) => request,
-            Err(issue) => {
-                record(
-                    &mut results,
-                    run,
-                    index,
-                    FlowStepResult {
-                        passed: false,
-                        error: Some(issue.message(index, step)),
-                        explanation: issue.explanation(index, step),
-                        ..blank_result(step, elapsed_ms(step_started))
-                    },
-                );
-                passed = false;
-                if !step.continue_on_error {
-                    break;
-                }
-                continue;
+        match execute_single_request_step(
+            flow,
+            step,
+            index,
+            requests,
+            flow_variables.clone(),
+            started,
+            cancel,
+            &condition_scopes,
+            &execute_step,
+        )
+        .await
+        {
+            SingleStepOutcome::Cancelled => {
+                cancelled = true;
+                break;
             }
-        };
-        // The saved request's own assertions judge the step too, unless the step opts out;
-        // the send pipeline evaluates the merged list once (history counts all of them).
-        let request_assertion_count = if step.ignore_request_assertions {
-            request.assertions.clear();
-            0
-        } else {
-            request.assertions.len()
-        };
-        request.assertions.extend(step.assertions.iter().cloned());
-        if let Some(timeout_ms) = step.timeout_ms {
-            request.network_options.timeout_ms = timeout_ms;
-            // The step's own timeout wins over the request's "follow Settings".
-            request
-                .network_options
-                .inherit
-                .retain(|field| *field != NetworkField::TimeoutMs);
-        }
-
-        let max_attempts = if step.retries > 0 && !step.retry_on.is_empty() {
-            u32::from(step.retries) + 1
-        } else {
-            1
-        };
-        let mut attempts = 0;
-        let mut attempt_list: Vec<FlowAttemptResult> = Vec::new();
-        let outcome = loop {
-            attempts += 1;
-            let attempt_started = Instant::now();
-            let outcome: Result<StepOutput, AppError> =
-                execute_step(request.clone(), flow_variables.clone())
-                    .await
-                    .map(Into::into);
-            let execution = outcome.as_ref().map(|output| &output.execution);
-            attempt_list.push(FlowAttemptResult {
-                attempt: attempts,
-                status_code: execution.ok().map(|execution| execution.status_code),
-                elapsed_ms: elapsed_ms(attempt_started),
-                error: execution.err().map(std::string::ToString::to_string),
-                timing: execution.ok().map(|execution| execution.timing),
-            });
-            if attempts >= max_attempts || !should_retry(step, execution) {
-                break Some(outcome);
-            }
-            let wait = Duration::from_millis(step.retry_wait_ms);
-            if until_cancelled(cancel, sleep(wait)).await.is_none() {
-                break None;
-            }
-        };
-        let Some(result) = outcome else {
-            cancelled = true;
-            break;
-        };
-        if result.as_ref().is_err_and(AppError::is_cancelled) {
-            cancelled = true;
-            break;
-        }
-
-        let mut step_result = blank_result(step, elapsed_ms(step_started));
-        step_result.attempts = attempts;
-        step_result.attempt_list = attempt_list;
-
-        let mut cause = None;
-        match result {
-            Ok(StepOutput { execution, local }) => {
-                if let Some(local) = local {
+            SingleStepOutcome::Finished {
+                result: step_result,
+                local_updates,
+                extracted,
+            } => {
+                if let Some(local) = local_updates {
                     apply_local(&mut flow_variables, local);
                 }
-                fill_step_result(&mut step_result, &execution);
-                step_result.request_assertion_count = request_assertion_count;
-
-                for extraction in &step.extractions {
-                    match extract_value(extraction, &execution) {
-                        Ok(value) => {
-                            set_variable(
-                                &mut flow_variables,
-                                &extraction.variable_name,
-                                &value,
-                                extraction.is_secret(),
-                            );
-                            step_result.extracted_variables.push(KeyValue {
-                                key: extraction.variable_name.clone(),
-                                value,
-                                enabled: true,
-                                description: None,
-                            });
-                        }
-                        Err(error) => {
-                            step_result.error = Some(error);
-                            step_result.passed = false;
-                        }
-                    }
+                for (k, v, is_secret) in extracted {
+                    set_variable(&mut flow_variables, &k, &v, is_secret);
                 }
-
-                if !step_result
-                    .assertion_results
-                    .iter()
-                    .all(|assertion| assertion.passed)
-                    || !execution
-                        .script_tests
-                        .iter()
-                        .all(|test| test.passed || test.skipped)
-                {
-                    step_result.passed = false;
-                }
-                if let Some(error) = &execution.script_error {
-                    step_result.passed = false;
-                    step_result.error.get_or_insert_with(|| {
-                        format!("script failed in {}: {}", error.source, error.message)
-                    });
-                }
-                // An AI run that did not end with an answer fails the step.
-                if let Some(error) = execution.ai.as_ref().and_then(|ai| ai.error.as_ref()) {
-                    step_result.passed = false;
-                    step_result.error.get_or_insert_with(|| error.clone());
+                passed &= step_result.passed;
+                let failed = !step_result.passed;
+                record(&mut results, run, index, *step_result);
+                if failed && !step.continue_on_error {
+                    break;
                 }
             }
-            Err(error) => {
-                if let AppError::Network { cause: network, .. } = &error {
-                    cause = *network;
-                }
-                step_result.passed = false;
-                step_result.error = Some(error.to_string());
-            }
-        }
-
-        step_result.explanation = explain_failure(step, &request.assertions, &step_result, cause);
-
-        passed &= step_result.passed;
-        let failed = !step_result.passed;
-        record(&mut results, run, index, step_result);
-
-        if failed && !step.continue_on_error {
-            break;
         }
     }
 
@@ -407,20 +264,243 @@ where
     }
 }
 
-/// Checks, before anything is sent, that every step `input` runs can build its request: a saved
-/// request that still exists, or an inline URL. The error names the first broken step by
-/// its number and name (not its id) and carries the step id in `keys`.
+pub(super) enum SingleStepOutcome {
+    Cancelled,
+    Finished {
+        result: Box<FlowStepResult>,
+        local_updates: Option<BTreeMap<String, String>>,
+        extracted: Vec<(String, String, bool)>,
+    },
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn execute_single_request_step<Step, StepFuture, Sent, Scopes, ScopesFuture>(
+    flow: &Flow,
+    step: &FlowStep,
+    index: usize,
+    requests: &HashMap<String, Request>,
+    flow_variables: Vec<EnvironmentVariable>,
+    run_started: Instant,
+    cancel: Option<&CancelToken>,
+    condition_scopes: &Scopes,
+    execute_step: &Step,
+) -> SingleStepOutcome
+where
+    Step: Fn(Request, Vec<EnvironmentVariable>) -> StepFuture,
+    StepFuture: Future<Output = Result<Sent, AppError>>,
+    Sent: Into<StepOutput>,
+    Scopes: Fn(Option<Request>, Vec<EnvironmentVariable>) -> ScopesFuture,
+    ScopesFuture: Future<Output = VariableScopes>,
+{
+    let step_started = Instant::now();
+    let offset = Some(elapsed_ms(run_started));
+
+    if !step.condition_expression.trim().is_empty() {
+        let step_scopes = condition_scopes(
+            resolve_step_request(flow, step, requests).ok(),
+            flow_variables.clone(),
+        )
+        .await;
+        let rendered = || Some(render_condition(&step.condition_expression, &step_scopes));
+        match evaluate_condition(&step.condition_expression, &step_scopes) {
+            Ok(true) => {}
+            Ok(false) => {
+                let skipped = FlowStepResult {
+                    skipped: true,
+                    condition: rendered(),
+                    ..blank_result(step, elapsed_ms(step_started), offset)
+                };
+                return SingleStepOutcome::Finished {
+                    result: Box::new(skipped),
+                    local_updates: None,
+                    extracted: Vec::new(),
+                };
+            }
+            Err(reason) => {
+                let failed = FlowStepResult {
+                    passed: false,
+                    error: Some(format!("condition cannot be evaluated: {reason}")),
+                    condition: rendered(),
+                    ..blank_result(step, elapsed_ms(step_started), offset)
+                };
+                return SingleStepOutcome::Finished {
+                    result: Box::new(failed),
+                    local_updates: None,
+                    extracted: Vec::new(),
+                };
+            }
+        }
+    }
+
+    let delay = Duration::from_millis(step.delay_ms);
+    if until_cancelled(cancel, sleep(delay)).await.is_none() {
+        return SingleStepOutcome::Cancelled;
+    }
+
+    let mut request = match resolve_step_request(flow, step, requests) {
+        Ok(request) => request,
+        Err(issue) => {
+            return SingleStepOutcome::Finished {
+                result: Box::new(FlowStepResult {
+                    passed: false,
+                    error: Some(issue.message(index, step)),
+                    explanation: issue.explanation(index, step),
+                    ..blank_result(step, elapsed_ms(step_started), offset)
+                }),
+                local_updates: None,
+                extracted: Vec::new(),
+            };
+        }
+    };
+
+    let request_assertion_count = if step.ignore_request_assertions {
+        request.assertions.clear();
+        0
+    } else {
+        request.assertions.len()
+    };
+    request.assertions.extend(step.assertions.iter().cloned());
+    if let Some(timeout_ms) = step.timeout_ms {
+        request.network_options.timeout_ms = timeout_ms;
+        request
+            .network_options
+            .inherit
+            .retain(|field| *field != NetworkField::TimeoutMs);
+    }
+
+    let max_attempts = if step.retries > 0 && !step.retry_on.is_empty() {
+        u32::from(step.retries) + 1
+    } else {
+        1
+    };
+    let mut attempts = 0;
+    let mut attempt_list: Vec<FlowAttemptResult> = Vec::new();
+    let outcome = loop {
+        attempts += 1;
+        let attempt_started = Instant::now();
+        let outcome: Result<StepOutput, AppError> =
+            execute_step(request.clone(), flow_variables.clone())
+                .await
+                .map(Into::into);
+        let execution = outcome.as_ref().map(|output| &output.execution);
+        attempt_list.push(FlowAttemptResult {
+            attempt: attempts,
+            status_code: execution.ok().map(|execution| execution.status_code),
+            elapsed_ms: elapsed_ms(attempt_started),
+            error: execution.err().map(std::string::ToString::to_string),
+            timing: execution.ok().map(|execution| execution.timing),
+        });
+        if attempts >= max_attempts || !should_retry(step, execution) {
+            break Some(outcome);
+        }
+        let wait = Duration::from_millis(step.retry_wait_ms);
+        if until_cancelled(cancel, sleep(wait)).await.is_none() {
+            break None;
+        }
+    };
+    let Some(result) = outcome else {
+        return SingleStepOutcome::Cancelled;
+    };
+    if result.as_ref().is_err_and(AppError::is_cancelled) {
+        return SingleStepOutcome::Cancelled;
+    }
+
+    let mut step_result = blank_result(step, elapsed_ms(step_started), offset);
+    step_result.attempts = attempts;
+    step_result.attempt_list = attempt_list;
+
+    let mut cause = None;
+    let mut local_updates = None;
+    let mut extracted = Vec::new();
+    match result {
+        Ok(StepOutput { execution, local }) => {
+            local_updates = local;
+            fill_step_result(&mut step_result, &execution);
+            step_result.request_assertion_count = request_assertion_count;
+
+            for extraction in &step.extractions {
+                match extract_value(extraction, &execution) {
+                    Ok(value) => {
+                        extracted.push((
+                            extraction.variable_name.clone(),
+                            value.clone(),
+                            extraction.is_secret(),
+                        ));
+                        step_result.extracted_variables.push(KeyValue {
+                            key: extraction.variable_name.clone(),
+                            value,
+                            enabled: true,
+                            description: None,
+                        });
+                    }
+                    Err(error) => {
+                        step_result.error = Some(error);
+                        step_result.passed = false;
+                    }
+                }
+            }
+
+            if !step_result
+                .assertion_results
+                .iter()
+                .all(|assertion| assertion.passed)
+                || !execution
+                    .script_tests
+                    .iter()
+                    .all(|test| test.passed || test.skipped)
+            {
+                step_result.passed = false;
+            }
+            if let Some(error) = &execution.script_error {
+                step_result.passed = false;
+                step_result.error.get_or_insert_with(|| {
+                    format!("script failed in {}: {}", error.source, error.message)
+                });
+            }
+            if let Some(error) = execution.ai.as_ref().and_then(|ai| ai.error.as_ref()) {
+                step_result.passed = false;
+                step_result.error.get_or_insert_with(|| error.clone());
+            }
+        }
+        Err(error) => {
+            if let AppError::Network { cause: network, .. } = &error {
+                cause = *network;
+            }
+            step_result.passed = false;
+            step_result.error = Some(error.to_string());
+        }
+    }
+
+    step_result.explanation = explain_failure(step, &request.assertions, &step_result, cause);
+
+    SingleStepOutcome::Finished {
+        result: Box::new(step_result),
+        local_updates,
+        extracted,
+    }
+}
+
+/// Checks, before anything is sent, that the flow DAG has no cycles and every HTTP request step
+/// `input` runs can build its request: a saved request that still exists, or an inline URL.
 pub fn validate_runnable(
     flow: &Flow,
     requests: &HashMap<String, Request>,
     input: &FlowRunInput,
 ) -> Result<(), AppError> {
+    if has_dag_topology(flow)
+        && let Err(cyclic) = check_flow_dag_cycles(flow)
+    {
+        return Err(AppError::validation(format!(
+            "flow contains a dependency cycle involving: {}",
+            cyclic.join(", ")
+        )));
+    }
     let mut steps: Vec<&FlowStep> = flow.steps.iter().collect();
     steps.sort_by_key(|step| step.position);
     for (index, step) in steps.into_iter().enumerate() {
         let runs = input.only_step.is_none_or(|only| index == only)
             && input.max_steps.is_none_or(|max| index < max);
-        if !runs {
+        if !runs || step.step_kind != FlowStepKind::Request {
             continue;
         }
         if let Err(issue) = resolve_step_request(flow, step, requests) {
@@ -434,7 +514,11 @@ pub fn validate_runnable(
 
 /// A passing, empty result of `step`: the base every outcome starts from. `attempts` stays 0
 /// until something was sent.
-fn blank_result(step: &FlowStep, elapsed: u64) -> FlowStepResult {
+pub(super) fn blank_result(
+    step: &FlowStep,
+    elapsed: u64,
+    started_offset_ms: Option<u64>,
+) -> FlowStepResult {
     FlowStepResult {
         step_id: step.id.clone(),
         step_name: step_name(step).to_owned(),
@@ -460,6 +544,8 @@ fn blank_result(step: &FlowStep, elapsed: u64) -> FlowStepResult {
         history_entry_id: None,
         condition: None,
         ai: None,
+        matched_branch_id: None,
+        started_offset_ms,
     }
 }
 
@@ -480,7 +566,7 @@ fn should_retry(step: &FlowStep, outcome: Result<&ExecutionResult, &AppError>) -
 }
 
 /// Hands a finished step (at execution-order `index`) to the observer, then keeps it.
-fn record(
+pub(super) fn record(
     results: &mut Vec<FlowStepResult>,
     run: &FlowRun<'_>,
     index: usize,
@@ -724,7 +810,7 @@ fn merge_rows(base: &mut Vec<KeyValue>, overrides: &[KeyValue], ignore_case: boo
 }
 
 /// The step's display name: its own name, or its id when the name is blank.
-fn step_name(step: &FlowStep) -> &str {
+pub(super) fn step_name(step: &FlowStep) -> &str {
     if step.name.trim().is_empty() {
         &step.id
     } else {
@@ -732,6 +818,6 @@ fn step_name(step: &FlowStep) -> &str {
     }
 }
 
-fn elapsed_ms(started: Instant) -> u64 {
+pub(super) fn elapsed_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }

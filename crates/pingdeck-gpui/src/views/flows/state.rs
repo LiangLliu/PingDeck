@@ -1,4 +1,5 @@
-//! State container, tabs, modals, and input synchronization for `FlowsView`.
+//! State container, view modes, modals, and input synchronization for the unified ProcessView
+//! `FlowsView` workbench (`NavModule::Flows`).
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use pingdeck_desktop::core::model::items::{
     FlowStepSummary,
 };
 use pingdeck_desktop::core::model::settings::Language;
+use pingdeck_desktop::state::{AlignmentGuide, FlowOverlaySource, FlowViewMode};
 
 use crate::ui::{EditorState, InputState, Tone};
 
@@ -21,15 +23,17 @@ pub enum FlowStepTab {
     Extractions,
     Assertions,
     Control,
+    Topology,
     Output,
 }
 
 impl FlowStepTab {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Request,
         Self::Extractions,
         Self::Assertions,
         Self::Control,
+        Self::Topology,
         Self::Output,
     ];
 
@@ -40,7 +44,8 @@ impl FlowStepTab {
             Self::Extractions => 1,
             Self::Assertions => 2,
             Self::Control => 3,
-            Self::Output => 4,
+            Self::Topology => 4,
+            Self::Output => 5,
         }
     }
 
@@ -50,7 +55,8 @@ impl FlowStepTab {
             1 => Self::Extractions,
             2 => Self::Assertions,
             3 => Self::Control,
-            4 => Self::Output,
+            4 => Self::Topology,
+            5 => Self::Output,
             _ => Self::Request,
         }
     }
@@ -63,17 +69,22 @@ impl FlowStepTab {
             Self::Extractions => f.step_tab_extractions(),
             Self::Assertions => f.step_tab_assertions(),
             Self::Control => f.step_tab_control(),
+            Self::Topology => f.step_tab_topology(),
             Self::Output => f.step_tab_output(),
         }
     }
 }
 
-/// Bottom execution results panel tabs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FlowRunTab {
-    LiveRun,
-    Variables,
-    History,
+/// Active mouse-drag session while repositioning a step card (or moving it across swimlanes).
+#[derive(Debug, Clone)]
+pub struct FlowDragState {
+    pub step_id: String,
+    pub start_mouse: (f32, f32),
+    pub start_pos: (f32, f32),
+    pub size: (f32, f32),
+    pub scale: f32,
+    pub dragging: bool,
+    pub hover_lane_id: Option<String>,
 }
 
 /// Modal dialogs owned by `FlowsView`.
@@ -90,8 +101,15 @@ pub enum FlowModal {
         only_step: Option<usize>,
     },
     Options,
-    AddSavedStep,
+    Variables,
+    AddSavedStep {
+        insert_between: Option<(String, String)>,
+    },
     PickStepRequest,
+    InsertOnEdge {
+        from_step_id: String,
+        to_step_id: String,
+    },
 }
 
 /// Cross-module handoff signals emitted by `FlowsView` and polled by `AppShell`.
@@ -100,7 +118,7 @@ pub enum FlowsHandoff {
     OpenRequest(String),
 }
 
-/// Full stateful Flow orchestration workbench (`NavModule::Flows`).
+/// Full stateful Flow orchestration workbench powered by the unified ProcessView Engine.
 pub struct FlowsView {
     pub workspace_id: Option<String>,
     pub lang: Language,
@@ -113,19 +131,24 @@ pub struct FlowsView {
     pub selected_step_id: Option<String>,
     pub selected_env_id: Option<String>,
 
-    // Tabs & layout
+    // Unified ProcessView state
+    pub view_mode: FlowViewMode,
     pub step_tab: FlowStepTab,
-    pub run_tab: FlowRunTab,
     pub inspector_open: bool,
+    pub graph_zoom: f32,
+    pub drag_state: Option<FlowDragState>,
+    pub alignment_guides: Vec<AlignmentGuide>,
+    pub drag_suppress_click: bool,
 
-    // Execution state
+    // Execution & history playback state
     pub running: bool,
     pub cancel_token: Option<String>,
     pub live_total: usize,
     pub live_steps: HashMap<String, FlowStepSummary>,
     pub last_result: Option<FlowRunResult>,
     pub past_runs: Vec<FlowRunSummary>,
-    pub selected_past_run_id: Option<String>,
+    /// `None` = live / latest result (or design-only); `Some(run_id)` = replaying a past run.
+    pub active_history_run_id: Option<String>,
 
     // Inline builders
     pub new_ext_source: FlowExtractionSource,
@@ -152,6 +175,9 @@ pub struct FlowsView {
     pub assert_path_input: Entity<InputState>,
     pub seed_key_input: Entity<InputState>,
     pub seed_val_input: Entity<InputState>,
+    pub lane_name_input: Entity<InputState>,
+    pub branch_label_input: Entity<InputState>,
+    pub branch_expr_input: Entity<InputState>,
     pub req_picker_search: Entity<InputState>,
     pub new_flow_name_input: Entity<InputState>,
 
@@ -178,13 +204,69 @@ impl FlowsView {
         self.draft.as_mut()?.steps.iter_mut().find(|s| s.id == sid)
     }
 
+    /// Resolves which execution data source is currently projected onto the canvas/timeline.
+    #[must_use]
+    pub fn active_overlay_source(&self) -> FlowOverlaySource<'_> {
+        if self.running {
+            return FlowOverlaySource::Live {
+                steps: &self.live_steps,
+            };
+        }
+        if let Some(hid) = self.active_history_run_id.as_deref() {
+            if let Some(res) = self.last_result.as_ref().filter(|r| r.run_id == hid) {
+                return FlowOverlaySource::Result(res);
+            }
+            if let Some(sum) = self.past_runs.iter().find(|r| r.run_id == hid) {
+                return FlowOverlaySource::PastSummary(sum);
+            }
+        }
+        if let Some(res) = &self.last_result {
+            return FlowOverlaySource::Result(res);
+        }
+        FlowOverlaySource::DesignOnly
+    }
+
+    #[must_use]
+    pub fn active_past_summary(&self) -> Option<&FlowRunSummary> {
+        let hid = self.active_history_run_id.as_deref()?;
+        self.past_runs.iter().find(|r| r.run_id == hid)
+    }
+
     #[must_use]
     pub fn step_result_of(&self, step_id: &str) -> Option<&FlowStepResult> {
+        if let Some(hid) = self.active_history_run_id.as_deref() {
+            let res = self.last_result.as_ref().filter(|r| r.run_id == hid)?;
+            return res.steps.iter().find(|s| s.step_id == step_id);
+        }
         self.last_result
             .as_ref()?
             .steps
             .iter()
             .find(|s| s.step_id == step_id)
+    }
+
+    #[must_use]
+    pub fn step_summary_of(&self, step_id: &str) -> Option<&FlowStepSummary> {
+        if self.running {
+            return self.live_steps.get(step_id);
+        }
+        self.active_past_summary()?
+            .steps
+            .iter()
+            .find(|s| s.step_id == step_id)
+    }
+
+    #[must_use]
+    pub fn active_variables_count(&self) -> usize {
+        if let Some(hid) = self.active_history_run_id.as_deref() {
+            if let Some(res) = self.last_result.as_ref().filter(|r| r.run_id == hid) {
+                return res.variables.len();
+            }
+            if let Some(sum) = self.past_runs.iter().find(|r| r.run_id == hid) {
+                return sum.variables.as_ref().map_or(0, Vec::len);
+            }
+        }
+        self.last_result.as_ref().map_or(0, |r| r.variables.len())
     }
 
     #[must_use]
@@ -200,13 +282,27 @@ impl FlowsView {
             self.selected_step_id = None;
             return;
         };
-        if self
-            .selected_step_id
-            .as_deref()
-            .is_none_or(|id| !flow.steps.iter().any(|s| s.id == id))
+        if let Some(id) = self.selected_step_id.as_deref()
+            && !flow.steps.iter().any(|s| s.id == id)
         {
             self.selected_step_id = flow.steps.first().map(|s| s.id.clone());
         }
+    }
+
+    pub fn select_step(&mut self, step_id: Option<String>, cx: &mut Context<Self>) {
+        self.snapshot_inputs(cx);
+        match step_id {
+            Some(id) => {
+                self.selected_step_id = Some(id);
+                self.inspector_open = true;
+                self.pending_sync = true;
+            }
+            None => {
+                self.selected_step_id = None;
+                self.inspector_open = false;
+            }
+        }
+        cx.notify();
     }
 
     pub fn snapshot_inputs(&mut self, cx: &Context<Self>) {

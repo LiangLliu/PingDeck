@@ -103,9 +103,9 @@ SQLite 只在 `pingdeck-store`：只有它直接依赖 SQLite 驱动，DDL 与�
 
 ### 4.1 四层边界与模块隔离
 
-`crates/pingdeck-desktop` 承载所有 UI 无关宿主能力（运行时、合帧通道、OS 端口、OKLCH 主题、i18n、本地 JSON 持久化、ViewModel/Reducer），严禁依赖任何图形库。`crates/pingdeck-gpui/src/ui` 是全仓唯一允许引入 `gpui_kit::component` 的隔离边界。
+`crates/pingdeck-desktop` 承载 UI 无关宿主（运行时、合帧、OS、OKLCH 主题、i18n、状态机与 `state/process_graph` 排版引擎）。`crates/pingdeck-gpui/src/ui` 是全仓唯一引入 `gpui_kit::component` 的边界，含共用画布 `dag_canvas` 与 `process_chrome`。
 
-`crates/pingdeck-gpui/src/views/shell` 注册 9 大导航目的地与 6 个全局实用工具，按需实例化模块并常驻保活。层间依赖与单文件行数（≤ 600 行）由 `cargo xtask check-arch` 在真实源码树上强制检查。
+`crates/pingdeck-gpui/src/views/shell` 注册 10 大目的地与实用工具，按需实例化并保活。智能体工作流（`views/runs`）与流程（`views/flows`）共用排版与画布，数据与持久化隔离。层间依赖与文件行数（≤ 600 行）由 `cargo xtask check-arch` 强制检查。
 
 ### 4.2 运行与视图分离
 
@@ -224,7 +224,9 @@ sequenceDiagram
 
 ## 7. Flow 与 Mock：共用执行管线，各管生命周期
 
-Flow 引擎依次评估条件（仅当…时运行）、等待、覆盖、尝试、抽取和断言。步骤断言接在请求自带断言之后，由执行管线一次求值，步骤判定计入两者；步骤可以选择忽略请求自带的断言。运行前只校验本次范围内的步骤，遇到第一处问题就拒绝，一个请求都不发。每步重建上下文，后一步看得到前一步已提交的脚本变量。
+Flow 引擎依次评估条件、等待、覆盖、尝试、抽取和断言；运行前校验范围内步骤并执行环路检测（`check_flow_dag_cycles`），有错即拒。
+
+含显式依赖、条件节点或汇合节点的完整运行走 `flows/dag.rs` 并行波次调度（并发上限 `MAX_FLOW_CONCURRENCY = 8`）：同波次并发执行，完成后按 `position` 合并变量；未命中条件分支自动传播跳过，汇合节点等待活跃上游完成。拓扑与固定坐标存于现有 `steps_json` / `options_json`，不改 SQLite schema 基线。
 
 条件是有界的小表达式，长度、记号数与嵌套深度都有上限。先解析再填变量，变量值不改变解析结果。保存时校验语法，错误带步骤 ID 与字段名；条件为假的步骤不等待，直接跳过；运行时无法求值则该步失败。
 

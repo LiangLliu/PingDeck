@@ -69,6 +69,10 @@ fn step(id: &str, request_id: &str, position: i64) -> FlowStep {
         retry_wait_ms: 0,
         retry_on: Vec::new(),
         timeout_ms: None,
+        step_kind: crate::workspace::items::FlowStepKind::Request,
+        depends_on: Vec::new(),
+        branches: Vec::new(),
+        lane: None,
     }
 }
 
@@ -394,7 +398,7 @@ fn step_overrides_merge_rows_and_keep_the_saved_body_type() {
         vec![header("page", "1"), header("Page", "9")]
     );
     assert_eq!(step_name(&overridden), "step_a");
-    assert_eq!(blank_result(&overridden, 0).step_name, "step_a");
+    assert_eq!(blank_result(&overridden, 0, None).step_name, "step_a");
 
     let body_of = |saved: RequestBody, kind: Option<FlowBodyKind>, text: &str| {
         let mut request = request("req_body", "http://localhost/".into(), vec![]);
@@ -1039,4 +1043,203 @@ async fn only_step_sends_one_request_and_is_summarized_at_its_own_index() {
             .collect::<Vec<_>>(),
         [(2, "s3")]
     );
+}
+
+#[tokio::test]
+async fn dag_parallel_branches_join_and_merge_variables_deterministically() {
+    use crate::workspace::items::FlowStepKind;
+    let s_login = FlowStep {
+        url_override: Some("http://stub/login".into()),
+        extractions: vec![FlowExtraction {
+            variable_name: "token".into(),
+            source: FlowExtractionSource::BodyJsonPath,
+            expression: "$.token".into(),
+            secret: Some(true),
+        }],
+        ..step("login", "", 0)
+    };
+    let s_stock = FlowStep {
+        url_override: Some("http://stub/stock?t={{token}}".into()),
+        depends_on: vec!["login".into()],
+        extractions: vec![FlowExtraction {
+            variable_name: "stock_ok".into(),
+            source: FlowExtractionSource::BodyJsonPath,
+            expression: "$.ok".into(),
+            secret: Some(false),
+        }],
+        ..step("stock", "", 1)
+    };
+    let s_coupon = FlowStep {
+        url_override: Some("http://stub/coupon?t={{token}}".into()),
+        depends_on: vec!["login".into()],
+        extractions: vec![FlowExtraction {
+            variable_name: "discount".into(),
+            source: FlowExtractionSource::BodyJsonPath,
+            expression: "$.discount".into(),
+            secret: Some(false),
+        }],
+        ..step("coupon", "", 2)
+    };
+    let s_join = FlowStep {
+        step_kind: FlowStepKind::Join,
+        depends_on: vec!["stock".into(), "coupon".into()],
+        ..step("join", "", 3)
+    };
+    let s_pay = FlowStep {
+        url_override: Some("http://stub/pay?ok={{stock_ok}}&d={{discount}}".into()),
+        depends_on: vec!["join".into()],
+        ..step("pay", "", 4)
+    };
+
+    let dag_flow = flow("f_dag_par", vec![s_login, s_stock, s_coupon, s_join, s_pay]);
+    assert!(has_dag_topology(&dag_flow));
+    validate_runnable(&dag_flow, &HashMap::new(), &FlowRunInput::default()).unwrap();
+
+    let seen_urls = std::sync::Mutex::new(Vec::new());
+    let res = run_flow(
+        &dag_flow,
+        &HashMap::new(),
+        &FlowRunInput::default(),
+        &FlowRun::new("run_dag_1", 0),
+        direct_scopes,
+        |req: Request, vars: Vec<EnvironmentVariable>| {
+            let scopes = VariableScopes::new().with_local_vars(vars);
+            let resolved = crate::workspace::resolve_template_lenient(&req.url, &scopes);
+            seen_urls.lock().unwrap().push(resolved.clone());
+            async move {
+                if resolved.contains("/login") {
+                    Ok(exec(200, r#"{"token":"tok_abc"}"#))
+                } else if resolved.contains("/stock") {
+                    Ok(exec(200, r#"{"ok":"yes"}"#))
+                } else if resolved.contains("/coupon") {
+                    Ok(exec(200, r#"{"discount":"15"}"#))
+                } else {
+                    Ok(exec(200, r#"{"paid":true}"#))
+                }
+            }
+        },
+    )
+    .await;
+
+    assert!(res.passed, "{:?}", res.steps);
+    assert_eq!(res.steps.len(), 5);
+    let urls = seen_urls.into_inner().unwrap();
+    assert_eq!(
+        urls.last().map(String::as_str),
+        Some("http://stub/pay?ok=yes&d=15")
+    );
+}
+
+#[tokio::test]
+async fn dag_condition_router_matches_branch_and_skips_unmatched_subtree() {
+    use crate::workspace::items::{FlowBranch, FlowStepKind};
+    let s_order = FlowStep {
+        url_override: Some("http://stub/order".into()),
+        extractions: vec![FlowExtraction {
+            variable_name: "tier".into(),
+            source: FlowExtractionSource::BodyJsonPath,
+            expression: "$.tier".into(),
+            secret: Some(false),
+        }],
+        ..step("order", "", 0)
+    };
+    let s_cond = FlowStep {
+        step_kind: FlowStepKind::Condition,
+        depends_on: vec!["order".into()],
+        branches: vec![
+            FlowBranch {
+                id: "br_vip".into(),
+                label: "VIP".into(),
+                expression: "{{tier}} == vip".into(),
+                target_step_ids: vec!["fast_pay".into()],
+            },
+            FlowBranch {
+                id: "br_std".into(),
+                label: "Standard".into(),
+                expression: String::new(),
+                target_step_ids: vec!["std_pay".into()],
+            },
+        ],
+        ..step("route_pay", "", 1)
+    };
+    let s_fast = FlowStep {
+        url_override: Some("http://stub/fast-pay".into()),
+        ..step("fast_pay", "", 2)
+    };
+    let s_std = FlowStep {
+        url_override: Some("http://stub/std-pay".into()),
+        ..step("std_pay", "", 3)
+    };
+    let s_std_audit = FlowStep {
+        url_override: Some("http://stub/std-audit".into()),
+        depends_on: vec!["std_pay".into()],
+        ..step("std_audit", "", 4)
+    };
+    let s_done = FlowStep {
+        url_override: Some("http://stub/complete".into()),
+        depends_on: vec!["fast_pay".into(), "std_audit".into()],
+        ..step("complete", "", 5)
+    };
+
+    let dag_flow = flow(
+        "f_dag_cond",
+        vec![s_order, s_cond, s_fast, s_std, s_std_audit, s_done],
+    );
+    let sent = std::sync::Mutex::new(Vec::new());
+    let res = run_flow(
+        &dag_flow,
+        &HashMap::new(),
+        &FlowRunInput::default(),
+        &FlowRun::new("run_dag_cond", 0),
+        direct_scopes,
+        |req: Request, _| {
+            sent.lock().unwrap().push(req.url.clone());
+            async move { Ok(exec(200, r#"{"tier":"vip"}"#)) }
+        },
+    )
+    .await;
+
+    assert!(res.passed, "{:?}", res.steps);
+    let urls = sent.into_inner().unwrap();
+    assert_eq!(
+        urls,
+        [
+            "http://stub/order",
+            "http://stub/fast-pay",
+            "http://stub/complete"
+        ]
+    );
+    let cond_res = res.steps.iter().find(|s| s.step_id == "route_pay").unwrap();
+    assert_eq!(cond_res.matched_branch_id.as_deref(), Some("br_vip"));
+    assert!(
+        res.steps
+            .iter()
+            .find(|s| s.step_id == "std_pay")
+            .unwrap()
+            .skipped
+    );
+    assert!(
+        res.steps
+            .iter()
+            .find(|s| s.step_id == "std_audit")
+            .unwrap()
+            .skipped
+    );
+}
+
+#[test]
+fn dag_cycle_detection_rejects_cyclic_flows_before_running() {
+    let a = FlowStep {
+        url_override: Some("http://stub/a".into()),
+        depends_on: vec!["b".into()],
+        ..step("a", "", 0)
+    };
+    let b = FlowStep {
+        url_override: Some("http://stub/b".into()),
+        depends_on: vec!["a".into()],
+        ..step("b", "", 1)
+    };
+    let cyc = flow("f_cyc", vec![a, b]);
+    let err = validate_runnable(&cyc, &HashMap::new(), &FlowRunInput::default()).unwrap_err();
+    assert!(err.message().contains("cycle"), "{}", err.message());
 }

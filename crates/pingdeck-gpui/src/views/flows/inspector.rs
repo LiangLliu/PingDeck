@@ -5,16 +5,16 @@ use gpui_kit::{
     Styled as _, div, px,
 };
 use pingdeck_desktop::core::model::items::{FlowBodyKind, FlowExtractionSource, FlowStep};
-use pingdeck_desktop::core::model::{Assertion, HttpMethod, KeyValue};
+use pingdeck_desktop::core::model::{HttpMethod, KeyValue};
 
 use crate::ui::{
     ScrollableElement as _, Tone, UiIcon, badge, btn_icon, btn_secondary, card, checkbox,
     choice_chip, code_editor, data_row, empty_inline, empty_state, h_row, meta_pill, palette,
-    section_header, setting_row, subtab_strip, tab_bar_underline, tab_item, text_input, to_hsla,
-    toggle_switch, v_col,
+    section_header, subtab_strip, tab_bar_underline, tab_item, text_input, to_hsla, v_col,
 };
 
-use super::inspector_exec::{render_control_tab, render_output_tab};
+use super::inspector_exec::{render_assertions_tab, render_control_tab, render_output_tab};
+use super::inspector_topology::render_topology_tab;
 use super::state::{FlowModal, FlowStepTab, FlowsView};
 
 const EXTRACTION_SOURCES: [(FlowExtractionSource, &str); 6] = [
@@ -35,6 +35,7 @@ const BODY_KINDS: [(Option<FlowBodyKind>, &str); 5] = [
 ];
 
 pub fn render_step_inspector(view: &FlowsView, cx: &mut Context<FlowsView>) -> AnyElement {
+    let p = palette(cx);
     let fl = crate::ui::Tr(view.lang).flows();
     let Some(step) = view.selected_step().cloned() else {
         return empty_state(
@@ -45,6 +46,81 @@ pub fn render_step_inspector(view: &FlowsView, cx: &mut Context<FlowsView>) -> A
         )
         .into_any_element();
     };
+    let step_idx = view
+        .draft
+        .as_ref()
+        .and_then(|f| f.steps.iter().position(|s| s.id == step.id))
+        .unwrap_or(0);
+    let sid_dup = step.id.clone();
+    let sid_del = step.id.clone();
+
+    let header = h_row()
+        .w_full()
+        .flex_shrink_0()
+        .justify_between()
+        .gap(px(6.0))
+        .px(px(12.0))
+        .py(px(8.0))
+        .bg(to_hsla(p.pane))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .child(
+            h_row()
+                .flex_1()
+                .min_w_0()
+                .gap(px(6.0))
+                .child(meta_pill(format!("#{}", step_idx + 1), cx))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_xs()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink))
+                        .truncate()
+                        .child(SharedString::from(step.name.clone())),
+                ),
+        )
+        .child(
+            h_row()
+                .flex_shrink_0()
+                .gap(px(2.0))
+                .child(
+                    btn_icon("flow-insp-run1", UiIcon::Play)
+                        .tooltip(fl.steps_pane_run_only_this_step())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.run_flow(None, Some(step_idx), None, cx);
+                        })),
+                )
+                .child(
+                    btn_icon("flow-insp-upto", UiIcon::Zap)
+                        .tooltip(fl.steps_pane_run_up_to_this_step())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.run_flow(Some(step_idx + 1), None, None, cx);
+                        })),
+                )
+                .child(
+                    btn_icon("flow-insp-dup", UiIcon::Copy)
+                        .tooltip(fl.insp_duplicate())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.duplicate_step(sid_dup.clone(), cx);
+                        })),
+                )
+                .child(
+                    btn_icon("flow-insp-del", UiIcon::Trash)
+                        .tooltip(fl.insp_delete())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.remove_step(sid_del.clone(), cx);
+                        })),
+                )
+                .child(
+                    btn_icon("flow-insp-close", UiIcon::Close)
+                        .tooltip(fl.flows_hide_inspector())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.select_step(None, cx);
+                        })),
+                ),
+        );
 
     let mut tabs = tab_bar_underline("flow-step-tabs")
         .selected_index(view.step_tab.index())
@@ -62,12 +138,17 @@ pub fn render_step_inspector(view: &FlowsView, cx: &mut Context<FlowsView>) -> A
         FlowStepTab::Extractions => render_extractions_tab(view, &step, cx),
         FlowStepTab::Assertions => render_assertions_tab(view, &step, cx),
         FlowStepTab::Control => render_control_tab(view, &step, cx),
+        FlowStepTab::Topology => render_topology_tab(view, &step, cx),
         FlowStepTab::Output => render_output_tab(view, &step, cx),
     };
 
     v_col()
         .size_full()
         .min_h_0()
+        .bg(to_hsla(p.surface))
+        .border_l_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(header)
         .child(subtab_strip(tabs, None, cx))
         .child(
             div()
@@ -431,127 +512,4 @@ fn render_extractions_tab(
                 ),
         )
         .into_any_element()
-}
-
-fn render_assertions_tab(
-    view: &FlowsView,
-    step: &FlowStep,
-    cx: &mut Context<FlowsView>,
-) -> AnyElement {
-    let fl = crate::ui::Tr(view.lang).flows();
-    let p = palette(cx);
-    let kinds = [
-        (0, fl.inspector_status()),
-        (1, fl.inspector_status_in()),
-        (2, fl.inspector_header_exists()),
-        (3, fl.inspector_header_2()),
-        (4, fl.inspector_jsonpath_exists()),
-        (5, fl.inspector_jsonpath()),
-        (6, fl.inspector_body_contains()),
-        (7, fl.inspector_time_ms()),
-    ];
-
-    let mut box_el = card(cx)
-        .p(px(12.0))
-        .gap(px(8.0))
-        .child(section_header(fl.inspector_step_assertions(), None, cx))
-        .child(setting_row(
-            fl.inspector_ignore_linked_request_s_own(),
-            None,
-            Some(SharedString::from(fl.inspector_judge_this_step_only_by())),
-            toggle_switch("flow-ign-assert", step.ignore_request_assertions).on_click(cx.listener(
-                |this, _, _, cx| {
-                    if let Some(st) = this.selected_step_mut() {
-                        st.ignore_request_assertions = !st.ignore_request_assertions;
-                        this.dirty = true;
-                        cx.notify();
-                    }
-                },
-            )),
-            cx,
-        ));
-
-    for (idx, a) in step.assertions.iter().enumerate() {
-        box_el = box_el.child(
-            data_row(cx)
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .text_xs()
-                        .text_color(to_hsla(p.ink))
-                        .truncate()
-                        .child(format_assertion(a)),
-                )
-                .child(
-                    btn_icon(
-                        SharedString::from(format!("flow-as-rm-{idx}")),
-                        UiIcon::Trash,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(st) = this.selected_step_mut()
-                            && idx < st.assertions.len()
-                        {
-                            st.assertions.remove(idx);
-                            this.dirty = true;
-                            cx.notify();
-                        }
-                    })),
-                ),
-        );
-    }
-
-    let mut kind_row = h_row().gap(px(4.0)).flex_wrap();
-    for (idx, lbl) in kinds {
-        kind_row = kind_row.child(
-            choice_chip(
-                SharedString::from(format!("flow-ak-{idx}")),
-                lbl,
-                view.new_assert_kind_idx == idx,
-                cx,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.new_assert_kind_idx = idx;
-                cx.notify();
-            })),
-        );
-    }
-
-    box_el
-        .child(kind_row)
-        .child(
-            h_row()
-                .w_full()
-                .gap(px(6.0))
-                .child(
-                    div()
-                        .w(px(160.0))
-                        .child(text_input(&view.assert_path_input)),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(text_input(&view.assert_val_input)),
-                )
-                .child(btn_secondary("flow-as-add", fl.inspector_add_2()).on_click(
-                    cx.listener(|this, _, window, cx| this.add_quick_assertion(window, cx)),
-                )),
-        )
-        .into_any_element()
-}
-
-fn format_assertion(a: &Assertion) -> String {
-    match a {
-        Assertion::StatusEquals { value } => format!("Status == {value}"),
-        Assertion::StatusIn { values } => format!("Status in {values:?}"),
-        Assertion::HeaderExists { key } => format!("Header exists: {key}"),
-        Assertion::HeaderEquals { key, value } => format!("Header {key} == {value}"),
-        Assertion::JsonPathExists { path } => format!("JSONPath exists: {path}"),
-        Assertion::JsonPathEquals { path, value } => format!("JSONPath {path} == {value}"),
-        Assertion::BodyContains { value } => format!("Body contains \"{value}\""),
-        Assertion::ResponseTimeLessThanMs { value } => format!("Elapsed < {value} ms"),
-        Assertion::BodySizeLessThanBytes { value } => format!("Size < {value} B"),
-        other => format!("{other:?}"),
-    }
 }

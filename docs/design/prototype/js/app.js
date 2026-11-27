@@ -178,19 +178,205 @@
     if (byId("mock-branch-body")) byId("mock-branch-body").innerHTML = spec.body;
   }
 
-  function selectFlowStep(stepId, stepEl) {
-    document.querySelectorAll("[data-flow-step]").forEach((s) => s.classList.toggle("selected", s === stepEl));
-    const s = FLOW_STEPS[stepId];
-    if (!s || !byId("flow-insp-inputs") || !byId("flow-insp-step")) return;
-    byId("flow-insp-inputs").hidden = true;
-    byId("flow-insp-step").hidden = false;
-    if (byId("flow-insp-title")) byId("flow-insp-title").textContent = `${s.name} · 第 ${s.n} 步`;
-    if (byId("flow-step-src")) byId("flow-step-src").innerHTML = `<span class="m-${s.method.toLowerCase()}">${s.method}</span> <code class="text-ink1">${s.path}</code>`;
-    if (byId("flow-step-extract")) byId("flow-step-extract").textContent = s.extract;
-    if (byId("flow-step-assert")) byId("flow-step-assert").textContent = s.assert;
-    if (byId("flow-step-retry")) byId("flow-step-retry").textContent = s.retry;
-    if (byId("flow-step-status")) byId("flow-step-status").textContent = s.status;
-    if (byId("flow-step-body")) byId("flow-step-body").textContent = s.body;
+  // ── Unified ProcessView Flows Controller ──────────────────────────────────
+  const flowUi = {
+    presetId: "ecommerce",
+    model: window.PD.clonePreset?.("ecommerce"),
+    runIdx: 0,
+    running: false,
+    view: "graph",
+    direction: "lr",
+    align: "center",
+    swimlanes: true,
+    dataFlow: true,
+    zoom: 1,
+    selectedId: "route",
+    inspTab: "topology",
+    pinned: {},
+    seq: 1,
+    getRuns() { return this.model?.runs || []; },
+    getRunIndex() { return this.runIdx; },
+    selectRun(idx) {
+      const runs = this.getRuns();
+      if (!runs.length) return;
+      this.runIdx = ((idx % runs.length) + runs.length) % runs.length;
+      renderFlowsWorkbench();
+      ov()?.toast(`已切换回放：${runs[this.runIdx].label}`);
+    },
+  };
+  window.PD.flowUi = flowUi;
+
+  function loadFlowPreset(presetId) {
+    flowUi.presetId = presetId;
+    flowUi.model = window.PD.clonePreset(presetId);
+    flowUi.runIdx = 0;
+    flowUi.running = false;
+    flowUi.pinned = {};
+    flowUi.zoom = 1;
+    const dl = flowUi.model.defaultLayout || {};
+    flowUi.direction = dl.direction || "lr";
+    flowUi.align = dl.align || "center";
+    flowUi.swimlanes = Boolean(dl.swimlanes);
+    flowUi.dataFlow = dl.dataFlow !== false;
+    const failed = flowUi.model.nodes.find((n) => n.status === "bad");
+    const cond = flowUi.model.nodes.find((n) => n.kind === "condition");
+    flowUi.selectedId = (failed || cond || flowUi.model.nodes[0])?.id || null;
+    flowUi.inspTab = failed ? "result" : cond ? "topology" : "config";
+    renderFlowsWorkbench();
+  }
+
+  function renderFlowInspector() {
+    const aside = byId("flow-inspector");
+    const body = byId("flow-insp-body");
+    const titleEl = byId("flow-insp-title");
+    if (!aside || !body || !flowUi.model) return;
+    const node = flowUi.model.nodes.find((n) => n.id === flowUi.selectedId);
+    aside.hidden = !node;
+    if (!node) return;
+
+    if (titleEl) titleEl.textContent = node.title;
+    byId("flow-insp-tabs")?.querySelectorAll("[data-flow-insp-tab]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.flowInspTab === flowUi.inspTab);
+    });
+
+    const laneName = flowUi.model.lanes?.find((l) => l.id === node.lane)?.label || "默认泳道";
+    if (flowUi.inspTab === "topology") {
+      const deps = (node.dependsOn || [])
+        .map((id) => flowUi.model.nodes.find((x) => x.id === id)?.title || id);
+      const branchesHtml = node.kind === "condition" && node.branches?.length
+        ? `<div class="card-panel">
+            <div class="card-panel-head"><span>条件分支出口（按顺序求值）</span><span class="tag tag-accent">${node.branches.length} 条</span></div>
+            ${node.branches.map((br) => `
+              <div class="list-row" style="background:${br.matched ? "var(--ok-soft)" : "var(--bg-surface)"};border-color:${br.matched ? "var(--ok-border)" : "var(--border-subtle)"}">
+                <div class="list-row-col">
+                  <span class="list-row-title">${br.label}</span>
+                  <span class="mono fs-2xs text-muted">${br.expr} → ${br.targets.join(", ")}</span>
+                </div>
+                <span class="tag ${br.matched ? "tag-ok" : ""}">${br.matched ? "命中" : "跳过"}</span>
+              </div>`).join("")}
+          </div>`
+        : "";
+      const laneChips = (flowUi.model.lanes || [])
+        .map((l) => `<button type="button" class="tag${l.id === node.lane ? " tag-accent" : ""}" data-flow-set-lane="${l.id}">${l.label}</button>`)
+        .join("");
+      body.innerHTML = `
+        <div class="card-panel">
+          <div class="card-panel-head"><span>节点类型与泳道归属</span><span class="tag">${node.kind === "condition" ? "条件分支" : node.kind === "join" ? "并行汇合" : "HTTP 请求"}</span></div>
+          <div class="row-wrap">${laneChips}</div>
+          <span class="fs-2xs text-muted">提示：也可直接在画布中跨泳道拖拽卡片自动改归属。</span>
+        </div>
+        <div class="card-panel">
+          <div class="card-panel-head"><span>上游依赖 (depends_on)</span><span class="tag">${deps.length} 个</span></div>
+          <div class="row-wrap">${deps.length ? deps.map((d) => `<span class="tag">${d}</span>`).join("") : `<span class="text-muted">入口节点（无上游依赖）</span>`}</div>
+        </div>
+        ${branchesHtml}`;
+    } else if (flowUi.inspTab === "result") {
+      const toneCls = node.status === "ok" ? "tag-ok" : node.status === "bad" ? "tag-bad" : node.status === "skipped" ? "" : "tag-accent";
+      body.innerHTML = `
+        <div class="card-panel">
+          <div class="card-panel-head"><span>执行状态与耗时</span><span class="tag ${toneCls}">${node.metric || node.status}</span></div>
+          <div class="fs-xs text-muted">起始偏移：<b class="mono text-ink1">+${node.startMs || 0} ms</b> · 持续 <b class="mono text-ink1">${node.durationMs || 0} ms</b></div>
+          ${node.assert ? `<div class="fs-2xs ${node.status === "bad" ? "text-bad" : "text-ink2"}">断言：${node.assert}</div>` : ""}
+        </div>
+        <div class="card-panel">
+          <div class="card-panel-head"><span>响应快照（脱敏预览）</span><button type="button" class="text-accent" data-nav-to="history">查看历史 ↗</button></div>
+          <div class="code-box fs-2xs" style="white-space:pre-wrap">${node.body || "// 控制节点（无 HTTP 响应体）"}</div>
+        </div>`;
+    } else {
+      body.innerHTML = `
+        <div class="card-panel">
+          <div class="card-panel-head"><span>请求与归属</span><span class="tag">${laneName}</span></div>
+          <div>${node.method ? `<span class="m-${node.method.toLowerCase()}">${node.method}</span> ` : ""}<code class="text-ink1">${node.subtitle || "—"}</code></div>
+          ${node.retry ? `<div class="fs-2xs text-muted">重试与超时：${node.retry}</div>` : ""}
+        </div>
+        <div class="card-panel">
+          <div class="card-panel-head"><span>提取变量 (Extract)</span><span class="tag">JSONPath</span></div>
+          <div class="mono fs-2xs text-ink2">${node.extract || "—（无提取变量）"}</div>
+        </div>
+        <div class="card-panel">
+          <div class="card-panel-head"><span>步骤断言</span></div>
+          <div class="fs-2xs text-ink2">${node.assert || "—"}</div>
+        </div>`;
+    }
+  }
+
+  function renderFlowsWorkbench() {
+    const model = flowUi.model;
+    const host = byId("flow-stage-main");
+    if (!model || !host || !window.PD.ProcessView) return;
+
+    const titleEl = byId("flow-work-title");
+    if (titleEl) titleEl.textContent = model.name;
+    const stEl = byId("flow-work-status");
+    if (stEl) {
+      stEl.textContent = flowUi.running ? "↻ 运行中…" : model.statusText;
+      stEl.className = `tag ${flowUi.running ? "tag-accent" : model.statusTone === "bad" ? "tag-bad" : "tag-ok"}`;
+    }
+    const runBtn = byId("flow-run-btn");
+    if (runBtn) {
+      runBtn.textContent = flowUi.running ? "■ 停止流程" : "▶ 运行流程";
+      runBtn.className = `btn btn-sm ${flowUi.running ? "btn-danger" : "btn-primary"}`;
+    }
+    const runs = flowUi.getRuns();
+    const curRun = runs[flowUi.runIdx];
+    const histLbl = byId("flow-hist-label");
+    if (histLbl && curRun) histLbl.textContent = `${curRun.label} ▾`;
+
+    byId("flow-view-seg")?.querySelectorAll("[data-flow-view]").forEach((b) => b.classList.toggle("active", b.dataset.flowView === flowUi.view));
+    byId("flow-dir-seg")?.querySelectorAll("[data-flow-dir]").forEach((b) => b.classList.toggle("active", b.dataset.flowDir === flowUi.direction));
+    byId("flow-toggle-lanes")?.classList.toggle("tag-accent", flowUi.swimlanes);
+    const alignBtn = byId("flow-toggle-align");
+    if (alignBtn) {
+      alignBtn.classList.toggle("tag-accent", flowUi.align === "center");
+      alignBtn.textContent = flowUi.align === "center" ? "居中" : "顶对齐";
+    }
+    byId("flow-toggle-data")?.classList.toggle("tag-accent", flowUi.dataFlow);
+    const resetBtn = byId("flow-reset-layout");
+    if (resetBtn) resetBtn.hidden = Object.keys(flowUi.pinned).length === 0;
+    const zoomLbl = byId("flow-zoom-lbl");
+    if (zoomLbl) zoomLbl.textContent = `${Math.round(flowUi.zoom * 100)}%`;
+
+    const opts = {
+      instanceId: "flow",
+      editable: true,
+      onSelect: (id) => { flowUi.selectedId = id; renderFlowsWorkbench(); },
+      onBlankClick: () => { flowUi.selectedId = null; renderFlowsWorkbench(); },
+      onMutate: () => renderFlowsWorkbench(),
+      onLaneChange: (node, band) => ov()?.toast(`已将「${node.title}」移动到泳道「${band.label}」`),
+      onInsertOnEdge: (fromId, toId) => {
+        const idx = flowUi.seq++;
+        const newId = `inserted_${idx}`;
+        const fromNode = model.nodes.find((n) => n.id === fromId);
+        const toNode = model.nodes.find((n) => n.id === toId);
+        model.nodes.push({
+          id: newId, order: model.nodes.length, kind: "request", lane: fromNode?.lane || model.lanes[0]?.id,
+          method: "GET", title: `校验节点 #${idx}`, subtitle: "/api/check/state", metric: "等待", status: "idle",
+          startMs: (fromNode?.startMs || 0) + (fromNode?.durationMs || 80), durationMs: 60,
+          pills: [{ text: "在线插入", tone: "accent" }], extract: "—", assert: "status == 200",
+          retry: "不重试", dependsOn: [fromId], body: "// 新增内联检查步骤",
+        });
+        const edgeIdx = model.edges.findIndex((e) => e.layer !== "data" && e.from === fromId && e.to === toId);
+        if (edgeIdx >= 0) {
+          const old = model.edges[edgeIdx];
+          model.edges.splice(edgeIdx, 1,
+            { from: fromId, to: newId, layer: "control", tone: "idle", label: old.label },
+            { from: newId, to: toId, layer: "control", tone: "idle" }
+          );
+        }
+        if (toNode && Array.isArray(toNode.dependsOn)) {
+          toNode.dependsOn = toNode.dependsOn.map((d) => (d === fromId ? newId : d));
+        }
+        flowUi.selectedId = newId;
+        flowUi.inspTab = "config";
+        renderFlowsWorkbench();
+        ov()?.toast(`已在「${fromNode?.title || fromId} → ${toNode?.title || toId}」中间插入步骤`);
+      },
+    };
+
+    if (flowUi.view === "steps") window.PD.ProcessView.renderSteps(host, model, flowUi, opts);
+    else if (flowUi.view === "timeline") window.PD.ProcessView.renderTimeline(host, model, flowUi, opts);
+    else window.PD.ProcessView.renderGraph(host, model, flowUi, opts);
+    renderFlowInspector();
   }
 
   const toggleRail = () => {
@@ -365,8 +551,56 @@
     const mockBranch = e.target.closest("[data-mock-branch]");
     if (mockBranch) { selectMockBranch(mockBranch.dataset.mockBranch, mockBranch); return; }
 
-    const flowStep = e.target.closest("[data-flow-step]");
-    if (flowStep) { selectFlowStep(flowStep.dataset.flowStep, flowStep); return; }
+    const flowPreset = e.target.closest("[data-flow-preset]");
+    if (flowPreset) { loadFlowPreset(flowPreset.dataset.flowPreset); return; }
+
+    const flowView = e.target.closest("[data-flow-view]");
+    if (flowView) { flowUi.view = flowView.dataset.flowView; renderFlowsWorkbench(); return; }
+
+    const flowDir = e.target.closest("[data-flow-dir]");
+    if (flowDir) { flowUi.direction = flowDir.dataset.flowDir; renderFlowsWorkbench(); return; }
+
+    const flowZoom = e.target.closest("[data-flow-zoom]");
+    if (flowZoom) {
+      flowUi.zoom = Math.min(1.6, Math.max(0.55, +(flowUi.zoom + Number(flowZoom.dataset.flowZoom)).toFixed(2)));
+      renderFlowsWorkbench();
+      return;
+    }
+
+    const flowInspTab = e.target.closest("[data-flow-insp-tab]");
+    if (flowInspTab) { flowUi.inspTab = flowInspTab.dataset.flowInspTab; renderFlowInspector(); return; }
+
+    const flowSetLane = e.target.closest("[data-flow-set-lane]");
+    if (flowSetLane && flowUi.model) {
+      const n = flowUi.model.nodes.find((x) => x.id === flowUi.selectedId);
+      if (n) { n.lane = flowSetLane.dataset.flowSetLane; renderFlowsWorkbench(); }
+      return;
+    }
+
+    const flowAdd = e.target.closest("[data-flow-add]");
+    if (flowAdd && flowUi.model) {
+      const kind = flowAdd.dataset.flowAdd;
+      const idx = flowUi.seq++;
+      const newId = `node_${idx}`;
+      const tail = flowUi.model.nodes[flowUi.model.nodes.length - 1];
+      const base = {
+        id: newId, order: flowUi.model.nodes.length, lane: tail?.lane || flowUi.model.lanes[0]?.id,
+        status: "idle", startMs: (tail?.startMs || 0) + 120, durationMs: 60, dependsOn: tail ? [tail.id] : [],
+      };
+      if (kind === "condition") {
+        flowUi.model.nodes.push({ ...base, kind: "condition", title: `条件路由 #${idx}`, subtitle: "待配置分支规则", metric: "路由", branches: [{ label: "默认分支", expr: "true", targets: [], matched: false }] });
+      } else if (kind === "join") {
+        flowUi.model.nodes.push({ ...base, kind: "join", title: `并发汇合 #${idx}`, subtitle: "等待上游并行节点", metric: "屏障" });
+      } else {
+        flowUi.model.nodes.push({ ...base, kind: "request", method: kind === "saved" ? "GET" : "POST", title: kind === "saved" ? `引用请求 #${idx}` : `内联步骤 #${idx}`, subtitle: kind === "saved" ? "/api/orders/{{order_id}}" : "/api/custom/step", metric: "等待", extract: "—", assert: "status == 200", retry: "不重试", body: "// 尚未运行" });
+      }
+      if (tail) flowUi.model.edges.push({ from: tail.id, to: newId, layer: "control", tone: "idle" });
+      flowUi.selectedId = newId;
+      flowUi.inspTab = kind === "condition" || kind === "join" ? "topology" : "config";
+      renderFlowsWorkbench();
+      ov()?.toast(`已添加节点「${flowUi.model.nodes[flowUi.model.nodes.length - 1].title}」`);
+      return;
+    }
 
     const catTab = e.target.closest("[data-cat-tab]");
     if (catTab) {
@@ -489,13 +723,17 @@
       case "open-cmd": toggleCmd(true); break;
       case "close-cmd": toggleCmd(false); break;
       case "toggle-console": togglePanel("console-drawer"); break;
-      case "toggle-chat-details": togglePanel("chat-details-panel"); break;
-      case "toggle-flow-inspector": togglePanel("flow-inspector"); break;
-      case "show-flow-inputs":
-        document.querySelectorAll("[data-flow-step]").forEach((s) => s.classList.remove("selected"));
-        if (byId("flow-insp-inputs")) byId("flow-insp-inputs").hidden = false;
-        if (byId("flow-insp-step")) byId("flow-insp-step").hidden = true;
-        if (byId("flow-insp-title")) byId("flow-insp-title").textContent = "流程输入与会话";
+      case "close-flow-inspector": flowUi.selectedId = null; renderFlowsWorkbench(); break;
+      case "flow-toggle-lanes": flowUi.swimlanes = !flowUi.swimlanes; renderFlowsWorkbench(); break;
+      case "flow-toggle-align": flowUi.align = flowUi.align === "center" ? "top" : "center"; renderFlowsWorkbench(); break;
+      case "flow-toggle-data": flowUi.dataFlow = !flowUi.dataFlow; renderFlowsWorkbench(); break;
+      case "flow-reset-layout": flowUi.pinned = {}; renderFlowsWorkbench(); ov()?.toast("已重置为自动排版"); break;
+      case "flow-hist-prev": flowUi.selectRun(flowUi.runIdx - 1); break;
+      case "flow-hist-next": flowUi.selectRun(flowUi.runIdx + 1); break;
+      case "toggle-flow-run":
+        flowUi.running = !flowUi.running;
+        renderFlowsWorkbench();
+        ov()?.toast(flowUi.running ? `正在运行流程「${flowUi.model?.name}」（并行波次自动调度）…` : `已停止流程「${flowUi.model?.name}」`, { tone: flowUi.running ? "ok" : "warn" });
         break;
       case "add-env-var": {
         const kEl = byId("new-env-key"); const vEl = byId("new-env-val"); const tbody = byId("env-vars-tbody");
@@ -633,7 +871,7 @@
     jump.hidden = dist <= 40;
   });
 
-  const MODULE_ORDER = ["requests", "mock", "flows", "history", "environments", "chat", "providers", "gateway", "usage"];
+  const MODULE_ORDER = ["requests", "mock", "flows", "history", "environments", "chat", "runs", "providers", "gateway", "usage"];
   document.addEventListener("keydown", (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); toggleCmd(); return; }
@@ -670,6 +908,7 @@
   setEnvTab(state.envTab);
   setUsageView(state.usageView);
   setSettingsPage(state.setPage);
+  renderFlowsWorkbench();
 
   if (q.get("tab")) { const [g, tb] = q.get("tab").split(":"); if (g && tb) setSubTab(g, tb); }
   if (q.get("console") === "1") togglePanel("console-drawer", true);

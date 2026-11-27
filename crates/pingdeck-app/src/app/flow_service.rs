@@ -13,7 +13,7 @@ use crate::events::EventSink;
 use crate::flows::{
     FlowEvent, FlowRun, StepOutput, forward_flow_events, run_flow, summarize_run, validate_runnable,
 };
-use crate::workspace::items::FlowStepResult;
+use crate::workspace::items::{FlowStepKind, FlowStepResult};
 use crate::workspace::{
     CookieJarEntry, EnvironmentVariable, Flow, FlowRunInput, FlowRunResult, FlowRunSummary,
     HistoryOrigin, HistorySource, HttpMethod, Request, VariableScopes, WorkspaceId,
@@ -227,7 +227,10 @@ pub async fn flow_run_impl(
             .into_iter()
             .take(input.max_steps.unwrap_or(usize::MAX))
             .enumerate()
-            .filter(|(index, _)| input.only_step.is_none_or(|only| *index == only))
+            .filter(|(index, step)| {
+                step.step_kind == FlowStepKind::Request
+                    && input.only_step.is_none_or(|only| *index == only)
+            })
             .filter_map(|(_, step)| requests.get(step.request_id.trim()).cloned())
             .collect()
     };
@@ -378,7 +381,10 @@ fn effective_methods(
         .into_iter()
         .take(input.max_steps.unwrap_or(usize::MAX))
         .enumerate()
-        .filter(|(index, _)| input.only_step.is_none_or(|only| *index == only))
+        .filter(|(index, step)| {
+            step.step_kind == FlowStepKind::Request
+                && input.only_step.is_none_or(|only| *index == only)
+        })
         .map(|(_, step)| {
             step.method_override
                 .or_else(|| {

@@ -830,7 +830,9 @@ mod gpui_integration {
     #[gpui_kit::test]
     fn flows_workbench_full_lifecycle(cx: &mut TestAppContext) {
         use crate::views::flows::FlowsView;
-        use crate::views::flows::state::{FlowModal, FlowRunTab, FlowStepTab};
+        use crate::views::flows::state::{FlowModal, FlowStepTab};
+        use pingdeck_desktop::core::model::items::{FlowLayoutDirectionPref, FlowStepKind};
+        use pingdeck_desktop::state::FlowViewMode;
 
         cx.background_executor.allow_parking();
         let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
@@ -898,25 +900,48 @@ mod gpui_integration {
             "saved flow should persist 2 steps"
         );
 
-        // 2. Cycle all inspector & bottom tabs + Options modal.
+        // 2. Exercise unified ProcessView modes (Graph / Steps / Timeline), DAG Condition & Join
+        //    nodes, swimlanes, LR/TB/Wrap layout toggles, hybrid pin/reset, Inspector tabs, and modals.
         visual.update(|window, cx| {
             view.update(cx, |v, cx| {
+                v.add_control_step(FlowStepKind::Condition, cx);
+                v.add_control_step(FlowStepKind::Join, cx);
+                v.set_layout_direction(FlowLayoutDirectionPref::TopToBottom, cx);
+                v.set_layout_direction(FlowLayoutDirectionPref::Serpentine, cx);
+                v.toggle_swimlanes(cx);
+                v.toggle_center_align(cx);
+                v.toggle_data_flow(cx);
+                if let Some(sid) = v.selected_step_id.clone()
+                    && let Some(flow) = v.draft.as_mut()
+                {
+                    flow.options.pinned_positions.insert(sid, (380, 140));
+                }
+                for mode in [
+                    FlowViewMode::Graph,
+                    FlowViewMode::Steps,
+                    FlowViewMode::Timeline,
+                ] {
+                    v.set_view_mode(mode, cx);
+                }
+                v.set_view_mode(FlowViewMode::Graph, cx);
                 for tab in FlowStepTab::ALL {
                     v.step_tab = tab;
                     cx.notify();
                 }
-                for rtab in [
-                    FlowRunTab::LiveRun,
-                    FlowRunTab::Variables,
-                    FlowRunTab::History,
-                ] {
-                    v.run_tab = rtab;
-                    cx.notify();
-                }
+                v.reset_pinned_layout(cx);
+                v.active_modal = Some(FlowModal::Variables);
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
+
+            view.update(cx, |v, cx| {
                 v.active_modal = Some(FlowModal::Options);
                 cx.notify();
             });
             window.refresh();
+            window.draw(cx).clear(cx);
             assert!(view.update(cx, |v, cx| v.dismiss_modal_if_open(cx)));
             let fid = view.read(cx).selected_flow_id.clone().expect("flow id");
             view.update(cx, |v, cx| v.delete_flow(fid, cx));
@@ -2667,6 +2692,41 @@ mod gpui_integration {
                 );
                 m.select_node(Some("task:n3".to_owned()), cx);
                 cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // Exercise unified Process Graph layout switching (TB, Serpentine wrap, Swimlanes,
+            // hybrid manual pinning & reset).
+            modal.update(cx, |m, cx| {
+                m.set_layout_direction(pingdeck_desktop::state::LayoutDirection::TopToBottom, cx);
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            modal.update(cx, |m, cx| {
+                m.set_layout_direction(
+                    pingdeck_desktop::state::LayoutDirection::Serpentine { max_per_row: 3 },
+                    cx,
+                );
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            modal.update(cx, |m, cx| {
+                m.toggle_swimlanes(cx);
+                assert!(m.layout_policy.swimlanes);
+                m.pinned_positions
+                    .insert("task:n3".to_owned(), (420.0, 160.0));
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            modal.update(cx, |m, cx| {
+                m.toggle_alignment(cx);
+                m.reset_pinned_layout(cx);
+                assert!(m.pinned_positions.is_empty());
             });
             window.refresh();
             window.draw(cx).clear(cx);

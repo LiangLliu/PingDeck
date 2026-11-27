@@ -515,7 +515,59 @@ pub struct Flow {
     pub options: FlowOptions,
 }
 
-/// The stored run inputs of a flow, used when `flow_run` does not pass its own. Stored in plain
+/// Preferred primary direction for rendering a flow in the unified Process Graph canvas.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowLayoutDirectionPref {
+    /// Adaptive default: `LeftToRight` for 1-4 steps or swimlanes, 4-per-row `Serpentine` for 5+.
+    #[default]
+    Auto,
+    LeftToRight,
+    TopToBottom,
+    Serpentine,
+}
+
+/// Persisted visual layout preferences for a flow (`flows.options_json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowLayoutPref {
+    #[serde(default)]
+    pub direction: FlowLayoutDirectionPref,
+    #[serde(default = "default_true")]
+    pub center_align: bool,
+    #[serde(default)]
+    pub swimlanes: bool,
+    #[serde(default = "default_true")]
+    pub show_data_flow: bool,
+}
+
+impl Default for FlowLayoutPref {
+    fn default() -> Self {
+        Self {
+            direction: FlowLayoutDirectionPref::Auto,
+            center_align: true,
+            swimlanes: false,
+            show_data_flow: true,
+        }
+    }
+}
+
+impl FlowLayoutPref {
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// One user-defined swimlane group on a flow's Process Graph canvas (e.g. "Auth", "Order").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowLaneDef {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub accent_index: usize,
+}
+
+/// The stored run inputs and layout preferences of a flow (`flows.options_json`). Stored in plain
 /// text in the main database like the rest of the flow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowOptions {
@@ -525,6 +577,15 @@ pub struct FlowOptions {
     /// Whether cookies set by one step are sent by the later steps of the same run.
     #[serde(default = "default_true")]
     pub cookie_session: bool,
+    /// Optional swimlane declarations for grouping steps by service/domain.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lanes: Vec<FlowLaneDef>,
+    /// Persisted canvas layout preference (direction, alignment, swimlanes, data-flow arcs).
+    #[serde(default, skip_serializing_if = "FlowLayoutPref::is_default")]
+    pub layout: FlowLayoutPref,
+    /// Optional manual drag-pinned logical `(x, y)` coordinates keyed by `step.id`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pinned_positions: BTreeMap<String, (i32, i32)>,
 }
 
 impl Default for FlowOptions {
@@ -532,6 +593,9 @@ impl Default for FlowOptions {
         Self {
             initial_variables: BTreeMap::new(),
             cookie_session: true,
+            lanes: Vec::new(),
+            layout: FlowLayoutPref::default(),
+            pinned_positions: BTreeMap::new(),
         }
     }
 }
@@ -542,6 +606,41 @@ impl FlowOptions {
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
+}
+
+/// Execution role of a [`FlowStep`] inside a flow DAG.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowStepKind {
+    /// Standard HTTP or AI API request step (default, preserves linear compatibility).
+    #[default]
+    Request,
+    /// Multi-exit conditional branch router (evaluates [`FlowStep::branches`] in order without
+    /// sending an HTTP request).
+    Condition,
+    /// Parallel fan-in barrier that waits for all active upstream branches before continuing.
+    Join,
+}
+
+impl FlowStepKind {
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
+        matches!(self, Self::Request)
+    }
+}
+
+/// One conditional exit port on a [`FlowStepKind::Condition`] router step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowBranch {
+    pub id: String,
+    pub label: String,
+    /// Condition expression evaluated via the bounded flow condition grammar; blank matches as the
+    /// fallback (`Else`) branch.
+    #[serde(default)]
+    pub expression: String,
+    /// Downstream step IDs activated when this branch matches.
+    #[serde(default)]
+    pub target_step_ids: Vec<String>,
 }
 
 /// Most extra attempts a step may configure.
@@ -604,6 +703,19 @@ pub struct FlowStep {
     /// Timeout of each attempt in milliseconds (1–600,000); `None` keeps the request's own.
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    /// Execution role (`Request`, `Condition` router, or `Join` fan-in barrier).
+    #[serde(default, skip_serializing_if = "FlowStepKind::is_default")]
+    pub step_kind: FlowStepKind,
+    /// Explicit upstream step IDs in a DAG flow. Empty across all steps keeps linear `position`
+    /// ordering for full backward compatibility.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub depends_on: Vec<String>,
+    /// Ordered conditional exits for a [`FlowStepKind::Condition`] node.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branches: Vec<FlowBranch>,
+    /// Optional swimlane ID referencing [`FlowOptions::lanes`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<String>,
 }
 
 /// The body type a step's `body_override` is sent as.
@@ -841,6 +953,12 @@ pub struct FlowStepSummary {
     /// Model, finish reason and cost of an AI request step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ai: Option<AiStepSummary>,
+    /// Matched exit branch ID when this step is a [`FlowStepKind::Condition`] router.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_branch_id: Option<String>,
+    /// Start offset in milliseconds relative to the flow run start, for waterfall timelines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_offset_ms: Option<u64>,
 }
 
 /// Which failures of one attempt make a step retry (`FlowStep.retries`).
@@ -915,6 +1033,12 @@ pub struct FlowStepResult {
     /// Model, finish reason and cost of an AI request step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ai: Option<AiStepSummary>,
+    /// Matched exit branch ID when this step is a [`FlowStepKind::Condition`] router.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_branch_id: Option<String>,
+    /// Start offset in milliseconds relative to the flow run start, for waterfall timelines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_offset_ms: Option<u64>,
 }
 
 /// One send of a flow step, retries included.

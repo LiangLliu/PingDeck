@@ -14,6 +14,7 @@ pub mod layout;
 pub mod menus;
 pub mod pagination;
 pub mod primitives;
+pub mod process_chrome;
 pub mod theme;
 pub mod widgets;
 
@@ -41,7 +42,9 @@ pub use gpui_kit::component::{
 };
 
 pub use assets::{APP_ICON_PNG_BYTES, PingDeckAssets};
-pub use dag_canvas::{DagEdgeDraw, dag_edge_canvas};
+pub use dag_canvas::{
+    DagEdgeDraw, ProcessGuideDraw, ProcessLaneDraw, dag_edge_canvas, process_stage_canvas,
+};
 pub use data::{choice_chip, data_row, kpi_card, kv_line, table_header};
 pub use dialog::{
     modal_dialog, responsive_modal_bounds, responsive_sheet_width, viewport_modal,
@@ -67,6 +70,9 @@ pub use primitives::{
     code_editor, field_row, h_row, kbd_chip, list_row, markdown_view, method_badge,
     multiline_input, pane_box, section_heading, status_dot, streaming_markdown_view, table_column,
     text_input, title_bar_options, toggle_switch, v_col, virtual_table,
+};
+pub use process_chrome::{
+    lane_draw_spec, process_edge_label_pill, process_lane_header, process_segmented_waterfall_bar,
 };
 pub use theme::{
     PingDeckPalette, apply_palette, is_compact, palette, resolve_is_dark, sync_window_scale,

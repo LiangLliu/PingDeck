@@ -81,6 +81,19 @@ window.PD.POPOVER_TEMPLATES = {
     <button class="pop-opt active" data-pick-unlisted-prov=""><span>全部服务商</span><span class="ml-auto">✓</span></button>
     <button class="pop-opt" data-pick-unlisted-prov="relay.acme.dev"><span>relay.acme.dev (8)</span></button>
     <button class="pop-opt" data-pick-unlisted-prov="Company Gateway"><span>Company Gateway (4)</span></button>`,
+  "flow-runs": () => {
+    const ctrl = window.PD?.flowUi;
+    const runs = ctrl?.getRuns?.() || [];
+    const cur = ctrl?.getRunIndex?.() ?? 0;
+    return `
+      <div class="pop-head"><span>流程历史运行回放</span><span class="tag">HistoryOnly</span></div>
+      ${runs.map((r, i) => `
+        <button class="pop-opt${i === cur ? " active" : ""}" data-pick-flow-run="${i}">
+          <span class="dot dot-${r.status === "bad" ? "bad" : "ok"}"></span>
+          <div class="pop-opt-col"><span>${r.label}</span><span class="pop-opt-sub">${r.summary} · ${r.time}</span></div>
+          ${i === cur ? "<span>✓</span>" : ""}
+        </button>`).join("")}`;
+  },
 };
 
 window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importTab }) => {
@@ -355,92 +368,76 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
       body: `<p>当前页面的已更改设置项将回到出厂默认值，业务记录不会被删除。确认后 8 秒内可以撤销。</p>`,
       foot: `<button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-undo="已恢复本页默认值">恢复默认值</button>`,
     },
+    "flow-vars": {
+      size: "lg",
+      title: "流程变量 · 初始输入与运行时提取",
+      body: `
+        <div class="card-panel">
+          <div class="card-panel-head"><span>初始运行变量（优先级高于环境）</span><span class="tag">4 项</span></div>
+          <table class="kv-table">
+            <thead><tr><th>变量名</th><th>当前值</th><th>来源 / 类型</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">amount</td><td class="mono">299</td><td><span class="tag">初始输入</span></td></tr>
+              <tr><td class="mono">currency</td><td class="mono">CNY</td><td><span class="tag">初始输入</span></td></tr>
+              <tr><td class="mono">token</td><td class="mono text-muted">••••••9kQ</td><td><span class="tag tag-warn">提取 · 机密</span></td></tr>
+              <tr><td class="mono">order_id</td><td class="mono">ord_20261127_881</td><td><span class="tag tag-accent">提取 · 文本</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <span class="set-row-desc">机密提取项自动在历史记录中脱敏，不写入运行摘要。</span>`,
+      foot: `<button class="btn" data-action="close-dialog">关闭</button><button class="btn btn-primary" data-dialog-done="已保存流程初始变量">保存变量</button>`,
+    },
+    "flow-opts": {
+      title: "流程运行与排版选项",
+      body: `
+        <div class="set-row" style="border:0;padding:4px 0"><div class="set-row-info"><span class="set-row-label">运行内隔离 Cookie 会话</span><span class="set-row-desc">仅在本次流程运行内传递 Set-Cookie，结束后丢弃，不污染工作区 Cookie 罐（HistoryOnly）。</span></div><button type="button" class="switch-ui on" data-action="toggle-switch"></button></div>
+        <div class="set-row" style="padding:8px 0"><div class="set-row-info"><span class="set-row-label">并行分支上限</span><span class="set-row-desc">DAG 并行波次最大并发请求数（内置硬上限 8），完成后按步骤序确定性合并变量。</span></div><span class="tag mono">MAX = 8</span></div>
+        <div class="set-row" style="padding:8px 0;border-bottom:0"><div class="set-row-info"><span class="set-row-label">智能默认排版</span><span class="set-row-desc">线性 5 步以上自动采用 4 步折行；含分支/并行/泳道默认横排居中。</span></div><span class="tag tag-accent">已启用</span></div>`,
+      foot: `<button class="btn" data-action="close-dialog">关闭</button><button class="btn btn-primary" data-dialog-done="已保存流程运行选项">应用</button>`,
+    },
     "run-monitor": {
       size: "xl",
-      title: "运行看板 · 执行图（run_01J9X8）",
+      title: "工作流监控 · 统一 ProcessView",
       body: `
-        <div class="rm-canvas">
-          <div class="rm-kpis">
-            <div class="kpi-card"><span class="kpi-label">运行状态</span><span class="kpi-val fs-sm text-warn">● 待审批</span><span class="kpi-sub">cargo clippy 待批准</span></div>
-            <div class="kpi-card"><span class="kpi-label">执行节点</span><span class="kpi-val fs-sm">5 个</span><span class="kpi-sub">3 完成 · 1 待审批 · 0 失败</span></div>
-            <div class="kpi-card"><span class="kpi-label">累计耗时</span><span class="kpi-val fs-sm">11.4 s</span><span class="kpi-sub">并行阶段节省 1.7 s</span></div>
-            <div class="kpi-card"><span class="kpi-label">累计 token / 费用</span><span class="kpi-val fs-sm">28.9K · ¥0.025</span><span class="kpi-sub">主智能体 + 2 子智能体</span></div>
+        <div id="rm-canvas-root" class="rm-canvas">
+          <div class="row-between" style="flex-wrap:wrap;gap:8px">
+            <div class="pv-hist-nav">
+              <button type="button" data-rm-run-prev title="上一条运行">‹</button>
+              <span id="rm-run-label" style="padding:0 8px;font-size:12px;font-weight:600;color:var(--ink-1)">#4 修复网关 429 熔断 · 待审批</span>
+              <button type="button" data-rm-run-next title="下一条运行">›</button>
+            </div>
+            <div id="rm-kpis" class="row-center" style="gap:8px;flex-wrap:wrap"></div>
           </div>
-          <div class="row-between">
+
+          <div class="pv-bar" style="margin:0 -18px;padding:7px 18px">
             <div class="seg" data-rm-view-bar>
-              <button data-rm-view="steps">步骤</button>
-              <button class="active" data-rm-view="graph">执行图</button>
-              <button data-rm-view="timeline">时间轴</button>
+              <button type="button" data-rm-view="steps">步骤</button>
+              <button type="button" class="active" data-rm-view="graph">执行图</button>
+              <button type="button" data-rm-view="timeline">时间轴</button>
+              <button type="button" data-rm-view="changes">变更 <span class="tab-cnt">1</span></button>
             </div>
-            <span class="tag">自动匹配 · 点击节点查看节点详情</span>
+            <span class="pv-bar-sep"></span>
+            <div class="seg" data-rm-dir-bar>
+              <button type="button" class="active" data-rm-dir="lr">横排</button>
+              <button type="button" data-rm-dir="tb">竖排</button>
+              <button type="button" data-rm-dir="serpentine">折行</button>
+            </div>
+            <button type="button" id="rm-toggle-lanes" class="tag tag-accent" data-rm-toggle="lanes">泳道</button>
+            <button type="button" id="rm-toggle-align" class="tag tag-accent" data-rm-toggle="align">居中</button>
+            <button type="button" id="rm-reset-layout" class="btn btn-sm" hidden data-rm-reset>↺ 重置排版</button>
+            <div class="row-center ml-auto" style="gap:4px">
+              <button type="button" class="btn-icon" data-rm-zoom="-0.15" title="缩小">−</button>
+              <span id="rm-zoom-lbl" class="mono fs-2xs text-muted" style="min-width:36px;text-align:center">100%</span>
+              <button type="button" class="btn-icon" data-rm-zoom="0.15" title="放大">+</button>
+            </div>
           </div>
-          <div class="rm-split">
-            <div class="col-stack" style="min-height:0;overflow:auto">
-              <div class="rm-view-panel" data-rm-panel="graph">
-                <div class="rm-graph-wrap">
-                  <svg class="rm-graph-svg" viewBox="0 0 760 220" preserveAspectRatio="none" aria-hidden="true">
-                    <path d="M 190 58 C 228 58, 228 58, 266 58" class="rm-edge ok" />
-                    <path d="M 190 58 C 228 58, 228 152, 266 152" class="rm-edge ok" />
-                    <path d="M 486 58 C 524 58, 524 58, 562 58" class="rm-edge ok" />
-                    <path d="M 486 152 C 524 152, 524 58, 562 58" class="rm-edge warn" />
-                    <circle cx="190" cy="58" r="3" class="rm-port ok" />
-                    <circle cx="266" cy="58" r="3" class="rm-port ok" />
-                    <circle cx="266" cy="152" r="3" class="rm-port ok" />
-                    <circle cx="486" cy="58" r="3" class="rm-port ok" />
-                    <circle cx="486" cy="152" r="3" class="rm-port warn" />
-                    <circle cx="562" cy="58" r="3" class="rm-port warn" />
-                  </svg>
-                  <div class="rm-graph-cols">
-                    <div class="rm-graph-col">
-                      <span class="rm-col-lbl">阶段 1</span>
-                      <button class="rm-node selected" data-rm-node="root"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>主智能体 · 启动</b></span><span class="mono fs-2xs text-muted">1.2s</span></div><span class="fs-2xs text-muted">deepseek-v4-pro · 派发 2 并行子智能体</span></button>
-                    </div>
-                    <div class="rm-graph-col">
-                      <span class="rm-col-lbl">阶段 2 · 并行</span>
-                      <div class="rm-group-card">
-                        <span class="rm-group-tab">并行组 · 调研</span>
-                        <button class="rm-node" data-rm-node="explore"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>检索 router.rs</b></span><span class="mono fs-2xs text-muted">1.8s</span></div><span class="fs-2xs text-muted">2/2 已完成 · 展开全部 (2)</span></button>
-                      </div>
-                      <button class="rm-node" data-rm-node="search"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>核对 429 规范</b></span><span class="mono fs-2xs text-muted">1.7s</span></div><span class="fs-2xs text-muted">调研 · web_search · 3 来源</span></button>
-                    </div>
-                    <div class="rm-graph-col">
-                      <span class="rm-col-lbl">阶段 3 · 汇合</span>
-                      <button class="rm-node" data-rm-node="edit"><div class="row-between"><span class="status-mark"><span class="dot dot-warn"></span><b>编辑与验证</b></span><span class="mono fs-2xs text-warn">待审批</span></div><span class="fs-2xs text-muted">+18 -4 · 待运行 clippy</span></button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="rm-view-panel hidden" data-rm-panel="steps">
-                <div class="card-panel">
-                  <div class="card-panel-head"><span>执行步骤 (4)</span><span class="tag">线性轨迹</span></div>
-                  <button class="rm-node" data-rm-node="root"><div class="row-between"><span>1. 主智能体 · 启动</span><span class="mono fs-2xs text-muted">1.2s</span></div></button>
-                  <button class="rm-node" data-rm-node="explore"><div class="row-between"><span>2. 子智能体 · 检索 router.rs</span><span class="mono fs-2xs text-muted">1.8s</span></div></button>
-                  <button class="rm-node" data-rm-node="search"><div class="row-between"><span>3. 子智能体 · 核对 429 规范</span><span class="mono fs-2xs text-muted">1.7s</span></div></button>
-                  <button class="rm-node" data-rm-node="edit"><div class="row-between"><span>4. shell · cargo clippy</span><span class="mono fs-2xs text-warn">待审批</span></div></button>
-                </div>
-              </div>
-              <div class="rm-view-panel hidden" data-rm-panel="timeline">
-                <div class="card-panel">
-                  <div class="card-panel-head"><span>瀑布时间轴</span><span class="mono fs-2xs text-muted">0.0s — 11.4s</span></div>
-                  <div class="rm-wf-row"><span class="truncate">主智能体 · 启动</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:0%;width:11%"></div></div><span class="mono text-right text-muted">1.2s</span></div>
-                  <div class="rm-wf-row"><span class="truncate">调研 · router.rs</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:16%"></div></div><span class="mono text-right text-muted">1.8s</span></div>
-                  <div class="rm-wf-row"><span class="truncate">调研 · 429 规范</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:15%"></div></div><span class="mono text-right text-muted">1.7s</span></div>
-                  <div class="rm-wf-row"><span class="truncate">编辑与单测</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:27%;width:63%"></div></div><span class="mono text-right text-muted">7.2s</span></div>
-                  <div class="rm-wf-row"><span class="truncate text-warn">clippy 审批</span><div class="rm-wf-track"><div class="rm-wf-bar warn" style="left:90%;width:10%"></div></div><span class="mono text-right text-warn">待审批</span></div>
-                </div>
-              </div>
-            </div>
-            <div id="rm-node-detail" class="card-panel" style="min-height:0;overflow-y:auto">
-              <div class="card-panel-head"><span>节点详情 · 主智能体 · 启动</span><span class="tag tag-ok">已完成</span></div>
-              <div class="fs-xs text-muted">模型：<code class="text-ink1">DeepSeek/deepseek-v4-pro</code></div>
-              <div class="fs-xs text-muted">耗时：<b class="mono text-ink1">1.20 s</b> · 消耗 <b class="mono text-ink1">4,210 tok</b></div>
-              <div class="code-box" style="white-space:pre-wrap">并行派生 2 个子智能体：
-1. 调研：定位 router.rs 中 429 与 5xx 熔断分支
-2. 调研：核对 DeepSeek Retry-After 响应头格式</div>
-            </div>
+
+          <div class="pv-stage-shell" style="margin:0 -18px -16px;border-top:0">
+            <div id="rm-stage-main" class="pv-main-pane"></div>
+            <aside id="rm-node-detail" class="pv-inspector"></aside>
           </div>
         </div>`,
-      foot: `<span class="dialog-foot-note">步骤、执行图与时间轴共享节点选中状态，审批统一在对话关卡区处理</span><button class="btn" data-action="close-dialog">关闭</button>`,
+      foot: `<span class="dialog-foot-note">与 HTTP 流程共用同一套 ProcessView 引擎（拖拽调位 · 泳道 · 横/竖/折行 · 瀑布时间轴）；审批统一在对话关卡区处理</span><button class="btn" data-action="close-dialog">关闭 (Esc)</button>`,
     },
     "reset-all": {
       size: "sm", tone: "danger",

@@ -386,6 +386,10 @@ pub fn flow_step_new(flow: &Flow) -> FlowStep {
         retry_wait_ms: 0,
         retry_on: Vec::new(),
         timeout_ms: None,
+        step_kind: crate::workspace::items::FlowStepKind::Request,
+        depends_on: Vec::new(),
+        branches: Vec::new(),
+        lane: None,
     }
 }
 

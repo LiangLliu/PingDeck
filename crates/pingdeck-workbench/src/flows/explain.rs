@@ -311,6 +311,8 @@ mod tests {
             history_entry_id: None,
             condition: None,
             ai: None,
+            matched_branch_id: None,
+            started_offset_ms: None,
         }
     }
 

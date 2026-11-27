@@ -7,7 +7,7 @@ use gpui_kit::{
 };
 use pingdeck_desktop::core::agent::dto::AgentRunTopology;
 use pingdeck_desktop::core::agent::tools::process::ProcessState;
-use pingdeck_desktop::state::ExecutionGraphLayout;
+use pingdeck_desktop::state::{CrossAlignment, ExecutionGraphLayout, LayoutDirection};
 
 use crate::ui::{
     StatusShape, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, btn_secondary, card,
@@ -242,14 +242,82 @@ pub fn render_modal_view_bar(
 
     let graph_tools = (active_tab == WorkflowTab::Graph).then(|| {
         let scale = view.graph_zoom.clamp(0.75, 1.15);
+        let policy = view.layout_policy;
+        let has_pinned = !view.pinned_positions.is_empty();
         let group_ids = layout
             .map(|l| l.collapsible_group_ids.clone())
             .unwrap_or_default();
         let all_open =
             !group_ids.is_empty() && group_ids.iter().all(|id| view.expanded_groups.contains(id));
+        let align_lbl = match policy.alignment {
+            CrossAlignment::Start => ch.graph_layout_align_start(),
+            CrossAlignment::Center | CrossAlignment::Barycenter => ch.graph_layout_align_center(),
+        };
         h_row()
             .flex_shrink_0()
             .gap(px(4.0))
+            .flex_wrap()
+            .child(
+                choice_chip(
+                    "wf-dir-lr",
+                    ch.graph_layout_lr(),
+                    policy.direction == LayoutDirection::LeftToRight,
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.set_layout_direction(LayoutDirection::LeftToRight, cx);
+                })),
+            )
+            .child(
+                choice_chip(
+                    "wf-dir-tb",
+                    ch.graph_layout_tb(),
+                    policy.direction == LayoutDirection::TopToBottom,
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.set_layout_direction(LayoutDirection::TopToBottom, cx);
+                })),
+            )
+            .child(
+                choice_chip(
+                    "wf-dir-wrap",
+                    ch.graph_layout_wrap(),
+                    policy.direction.is_serpentine(),
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.set_layout_direction(
+                        LayoutDirection::Serpentine {
+                            max_per_row: LayoutDirection::DEFAULT_SERPENTINE_COLS,
+                        },
+                        cx,
+                    );
+                })),
+            )
+            .child(
+                choice_chip(
+                    "wf-lanes-toggle",
+                    ch.graph_layout_swimlanes(),
+                    policy.swimlanes,
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_swimlanes(cx))),
+            )
+            .child(
+                choice_chip(
+                    "wf-align-toggle",
+                    align_lbl,
+                    policy.alignment == CrossAlignment::Center,
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_alignment(cx))),
+            )
+            .children(has_pinned.then(|| {
+                btn_ghost("wf-layout-reset", ch.graph_layout_reset())
+                    .icon(icon_xs(UiIcon::RotateCcw))
+                    .on_click(cx.listener(|this, _, _, cx| this.reset_pinned_layout(cx)))
+            }))
             .children((!group_ids.is_empty()).then(|| {
                 let lbl = if all_open {
                     ch.graph_collapse_all()

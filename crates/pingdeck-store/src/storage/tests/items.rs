@@ -188,11 +188,16 @@ fn workspace_items_round_trip_isolate_and_cascade_with_secrets() {
             retry_wait_ms: 500,
             retry_on: vec![FlowRetryOn::Network, FlowRetryOn::Status429],
             timeout_ms: Some(8_000),
+            step_kind: pingdeck_model::items::FlowStepKind::Request,
+            depends_on: Vec::new(),
+            branches: Vec::new(),
+            lane: None,
         }],
         updated_at_ms: 1_300,
         options: pingdeck_model::items::FlowOptions {
             initial_variables: [("region".to_owned(), "eu".to_owned())].into(),
             cookie_session: false,
+            ..Default::default()
         },
     };
     store.save_flow(&flow).unwrap();

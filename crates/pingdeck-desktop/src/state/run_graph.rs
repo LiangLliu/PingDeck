@@ -7,13 +7,19 @@
 //!   groups, and live run overlay) via the exact same [`layout_dag_nodes`] engine.
 //! - Future HTTP `Flows` visual DAG rendering without duplicating layout geometry.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 use pingdeck_core::agent::dto::{
     AgentRunTopology, ExecutionWave, TopologySubagent, TopologyToolStep,
 };
 use pingdeck_core::agent::model::{
     AgentRunStatus, AgentTodoItem, AgentTodoStatus, SubagentRole, TaskNodeKind,
+};
+
+use super::process_graph::{
+    LayoutPolicy, PositionedLaneBand, PositionedPort, ProcessEdgeKind, ProcessEdgeLayer,
+    ProcessEdgeSpec, ProcessEdgeTone, ProcessGraphInput, ProcessLaneSpec, ProcessNodeArchetype,
+    ProcessNodeSpec, ProcessNodeStatus, layout_process_graph,
 };
 
 /// Default card width in unscaled logical pixels.
@@ -45,8 +51,6 @@ pub const GRAPH_MAX_INLINE_MEMBERS: usize = 6;
 pub const GRAPH_OVERFLOW_ROW_H: f32 = 24.0;
 /// Bottom padding inside an expanded parallel group card.
 pub const GRAPH_GROUP_FOOTER_PAD_H: f32 = 10.0;
-/// Vertical clearance below intermediate stages for cross-stage skip edges.
-const LONG_EDGE_LANE_STEP: f32 = 18.0;
 
 /// Orthogonal single-run presentation modes inside the Run Monitor detail canvas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -262,10 +266,13 @@ impl GraphNode {
 pub struct PositionedNode {
     pub node: GraphNode,
     pub stage: usize,
+    pub lane_id: Option<String>,
     pub x: f32,
     pub y: f32,
     pub w: f32,
     pub h: f32,
+    pub pinned: bool,
+    pub ports: Vec<PositionedPort>,
     pub port_in: (f32, f32),
     pub port_out: (f32, f32),
     pub has_in_edge: bool,
@@ -278,30 +285,41 @@ pub struct GraphEdge {
     pub id: String,
     pub from_id: String,
     pub to_id: String,
+    pub layer: ProcessEdgeLayer,
     pub tone: GraphEdgeTone,
     pub dashed: bool,
+    pub horizontal_ports: bool,
+    pub label: Option<String>,
+    pub label_pos: Option<(f32, f32)>,
+    pub insert_pos: Option<(f32, f32)>,
     /// Ordered polyline/curve control anchors: `[start_port, ...waypoints, end_port]`.
     pub waypoints: Vec<(f32, f32)>,
 }
 
-/// Metadata for one left-to-right stage column header.
+/// Metadata for one stage column/row track header.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphStageHeader {
     pub stage_index: usize,
     pub x: f32,
+    pub y: f32,
     pub w: f32,
+    pub h: f32,
     pub node_count: usize,
     pub has_parallel: bool,
+    pub vertical: bool,
 }
 
 /// Complete, deterministically laid-out Execution Graph ready for canvas + card rendering.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionGraphLayout {
+    pub policy: LayoutPolicy,
+    pub lanes: Vec<PositionedLaneBand>,
     pub stages: Vec<GraphStageHeader>,
     pub nodes: Vec<PositionedNode>,
     pub edges: Vec<GraphEdge>,
     pub canvas_width: f32,
     pub canvas_height: f32,
+    pub has_pinned: bool,
     pub collapsible_group_ids: Vec<String>,
     pub total_nodes: usize,
     pub completed_nodes: usize,
@@ -477,18 +495,45 @@ pub fn build_plan_preview_graph(
     expanded_groups: &HashSet<String>,
     labels: &GraphBuildLabels<'_>,
 ) -> ExecutionGraphLayout {
-    build_task_graph_layout(tasks, None, expanded_groups, 0, labels)
+    build_task_graph_layout(
+        tasks,
+        None,
+        expanded_groups,
+        LayoutPolicy::default(),
+        &HashMap::new(),
+        0,
+        labels,
+    )
 }
 
-/// Converts a runtime [`AgentRunTopology`] into a laid-out GitHub-Actions-style Execution Graph.
-///
-/// When the session carries a structured Task Graph (`topo.task_graph`), renders the planned DAG
-/// overlaid with live sub-agent runtime status, duration, and errors; otherwise builds the graph
-/// directly from runtime [`ExecutionWave`]s.
+/// Converts a runtime [`AgentRunTopology`] into a laid-out Execution Graph using the default
+/// layout policy (`LeftToRight` + `Center`).
 #[must_use]
 pub fn build_graph_from_topology(
     topo: &AgentRunTopology,
     expanded_groups: &HashSet<String>,
+    now_ms: i64,
+    labels: &GraphBuildLabels<'_>,
+) -> ExecutionGraphLayout {
+    build_graph_from_topology_with_policy(
+        topo,
+        expanded_groups,
+        LayoutPolicy::default(),
+        &HashMap::new(),
+        now_ms,
+        labels,
+    )
+}
+
+/// Converts a runtime [`AgentRunTopology`] into a laid-out Execution Graph honoring the caller's
+/// [`LayoutPolicy`] (LR / TB / Serpentine, alignment, role swimlanes) and optional manual drag
+/// `pinned_positions`.
+#[must_use]
+pub fn build_graph_from_topology_with_policy(
+    topo: &AgentRunTopology,
+    expanded_groups: &HashSet<String>,
+    policy: LayoutPolicy,
+    pinned_positions: &HashMap<String, (f32, f32)>,
     now_ms: i64,
     labels: &GraphBuildLabels<'_>,
 ) -> ExecutionGraphLayout {
@@ -497,6 +542,8 @@ pub fn build_graph_from_topology(
             &topo.task_graph,
             Some(topo),
             expanded_groups,
+            policy,
+            pinned_positions,
             now_ms,
             labels,
         );
@@ -774,7 +821,7 @@ pub fn build_graph_from_topology(
         });
     }
 
-    layout_dag_nodes(nodes)
+    layout_dag_nodes_with_policy(nodes, policy, &agent_role_lanes(labels), pinned_positions)
 }
 
 /// Localized labels passed into [`build_graph_from_topology`] so Layer 2 stays language-neutral.
@@ -784,27 +831,132 @@ pub struct GraphBuildLabels<'a> {
     pub joining_title: &'a str,
     pub parallel_group: &'a str,
     pub kind_tool: &'a str,
+    pub lane_main: &'a str,
+    pub lane_explore: &'a str,
+    pub lane_implement: &'a str,
+    pub lane_verify: &'a str,
 }
 
-/// Pure, reusable layered DAG layout engine.
-///
-/// Handles arbitrary acyclic `depends_on` graphs (Phase 1 runtime waves, Phase 2 `TaskGraph`
-/// blueprints, and future HTTP `Flows`):
-/// 1. Assigns stage columns via Kahn topological longest-path (honoring explicit `stage_hint` when
-///    valid and falling back gracefully if an input graph accidentally contains a cycle).
-/// 2. Orders nodes within each stage by upstream barycenter to minimize edge crossings.
-/// 3. Places cards top-aligned per column (GitHub Actions style) using deterministic heights.
-/// 4. Routes adjacent-stage edges directly and routes multi-stage skip edges along a clean bottom
-///    corridor so edges never slice through intermediate cards.
+fn agent_role_lanes(labels: &GraphBuildLabels<'_>) -> Vec<ProcessLaneSpec> {
+    vec![
+        ProcessLaneSpec {
+            id: "main".to_owned(),
+            title: labels.lane_main.to_owned(),
+            accent_index: 0,
+        },
+        ProcessLaneSpec {
+            id: "explore".to_owned(),
+            title: labels.lane_explore.to_owned(),
+            accent_index: 1,
+        },
+        ProcessLaneSpec {
+            id: "implement".to_owned(),
+            title: labels.lane_implement.to_owned(),
+            accent_index: 2,
+        },
+        ProcessLaneSpec {
+            id: "verify".to_owned(),
+            title: labels.lane_verify.to_owned(),
+            accent_index: 3,
+        },
+    ]
+}
+
+fn infer_agent_lane_id(node: &GraphNode) -> &'static str {
+    match node.kind {
+        GraphNodeKind::Main | GraphNodeKind::Gate => "main",
+        GraphNodeKind::Explore => "explore",
+        GraphNodeKind::Implement => "implement",
+        GraphNodeKind::Verify | GraphNodeKind::Tool => "verify",
+        GraphNodeKind::Group => {
+            if node.members.iter().any(|m| {
+                m.subagent_kind
+                    .as_deref()
+                    .is_some_and(|k| k.eq_ignore_ascii_case("explore"))
+            }) {
+                "explore"
+            } else if node.members.iter().any(|m| m.subagent_kind.is_some()) {
+                "implement"
+            } else {
+                "verify"
+            }
+        }
+    }
+}
+
+const fn map_to_process_status(status: GraphNodeStatus) -> ProcessNodeStatus {
+    match status {
+        GraphNodeStatus::Pending => ProcessNodeStatus::Pending,
+        GraphNodeStatus::Queued => ProcessNodeStatus::Queued,
+        GraphNodeStatus::Running => ProcessNodeStatus::Running,
+        GraphNodeStatus::Waiting => ProcessNodeStatus::Waiting,
+        GraphNodeStatus::Completed => ProcessNodeStatus::Completed,
+        GraphNodeStatus::Failed => ProcessNodeStatus::Failed,
+        GraphNodeStatus::Cancelled => ProcessNodeStatus::Cancelled,
+        GraphNodeStatus::Interrupted => ProcessNodeStatus::Interrupted,
+        GraphNodeStatus::Skipped => ProcessNodeStatus::Skipped,
+    }
+}
+
+const fn map_to_process_archetype(kind: GraphNodeKind) -> ProcessNodeArchetype {
+    match kind {
+        GraphNodeKind::Main => ProcessNodeArchetype::Trigger,
+        GraphNodeKind::Gate => ProcessNodeArchetype::Decision,
+        GraphNodeKind::Group => ProcessNodeArchetype::Group,
+        GraphNodeKind::Explore
+        | GraphNodeKind::Implement
+        | GraphNodeKind::Verify
+        | GraphNodeKind::Tool => ProcessNodeArchetype::Action,
+    }
+}
+
+const fn map_to_process_tone(tone: GraphEdgeTone) -> ProcessEdgeTone {
+    match tone {
+        GraphEdgeTone::Neutral => ProcessEdgeTone::Neutral,
+        GraphEdgeTone::Active => ProcessEdgeTone::Active,
+        GraphEdgeTone::Completed => ProcessEdgeTone::Completed,
+        GraphEdgeTone::Warning => ProcessEdgeTone::Warning,
+        GraphEdgeTone::Danger => ProcessEdgeTone::Danger,
+        GraphEdgeTone::Skipped => ProcessEdgeTone::Skipped,
+    }
+}
+
+const fn map_from_process_tone(tone: ProcessEdgeTone) -> GraphEdgeTone {
+    match tone {
+        ProcessEdgeTone::Neutral | ProcessEdgeTone::Data => GraphEdgeTone::Neutral,
+        ProcessEdgeTone::Active => GraphEdgeTone::Active,
+        ProcessEdgeTone::Completed => GraphEdgeTone::Completed,
+        ProcessEdgeTone::Warning => GraphEdgeTone::Warning,
+        ProcessEdgeTone::Danger => GraphEdgeTone::Danger,
+        ProcessEdgeTone::Skipped => GraphEdgeTone::Skipped,
+    }
+}
+
+/// Pure, reusable layered DAG layout engine backed by [`super::process_graph::layout_process_graph`].
 #[must_use]
 pub fn layout_dag_nodes(nodes: Vec<GraphNode>) -> ExecutionGraphLayout {
+    layout_dag_nodes_with_policy(nodes, LayoutPolicy::default(), &[], &HashMap::new())
+}
+
+/// Lays out `nodes` using the unified [`super::process_graph`] engine with custom [`LayoutPolicy`],
+/// optional swimlanes, and optional manual drag `pinned_positions`.
+#[must_use]
+pub fn layout_dag_nodes_with_policy(
+    nodes: Vec<GraphNode>,
+    policy: LayoutPolicy,
+    lanes: &[ProcessLaneSpec],
+    pinned_positions: &HashMap<String, (f32, f32)>,
+) -> ExecutionGraphLayout {
     if nodes.is_empty() {
         return ExecutionGraphLayout {
+            policy,
+            lanes: Vec::new(),
             stages: Vec::new(),
             nodes: Vec::new(),
             edges: Vec::new(),
             canvas_width: 0.0,
             canvas_height: 0.0,
+            has_pinned: false,
             collapsible_group_ids: Vec::new(),
             total_nodes: 0,
             completed_nodes: 0,
@@ -813,139 +965,115 @@ pub fn layout_dag_nodes(nodes: Vec<GraphNode>) -> ExecutionGraphLayout {
         };
     }
 
-    let id_to_idx: HashMap<String, usize> = nodes
+    let status_by_id: HashMap<&str, GraphNodeStatus> =
+        nodes.iter().map(|n| (n.id.as_str(), n.status)).collect();
+
+    let node_specs: Vec<ProcessNodeSpec> = nodes
         .iter()
-        .enumerate()
-        .map(|(i, n)| (n.id.clone(), i))
+        .map(|node| ProcessNodeSpec {
+            id: node.id.clone(),
+            archetype: map_to_process_archetype(node.kind),
+            status: map_to_process_status(node.status),
+            lane_id: Some(infer_agent_lane_id(node).to_owned()),
+            stage_hint: node.stage_hint,
+            size_hint: (GRAPH_NODE_W, node.computed_height()),
+            primary_port_offset: Some(node.port_offset_y()),
+            ports: Vec::new(),
+            is_group_container: !node.members.is_empty() && node.group_tab.is_some(),
+            pinned_pos: pinned_positions.get(&node.id).copied(),
+        })
         .collect();
 
-    // 1. Stage assignment (Kahn longest-path + explicit stage_hint respect).
-    let stage_of = assign_stages(&nodes, &id_to_idx);
-    let max_stage = stage_of.iter().copied().max().unwrap_or(0);
-    let mut columns: Vec<Vec<usize>> = vec![Vec::new(); max_stage + 1];
-    for (idx, &st) in stage_of.iter().enumerate() {
-        columns[st].push(idx);
-    }
-
-    // 2. Barycenter ordering within each stage column to reduce crossings.
-    let mut row_pos: HashMap<usize, f32> = HashMap::new();
-    for (col_idx, col) in columns.iter_mut().enumerate() {
-        if col_idx > 0 && col.len() > 1 {
-            col.sort_by(|&a, &b| {
-                let ba = barycenter(&nodes[a], &id_to_idx, &row_pos);
-                let bb = barycenter(&nodes[b], &id_to_idx, &row_pos);
-                ba.total_cmp(&bb).then_with(|| a.cmp(&b))
-            });
-        }
-        for (pos, &node_idx) in col.iter().enumerate() {
-            row_pos.insert(node_idx, pos as f32);
-        }
-    }
-
-    // 3. Assign concrete (x, y, w, h) coordinates (top-aligned columns like GitHub Actions).
-    let mut positioned: Vec<Option<PositionedNode>> = vec![None; nodes.len()];
-    let mut stage_headers: Vec<GraphStageHeader> = Vec::with_capacity(columns.len());
-    let mut stage_bottoms: Vec<f32> = vec![GRAPH_PAD_TOP; columns.len()];
-    let mut max_content_y: f32 = GRAPH_PAD_TOP;
-
-    for (stage_idx, col) in columns.iter().enumerate() {
-        let col_x = GRAPH_PAD_X + stage_idx as f32 * (GRAPH_NODE_W + GRAPH_STAGE_GAP);
-        let mut cursor_y = GRAPH_PAD_TOP;
-        let has_parallel = col.len() >= 2
-            || col
-                .iter()
-                .any(|&i| !nodes[i].members.is_empty() && nodes[i].group_tab.is_some());
-        stage_headers.push(GraphStageHeader {
-            stage_index: stage_idx,
-            x: col_x,
-            w: GRAPH_NODE_W,
-            node_count: col.len(),
-            has_parallel,
-        });
-
-        for &node_idx in col {
-            let h = nodes[node_idx].computed_height();
-            let port_y = cursor_y + nodes[node_idx].port_offset_y();
-            let pnode = PositionedNode {
-                node: nodes[node_idx].clone(),
-                stage: stage_idx,
-                x: col_x,
-                y: cursor_y,
-                w: GRAPH_NODE_W,
-                h,
-                port_in: (col_x, port_y),
-                port_out: (col_x + GRAPH_NODE_W, port_y),
-                has_in_edge: false,
-                has_out_edge: false,
-            };
-            positioned[node_idx] = Some(pnode);
-            cursor_y += h + GRAPH_NODE_GAP_Y;
-        }
-        let col_bottom = (cursor_y - GRAPH_NODE_GAP_Y).max(GRAPH_PAD_TOP);
-        stage_bottoms[stage_idx] = col_bottom;
-        max_content_y = max_content_y.max(col_bottom);
-    }
-
-    let mut positioned: Vec<PositionedNode> = positioned.into_iter().flatten().collect();
-    let pos_by_id: HashMap<String, usize> = positioned
-        .iter()
-        .enumerate()
-        .map(|(i, p)| (p.node.id.clone(), i))
-        .collect();
-
-    // 4. Route edges (adjacent direct Bézier vs multi-stage bottom corridor waypoints).
-    let mut edges: Vec<GraphEdge> = Vec::new();
-    let mut long_edge_lane = 0usize;
-    let mut max_edge_y = max_content_y;
-
-    for to_idx in 0..positioned.len() {
-        let deps = positioned[to_idx].node.depends_on.clone();
-        let to_id = positioned[to_idx].node.id.clone();
-        let to_stage = positioned[to_idx].stage;
-        let to_port = positioned[to_idx].port_in;
-        let to_status = positioned[to_idx].node.status;
-
-        for dep_id in deps {
-            let Some(&from_idx) = pos_by_id.get(&dep_id) else {
+    let mut edge_specs: Vec<ProcessEdgeSpec> = Vec::new();
+    for node in &nodes {
+        for dep_id in &node.depends_on {
+            let Some(&from_status) = status_by_id.get(dep_id.as_str()) else {
                 continue;
             };
-            if from_idx == to_idx {
+            if dep_id == &node.id {
                 continue;
             }
-            let from_stage = positioned[from_idx].stage;
-            let from_port = positioned[from_idx].port_out;
-            let from_status = positioned[from_idx].node.status;
-
-            positioned[from_idx].has_out_edge = true;
-            positioned[to_idx].has_in_edge = true;
-
-            let (tone, dashed) = classify_edge_style(from_status, to_status);
-            let waypoints = if to_stage > from_stage + 1 {
-                // Route cleanly beneath every intermediate stage's bottom-most card.
-                let obstacle_bottom = stage_bottoms[(from_stage + 1)..to_stage]
-                    .iter()
-                    .copied()
-                    .fold(max_content_y.min(from_port.1.max(to_port.1)), f32::max);
-                let lane_y = obstacle_bottom + 20.0 + long_edge_lane as f32 * LONG_EDGE_LANE_STEP;
-                long_edge_lane += 1;
-                max_edge_y = max_edge_y.max(lane_y);
-                let exit_x = from_port.0 + GRAPH_STAGE_GAP * 0.42;
-                let enter_x = to_port.0 - GRAPH_STAGE_GAP * 0.42;
-                vec![from_port, (exit_x, lane_y), (enter_x, lane_y), to_port]
-            } else {
-                vec![from_port, to_port]
-            };
-
-            edges.push(GraphEdge {
-                id: format!("edge:{dep_id}->{to_id}"),
-                from_id: dep_id,
-                to_id: to_id.clone(),
-                tone,
+            let (tone, dashed) = classify_edge_style(from_status, node.status);
+            edge_specs.push(ProcessEdgeSpec {
+                id: format!("edge:{dep_id}->{}", node.id),
+                from_node: dep_id.clone(),
+                from_port: "out".to_owned(),
+                to_node: node.id.clone(),
+                to_port: "in".to_owned(),
+                layer: ProcessEdgeLayer::Control,
+                kind: ProcessEdgeKind::Sequence,
+                label: None,
+                tone: map_to_process_tone(tone),
                 dashed,
-                waypoints,
+                insertable: false,
             });
         }
     }
+
+    let geom = layout_process_graph(&ProcessGraphInput {
+        nodes: node_specs,
+        edges: edge_specs,
+        lanes: lanes.to_vec(),
+        policy,
+    });
+
+    let mut node_map: HashMap<String, GraphNode> =
+        nodes.into_iter().map(|n| (n.id.clone(), n)).collect();
+    let positioned: Vec<PositionedNode> = geom
+        .nodes
+        .into_iter()
+        .filter_map(|pn| {
+            let node = node_map.remove(&pn.id)?;
+            Some(PositionedNode {
+                node,
+                stage: pn.stage,
+                lane_id: pn.lane_id,
+                x: pn.x,
+                y: pn.y,
+                w: pn.w,
+                h: pn.h,
+                pinned: pn.pinned,
+                ports: pn.ports,
+                port_in: pn.port_in,
+                port_out: pn.port_out,
+                has_in_edge: pn.has_in_edge,
+                has_out_edge: pn.has_out_edge,
+            })
+        })
+        .collect();
+
+    let stages: Vec<GraphStageHeader> = geom
+        .stages
+        .into_iter()
+        .map(|s| GraphStageHeader {
+            stage_index: s.stage_index,
+            x: s.x,
+            y: s.y,
+            w: s.w,
+            h: s.h,
+            node_count: s.node_count,
+            has_parallel: s.has_parallel,
+            vertical: s.vertical,
+        })
+        .collect();
+
+    let edges: Vec<GraphEdge> = geom
+        .edges
+        .into_iter()
+        .map(|e| GraphEdge {
+            id: e.id,
+            from_id: e.from_node,
+            to_id: e.to_node,
+            layer: e.layer,
+            tone: map_from_process_tone(e.tone),
+            dashed: e.dashed,
+            horizontal_ports: e.horizontal_ports,
+            label: e.label,
+            label_pos: e.label_pos,
+            insert_pos: e.insert_pos,
+            waypoints: e.waypoints,
+        })
+        .collect();
 
     let collapsible_group_ids: Vec<String> = positioned
         .iter()
@@ -967,86 +1095,20 @@ pub fn layout_dag_nodes(nodes: Vec<GraphNode>) -> ExecutionGraphLayout {
         .filter(|p| p.node.status.is_terminal_error())
         .count();
 
-    let canvas_width = (GRAPH_PAD_X * 2.0)
-        + (columns.len() as f32 * GRAPH_NODE_W)
-        + (columns.len().saturating_sub(1) as f32 * GRAPH_STAGE_GAP);
-    let canvas_height = max_edge_y + GRAPH_PAD_BOTTOM;
-
     ExecutionGraphLayout {
-        stages: stage_headers,
+        policy: geom.policy,
+        lanes: geom.lanes,
+        stages,
         nodes: positioned,
         edges,
-        canvas_width,
-        canvas_height,
+        canvas_width: geom.canvas_width,
+        canvas_height: geom.canvas_height,
+        has_pinned: geom.has_pinned_nodes,
         collapsible_group_ids,
         total_nodes,
         completed_nodes,
         active_nodes,
         failed_nodes,
-    }
-}
-
-fn assign_stages(nodes: &[GraphNode], id_to_idx: &HashMap<String, usize>) -> Vec<usize> {
-    let n = nodes.len();
-    let mut indeg = vec![0usize; n];
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (idx, node) in nodes.iter().enumerate() {
-        for dep in &node.depends_on {
-            if let Some(&u) = id_to_idx.get(dep)
-                && u != idx
-            {
-                adj[u].push(idx);
-                indeg[idx] += 1;
-            }
-        }
-    }
-
-    let mut stage = vec![0usize; n];
-    for (idx, node) in nodes.iter().enumerate() {
-        if let Some(hint) = node.stage_hint {
-            stage[idx] = hint;
-        }
-    }
-
-    let mut q: VecDeque<usize> = indeg
-        .iter()
-        .enumerate()
-        .filter_map(|(i, &d)| (d == 0).then_some(i))
-        .collect();
-    while let Some(u) = q.pop_front() {
-        let next_min = stage[u] + 1;
-        for &v in &adj[u] {
-            if stage[v] < next_min {
-                stage[v] = next_min;
-            }
-            indeg[v] = indeg[v].saturating_sub(1);
-            if indeg[v] == 0 {
-                q.push_back(v);
-            }
-        }
-    }
-    stage
-}
-
-fn barycenter(
-    node: &GraphNode,
-    id_to_idx: &HashMap<String, usize>,
-    row_pos: &HashMap<usize, f32>,
-) -> f32 {
-    let mut sum = 0.0f32;
-    let mut count = 0usize;
-    for dep in &node.depends_on {
-        if let Some(&u) = id_to_idx.get(dep)
-            && let Some(&pos) = row_pos.get(&u)
-        {
-            sum += pos;
-            count += 1;
-        }
-    }
-    if count == 0 {
-        f32::MAX
-    } else {
-        sum / count as f32
     }
 }
 
@@ -1243,6 +1305,8 @@ fn build_task_graph_layout(
     tasks: &[AgentTodoItem],
     topo_opt: Option<&AgentRunTopology>,
     expanded_groups: &HashSet<String>,
+    policy: LayoutPolicy,
+    pinned_positions: &HashMap<String, (f32, f32)>,
     now_ms: i64,
     labels: &GraphBuildLabels<'_>,
 ) -> ExecutionGraphLayout {
@@ -1469,7 +1533,7 @@ fn build_task_graph_layout(
         }
     }
 
-    layout_dag_nodes(nodes)
+    layout_dag_nodes_with_policy(nodes, policy, &agent_role_lanes(labels), pinned_positions)
 }
 
 fn task_runtime_overlay(
@@ -1571,6 +1635,10 @@ mod tests {
             joining_title: "Waiting for join",
             parallel_group: "Parallel group",
             kind_tool: "Tool",
+            lane_main: "Main",
+            lane_explore: "Explore",
+            lane_implement: "Implement",
+            lane_verify: "Verify",
         }
     }
 

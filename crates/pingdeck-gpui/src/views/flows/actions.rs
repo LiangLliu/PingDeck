@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use gpui_kit::{Context, Window};
 use pingdeck_desktop::core::app::factory_service::{
-    assertion_new, flow_duplicate, flow_new, flow_step_duplicate, flow_step_new, flow_step_remove,
+    flow_duplicate, flow_new, flow_step_duplicate, flow_step_new, flow_step_remove,
     flow_steps_reorder, new_entity_id,
 };
 use pingdeck_desktop::core::app::{
@@ -13,14 +13,13 @@ use pingdeck_desktop::core::app::{
 };
 use pingdeck_desktop::core::error::AppError;
 use pingdeck_desktop::core::flows::FlowEvent;
-use pingdeck_desktop::core::model::items::FlowExtraction;
-use pingdeck_desktop::core::model::{Assertion, HttpMethod, Request};
+use pingdeck_desktop::core::model::{HttpMethod, Request};
 use pingdeck_desktop::streams::channel_sink;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
 use crate::ui::Tone;
 
-use super::state::{FlowModal, FlowRunTab, FlowsView};
+use super::state::{FlowModal, FlowStepTab, FlowsView};
 
 impl FlowsView {
     pub fn reload(&mut self, ws_id: String, cx: &mut Context<Self>) {
@@ -79,10 +78,13 @@ impl FlowsView {
             .map(|e| e.flow.clone());
         self.dirty = false;
         self.selected_step_id = None;
+        self.inspector_open = false;
         self.live_steps.clear();
         self.last_result = None;
         self.past_runs.clear();
-        self.selected_past_run_id = None;
+        self.active_history_run_id = None;
+        self.drag_state = None;
+        self.alignment_guides.clear();
         self.pending_sync = true;
         self.load_past_runs(flow_id, cx);
         cx.notify();
@@ -269,12 +271,22 @@ impl FlowsView {
         let Some(flow) = self.draft.as_mut() else {
             return;
         };
+        let is_dag = pingdeck_desktop::core::flows::has_dag_topology(flow);
+        let prev_id = self
+            .selected_step_id
+            .clone()
+            .or_else(|| flow.steps.last().map(|s| s.id.clone()));
         let mut step = flow_step_new(flow);
         step.method_override = Some(HttpMethod::Get);
         step.url_override = Some("https://httpbin.org/get".to_owned());
+        if is_dag && let Some(pid) = prev_id {
+            step.depends_on.push(pid);
+        }
         let id = step.id.clone();
         flow.steps.push(step);
         self.selected_step_id = Some(id);
+        self.inspector_open = true;
+        self.step_tab = FlowStepTab::Request;
         self.dirty = true;
         self.pending_sync = true;
         cx.notify();
@@ -299,12 +311,22 @@ impl FlowsView {
         let Some(flow) = self.draft.as_mut() else {
             return;
         };
+        let is_dag = pingdeck_desktop::core::flows::has_dag_topology(flow);
+        let prev_id = self
+            .selected_step_id
+            .clone()
+            .or_else(|| flow.steps.last().map(|s| s.id.clone()));
         let mut step = flow_step_new(flow);
         step.name = req.name.clone();
         step.request_id = req.id.as_str().to_owned();
+        if is_dag && let Some(pid) = prev_id {
+            step.depends_on.push(pid);
+        }
         let id = step.id.clone();
         flow.steps.push(step);
         self.selected_step_id = Some(id);
+        self.inspector_open = true;
+        self.step_tab = FlowStepTab::Request;
         self.active_modal = None;
         self.dirty = true;
         self.pending_sync = true;
@@ -351,108 +373,11 @@ impl FlowsView {
         };
         if let Ok(steps) = flow_step_remove(flow.steps.clone(), &step_id) {
             flow.steps = steps;
+            flow.options.pinned_positions.remove(&step_id);
             self.dirty = true;
             self.pending_sync = true;
             cx.notify();
         }
-    }
-
-    pub fn add_extraction(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.snapshot_inputs(cx);
-        let var_name = self.ext_var_input.read(cx).value().trim().to_owned();
-        let expr = self.ext_expr_input.read(cx).value().trim().to_owned();
-        if var_name.is_empty() {
-            return;
-        }
-        let source = self.new_ext_source;
-        let secret = self.new_ext_secret;
-        if let Some(step) = self.selected_step_mut() {
-            step.extractions.push(FlowExtraction {
-                variable_name: var_name,
-                source,
-                expression: expr,
-                secret: Some(secret),
-            });
-            self.dirty = true;
-        }
-        self.ext_var_input
-            .update(cx, |s, cx| s.set_value("", window, cx));
-        self.ext_expr_input
-            .update(cx, |s, cx| s.set_value("", window, cx));
-        cx.notify();
-    }
-
-    pub fn add_quick_assertion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.snapshot_inputs(cx);
-        let path_or_key = self.assert_path_input.read(cx).value().trim().to_owned();
-        let val_str = self.assert_val_input.read(cx).value().trim().to_owned();
-        let kind_idx = self.new_assert_kind_idx;
-        let assertion = match kind_idx {
-            0 => Assertion::StatusEquals {
-                value: val_str.parse::<u16>().unwrap_or(200),
-            },
-            1 => {
-                let vals: Vec<u16> = val_str
-                    .split(',')
-                    .filter_map(|s| s.trim().parse::<u16>().ok())
-                    .collect();
-                Assertion::StatusIn {
-                    values: if vals.is_empty() {
-                        vec![200, 201]
-                    } else {
-                        vals
-                    },
-                }
-            }
-            2 => Assertion::HeaderExists {
-                key: if path_or_key.is_empty() {
-                    "content-type".into()
-                } else {
-                    path_or_key
-                },
-            },
-            3 => Assertion::HeaderEquals {
-                key: if path_or_key.is_empty() {
-                    "content-type".into()
-                } else {
-                    path_or_key
-                },
-                value: val_str,
-            },
-            4 => Assertion::JsonPathExists {
-                path: if path_or_key.is_empty() {
-                    "$.id".into()
-                } else {
-                    path_or_key
-                },
-            },
-            5 => Assertion::JsonPathEquals {
-                path: if path_or_key.is_empty() {
-                    "$.ok".into()
-                } else {
-                    path_or_key
-                },
-                value: serde_json::from_str::<serde_json::Value>(&val_str)
-                    .unwrap_or(serde_json::Value::String(val_str)),
-            },
-            6 => Assertion::BodyContains { value: val_str },
-            7 => Assertion::ResponseTimeLessThanMs {
-                value: val_str.parse::<u64>().unwrap_or(1000),
-            },
-            _ => match assertion_new("StatusEquals") {
-                Ok(a) => a,
-                Err(_) => return,
-            },
-        };
-        if let Some(step) = self.selected_step_mut() {
-            step.assertions.push(assertion);
-            self.dirty = true;
-        }
-        self.assert_path_input
-            .update(cx, |s, cx| s.set_value("", window, cx));
-        self.assert_val_input
-            .update(cx, |s, cx| s.set_value("", window, cx));
-        cx.notify();
     }
 
     pub fn run_flow(
@@ -489,7 +414,7 @@ impl FlowsView {
         self.cancel_token = Some(token.clone());
         self.live_steps.clear();
         self.live_total = flow.steps.len();
-        self.run_tab = FlowRunTab::LiveRun;
+        self.active_history_run_id = None;
         self.active_modal = None;
         cx.notify();
 
@@ -560,7 +485,22 @@ impl FlowsView {
                         } else {
                             Tone::Danger
                         };
+                        let failed_step_id = (!run.passed && !run.cancelled)
+                            .then(|| {
+                                run.steps
+                                    .iter()
+                                    .find(|s| !s.passed)
+                                    .map(|s| s.step_id.clone())
+                            })
+                            .flatten();
                         this.last_result = Some(run);
+                        this.active_history_run_id = None;
+                        if let Some(fid) = failed_step_id {
+                            this.selected_step_id = Some(fid);
+                            this.inspector_open = true;
+                            this.step_tab = FlowStepTab::Output;
+                            this.pending_sync = true;
+                        }
                         this.status_msg = Some((tone, summary_msg));
                         this.load_past_runs(fid_reload, cx);
                         this.reload(ws_reload, cx);
