@@ -21,7 +21,7 @@ use gpui_kit::{
 };
 use spanbay_desktop::core::app::{
     ProxyTestDto, agent_attention_subscribe_impl, llm_subscribe_impl, set_window_focused,
-    settings_get_impl, settings_subscribe_impl, workspace_list_impl, workspace_touch_impl,
+    settings_get_impl, settings_subscribe_impl, workspace_list_impl,
 };
 use spanbay_desktop::core::llm::events::LlmEvent;
 use spanbay_desktop::core::model::events::Sequenced;
@@ -37,7 +37,7 @@ use crate::app::actions::{
     NewTab, OpenSettings, QuitApp, SaveActive, SendRequest, ToggleConsole, TogglePalette,
     ToggleRunMonitor, ToggleSidebar, bind_app_shortcuts,
 };
-use crate::bridge::{runtime, spawn_blocking_into, subscribe_stream_into};
+use crate::bridge::{runtime, subscribe_stream_into};
 use crate::platform::{GpuiHostWindow, HostCommand};
 use crate::ui::{
     InputState, WindowExt as _, apply_language, apply_theme, h_row, palette as active_palette,
@@ -276,12 +276,16 @@ impl AppShell {
             }
         });
 
+        let modules = ModuleHost::with_active_binding(
+            state.active_workspace_id.clone(),
+            state.active_environment_id.clone(),
+        );
         let mut shell = Self {
             state,
             local_ui,
             system_is_dark,
             focus_handle,
-            modules: ModuleHost::default(),
+            modules,
             palette_view,
             import_export_view,
             diagnostics_view,
@@ -379,22 +383,6 @@ impl AppShell {
                 view.open(lang, workspaces, attention, dynamic, frecency, window, cx);
             });
         }
-        cx.notify();
-    }
-
-    pub fn switch_workspace(&mut self, id: String, cx: &mut Context<Self>) {
-        self.state.active_workspace_id = Some(id.clone());
-        self.modules.set_workspace(Some(id.clone()), cx);
-        self.new_workspace_input = None;
-        self.new_workspace_sub = None;
-        self.refresh_running_work(cx);
-        self.persist_local(cx);
-        let task = spawn_blocking_into(
-            cx,
-            move |state| workspace_touch_impl(state, id),
-            |_, _, _| {},
-        );
-        self._tasks.push(task);
         cx.notify();
     }
 

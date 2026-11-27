@@ -14,7 +14,7 @@ use spanbay_desktop::core::app::{
     AgentPageRequest, AppState, agent_approval_answer_impl, agent_run_continue_impl,
     agent_run_start_impl, agent_run_stop_impl, agent_run_unsubscribe_impl,
     agent_session_create_impl, agent_session_get_impl, agent_session_update_impl,
-    llm_model_list_impl, llm_provider_list_impl,
+    agent_workspace_info_impl, environment_list_impl, llm_model_list_impl, llm_provider_list_impl,
 };
 use spanbay_desktop::core::model::settings::ToolApproval;
 use spanbay_desktop::state::ChatThreadState;
@@ -22,7 +22,7 @@ use spanbay_desktop::state::ChatThreadState;
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
-use super::reasoning::message_has_reasoning;
+use super::actions_extra::resolve_active_binding;
 use super::types::ChatModal;
 use super::{ChatView, ModelOption, ProviderChatMeta};
 
@@ -71,60 +71,6 @@ pub(super) fn resolve_fallback_target(state: &AppState) -> Option<AgentTarget> {
 }
 
 impl ChatView {
-    pub fn create_session(&mut self, cx: &mut Context<Self>) {
-        self.create_session_with_target(None, cx);
-    }
-
-    pub fn select_model(&mut self, target: AgentTarget, cx: &mut Context<Self>) {
-        if self.thread.session_id.is_empty() {
-            self.create_session_with_target(Some(target), cx);
-        } else {
-            self.patch_session(
-                AgentSessionPatch {
-                    target: Some(target),
-                    ..Default::default()
-                },
-                cx,
-            );
-        }
-    }
-
-    fn create_session_with_target(
-        &mut self,
-        explicit: Option<AgentTarget>,
-        cx: &mut Context<Self>,
-    ) {
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                let target = explicit.or_else(|| resolve_fallback_target(state));
-                agent_session_create_impl(
-                    state,
-                    AgentSessionInput {
-                        target,
-                        ..AgentSessionInput::default()
-                    },
-                )
-            },
-            |this, res, cx| {
-                match res {
-                    Ok(session) => {
-                        let id = session.id.clone();
-                        this.refresh_catalog(cx);
-                        this.open_session(id, cx);
-                    }
-                    Err(err) => {
-                        let msg = err.message().to_owned();
-                        this.thread.last_error = Some(msg.clone());
-                        this.status_msg = Some((Tone::Danger, msg));
-                    }
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
     pub fn apply_starter(
         &mut self,
         text: &'static str,
@@ -204,22 +150,40 @@ impl ChatView {
         let sid = self.thread.session_id.clone();
         if sid.is_empty() {
             let text_for_run = text;
+            let active_ws = self.active_workspace_id.clone();
+            let active_env = self.active_environment_id.clone();
             let task = spawn_blocking_into(
                 cx,
-                |state| {
+                move |state| {
                     let target = resolve_fallback_target(state);
-                    agent_session_create_impl(
+                    let (spanbay_workspace_id, spanbay_environment_id) =
+                        resolve_active_binding(state, active_ws, active_env);
+                    let session = agent_session_create_impl(
                         state,
                         AgentSessionInput {
                             target,
+                            spanbay_workspace_id,
+                            spanbay_environment_id,
                             ..AgentSessionInput::default()
                         },
-                    )
+                    )?;
+                    let envs = session
+                        .spanbay_workspace_id
+                        .as_deref()
+                        .and_then(|wid| environment_list_impl(state, wid.to_owned()).ok())
+                        .unwrap_or_default();
+                    let ws_info = session
+                        .workspace_dir
+                        .as_deref()
+                        .and_then(|p| agent_workspace_info_impl(state, p).ok());
+                    Ok::<_, spanbay_desktop::core::error::AppError>((session, envs, ws_info))
                 },
                 move |this, res, cx| match res {
-                    Ok(session) => {
+                    Ok((session, envs, ws_info)) => {
                         let id = session.id.clone();
                         this.thread = ChatThreadState::new(id.clone(), session.title.clone());
+                        this.environments = envs;
+                        this.workspace_info = ws_info;
                         this.session = Some(session);
                         this.ensure_subscribed(&id, cx);
                         this.refresh_catalog(cx);
@@ -257,6 +221,16 @@ impl ChatView {
     ) {
         let original_text = text.clone();
         let needs_model = self.session.as_ref().is_none_or(|s| s.target.is_none());
+        let needs_binding = self
+            .session
+            .as_ref()
+            .is_none_or(|s| s.spanbay_workspace_id.is_none());
+        let active_ws = needs_binding
+            .then(|| self.active_workspace_id.clone())
+            .flatten();
+        let active_env = needs_binding
+            .then(|| self.active_environment_id.clone())
+            .flatten();
         let check_first_turn = !self.title_generated_sessions.contains(&sid);
         let sid_for_cb = sid.clone();
         let rt_bind = runtime(cx);
@@ -265,9 +239,11 @@ impl ChatView {
             move |state| async move {
                 let mut auto_session = None;
                 let mut eligible_for_auto_title = false;
-                if needs_model || check_first_turn {
+                let mut run_ws_id = None;
+                let mut run_env_id = None;
+                if needs_model || check_first_turn || active_ws.is_some() {
                     let sid_pre = sid.clone();
-                    if let Ok(Ok((updated, eligible))) = rt_bind
+                    if let Ok(Ok((updated, eligible, ws_id, env_id))) = rt_bind
                         .run_state(move |st| {
                             let detail =
                                 agent_session_get_impl(st, &sid_pre, AgentPageRequest::default())?;
@@ -290,42 +266,74 @@ impl ChatView {
                                 )?;
                                 updated = Some(s);
                             }
-                            Ok::<_, spanbay_desktop::core::error::AppError>((updated, eligible))
+                            let (ws_id, env_id) = if detail.session.spanbay_workspace_id.is_none() {
+                                resolve_active_binding(st, active_ws, active_env)
+                            } else {
+                                (None, None)
+                            };
+                            Ok::<_, spanbay_desktop::core::error::AppError>((
+                                updated, eligible, ws_id, env_id,
+                            ))
                         })
                         .await
                     {
                         auto_session = updated;
                         eligible_for_auto_title = eligible;
+                        run_ws_id = ws_id;
+                        run_env_id = env_id;
                     }
                 }
                 let sid_post = sid.clone();
+                let bound_on_start = run_ws_id.is_some();
                 let input = AgentRunInput {
                     session_id: sid,
                     text,
                     attachment_ids,
                     skills,
-                    workspace_id: None,
-                    environment_id: None,
+                    workspace_id: run_ws_id,
+                    environment_id: run_env_id,
                     contexts: Vec::new(),
                     context_use: Default::default(),
                 };
                 let res = agent_run_start_impl(&state, input).await;
                 let mut provisional_title = None;
+                let mut bound_refresh = None;
                 if res.is_ok()
-                    && eligible_for_auto_title
-                    && let Ok(Ok(after)) = rt_bind
+                    && (eligible_for_auto_title || bound_on_start)
+                    && let Ok(Ok((after, envs))) = rt_bind
                         .run_state(move |st| {
-                            agent_session_get_impl(st, &sid_post, AgentPageRequest::default())
+                            let after =
+                                agent_session_get_impl(st, &sid_post, AgentPageRequest::default())?;
+                            let envs = if bound_on_start {
+                                after
+                                    .session
+                                    .spanbay_workspace_id
+                                    .as_deref()
+                                    .and_then(|wid| environment_list_impl(st, wid.to_owned()).ok())
+                                    .unwrap_or_default()
+                            } else {
+                                Vec::new()
+                            };
+                            Ok::<_, spanbay_desktop::core::error::AppError>((after, envs))
                         })
                         .await
-                    && !after.session.title_locked
                 {
-                    provisional_title = Some(after.session.title);
+                    if eligible_for_auto_title && !after.session.title_locked {
+                        provisional_title = Some(after.session.title.clone());
+                    }
+                    if bound_on_start {
+                        bound_refresh = Some((after.session, envs));
+                    }
                 }
-                (res, auto_session, provisional_title)
+                (res, auto_session, provisional_title, bound_refresh)
             },
-            move |this, (res, auto_session, provisional_title), cx| {
-                if let Some(updated) = auto_session
+            move |this, (res, auto_session, provisional_title, bound_refresh), cx| {
+                if let Some((bound_session, envs)) = bound_refresh
+                    && this.thread.session_id == bound_session.id
+                {
+                    this.session = Some(bound_session);
+                    this.environments = envs;
+                } else if let Some(updated) = auto_session
                     && this.thread.session_id == updated.id
                 {
                     this.session = Some(updated);
@@ -444,16 +452,33 @@ impl ChatView {
         patch: AgentSessionPatch,
         cx: &mut Context<Self>,
     ) {
+        let refresh_folder_info = patch.workspace_dir.is_some();
         let sid_check = sid.clone();
         let task = spawn_blocking_into(
             cx,
-            move |state| agent_session_update_impl(state, &sid, patch),
+            move |state| {
+                let updated = agent_session_update_impl(state, &sid, patch)?;
+                let ws_info = if refresh_folder_info {
+                    Some(
+                        updated
+                            .workspace_dir
+                            .as_deref()
+                            .and_then(|p| agent_workspace_info_impl(state, p).ok()),
+                    )
+                } else {
+                    None
+                };
+                Ok::<_, spanbay_desktop::core::error::AppError>((updated, ws_info))
+            },
             move |this, res, cx| {
                 match res {
-                    Ok(updated) => {
+                    Ok((updated, ws_info)) => {
                         if this.thread.session_id == sid_check {
                             this.thread.title = updated.title.clone();
                             this.session = Some(updated);
+                            if let Some(info) = ws_info {
+                                this.workspace_info = info;
+                            }
                         }
                         this.refresh_catalog(cx);
                     }
@@ -540,46 +565,6 @@ impl ChatView {
             Tone::Success,
             crate::ui::tr(cx).chat().actions_saved_instructions().into(),
         ));
-        cx.notify();
-    }
-
-    pub fn toggle_trace(&mut self, key: String, cx: &mut Context<Self>) {
-        if !self.expanded_traces.remove(&key) {
-            self.expanded_traces.insert(key);
-        }
-        cx.notify();
-    }
-
-    pub fn toggle_reasoning(&mut self, key: String, cx: &mut Context<Self>) {
-        if key == "live-reasoning" {
-            self.collapsed_live_reasoning = !self.collapsed_live_reasoning;
-        } else if !self.expanded_reasoning.remove(&key) {
-            self.expanded_reasoning.insert(key);
-        }
-        cx.notify();
-    }
-
-    pub fn toggle_all_reasoning(&mut self, cx: &mut Context<Self>) {
-        let keys: Vec<String> = self
-            .thread
-            .messages
-            .iter()
-            .filter(|m| message_has_reasoning(m))
-            .map(|m| format!("reason-{}", m.id))
-            .collect();
-        if keys.is_empty() {
-            return;
-        }
-        let all_open = keys.iter().all(|k| self.expanded_reasoning.contains(k));
-        if all_open {
-            for k in keys {
-                self.expanded_reasoning.remove(&k);
-            }
-        } else {
-            for k in keys {
-                self.expanded_reasoning.insert(k);
-            }
-        }
         cx.notify();
     }
 }

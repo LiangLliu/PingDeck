@@ -77,6 +77,8 @@ pub struct ChatView {
     pub workspace_info: Option<WorkspaceInfo>,
     pub workspaces: Vec<Workspace>,
     pub environments: Vec<EnvironmentDto>,
+    pub active_workspace_id: Option<String>,
+    pub active_environment_id: Option<String>,
     pub available_skills: Vec<AgentSkill>,
     pub pending_attachments: Vec<PendingAttachment>,
     pub selected_skills: Vec<String>,
@@ -193,6 +195,8 @@ impl ChatView {
             workspace_info: None,
             workspaces: Vec::new(),
             environments: Vec::new(),
+            active_workspace_id: None,
+            active_environment_id: None,
             available_skills: Vec::new(),
             pending_attachments: Vec::new(),
             selected_skills: Vec::new(),
@@ -232,6 +236,43 @@ impl ChatView {
         view.subscribe_attention(cx);
         view.reload_sessions(cx);
         view
+    }
+
+    pub fn set_active_binding(
+        &mut self,
+        workspace_id: Option<String>,
+        env_id: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let ws_changed = self.active_workspace_id != workspace_id;
+        let env_changed = self.active_environment_id != env_id;
+        if !ws_changed && !env_changed {
+            return;
+        }
+        self.active_workspace_id = workspace_id;
+        self.active_environment_id = env_id;
+        if ws_changed {
+            self.refresh_catalog(cx);
+        }
+        cx.notify();
+    }
+
+    pub fn set_active_workspace(&mut self, workspace_id: Option<String>, cx: &mut Context<Self>) {
+        if self.active_workspace_id == workspace_id {
+            return;
+        }
+        self.active_workspace_id = workspace_id;
+        self.active_environment_id = None;
+        self.refresh_catalog(cx);
+        cx.notify();
+    }
+
+    pub fn set_active_environment(&mut self, env_id: Option<String>, cx: &mut Context<Self>) {
+        if self.active_environment_id == env_id {
+            return;
+        }
+        self.active_environment_id = env_id;
+        cx.notify();
     }
 
     /// Distance in pixels between the current scroll offset and the bottom of the thread.

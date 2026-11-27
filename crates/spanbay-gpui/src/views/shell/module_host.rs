@@ -32,6 +32,8 @@ pub struct ModuleHost {
     pub(super) gateway: Option<Entity<GatewayView>>,
     pub(super) usage: Option<Entity<UsageView>>,
     pub(super) settings: Option<Entity<SettingsView>>,
+    active_workspace_id: Option<String>,
+    active_environment_id: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -63,8 +65,22 @@ fn ensure_watched<V: 'static, M: 'static>(
 }
 
 impl ModuleHost {
-    /// Synchronizes workspace-scoped modules whenever the active workspace changes.
+    pub fn with_active_binding(
+        active_workspace_id: Option<String>,
+        active_environment_id: Option<String>,
+    ) -> Self {
+        Self {
+            active_workspace_id,
+            active_environment_id,
+            ..Self::default()
+        }
+    }
+
+    /// Synchronizes workspace-scoped modules (and Chat's default active SpanBay workspace)
+    /// whenever the active workspace changes.
     pub fn set_workspace<V: 'static>(&mut self, ws_id: Option<String>, cx: &mut Context<V>) {
+        self.active_workspace_id = ws_id.clone();
+        self.active_environment_id = None;
         if let Some(v) = &self.requests {
             v.update(cx, |m, cx| m.set_workspace(ws_id.clone(), cx));
         }
@@ -78,16 +94,20 @@ impl ModuleHost {
             v.update(cx, |m, cx| m.set_workspace(ws_id.clone(), cx));
         }
         if let Some(v) = &self.environments {
-            v.update(cx, |m, cx| m.set_workspace(ws_id, cx));
+            v.update(cx, |m, cx| m.set_workspace(ws_id.clone(), cx));
+        }
+        if let Some(v) = &self.chat {
+            v.update(cx, |m, cx| m.set_active_workspace(ws_id, cx));
         }
     }
 
-    /// Propagates the workspace's active environment across mounted API modules.
+    /// Propagates the workspace's active environment across mounted API modules and Chat.
     pub fn set_active_environment<V: 'static>(
         &mut self,
         env_id: Option<String>,
         cx: &mut Context<V>,
     ) {
+        self.active_environment_id = env_id.clone();
         if let Some(v) = &self.requests {
             v.update(cx, |r, cx| r.set_active_environment(env_id.clone(), cx));
         }
@@ -95,7 +115,10 @@ impl ModuleHost {
             v.update(cx, |f, cx| f.set_active_environment(env_id.clone(), cx));
         }
         if let Some(v) = &self.environments {
-            v.update(cx, |e, cx| e.set_active_environment(env_id, cx));
+            v.update(cx, |e, cx| e.set_active_environment(env_id.clone(), cx));
+        }
+        if let Some(v) = &self.chat {
+            v.update(cx, |c, cx| c.set_active_environment(env_id, cx));
         }
     }
 
@@ -144,10 +167,16 @@ impl ModuleHost {
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Entity<ChatView> {
+        let ws_id = self.active_workspace_id.clone();
+        let env_id = self.active_environment_id.clone();
         ensure_watched(
             &mut self.chat,
             &mut self._subscriptions,
-            |cx| ChatView::new(window, cx),
+            |cx| {
+                let mut v = ChatView::new(window, cx);
+                v.set_active_binding(ws_id, env_id, cx);
+                v
+            },
             |v| cell_has(&v.pending_handoff),
             cx,
         )
@@ -466,37 +495,6 @@ impl ModuleHost {
         });
     }
 
-    /// Dispatches workspace-level Requests shortcuts to the mounted Requests view.
-    pub fn requests_save<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
-        if let Some(v) = &self.requests {
-            v.update(cx, |r, cx| r.handle_save_shortcut(window, cx));
-        }
-    }
-
-    pub fn requests_send<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
-        if let Some(v) = &self.requests {
-            v.update(cx, |r, cx| r.handle_send_shortcut(window, cx));
-        }
-    }
-
-    pub fn requests_toggle_console<V: 'static>(&mut self, cx: &mut Context<V>) {
-        if let Some(v) = &self.requests {
-            v.update(cx, |r, cx| r.handle_toggle_console(cx));
-        }
-    }
-
-    pub fn requests_new_tab<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
-        if let Some(v) = &self.requests {
-            v.update(cx, |r, cx| r.handle_new_tab_shortcut(window, cx));
-        }
-    }
-
-    pub fn requests_close_tab<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
-        if let Some(v) = &self.requests {
-            v.update(cx, |r, cx| r.handle_close_tab_shortcut(window, cx));
-        }
-    }
-
     /// Syncs external theme-preference updates (e.g. Titlebar Quick Theme Popover) into the
     /// mounted Settings view so both surfaces stay identical.
     pub fn sync_settings_theme_prefs<V: 'static>(
@@ -537,6 +535,8 @@ impl ModuleHost {
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> AnyElement {
+        self.active_workspace_id = workspace_id.clone();
+        self.active_environment_id = active_env_id.clone();
         match module {
             NavModule::Requests => self
                 .ensure_requests(workspace_id, active_env_id, window, cx)

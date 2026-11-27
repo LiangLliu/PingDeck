@@ -3,7 +3,7 @@
 
 use gpui_kit::{AppContext as _, Context, Focusable as _, Window};
 use spanbay_desktop::core::app::{
-    network_proxy_test_impl, settings_update_impl, workspace_create_impl,
+    network_proxy_test_impl, settings_update_impl, workspace_create_impl, workspace_touch_impl,
 };
 use spanbay_desktop::core::model::settings::{
     Language, SettingsSection as CoreSettingsSection, Theme as SettingsTheme,
@@ -16,8 +16,59 @@ use crate::ui::{InputEvent, InputState, apply_language, palette as active_palett
 use crate::views::runs::WorkflowTab;
 
 use super::AppShell;
+use super::module_host::ModuleHost;
+
+impl ModuleHost {
+    /// Dispatches workspace-level Requests shortcuts to the mounted Requests view.
+    pub fn requests_save<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_save_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_send<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_send_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_toggle_console<V: 'static>(&mut self, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_toggle_console(cx));
+        }
+    }
+
+    pub fn requests_new_tab<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_new_tab_shortcut(window, cx));
+        }
+    }
+
+    pub fn requests_close_tab<V: 'static>(&mut self, window: &mut Window, cx: &mut Context<V>) {
+        if let Some(v) = &self.requests {
+            v.update(cx, |r, cx| r.handle_close_tab_shortcut(window, cx));
+        }
+    }
+}
 
 impl AppShell {
+    pub fn switch_workspace(&mut self, id: String, cx: &mut Context<Self>) {
+        self.state.active_workspace_id = Some(id.clone());
+        self.state.active_environment_id = None;
+        self.modules.set_workspace(Some(id.clone()), cx);
+        self.modules.set_active_environment(None, cx);
+        self.new_workspace_input = None;
+        self.new_workspace_sub = None;
+        self.refresh_running_work(cx);
+        self.persist_local(cx);
+        let task = spawn_blocking_into(
+            cx,
+            move |state| workspace_touch_impl(state, id),
+            |_, _, _| {},
+        );
+        self._tasks.push(task);
+        cx.notify();
+    }
     pub fn toggle_theme_mode(&mut self, cx: &mut Context<Self>) {
         let next = if active_palette(cx).is_dark {
             SettingsTheme::Light
@@ -125,7 +176,9 @@ impl AppShell {
                     let ws_id = ws.id.as_str().to_owned();
                     this.state.workspaces.insert(0, ws);
                     this.state.active_workspace_id = Some(ws_id.clone());
+                    this.state.active_environment_id = None;
                     this.modules.set_workspace(Some(ws_id), cx);
+                    this.modules.set_active_environment(None, cx);
                     this.refresh_running_work(cx);
                     this.persist_local(cx);
                     this.push_toast_auto(

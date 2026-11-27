@@ -35,7 +35,6 @@ fn run_row(id: &str, session_id: &str, status: AgentRunStatus) -> AgentRunSummar
         stop_reason: None,
         error_kind: None,
         error: None,
-        prompt_version: 1,
         last_seq: 0,
         failure: None,
         role: None,

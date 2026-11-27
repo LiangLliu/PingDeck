@@ -16,7 +16,7 @@ pub(super) const ACTIVE_RUN_STATUSES: &str = "('queued', 'running', 'waiting_app
 
 const RUN_COLUMNS: &str = "id, session_id, parent_run_id, status, model_label, iterations, \
     usage_json, cost_micro_usd, started_at_ms, finished_at_ms, error, parent_call_id, kind, \
-    last_event_ms, stop_reason, error_kind, target_json, prompt_version, last_step, failure_json, \
+    last_event_ms, stop_reason, error_kind, target_json, last_step, failure_json, \
     role, cost_currency";
 
 /// A run row before its JSON and enum columns are parsed.
@@ -38,7 +38,6 @@ struct RawRun {
     stop_reason: Option<String>,
     error_kind: Option<String>,
     target_json: Option<String>,
-    prompt_version: i64,
     last_step: Option<String>,
     failure_json: Option<String>,
     role: Option<String>,
@@ -64,11 +63,10 @@ fn run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRun> {
         stop_reason: row.get(14)?,
         error_kind: row.get(15)?,
         target_json: row.get(16)?,
-        prompt_version: row.get(17)?,
-        last_step: row.get(18)?,
-        failure_json: row.get(19)?,
-        role: row.get(20)?,
-        cost_currency: row.get(21)?,
+        last_step: row.get(17)?,
+        failure_json: row.get(18)?,
+        role: row.get(19)?,
+        cost_currency: row.get(20)?,
     })
 }
 
@@ -97,7 +95,6 @@ impl RawRun {
             stop_reason: self.stop_reason,
             error_kind: self.error_kind,
             error: self.error,
-            prompt_version: to_u32(self.prompt_version),
             last_seq: 0,
             failure: self
                 .failure_json
@@ -119,7 +116,7 @@ impl WorkspaceStore {
             &format!(
                 "INSERT INTO agent_runs ({RUN_COLUMNS})
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                         ?17, ?18, ?19, ?20, ?21, ?22)"
+                         ?17, ?18, ?19, ?20, ?21)"
             ),
             params![
                 run.run_id,
@@ -139,7 +136,6 @@ impl WorkspaceStore {
                 run.stop_reason,
                 run.error_kind,
                 run.target.as_ref().map(serde_json::to_string).transpose()?,
-                run.prompt_version,
                 run.last_step,
                 run.failure
                     .as_ref()
@@ -153,7 +149,7 @@ impl WorkspaceStore {
     }
 
     /// Writes a run's progress: status, model label and target, iterations, usage, cost and its
-    /// currency, end time, last event and step, stop reason, error kind and text, prompt version.
+    /// currency, end time, last event and step, stop reason, error kind and text.
     /// The session, kind, role, parent links and start time never change. Returns whether the run
     /// exists.
     pub fn update_agent_run(&self, run: &AgentRunSummary) -> Result<bool, StorageError> {
@@ -162,8 +158,8 @@ impl WorkspaceStore {
             UPDATE agent_runs
             SET status = ?2, model_label = ?3, iterations = ?4, usage_json = ?5,
                 cost_micro_usd = ?6, finished_at_ms = ?7, error = ?8, last_event_ms = ?9,
-                stop_reason = ?10, error_kind = ?11, target_json = ?12, prompt_version = ?13,
-                last_step = ?14, failure_json = ?15, cost_currency = ?16
+                stop_reason = ?10, error_kind = ?11, target_json = ?12,
+                last_step = ?13, failure_json = ?14, cost_currency = ?15
             WHERE id = ?1
             ",
             params![
@@ -179,7 +175,6 @@ impl WorkspaceStore {
                 run.stop_reason,
                 run.error_kind,
                 run.target.as_ref().map(serde_json::to_string).transpose()?,
-                run.prompt_version,
                 run.last_step,
                 run.failure
                     .as_ref()
@@ -248,7 +243,7 @@ impl WorkspaceStore {
             "SELECT r.id, r.session_id, r.parent_run_id, r.status, r.model_label, r.iterations, \
                     r.usage_json, r.cost_micro_usd, r.started_at_ms, r.finished_at_ms, r.error, \
                     r.parent_call_id, r.kind, r.last_event_ms, r.stop_reason, r.error_kind, \
-                    r.target_json, r.prompt_version, r.last_step, r.failure_json, r.role, \
+                    r.target_json, r.last_step, r.failure_json, r.role, \
                     r.cost_currency, COALESCE(s.title, '') \
              FROM agent_runs r \
              LEFT JOIN agent_sessions s ON s.id = r.session_id \
@@ -256,7 +251,7 @@ impl WorkspaceStore {
              ORDER BY r.started_at_ms ASC, r.id ASC",
         )?;
         let rows = statement.query_map(params![parent_run_id], |row| {
-            Ok((run_from_row(row)?, row.get::<_, String>(22)?))
+            Ok((run_from_row(row)?, row.get::<_, String>(21)?))
         })?;
         rows.map(|row| {
             let (raw, title) = row?;

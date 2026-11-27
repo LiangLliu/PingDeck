@@ -10,7 +10,7 @@
 //! it changes most. Nothing else of the prompt is user-editable; the user's instructions cannot
 //! move or replace a part.
 //! The environment block names the bound SpanBay workspace, or says there is none so the model
-//! can explain why the request tools are missing. [`PROMPT_VERSION`] is stored on each run.
+//! can explain why the request tools are missing.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -18,9 +18,6 @@ use std::path::Path;
 use spanbay_model::settings::ToolApproval;
 
 use super::sandbox::SandboxKind;
-
-/// The version of this prompt's wording, stored with every run; bump it when a text changes.
-pub const PROMPT_VERSION: u32 = 6;
 
 /// How many characters of the chat's own instructions reach the prompt.
 const MAX_CHAT_INSTRUCTION_CHARS: usize = 2000;
@@ -365,8 +362,9 @@ fn prompt_safe_line(text: &str) -> String {
 }
 
 /// The environment line of a chat with no bound SpanBay workspace: it tells the model why the
-/// request and environment tools are missing and what to suggest.
-const NO_WORKSPACE_LINE: &str = "Workspace: none (no SpanBay workspace is bound, so the request and environment tools are unavailable; say so, and suggest binding one from the chat header if the user needs them)\n";
+/// request and environment tools are missing without misleading it into treating local project
+/// files in `Folder` as unavailable.
+const NO_WORKSPACE_LINE: &str = "Workspace: none (no SpanBay workspace is bound, so only SpanBay's saved HTTP request and environment tools are unavailable — unrelated to local project files in Folder; only suggest binding a SpanBay workspace from the chat header if the user needs saved API requests or environments)\n";
 
 /// Part 7: the environment, which changes most.
 fn environment_block(input: &PromptInput<'_>) -> String {
@@ -522,10 +520,23 @@ mod tests {
         let expected = format!(
             "{BASE_INSTRUCTIONS}\n\n\
              Mode: Approve reads. Calls that only read run without asking; edits, commands and network calls ask the user first.\n\n\
-             <environment>\nOS: macos 15.1\nShell: /bin/zsh\nFolder: none\nWorkspace: none (no SpanBay workspace is bound, so the request and environment tools are unavailable; say so, and suggest binding one from the chat header if the user needs them)\n\
+             <environment>\nOS: macos 15.1\nShell: /bin/zsh\nFolder: none\n{NO_WORKSPACE_LINE}\
              Date: 2026-11-07 (UTC+08:00)\nSandbox: macOS Seatbelt\n</environment>"
         );
         assert_eq!(build_system_prompt(&input(&[])), expected);
+    }
+
+    #[test]
+    fn unbound_workspace_line_keeps_local_folder_independent() {
+        let tools = names(&["read_file", "list_dir"]);
+        let prompt = build_system_prompt(&PromptInput {
+            workspace_dir: Some(Path::new("/work/password-cracking")),
+            spanbay_workspace: None,
+            ..input(&tools)
+        });
+        assert!(prompt.contains("Folder: /work/password-cracking\n"));
+        assert!(prompt.contains("unrelated to local project files in Folder"));
+        assert!(prompt.contains("- read_file:") && prompt.contains("- list_dir:"));
     }
 
     #[test]

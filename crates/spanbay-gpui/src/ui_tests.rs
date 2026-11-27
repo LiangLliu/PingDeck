@@ -2326,7 +2326,6 @@ mod gpui_integration {
             stop_reason: None,
             error_kind: None,
             error: None,
-            prompt_version: 1,
             last_seq: 0,
             role: Some(SubagentRole::Fast),
             status_detail: None,
@@ -3096,6 +3095,183 @@ mod gpui_integration {
             window.draw(cx).clear(cx);
         });
 
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn chat_workspace_and_folder_binding_lifecycle(cx: &mut TestAppContext) {
+        use crate::views::chat::ChatView;
+        use spanbay_desktop::core::app::{
+            SaveEnvironmentInput, environment_save_impl, workspace_create_impl,
+        };
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        let ws_a =
+            workspace_create_impl(rt.state(), "ws_alpha".into(), "test".into()).expect("ws_a");
+        let env_a = environment_save_impl(
+            rt.state(),
+            SaveEnvironmentInput {
+                id: "env_dev".into(),
+                workspace_id: ws_a.id.as_str().to_owned(),
+                name: "Dev".into(),
+                variables: Vec::new(),
+                confirm_before_send: Some(false),
+                confirm_safe_methods: Some(false),
+                declared_hosts: Some(Vec::new()),
+                base_revision: None,
+            },
+        )
+        .expect("env_a");
+        let ws_b = workspace_create_impl(rt.state(), "ws_beta".into(), "Ops".into()).expect("ws_b");
+        let env_b = environment_save_impl(
+            rt.state(),
+            SaveEnvironmentInput {
+                id: "env_prod".into(),
+                workspace_id: ws_b.id.as_str().to_owned(),
+                name: "Prod".into(),
+                variables: Vec::new(),
+                confirm_before_send: Some(false),
+                confirm_safe_methods: Some(false),
+                declared_hosts: Some(Vec::new()),
+                base_revision: None,
+            },
+        )
+        .expect("env_b");
+
+        let folder = std::env::temp_dir().join(format!(
+            "spanbay-chat-bind-{}",
+            spanbay_desktop::core::app::current_time_ms()
+        ));
+        std::fs::create_dir_all(&folder).expect("create temp project dir");
+        let canonical_folder = std::fs::canonicalize(&folder)
+            .expect("canonical temp dir")
+            .to_string_lossy()
+            .into_owned();
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        // 1. Seed active workspace + environment from Shell, then bind a folder BEFORE any session exists.
+        visual.update(|_, cx| {
+            view.update(cx, |v, cx| {
+                v.set_active_binding(
+                    Some(ws_a.id.as_str().to_owned()),
+                    Some(env_a.id.clone()),
+                    cx,
+                );
+                v.bind_folder_path(folder.to_string_lossy().into_owned(), cx);
+            });
+        });
+
+        for _ in 0..80 {
+            visual.run_until_parked();
+            let ready = visual.read(|cx| {
+                view.read(cx).session.as_ref().is_some_and(|s| {
+                    s.workspace_dir.as_deref() == Some(canonical_folder.as_str())
+                        && s.spanbay_workspace_id.as_deref() == Some("ws_alpha")
+                })
+            });
+            if ready {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let first_session_id = visual.update(|window, cx| {
+            let v = view.read(cx);
+            let s = v
+                .session
+                .as_ref()
+                .expect("binding folder on empty chat must create a session");
+            assert_eq!(s.workspace_dir.as_deref(), Some(canonical_folder.as_str()));
+            assert_eq!(s.spanbay_workspace_id.as_deref(), Some("ws_alpha"));
+            assert_eq!(s.spanbay_environment_id.as_deref(), Some("env_dev"));
+            assert!(
+                v.environments.iter().any(|e| e.id == env_a.id),
+                "bound workspace environments must load automatically"
+            );
+            let sid = s.id.clone();
+            window.refresh();
+            window.draw(cx).clear(cx);
+            sid
+        });
+
+        // 2. Rebind the idle chat to ws_beta (clearing env_id) and confirm environments refresh.
+        visual.update(|_, cx| {
+            view.update(cx, |v, cx| {
+                v.bind_workspace_env(ws_b.id.as_str().to_owned(), None, cx);
+            });
+        });
+        for _ in 0..80 {
+            visual.run_until_parked();
+            let rebound = visual.read(|cx| {
+                let v = view.read(cx);
+                v.session
+                    .as_ref()
+                    .is_some_and(|s| s.spanbay_workspace_id.as_deref() == Some("ws_beta"))
+                    && v.environments.iter().any(|e| e.id == env_b.id)
+            });
+            if rebound {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        visual.update(|window, cx| {
+            let v = view.read(cx);
+            let s = v.session.as_ref().expect("session present after rebind");
+            assert_eq!(s.id, first_session_id);
+            assert_eq!(s.spanbay_workspace_id.as_deref(), Some("ws_beta"));
+            assert_eq!(s.spanbay_environment_id, None);
+            assert!(v.environments.iter().any(|e| e.id == env_b.id));
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 3. Switching Shell's active workspace keeps the existing bound chat untouched, while a
+        //    brand-new chat inherits the newly active workspace.
+        visual.update(|_, cx| {
+            view.update(cx, |v, cx| {
+                v.set_active_workspace(Some(ws_a.id.as_str().to_owned()), cx);
+            });
+            assert_eq!(
+                view.read(cx)
+                    .session
+                    .as_ref()
+                    .and_then(|s| s.spanbay_workspace_id.as_deref()),
+                Some("ws_beta"),
+                "switching shell workspace must not redirect an already-bound chat"
+            );
+            view.update(cx, |v, cx| v.create_session(cx));
+        });
+        for _ in 0..80 {
+            visual.run_until_parked();
+            let switched = visual.read(|cx| {
+                view.read(cx).session.as_ref().is_some_and(|s| {
+                    s.id != first_session_id
+                        && s.spanbay_workspace_id.as_deref() == Some("ws_alpha")
+                })
+            });
+            if switched {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        visual.update(|_, cx| {
+            let s = view.read(cx).session.as_ref().expect("new session");
+            assert_ne!(s.id, first_session_id);
+            assert_eq!(s.spanbay_workspace_id.as_deref(), Some("ws_alpha"));
+        });
+
+        let _ = std::fs::remove_dir_all(&folder);
         rt.shutdown_blocking();
     }
 }

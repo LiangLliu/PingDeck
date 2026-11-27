@@ -136,7 +136,6 @@ fn run(id: &str, session_id: &str, status: AgentRunStatus, started_at_ms: i64) -
         stop_reason: None,
         error_kind: None,
         error: None,
-        prompt_version: 1,
         last_seq: 0,
         failure: None,
         role: None,

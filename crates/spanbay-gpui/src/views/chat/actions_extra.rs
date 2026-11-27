@@ -3,14 +3,16 @@
 
 use gpui_kit::{Context, Window};
 use spanbay_desktop::core::agent::model::{
-    AgentExportFormat, AgentQuestionAnswer, AgentSessionFilter, AgentSessionPatch,
+    AgentExportFormat, AgentQuestionAnswer, AgentSessionFilter, AgentSessionInput,
+    AgentSessionPatch, AgentTarget,
 };
 use spanbay_desktop::core::app::{
-    agent_attachment_put_path_impl, agent_plan_approve_impl, agent_plan_set_impl,
+    AppState, agent_attachment_put_path_impl, agent_plan_approve_impl, agent_plan_set_impl,
     agent_question_answer_impl, agent_queue_add_impl, agent_queue_clear_impl,
     agent_queue_remove_impl, agent_queue_resume_impl, agent_queue_steer_impl, agent_run_steer_impl,
-    agent_run_unsubscribe_impl, agent_session_bind_spanbay_impl, agent_session_delete_impl,
-    agent_session_export_redacted_impl, agent_session_list_impl, agent_session_restore_impl,
+    agent_run_unsubscribe_impl, agent_session_bind_spanbay_impl, agent_session_create_impl,
+    agent_session_delete_impl, agent_session_export_redacted_impl, agent_session_list_impl,
+    agent_session_restore_impl, environment_list_impl, workspace_list_impl,
 };
 use spanbay_desktop::core::model::hub::HubPart;
 use spanbay_desktop::core::model::settings::ToolApproval;
@@ -21,9 +23,101 @@ use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::ChatView;
+use super::actions::resolve_fallback_target;
 use super::types::{ChatSidebarMode, PendingAttachment};
 
+/// Validates `preferred_ws` / `preferred_env` against the live store so session creation and
+/// run start bind to the active SpanBay workspace (and only an environment that belongs to it)
+/// without failing if either was deleted or switched.
+pub(super) fn resolve_active_binding(
+    state: &AppState,
+    preferred_ws: Option<String>,
+    preferred_env: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let Some(ws_id) = preferred_ws else {
+        return (None, None);
+    };
+    let workspaces = workspace_list_impl(state).unwrap_or_default();
+    if !workspaces.iter().any(|w| w.id.as_str() == ws_id) {
+        return (None, None);
+    }
+    let env_id = preferred_env.filter(|eid| {
+        environment_list_impl(state, ws_id.clone())
+            .unwrap_or_default()
+            .iter()
+            .any(|e| e.id == *eid)
+    });
+    (Some(ws_id), env_id)
+}
+
 impl ChatView {
+    pub fn create_session(&mut self, cx: &mut Context<Self>) {
+        self.create_session_with_options(None, None, None, None, cx);
+    }
+
+    pub fn select_model(&mut self, target: AgentTarget, cx: &mut Context<Self>) {
+        if self.thread.session_id.is_empty() {
+            self.create_session_with_options(Some(target), None, None, None, cx);
+        } else {
+            self.patch_session(
+                AgentSessionPatch {
+                    target: Some(target),
+                    ..Default::default()
+                },
+                cx,
+            );
+        }
+    }
+
+    pub(super) fn create_session_with_options(
+        &mut self,
+        explicit_target: Option<AgentTarget>,
+        explicit_folder: Option<String>,
+        explicit_ws: Option<String>,
+        explicit_env: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let active_ws = explicit_ws.or_else(|| self.active_workspace_id.clone());
+        let active_env = if active_ws == self.active_workspace_id {
+            explicit_env.or_else(|| self.active_environment_id.clone())
+        } else {
+            explicit_env
+        };
+        let task = spawn_blocking_into(
+            cx,
+            move |state| {
+                let target = explicit_target.or_else(|| resolve_fallback_target(state));
+                let (spanbay_workspace_id, spanbay_environment_id) =
+                    resolve_active_binding(state, active_ws, active_env);
+                agent_session_create_impl(
+                    state,
+                    AgentSessionInput {
+                        target,
+                        workspace_dir: explicit_folder,
+                        spanbay_workspace_id,
+                        spanbay_environment_id,
+                        ..AgentSessionInput::default()
+                    },
+                )
+            },
+            |this, res, cx| {
+                match res {
+                    Ok(session) => {
+                        let id = session.id.clone();
+                        this.refresh_catalog(cx);
+                        this.open_session(id, cx);
+                    }
+                    Err(err) => {
+                        let msg = err.message().to_owned();
+                        this.thread.last_error = Some(msg.clone());
+                        this.status_msg = Some((Tone::Danger, msg));
+                    }
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
     pub fn set_sidebar_mode(&mut self, mode: ChatSidebarMode, cx: &mut Context<Self>) {
         self.sidebar_mode = mode;
         match mode {
@@ -347,14 +441,26 @@ impl ChatView {
     ) {
         let sid = self.thread.session_id.clone();
         if sid.is_empty() {
+            self.create_session_with_options(None, None, Some(workspace_id), env_id, cx);
             return;
         }
+        let sid_check = sid.clone();
+        let ws_for_envs = workspace_id.clone();
         let task = spawn_blocking_into(
             cx,
-            move |state| agent_session_bind_spanbay_impl(state, &sid, &workspace_id, env_id),
-            |this, res, cx| {
+            move |state| {
+                let updated = agent_session_bind_spanbay_impl(state, &sid, &workspace_id, env_id)?;
+                let envs = environment_list_impl(state, ws_for_envs).unwrap_or_default();
+                Ok::<_, spanbay_desktop::core::error::AppError>((updated, envs))
+            },
+            move |this, res, cx| {
                 match res {
-                    Ok(updated) => this.session = Some(updated),
+                    Ok((updated, envs)) => {
+                        if this.thread.session_id == sid_check {
+                            this.session = Some(updated);
+                            this.environments = envs;
+                        }
+                    }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
                 cx.notify();
@@ -363,10 +469,21 @@ impl ChatView {
         self._tasks.push(task);
     }
 
-    pub fn pick_bound_folder(&mut self, cx: &mut Context<Self>) {
+    pub fn bind_folder_path(&mut self, dir: String, cx: &mut Context<Self>) {
         if self.thread.session_id.is_empty() {
-            return;
+            self.create_session_with_options(None, Some(dir), None, None, cx);
+        } else {
+            self.patch_session(
+                AgentSessionPatch {
+                    workspace_dir: Some(dir),
+                    ..Default::default()
+                },
+                cx,
+            );
         }
+    }
+
+    pub fn pick_bound_folder(&mut self, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
             move |_state| {
@@ -376,13 +493,7 @@ impl ChatView {
             },
             |this, picked, cx| {
                 if let Some(dir) = picked {
-                    this.patch_session(
-                        AgentSessionPatch {
-                            workspace_dir: Some(dir),
-                            ..Default::default()
-                        },
-                        cx,
-                    );
+                    this.bind_folder_path(dir, cx);
                 }
             },
         );

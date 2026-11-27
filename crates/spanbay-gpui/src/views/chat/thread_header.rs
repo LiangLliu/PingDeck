@@ -320,20 +320,27 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
         .workspace_info
         .as_ref()
         .and_then(|w| w.git_branch.clone());
-    let bound_ws_id = view
-        .session
-        .as_ref()
-        .and_then(|s| s.spanbay_workspace_id.clone());
-    let bound_env_id = view
-        .session
-        .as_ref()
-        .and_then(|s| s.spanbay_environment_id.clone());
-    let ws_name = bound_ws_id.as_deref().and_then(|id| {
-        view.workspaces
-            .iter()
-            .find(|w| w.id.as_str() == id)
-            .map(|w| w.name.clone())
-    });
+    let bound_ws_id = match &view.session {
+        Some(s) => s.spanbay_workspace_id.clone(),
+        None => view.active_workspace_id.clone(),
+    };
+    let bound_env_id = match &view.session {
+        Some(s) => s.spanbay_environment_id.clone(),
+        None => view.active_environment_id.clone(),
+    };
+    let ws_name = bound_ws_id
+        .as_deref()
+        .and_then(|id| {
+            view.workspaces
+                .iter()
+                .find(|w| w.id.as_str() == id)
+                .map(|w| w.name.clone())
+        })
+        .or_else(|| {
+            view.session
+                .as_ref()
+                .and_then(|s| s.spanbay_workspace_name.clone())
+        });
 
     let env_name = bound_env_id.as_deref().and_then(|id| {
         view.environments
@@ -430,7 +437,7 @@ fn render_binding_popover(view: &ChatView, cx: &mut Context<ChatView>) -> impl I
                     let sel = bound_ws_id.as_deref() == Some(wid.as_str());
                     let ent = chat_ent.clone();
                     let pop_h = pop_cx.entity().clone();
-                    let eid = bound_env_id.clone();
+                    let eid = sel.then(|| bound_env_id.clone()).flatten();
                     m = m.child(
                         menu_option(
                             SharedString::from(format!("chat-bws-{wid}")),

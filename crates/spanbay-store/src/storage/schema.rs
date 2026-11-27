@@ -964,7 +964,6 @@ CREATE TABLE agent_runs (
     status             TEXT NOT NULL CHECK (status IN ('queued', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled', 'interrupted')),
     model_label        TEXT NOT NULL,
     target_json        TEXT,
-    prompt_version     INTEGER NOT NULL DEFAULT 1,
     iterations         INTEGER NOT NULL DEFAULT 0,
     last_step          TEXT,
     usage_json         TEXT NOT NULL DEFAULT '{}',

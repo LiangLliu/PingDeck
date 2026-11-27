@@ -8,6 +8,7 @@ use crate::bridge::spawn_blocking_into;
 use crate::views::runs::WorkflowTab;
 
 use super::ChatView;
+use super::reasoning::message_has_reasoning;
 use super::types::ChatHandoff;
 
 impl ChatView {
@@ -69,5 +70,45 @@ impl ChatView {
             }
         });
         self._tasks.push(task);
+    }
+
+    pub fn toggle_trace(&mut self, key: String, cx: &mut Context<Self>) {
+        if !self.expanded_traces.remove(&key) {
+            self.expanded_traces.insert(key);
+        }
+        cx.notify();
+    }
+
+    pub fn toggle_reasoning(&mut self, key: String, cx: &mut Context<Self>) {
+        if key == "live-reasoning" {
+            self.collapsed_live_reasoning = !self.collapsed_live_reasoning;
+        } else if !self.expanded_reasoning.remove(&key) {
+            self.expanded_reasoning.insert(key);
+        }
+        cx.notify();
+    }
+
+    pub fn toggle_all_reasoning(&mut self, cx: &mut Context<Self>) {
+        let keys: Vec<String> = self
+            .thread
+            .messages
+            .iter()
+            .filter(|m| message_has_reasoning(m))
+            .map(|m| format!("reason-{}", m.id))
+            .collect();
+        if keys.is_empty() {
+            return;
+        }
+        let all_open = keys.iter().all(|k| self.expanded_reasoning.contains(k));
+        if all_open {
+            for k in keys {
+                self.expanded_reasoning.remove(&k);
+            }
+        } else {
+            for k in keys {
+                self.expanded_reasoning.insert(k);
+            }
+        }
+        cx.notify();
     }
 }

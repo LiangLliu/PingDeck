@@ -1284,7 +1284,6 @@ mod tests {
             stop_reason: None,
             error_kind: None,
             error: (status == AgentRunStatus::Failed).then(|| "upstream 429".to_owned()),
-            prompt_version: 1,
             last_seq: 0,
             failure: None,
             role: None,

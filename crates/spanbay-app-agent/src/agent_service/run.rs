@@ -26,7 +26,6 @@ use crate::agent::model::{
     AgentRunStatus, AgentRunSummary, AgentSession, AgentStopReason, AgentTarget, FileChange,
     FileChangeStatus, QueuedContent, QueuedTurn,
 };
-use crate::agent::prompt::PROMPT_VERSION;
 use crate::agent::registry::{ActiveRun, CostDecision, SteerMessage};
 use crate::agent::runner::{CompactionPolicy, CostCap, RunHost, RunInput, run_agent};
 use crate::agent::secret_guard::expand_needles;
@@ -180,7 +179,6 @@ pub(super) fn initial_summary(
         stop_reason: None,
         error_kind: None,
         error: None,
-        prompt_version: PROMPT_VERSION,
         last_seq: 0,
         failure: None,
         role: None,

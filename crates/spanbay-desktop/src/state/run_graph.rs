@@ -1662,7 +1662,6 @@ mod tests {
             stop_reason: None,
             error_kind: None,
             error: None,
-            prompt_version: 1,
             last_seq: 0,
             role: None,
             status_detail: None,

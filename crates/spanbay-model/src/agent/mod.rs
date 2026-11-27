@@ -1149,8 +1149,6 @@ pub struct AgentRunSummary {
     pub error_kind: Option<String>,
     /// Failure text of a failed or interrupted run.
     pub error: Option<String>,
-    /// Version of the prompt builder that composed the run's system prompt.
-    pub prompt_version: u32,
     /// Sequence number of the latest event of the run's event stream. Not persisted: rows read
     /// from the store report 0 and the live run registry overlays the real value.
     pub last_seq: u64,
