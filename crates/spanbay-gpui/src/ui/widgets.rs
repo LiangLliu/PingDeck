@@ -25,7 +25,7 @@ use gpui_kit::{
 
 use super::icons::{UiIcon, icon_sized, icon_xs};
 use super::primitives::{Tone, h_row, v_col};
-use super::theme::{palette, to_hsla};
+use super::theme::{mono_font_family, mono_font_size, palette, to_hsla};
 
 /// Wraps the top-level shell view in `gpui-component`'s [`Root`] so native popovers, tooltips,
 /// sheets, dialogs, notifications, and cross-element text selection work window-wide.
@@ -488,6 +488,8 @@ pub fn kv_chip(label: impl Into<SharedString>, value: impl Into<SharedString>, c
 #[must_use]
 pub fn diff_lines_preview(text: &str, max_lines: usize, cx: &App) -> Div {
     let p = palette(cx);
+    let mono = mono_font_family(cx);
+    let code_px = (f32::from(mono_font_size(cx)) - 1.5).clamp(10.5, 13.0);
     let mut box_el = v_col()
         .w_full()
         .rounded(px(6.0))
@@ -495,7 +497,8 @@ pub fn diff_lines_preview(text: &str, max_lines: usize, cx: &App) -> Div {
         .bg(to_hsla(p.sunken))
         .border_1()
         .border_color(to_hsla(p.line.composite_over(p.sunken)))
-        .py(px(4.0));
+        .py(px(4.0))
+        .font_family(mono);
 
     let mut count = 0usize;
     let total = text.lines().count();
@@ -526,7 +529,7 @@ pub fn diff_lines_preview(text: &str, max_lines: usize, cx: &App) -> Div {
             .w_full()
             .px(px(10.0))
             .py(px(2.0))
-            .text_xs()
+            .text_size(px(code_px))
             .text_color(fg)
             .child(SharedString::from(line.to_owned()));
         if let Some(bg) = row_bg {
@@ -547,5 +550,111 @@ pub fn diff_lines_preview(text: &str, max_lines: usize, cx: &App) -> Div {
                 .child(SharedString::from(format!("… +{} lines", total - count))),
         );
     }
+    box_el
+}
+
+/// Renders a clean, line-bounded monospace code or log snippet with an optional source line-number
+/// gutter and subtle top/bottom omission banners (used by expanded agent tool call traces).
+#[must_use]
+pub fn code_lines_preview(
+    lines: &[spanbay_desktop::state::CodePreviewLine],
+    omitted_above_label: Option<String>,
+    omitted_below_label: Option<String>,
+    is_error: bool,
+    cx: &App,
+) -> Div {
+    let p = palette(cx);
+    let mono = mono_font_family(cx);
+    let code_px = (f32::from(mono_font_size(cx)) - 1.5).clamp(10.5, 13.0);
+    let border = if is_error {
+        to_hsla(p.bad_line.composite_over(p.pane))
+    } else {
+        to_hsla(p.line.composite_over(p.sunken))
+    };
+    let text_fg = if is_error {
+        to_hsla(p.bad)
+    } else {
+        to_hsla(p.ink_2)
+    };
+    let has_gutter = lines.iter().any(|l| l.line_no.is_some());
+
+    let mut box_el = v_col().w_full();
+
+    if let Some(above) = omitted_above_label {
+        box_el = box_el.child(
+            div()
+                .w_full()
+                .px(px(10.0))
+                .py(px(4.0))
+                .border_b_1()
+                .border_color(border)
+                .text_size(px(11.0))
+                .text_color(to_hsla(p.muted))
+                .child(SharedString::from(above)),
+        );
+    }
+
+    let mut body = v_col().w_full().py(px(5.0)).font_family(mono);
+    for line in lines {
+        if has_gutter {
+            let gutter_text = line.line_no.map_or_else(String::new, |n| n.to_string());
+            body = body.child(
+                h_row()
+                    .w_full()
+                    .items_start()
+                    .py(px(1.5))
+                    .child(
+                        div()
+                            .w(px(42.0))
+                            .flex_shrink_0()
+                            .pr(px(8.0))
+                            .pl(px(6.0))
+                            .border_r_1()
+                            .border_color(border)
+                            .text_right()
+                            .text_size(px(code_px - 0.5))
+                            .text_color(to_hsla(p.faint))
+                            .child(SharedString::from(gutter_text)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .px(px(10.0))
+                            .text_size(px(code_px))
+                            .text_color(text_fg)
+                            .overflow_hidden()
+                            .child(SharedString::from(line.text.clone())),
+                    ),
+            );
+        } else {
+            body = body.child(
+                div()
+                    .w_full()
+                    .px(px(10.0))
+                    .py(px(1.5))
+                    .text_size(px(code_px))
+                    .text_color(text_fg)
+                    .overflow_hidden()
+                    .child(SharedString::from(line.text.clone())),
+            );
+        }
+    }
+    box_el = box_el.child(body);
+
+    if let Some(below) = omitted_below_label {
+        box_el = box_el.child(
+            div()
+                .w_full()
+                .px(px(10.0))
+                .py(px(4.0))
+                .border_t_1()
+                .border_color(border)
+                .text_size(px(11.0))
+                .text_color(to_hsla(p.muted))
+                .child(SharedString::from(below)),
+        );
+    }
+
     box_el
 }

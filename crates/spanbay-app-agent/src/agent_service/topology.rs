@@ -848,7 +848,9 @@ fn format_args_preview(args: &str) -> Option<String> {
 }
 
 fn format_output_preview(raw: &str, class: &str) -> Option<String> {
-    let trimmed = raw.trim();
+    let (unwrapped, _) = crate::agent::untrusted::strip_external_envelope(raw);
+    let (_, body) = crate::agent::untrusted::strip_coded_error_prefix(unwrapped.as_ref());
+    let trimmed = body.trim();
     if trimmed.is_empty() {
         return None;
     }

@@ -3,18 +3,29 @@
 //! Consumes coalesced [`AgentEnvelope`] events with sequence deduplication and gap detection,
 //! producing render-ready state for any UI shell (100% unit-testable without GPU or window).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use spanbay_core::agent::model::{
-    AgentEnvelope, AgentEvent, AgentMessage, AgentRunStatus, AgentRunSummary, AgentStopReason,
-    AgentTodoItem, ApprovalDecision, ApprovalScope, HumanGateDto, LiveRunSnapshot, LiveToolState,
-    QueuedTurn, ToolCallStatus, ToolSource,
+    AgentEnvelope, AgentEvent, AgentMessage, AgentRole, AgentRunStatus, AgentRunSummary,
+    AgentStopReason, AgentTodoItem, ApprovalDecision, ApprovalScope, HumanGateDto, LiveRunSnapshot,
+    LiveToolState, QueuedTurn, ToolCallStatus, ToolSource,
 };
 use spanbay_core::agent::tools::FileChangeKind;
 use spanbay_core::model::hub::HubPart;
 
 /// Maximum tail bytes retained in live streaming tool output per call to keep UI rendering O(1).
 const MAX_LIVE_TOOL_OUTPUT_BYTES: usize = 64 * 1024;
+/// Placeholder written into freshly saved `AgentRole::Tool` rows before each call settles.
+const PENDING_TOOL_RESULT_MARKER: &str = "[interrupted before tool finished]";
+
+/// Completed tool execution metadata captured from live `AgentEvent::ToolResult` events before
+/// the post-turn database refresh reloads `agent_tool_calls`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LiveToolMeta {
+    pub status: ToolCallStatus,
+    pub duration_ms: u64,
+    pub exit_code: Option<i32>,
+}
 
 /// Live tool call state inside an active run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +122,11 @@ pub struct ChatThreadState {
     pub streaming_text: String,
     pub streaming_reasoning: String,
     pub tool_calls: Vec<LiveToolCall>,
+    /// Tool call ids whose saved `AgentRole::Tool` placeholder has not yet received a live
+    /// `AgentEvent::ToolResult` (still running during an active multi-step run).
+    pub pending_tool_calls: BTreeSet<String>,
+    /// Live duration/status/exit_code recorded as `AgentEvent::ToolResult` arrives mid-run.
+    pub live_tool_meta: BTreeMap<String, LiveToolMeta>,
     pub pending_approvals: Vec<LiveApproval>,
     pub open_gates: Vec<(String, HumanGateDto)>,
     pub cost_pause: Option<LiveCostPause>,
@@ -144,6 +160,8 @@ impl ChatThreadState {
     pub fn replace_snapshot(&mut self, title: String, messages: Vec<AgentMessage>) {
         self.title = title;
         self.messages = messages;
+        self.pending_tool_calls.clear();
+        self.live_tool_meta.clear();
         self.needs_reload = false;
     }
 
@@ -191,6 +209,7 @@ impl ChatThreadState {
         self.streaming_text.clear();
         self.streaming_reasoning.clear();
         self.tool_calls.clear();
+        self.pending_tool_calls.clear();
         self.pending_approvals.clear();
 
         let mut args_by_id: BTreeMap<&str, &str> = BTreeMap::new();
@@ -216,6 +235,18 @@ impl ChatThreadState {
                 duration_ms: tc.result.as_ref().map(|r| r.duration_ms),
                 exit_code: None,
             });
+            if let Some(res) = &tc.result {
+                self.live_tool_meta.insert(
+                    tc.call_id.clone(),
+                    LiveToolMeta {
+                        status: res.status,
+                        duration_ms: res.duration_ms,
+                        exit_code: None,
+                    },
+                );
+            } else {
+                self.pending_tool_calls.insert(tc.call_id.clone());
+            }
             if tc.state == LiveToolState::WaitingApproval {
                 let (
                     risk,
@@ -324,6 +355,8 @@ impl ChatThreadState {
                 self.streaming_text.clear();
                 self.streaming_reasoning.clear();
                 self.tool_calls.clear();
+                self.pending_tool_calls.clear();
+                self.live_tool_meta.clear();
                 self.subagents.clear();
             }
             AgentEvent::QueuedUpdated { queued, paused, .. } => {
@@ -334,7 +367,23 @@ impl ChatThreadState {
                 self.push_or_replace_message(*message);
             }
             AgentEvent::MessageSaved { message } => {
-                self.push_or_replace_message(*message);
+                let msg = *message;
+                if msg.role == AgentRole::Tool {
+                    for part in &msg.parts {
+                        if let HubPart::ToolResult {
+                            call_id,
+                            content,
+                            is_error: true,
+                            ..
+                        } = part
+                            && !self.live_tool_meta.contains_key(call_id)
+                            && is_pending_placeholder_parts(content)
+                        {
+                            self.pending_tool_calls.insert(call_id.clone());
+                        }
+                    }
+                }
+                self.push_or_replace_message(msg);
                 self.streaming_text.clear();
                 self.streaming_reasoning.clear();
             }
@@ -443,14 +492,60 @@ impl ChatThreadState {
             AgentEvent::ToolResult {
                 call_id,
                 status,
+                parts,
                 duration_ms,
                 exit_code,
                 ..
             } => {
+                self.pending_tool_calls.remove(&call_id);
+                self.live_tool_meta.insert(
+                    call_id.clone(),
+                    LiveToolMeta {
+                        status,
+                        duration_ms,
+                        exit_code,
+                    },
+                );
                 if let Some(call) = self.tool_calls.iter_mut().find(|c| c.call_id == call_id) {
                     call.status = Some(status);
                     call.duration_ms = Some(duration_ms);
                     call.exit_code = exit_code;
+                    if call.output.is_empty() && !parts.is_empty() {
+                        let joined = parts
+                            .iter()
+                            .filter_map(|p| match p {
+                                HubPart::Text { text, .. } => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        if !joined.is_empty() {
+                            call.output = joined;
+                        }
+                    }
+                }
+                // Replace the crash-recovery placeholder written by `save_tool_turn` in the saved
+                // `AgentRole::Tool` message so completed tool steps display their real status,
+                // metrics, and output immediately during multi-step runs.
+                let is_err = !matches!(status, ToolCallStatus::Ok);
+                'patch_msg: for msg in self.messages.iter_mut().rev() {
+                    if msg.role != AgentRole::Tool {
+                        continue;
+                    }
+                    for part in &mut msg.parts {
+                        if let HubPart::ToolResult {
+                            call_id: cid,
+                            content,
+                            is_error,
+                            ..
+                        } = part
+                            && *cid == call_id
+                        {
+                            *content = parts;
+                            *is_error = is_err;
+                            break 'patch_msg;
+                        }
+                    }
                 }
             }
             AgentEvent::FileChanged {
@@ -748,6 +843,7 @@ impl ChatThreadState {
                 self.streaming_text.clear();
                 self.streaming_reasoning.clear();
                 self.tool_calls.clear();
+                self.pending_tool_calls.clear();
                 self.cost_pause = None;
                 self.pending_approvals.clear();
             }
@@ -760,6 +856,7 @@ impl ChatThreadState {
                 self.streaming_text.clear();
                 self.streaming_reasoning.clear();
                 self.tool_calls.clear();
+                self.pending_tool_calls.clear();
                 self.cost_pause = None;
                 self.pending_approvals.clear();
             }
@@ -776,6 +873,13 @@ impl ChatThreadState {
             self.messages.push(msg);
         }
     }
+}
+
+fn is_pending_placeholder_parts(parts: &[HubPart]) -> bool {
+    matches!(
+        parts,
+        [HubPart::Text { text, .. }] if text.trim() == PENDING_TOOL_RESULT_MARKER
+    )
 }
 
 fn parse_task_brief_meta(raw: &str) -> (String, String, bool) {
@@ -1139,5 +1243,81 @@ mod tests {
         assert_eq!(state.title, "Renamed");
         let ids: Vec<&str> = state.messages.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, ["m1", "m2", "m3", "m4", "m5"]);
+    }
+
+    #[test]
+    fn tool_result_replaces_pending_placeholder_in_saved_tool_message_mid_run() {
+        let mut state = ChatThreadState::new("s1", "Live");
+        let tool_msg = AgentMessage {
+            id: "m_tool_1".into(),
+            session_id: "s1".into(),
+            seq: 2,
+            role: AgentRole::Tool,
+            parts: vec![HubPart::ToolResult {
+                call_id: "c_read_1".into(),
+                name: Some("read_file".into()),
+                content: vec![HubPart::text("[interrupted before tool finished]")],
+                is_error: true,
+            }],
+            usage: None,
+            model: None,
+            error: None,
+            run_id: Some("r1".into()),
+            parent_id: None,
+            branch_index: 0,
+            partial: false,
+            cost_micro_usd: 0,
+            cost_currency: None,
+            meta: Default::default(),
+            branch_siblings: Vec::new(),
+            attachments: Vec::new(),
+            created_at_ms: 1000,
+        };
+
+        assert!(state.apply(env(
+            1,
+            AgentEvent::MessageSaved {
+                message: Box::new(tool_msg),
+            }
+        )));
+        assert!(state.pending_tool_calls.contains("c_read_1"));
+
+        assert!(state.apply(env(
+            2,
+            AgentEvent::ToolResult {
+                call_id: "c_read_1".into(),
+                name: "read_file".into(),
+                status: ToolCallStatus::Ok,
+                parts: vec![HubPart::text(
+                    "     1\t[package]\n     2\tname = \"demo\"\n"
+                )],
+                duration_ms: 12,
+                meta: None,
+                exit_code: None,
+            }
+        )));
+        assert!(!state.pending_tool_calls.contains("c_read_1"));
+        assert_eq!(
+            state.live_tool_meta.get("c_read_1"),
+            Some(&LiveToolMeta {
+                status: ToolCallStatus::Ok,
+                duration_ms: 12,
+                exit_code: None,
+            })
+        );
+        match &state.messages[0].parts[0] {
+            HubPart::ToolResult {
+                content, is_error, ..
+            } => {
+                assert!(!is_error);
+                assert_eq!(
+                    content,
+                    &vec![HubPart::text(
+                        "     1\t[package]\n     2\tname = \"demo\"\n"
+                    )]
+                );
+            }
+            other => panic!("expected ToolResult, got {other:?}"),
+        }
     }
 }

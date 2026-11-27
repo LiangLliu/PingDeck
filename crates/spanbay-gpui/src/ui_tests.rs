@@ -3274,4 +3274,203 @@ mod gpui_integration {
         let _ = std::fs::remove_dir_all(&folder);
         rt.shutdown_blocking();
     }
+
+    /// Verifies Plan A tool trace presentation in `ChatView`:
+    /// - One row per command (`read_file` wrapped in `<external_data>`, plus `shell`),
+    /// - Expanding a `read_file` step renders cleanly without leaking `<external_data>` tags,
+    /// - Opening full preview on a non-spilled tool call opens `ChatModal::ToolOutput` directly
+    ///   with cleaned file contents instead of failing with `NotFound`,
+    /// - Attempting to open an out-of-workspace traversal path reports a validation error.
+    #[gpui_kit::test]
+    fn chat_tool_trace_enveloped_read_file_and_inline_preview_modal(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use crate::views::chat::{ChatModal, ChatView};
+        use spanbay_desktop::core::agent::model::{AgentMessage, AgentRole, AgentSessionInput};
+        use spanbay_desktop::core::agent::untrusted::envelope_tags;
+        use spanbay_desktop::core::app::agent_session_create_impl;
+        use spanbay_desktop::core::model::hub::HubPart;
+        use spanbay_desktop::state::format_tool_trace;
+
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = rt.state().settings();
+        let folder = std::env::temp_dir().join(format!(
+            "spanbay-trace-ui-test-{}",
+            spanbay_desktop::core::app::current_time_ms()
+        ));
+        std::fs::create_dir_all(&folder).expect("create temp workspace folder");
+        std::fs::write(folder.join("Cargo.toml"), "[package]\nname = \"demo\"\n")
+            .expect("write Cargo.toml");
+
+        let (open_tag, close_tag) = envelope_tags("read_file");
+        let mut numbered = String::new();
+        for i in 1..=22 {
+            numbered.push_str(&format!("{i:>6}\tfield_{i} = \"val_{i}\"\n"));
+        }
+        let enveloped_output = format!("{open_tag}\n{numbered}{close_tag}");
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        let created = agent_session_create_impl(
+            rt.state(),
+            AgentSessionInput {
+                title: Some("Trace test".to_owned()),
+                workspace_dir: Some(folder.to_string_lossy().into_owned()),
+                ..AgentSessionInput::default()
+            },
+        )
+        .expect("create session");
+        let sid = created.id.clone();
+
+        visual.update(|_, cx| {
+            view.update(cx, |chat, cx| {
+                chat.thread.session_id = sid.clone();
+                chat.session = Some(created.clone());
+                chat.thread.messages = vec![
+                    AgentMessage {
+                        id: "m-assistant-1".to_owned(),
+                        session_id: sid.clone(),
+                        run_id: Some("r-trace-1".to_owned()),
+                        seq: 1,
+                        role: AgentRole::Assistant,
+                        parts: vec![
+                            HubPart::ToolCall {
+                                id: "call_read_1".to_owned(),
+                                name: "read_file".to_owned(),
+                                arguments: r#"{"path":"Cargo.toml"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::ToolCall {
+                                id: "call_shell_1".to_owned(),
+                                name: "shell".to_owned(),
+                                arguments: r#"{"command":"cargo check"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                        ],
+                        attachments: Vec::new(),
+                        model: Some("test-model".to_owned()),
+                        usage: None,
+                        parent_id: None,
+                        branch_index: 0,
+                        partial: false,
+                        cost_micro_usd: 0,
+                        cost_currency: None,
+                        meta: Default::default(),
+                        branch_siblings: Vec::new(),
+                        error: None,
+                        created_at_ms: 1,
+                    },
+                    AgentMessage {
+                        id: "m-tool-1".to_owned(),
+                        session_id: sid.clone(),
+                        run_id: Some("r-trace-1".to_owned()),
+                        seq: 2,
+                        role: AgentRole::Tool,
+                        parts: vec![
+                            HubPart::ToolResult {
+                                call_id: "call_read_1".to_owned(),
+                                name: Some("read_file".to_owned()),
+                                content: vec![HubPart::text(enveloped_output.clone())],
+                                is_error: false,
+                            },
+                            HubPart::ToolResult {
+                                call_id: "call_shell_1".to_owned(),
+                                name: Some("shell".to_owned()),
+                                content: vec![HubPart::text("Finished dev profile\n")],
+                                is_error: false,
+                            },
+                        ],
+                        attachments: Vec::new(),
+                        model: None,
+                        usage: None,
+                        parent_id: None,
+                        branch_index: 0,
+                        partial: false,
+                        cost_micro_usd: 0,
+                        cost_currency: None,
+                        meta: Default::default(),
+                        branch_siblings: Vec::new(),
+                        error: None,
+                        created_at_ms: 2,
+                    },
+                ];
+                cx.notify();
+            });
+        });
+
+        // Default state (collapsed) and expanded state both paint cleanly.
+        visual.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+            view.update(cx, |chat, cx| {
+                chat.toggle_trace("call_read_1".to_owned(), cx);
+                chat.toggle_trace("call_shell_1".to_owned(), cx);
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // Non-spilled full preview opens cleanly with stripped envelope & plain code.
+        let pres = format_tool_trace(
+            "read_file",
+            r#"{"path":"Cargo.toml"}"#,
+            Some(&enveloped_output),
+            false,
+            false,
+            None,
+        );
+        assert!(pres.can_preview_full);
+        assert!(pres.external_isolated);
+        visual.update(|window, cx| {
+            view.update(cx, |chat, cx| {
+                chat.open_tool_output(
+                    "call_read_1".to_owned(),
+                    "read_file".to_owned(),
+                    "Read · Cargo.toml".to_owned(),
+                    pres.cleaned_full_output.clone(),
+                    false,
+                    cx,
+                );
+            });
+            match view.read(cx).active_modal.as_ref() {
+                Some(ChatModal::ToolOutput {
+                    call_id,
+                    content,
+                    has_more,
+                    ..
+                }) => {
+                    assert_eq!(call_id, "call_read_1");
+                    assert!(!has_more);
+                    assert!(!content.contains("<external_data"));
+                    assert!(content.contains("field_1 = \"val_1\""));
+                    assert!(content.contains("field_22 = \"val_22\""));
+                }
+                other => panic!("expected ChatModal::ToolOutput, got {other:?}"),
+            }
+            assert!(view.read(cx).status_msg.is_none());
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // External open rejects traversal outside workspace without panicking.
+            view.update(cx, |chat, cx| {
+                chat.open_workspace_file_external("../escape.txt".to_owned(), cx);
+            });
+            assert!(matches!(
+                view.read(cx).status_msg.as_ref(),
+                Some((crate::ui::Tone::Danger, _))
+            ));
+        });
+
+        let _ = std::fs::remove_dir_all(&folder);
+        rt.shutdown_blocking();
+    }
 }

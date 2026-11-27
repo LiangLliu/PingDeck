@@ -81,13 +81,13 @@ pub use process_chrome::{
     lane_draw_spec, process_edge_label_pill, process_lane_header, process_segmented_waterfall_bar,
 };
 pub use theme::{
-    SpanBayPalette, apply_palette, apply_theme, is_compact, mono_font_size, palette,
-    resolve_is_dark, sync_window_scale, syntax_palette, theme_prefs, to_hsla,
+    SpanBayPalette, apply_palette, apply_theme, is_compact, mono_font_family, mono_font_size,
+    palette, resolve_is_dark, sync_window_scale, syntax_palette, theme_prefs, to_hsla,
 };
 pub use widgets::{
-    StatusShape, borderless_multiline, checkbox, collapsible_box, diff_lines_preview, filter_chip,
-    kv_chip, metric_datum, pill_btn, popover, popover_full_trigger, popover_trigger_btn,
-    progress_bar, round_icon_btn, search_input, select_pill, slider, spinner_xs, status_indicator,
-    tab_bar_segmented, tab_bar_underline, tab_item, text_tooltip, titlebar_icon_btn,
-    top_accent_card, wrap_root,
+    StatusShape, borderless_multiline, checkbox, code_lines_preview, collapsible_box,
+    diff_lines_preview, filter_chip, kv_chip, metric_datum, pill_btn, popover,
+    popover_full_trigger, popover_trigger_btn, progress_bar, round_icon_btn, search_input,
+    select_pill, slider, spinner_xs, status_indicator, tab_bar_segmented, tab_bar_underline,
+    tab_item, text_tooltip, titlebar_icon_btn, top_accent_card, wrap_root,
 };

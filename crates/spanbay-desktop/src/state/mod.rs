@@ -7,10 +7,11 @@ pub mod palette;
 pub mod process_graph;
 pub mod run_graph;
 pub mod shell;
+pub mod tool_trace;
 
 pub use chat_reducer::{
     ChatThreadState, LiveApproval, LiveCostPause, LiveFileChange, LiveSubagent, LiveSubagentTool,
-    LiveToolCall,
+    LiveToolCall, LiveToolMeta,
 };
 pub use flow_graph::{
     FLOW_CARD_ALERT_H, FLOW_CARD_H, FLOW_CARD_W, FLOW_COND_W, FLOW_JOIN_H, FLOW_JOIN_W,
@@ -40,4 +41,9 @@ pub use run_graph::{
 pub use shell::{
     EnvironmentResourceTarget, NavGroup, NavModule, SettingsGroup, SettingsSection, ShellState,
     ToastKind, ToastMessage, UtilityDialog,
+};
+pub use tool_trace::{
+    CodePreviewLine, INLINE_PREVIEW_MAX_LINES, ToolCategory, ToolInlineMetric, ToolPreviewBody,
+    ToolTracePresentation, classify_tool, clean_tool_output_for_modal, format_human_bytes,
+    format_mcp_tool_name, format_tool_trace,
 };

@@ -7,12 +7,13 @@ use gpui_kit::{
 };
 use spanbay_desktop::core::agent::model::{AgentSessionPatch, ApprovalDecision, ApprovalScope};
 use spanbay_desktop::core::model::settings::ToolApproval;
+use spanbay_desktop::services::clipboard;
 use spanbay_desktop::state::SettingsSection;
 
 use crate::ui::{
     Disableable as _, ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger,
-    btn_ghost, btn_primary, btn_secondary, h_row, icon_xs, modal_dialog, multiline_input, palette,
-    text_input, to_hsla, v_col,
+    btn_ghost, btn_primary, btn_secondary, h_row, icon_xs, modal_dialog, mono_font_family,
+    mono_font_size, multiline_input, palette, text_input, to_hsla, v_col,
 };
 
 use super::ChatView;
@@ -386,25 +387,32 @@ pub fn render_active_modal(
             .into_any_element()
         }
         ChatModal::ToolOutput {
+            call_id,
             name,
             content,
             has_more,
-            ..
+            next_offset,
         } => {
+            let mono = mono_font_family(cx);
+            let code_px = (f32::from(mono_font_size(cx)) - 1.0).clamp(11.0, 14.0);
+            let content_cp = content.clone();
             let body = v_col()
                 .gap(px(8.0))
                 .child(
                     div()
                         .id("chat-tout-scroll")
                         .w_full()
-                        .h(px(380.0))
-                        .p(px(10.0))
+                        .h(px(400.0))
+                        .p(px(12.0))
                         .rounded(px(8.0))
                         .bg(to_hsla(p.sunken))
+                        .border_1()
+                        .border_color(to_hsla(p.line.composite_over(p.sunken)))
                         .overflow_y_scrollbar()
-                        .text_xs()
+                        .font_family(mono)
+                        .text_size(px(code_px))
                         .text_color(to_hsla(p.ink_2))
-                        .child(content),
+                        .child(SharedString::from(content)),
                 )
                 .children(has_more.then(|| {
                     div()
@@ -413,16 +421,38 @@ pub fn render_active_modal(
                         .child(crate::ui::tr(cx).chat().modals_showing_first_32_kb_of())
                 }))
                 .into_any_element();
-            let footer = btn_primary("chat-tout-close", crate::ui::tr(cx).common().close())
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.active_modal = None;
-                    cx.notify();
+            let cid_more = call_id;
+            let footer = h_row()
+                .gap(px(8.0))
+                .child(
+                    btn_secondary("chat-tout-copy", crate::ui::tr(cx).common().copy())
+                        .icon(icon_xs(UiIcon::Copy))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let _ = clipboard::set_text(&content_cp);
+                            this.status_msg =
+                                Some((Tone::Success, crate::ui::tr(cx).common().copied().into()));
+                            cx.notify();
+                        })),
+                )
+                .children(has_more.then(|| {
+                    btn_secondary("chat-tout-more", crate::ui::tr(cx).chat().trace_load_more())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.load_more_tool_output(cid_more.clone(), next_offset, cx);
+                        }))
                 }))
+                .child(
+                    btn_primary("chat-tout-close", crate::ui::tr(cx).common().close()).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.active_modal = None;
+                            cx.notify();
+                        }),
+                    ),
+                )
                 .into_any_element();
             modal_dialog(
                 "chat-tout-modal",
                 crate::ui::tr(cx).chat().modals_tool_output(name),
-                660.0,
+                720.0,
                 body,
                 footer,
                 window,

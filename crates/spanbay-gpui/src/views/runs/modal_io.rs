@@ -28,7 +28,9 @@ impl WorkflowMonitorModal {
             move |state| agent_tool_output_read_impl(state, &sid, &call_id, 0, 32_768),
             move |this, res, cx| match res {
                 Ok(page) => {
-                    this.full_output_dialog = Some((name.clone(), page.text));
+                    let cleaned =
+                        spanbay_desktop::state::clean_tool_output_for_modal(&name, &page.text);
+                    this.full_output_dialog = Some((name.clone(), cleaned));
                     cx.notify();
                 }
                 Err(err) => {

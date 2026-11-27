@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use gpui_kit::component::theme::{Theme, ThemeMode};
-use gpui_kit::{App, Global, Hsla, Window, hsla, px};
+use gpui_kit::{App, Global, Hsla, SharedString, Window, hsla, px};
 use spanbay_desktop::core::model::settings::{AppearanceSettings, Density, Theme as SettingsTheme};
 use spanbay_desktop::theme::{
     PaletteId, ResolvedPalette, ResolvedSyntaxPalette, RgbaColor, ThemePreferences,
@@ -65,6 +65,12 @@ pub fn is_compact(cx: &App) -> bool {
 #[must_use]
 pub fn mono_font_size(cx: &App) -> u8 {
     cx.global::<SpanBayPalette>().mono_font_size
+}
+
+/// Returns the active monospace font family configured on `gpui-component`'s global [`Theme`].
+#[must_use]
+pub fn mono_font_family(cx: &App) -> SharedString {
+    Theme::global(cx).mono_font_family.clone()
 }
 
 /// Synchronizes GPUI's window root `rem` scale with `AppearanceSettings::ui_font_size`

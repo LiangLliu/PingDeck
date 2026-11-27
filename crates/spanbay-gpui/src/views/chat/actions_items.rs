@@ -1,6 +1,8 @@
 //! Extended Chat item actions: Message Edit/Retry/Branch/Delete, Tool Output paging,
 //! File Changes Diff/Keep/Undo, Background Process kill, and Context Compact.
 
+use std::path::Path;
+
 use gpui_kit::Context;
 use spanbay_desktop::core::agent::model::AgentSessionFilter;
 use spanbay_desktop::core::app::{
@@ -10,6 +12,8 @@ use spanbay_desktop::core::app::{
     agent_session_branch_impl, agent_session_delete_message_impl, agent_session_get_impl,
     agent_session_list_impl, agent_tool_output_read_impl,
 };
+use spanbay_desktop::services::open_workspace_file;
+use spanbay_desktop::state::clean_tool_output_for_modal;
 
 use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
@@ -107,9 +111,38 @@ impl ChatView {
         self._tasks.push(task);
     }
 
-    pub fn open_tool_output(&mut self, call_id: String, name: String, cx: &mut Context<Self>) {
+    pub fn open_tool_output(
+        &mut self,
+        call_id: String,
+        tool_name: String,
+        modal_title: String,
+        inline_full: Option<String>,
+        spilled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if !spilled && let Some(content) = inline_full {
+            self.active_modal = Some(ChatModal::ToolOutput {
+                call_id,
+                name: modal_title,
+                content,
+                has_more: false,
+                next_offset: 0,
+            });
+            cx.notify();
+            return;
+        }
         let sid = self.thread.session_id.clone();
         if sid.is_empty() {
+            if let Some(content) = inline_full {
+                self.active_modal = Some(ChatModal::ToolOutput {
+                    call_id,
+                    name: modal_title,
+                    content,
+                    has_more: false,
+                    next_offset: 0,
+                });
+                cx.notify();
+            }
             return;
         }
         let cid = call_id.clone();
@@ -119,13 +152,65 @@ impl ChatView {
             move |this, res, cx| {
                 match res {
                     Ok(chunk) => {
+                        let cleaned = clean_tool_output_for_modal(&tool_name, &chunk.text);
                         this.active_modal = Some(ChatModal::ToolOutput {
                             call_id: call_id.clone(),
-                            name: name.clone(),
-                            content: chunk.text,
+                            name: modal_title.clone(),
+                            content: cleaned,
                             has_more: !chunk.eof,
                             next_offset: chunk.next_offset,
                         });
+                    }
+                    Err(e) => {
+                        if let Some(fallback) = inline_full.clone() {
+                            this.active_modal = Some(ChatModal::ToolOutput {
+                                call_id: call_id.clone(),
+                                name: modal_title.clone(),
+                                content: fallback,
+                                has_more: false,
+                                next_offset: 0,
+                            });
+                        } else {
+                            this.status_msg = Some((Tone::Danger, e.message().to_owned()));
+                        }
+                    }
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
+
+    pub fn load_more_tool_output(
+        &mut self,
+        call_id: String,
+        next_offset: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let sid = self.thread.session_id.clone();
+        if sid.is_empty() {
+            return;
+        }
+        let cid = call_id.clone();
+        let task = spawn_blocking_into(
+            cx,
+            move |state| agent_tool_output_read_impl(state, &sid, &cid, next_offset, 32_768),
+            move |this, res, cx| {
+                match res {
+                    Ok(chunk) => {
+                        if let Some(ChatModal::ToolOutput {
+                            call_id: cur_id,
+                            content,
+                            has_more,
+                            next_offset: cur_off,
+                            ..
+                        }) = &mut this.active_modal
+                            && *cur_id == call_id
+                        {
+                            content.push_str(&chunk.text);
+                            *has_more = !chunk.eof;
+                            *cur_off = chunk.next_offset;
+                        }
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
@@ -133,6 +218,20 @@ impl ChatView {
             },
         );
         self._tasks.push(task);
+    }
+
+    pub fn open_workspace_file_external(&mut self, path: String, cx: &mut Context<Self>) {
+        let Some(ws_dir) = self
+            .session
+            .as_ref()
+            .and_then(|s| s.workspace_dir.as_deref())
+        else {
+            return;
+        };
+        if let Err(e) = open_workspace_file(Path::new(ws_dir), &path) {
+            self.status_msg = Some((Tone::Danger, e.message().to_owned()));
+            cx.notify();
+        }
     }
 
     pub fn open_change_diff(&mut self, change_id: String, path: String, cx: &mut Context<Self>) {

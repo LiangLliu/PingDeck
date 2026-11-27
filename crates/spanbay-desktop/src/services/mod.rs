@@ -5,6 +5,7 @@ pub mod dialog;
 pub mod dock;
 pub mod grants;
 pub mod notify;
+pub mod open_path;
 pub mod ports;
 pub mod tray;
 
@@ -13,6 +14,7 @@ pub use dialog::RfdDialog;
 pub use dock::{DockPlan, start_dock};
 pub use grants::ImportGrants;
 pub use notify::start_notifications;
+pub use open_path::{open_workspace_file, resolve_workspace_open_target};
 pub use ports::{
     DialogKind, FileFilter, FilePickerSpec, HostDialog, HostDock, HostWindow, NoopDock,
     SaveFileSpec,

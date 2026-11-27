@@ -18,6 +18,7 @@ pub mod sidebar_board;
 pub mod thread;
 pub mod thread_header;
 pub mod trace;
+pub mod trace_detail;
 pub mod types;
 pub mod welcome;
 
