@@ -340,7 +340,7 @@
   "chat.thread_header.local_folder": "本地目录",
   "chat.thread_header.no_folder_bound": "未绑定目录",
   "chat.thread_header.pin_chat": "置顶对话",
-  "chat.thread_header.pingdeck_workspace": "PingDeck 工作区",
+  "chat.thread_header.spanbay_workspace": "SpanBay 工作区",
   "chat.thread_header.session_context": "上下文绑定",
   "chat.trace.connecting_to_model": "正在连接模型…",
   "chat.trace.generating_response": "正在生成回复…",
@@ -353,6 +353,6 @@
   "chat.trace.view_full_output": "查看完整输出",
   "chat.trace.waiting_for_first_token": "等待模型首字响应…",
   "chat.trace.waiting_for_model": "等待模型响应…",
-  "chat.welcome.how_can_pingdeck_help": "有什么可以帮你？",
+  "chat.welcome.how_can_spanbay_help": "有什么可以帮你？",
   "chat.welcome.native_selectable_streaming_markdown_with": "原生流式 Markdown 划选复制，支持工具调用追踪、内联代码 Diff 预览、风险门控审批与本地 OS 沙箱隔离。"
 }

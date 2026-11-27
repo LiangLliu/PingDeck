@@ -1,4 +1,4 @@
-# PingDeck 文档索引
+# SpanBay 文档索引
 
 按读者的任务找文档。项目是什么、怎么跑，先看 [`../README.md`](../README.md)。
 

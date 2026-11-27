@@ -1,4 +1,4 @@
-/* PingDeck Interactive Prototype — Core State, Event Delegation & URL Router */
+/* SpanBay Interactive Prototype — Core State, Event Delegation & URL Router */
 (() => {
   const byId = (id) => document.getElementById(id);
   const root = document.documentElement;
@@ -9,7 +9,7 @@
   const cmdModal = byId("cmd-modal");
   const cmdInput = byId("cmd-input");
 
-  const ov = () => window.PingDeckOverlays;
+  const ov = () => window.SpanBayOverlays;
   const { SETTINGS_PAGES, MOCK_BRANCHES, SSE_FRAMES, FLOW_STEPS, ENV_EXTRA_VIEWS, buildSubtabs } = window.PD;
 
   const state = {

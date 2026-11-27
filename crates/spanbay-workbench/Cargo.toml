@@ -1,0 +1,37 @@
+[package]
+name = "spanbay-workbench"
+description = "API workbench engines: import and export (Postman, OpenAPI, HAR, cURL), the HTTP/1.1 Mock Server and the Flow runner."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spanbay-base = { path = "../spanbay-base" }
+spanbay-model = { path = "../spanbay-model" }
+spanbay-executor = { path = "../spanbay-executor" }
+spanbay-store = { path = "../spanbay-store" }
+base64.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+percent-encoding.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+spanbay-executor = { path = "../spanbay-executor", features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false

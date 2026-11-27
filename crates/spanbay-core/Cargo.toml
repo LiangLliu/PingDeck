@@ -1,0 +1,38 @@
+[package]
+name = "spanbay-core"
+description = "Desktop runtime assembly: post-paint startup and shutdown orchestration across the use-case crates, the facade the Tauri shell imports, and the cross-crate integration tests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spanbay-agent = { path = "../spanbay-agent" }
+spanbay-app = { path = "../spanbay-app" }
+spanbay-app-agent = { path = "../spanbay-app-agent" }
+spanbay-app-llm = { path = "../spanbay-app-llm" }
+spanbay-app-sync = { path = "../spanbay-app-sync" }
+spanbay-base = { path = "../spanbay-base" }
+spanbay-client-config = { path = "../spanbay-client-config" }
+spanbay-executor = { path = "../spanbay-executor" }
+spanbay-llm = { path = "../spanbay-llm" }
+spanbay-model = { path = "../spanbay-model" }
+spanbay-response = { path = "../spanbay-response" }
+spanbay-store = { path = "../spanbay-store" }
+spanbay-workbench = { path = "../spanbay-workbench" }
+serde.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+spanbay-app = { path = "../spanbay-app", features = ["test-support"] }
+spanbay-executor = { path = "../spanbay-executor", features = ["test-support"] }
+spanbay-llm = { path = "../spanbay-llm", features = ["test-support"] }
+spanbay-store = { path = "../spanbay-store", features = ["test-support"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false
+test = false

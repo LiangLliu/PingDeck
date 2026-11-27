@@ -6537,384 +6537,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c938015719552d665fd0553b90d96cd7ff58e83e4c061ca99e6bb78865a72752"
 
 [[package]]
-name = "pingdeck-agent"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "cap-std",
- "dom_query",
- "futures-util",
- "getrandom 0.4.3",
- "globset",
- "ignore",
- "memchr",
- "nix",
- "pingdeck-base",
- "pingdeck-llm",
- "pingdeck-model",
- "pingdeck-store",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "pingdeck-app"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "bytes",
- "futures-util",
- "http",
- "httpdate",
- "percent-encoding",
- "pingdeck-agent",
- "pingdeck-base",
- "pingdeck-executor",
- "pingdeck-llm",
- "pingdeck-model",
- "pingdeck-response",
- "pingdeck-store",
- "pingdeck-workbench",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "pingdeck-app-agent"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "flate2",
- "futures-util",
- "ignore",
- "memchr",
- "pingdeck-agent",
- "pingdeck-app",
- "pingdeck-app-llm",
- "pingdeck-base",
- "pingdeck-executor",
- "pingdeck-llm",
- "pingdeck-model",
- "pingdeck-response",
- "pingdeck-store",
- "regex",
- "serde",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "pingdeck-app-llm"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "pingdeck-app",
- "pingdeck-base",
- "pingdeck-client-config",
- "pingdeck-llm",
- "pingdeck-model",
- "pingdeck-store",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "pingdeck-app-sync"
-version = "0.1.0"
-dependencies = [
- "pingdeck-agent",
- "pingdeck-app",
- "pingdeck-app-agent",
- "pingdeck-app-llm",
- "pingdeck-base",
- "pingdeck-llm",
- "pingdeck-model",
- "pingdeck-store",
- "pingdeck-workbench",
- "serde",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "pingdeck-base"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.4.3",
- "hmac 0.13.0",
- "md-5 0.11.0",
- "percent-encoding",
- "regex",
- "serde",
- "serde-saphyr 2.2.0",
- "serde_json",
- "sha1",
- "sha2 0.11.1",
- "similar 3.2.1",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "pingdeck-client-config"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "jsonc-parser",
- "memchr",
- "pingdeck-base",
- "regex",
- "serde",
- "serde_json",
- "toml_edit 0.25.21+spec-1.1.0",
- "url",
-]
-
-[[package]]
-name = "pingdeck-core"
-version = "0.1.0"
-dependencies = [
- "pingdeck-agent",
- "pingdeck-app",
- "pingdeck-app-agent",
- "pingdeck-app-llm",
- "pingdeck-app-sync",
- "pingdeck-base",
- "pingdeck-client-config",
- "pingdeck-executor",
- "pingdeck-llm",
- "pingdeck-model",
- "pingdeck-response",
- "pingdeck-store",
- "pingdeck-workbench",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "pingdeck-desktop"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "chrono",
- "notify-rust",
- "pingdeck-core",
- "rfd",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "pingdeck-executor"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "boa_engine",
- "bytes",
- "chrono",
- "cookie",
- "encoding_rs",
- "futures-util",
- "getrandom 0.4.3",
- "jsonschema",
- "p12-keystore",
- "pingdeck-base",
- "pingdeck-model",
- "pingdeck-response",
- "pkcs8",
- "rcgen",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "thiserror 2.0.21",
- "time",
- "tokio",
- "tower",
- "url",
-]
-
-[[package]]
-name = "pingdeck-gpui"
-version = "0.1.0"
-dependencies = [
- "gpui-kit",
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "pingdeck-desktop",
- "serde_json",
- "tray-icon",
-]
-
-[[package]]
-name = "pingdeck-llm"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "bytes",
- "chrono",
- "futures-util",
- "getrandom 0.4.3",
- "http",
- "http-body-util",
- "httpdate",
- "hyper",
- "hyper-util",
- "if-addrs",
- "memchr",
- "percent-encoding",
- "pingdeck-base",
- "pingdeck-llm-domain",
- "pingdeck-llm-ops",
- "pingdeck-llm-protocol",
- "pingdeck-model",
- "pingdeck-store",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "url",
-]
-
-[[package]]
-name = "pingdeck-llm-domain"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "pingdeck-base",
- "pingdeck-client-config",
- "pingdeck-model",
- "pingdeck-response",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "pingdeck-llm-ops"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "chrono",
- "futures-util",
- "memchr",
- "pingdeck-base",
- "pingdeck-llm-domain",
- "pingdeck-llm-protocol",
- "pingdeck-model",
- "pingdeck-response",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "url",
-]
-
-[[package]]
-name = "pingdeck-llm-protocol"
-version = "0.1.0"
-dependencies = [
- "memchr",
- "pingdeck-base",
- "pingdeck-model",
- "regex",
- "serde_json",
-]
-
-[[package]]
-name = "pingdeck-model"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "httpdate",
- "pingdeck-base",
- "pingdeck-response",
- "psl",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "url",
-]
-
-[[package]]
-name = "pingdeck-response"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "bytes",
- "memchr",
- "pingdeck-base",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pingdeck-store"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "memchr",
- "pingdeck-base",
- "pingdeck-client-config",
- "pingdeck-llm-domain",
- "pingdeck-model",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "pingdeck-workbench"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "bytes",
- "chrono",
- "futures-util",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "percent-encoding",
- "pingdeck-base",
- "pingdeck-executor",
- "pingdeck-model",
- "pingdeck-store",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "piper"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8668,6 +8290,384 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "spanbay-agent"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "cap-std",
+ "dom_query",
+ "futures-util",
+ "getrandom 0.4.3",
+ "globset",
+ "ignore",
+ "memchr",
+ "nix",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-llm",
+ "spanbay-model",
+ "spanbay-store",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "spanbay-app"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "bytes",
+ "futures-util",
+ "http",
+ "httpdate",
+ "percent-encoding",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-agent",
+ "spanbay-base",
+ "spanbay-executor",
+ "spanbay-llm",
+ "spanbay-model",
+ "spanbay-response",
+ "spanbay-store",
+ "spanbay-workbench",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "spanbay-app-agent"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "flate2",
+ "futures-util",
+ "ignore",
+ "memchr",
+ "regex",
+ "serde",
+ "serde_json",
+ "spanbay-agent",
+ "spanbay-app",
+ "spanbay-app-llm",
+ "spanbay-base",
+ "spanbay-executor",
+ "spanbay-llm",
+ "spanbay-model",
+ "spanbay-response",
+ "spanbay-store",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "spanbay-app-llm"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-app",
+ "spanbay-base",
+ "spanbay-client-config",
+ "spanbay-llm",
+ "spanbay-model",
+ "spanbay-store",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "spanbay-app-sync"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "spanbay-agent",
+ "spanbay-app",
+ "spanbay-app-agent",
+ "spanbay-app-llm",
+ "spanbay-base",
+ "spanbay-llm",
+ "spanbay-model",
+ "spanbay-store",
+ "spanbay-workbench",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "spanbay-base"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "hmac 0.13.0",
+ "md-5 0.11.0",
+ "percent-encoding",
+ "regex",
+ "serde",
+ "serde-saphyr 2.2.0",
+ "serde_json",
+ "sha1",
+ "sha2 0.11.1",
+ "similar 3.2.1",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "spanbay-client-config"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jsonc-parser",
+ "memchr",
+ "regex",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "toml_edit 0.25.21+spec-1.1.0",
+ "url",
+]
+
+[[package]]
+name = "spanbay-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "spanbay-agent",
+ "spanbay-app",
+ "spanbay-app-agent",
+ "spanbay-app-llm",
+ "spanbay-app-sync",
+ "spanbay-base",
+ "spanbay-client-config",
+ "spanbay-executor",
+ "spanbay-llm",
+ "spanbay-model",
+ "spanbay-response",
+ "spanbay-store",
+ "spanbay-workbench",
+ "tokio",
+]
+
+[[package]]
+name = "spanbay-desktop"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "chrono",
+ "notify-rust",
+ "rfd",
+ "serde",
+ "serde_json",
+ "spanbay-core",
+ "tokio",
+]
+
+[[package]]
+name = "spanbay-executor"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "boa_engine",
+ "bytes",
+ "chrono",
+ "cookie",
+ "encoding_rs",
+ "futures-util",
+ "getrandom 0.4.3",
+ "jsonschema",
+ "p12-keystore",
+ "pkcs8",
+ "rcgen",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "spanbay-base",
+ "spanbay-model",
+ "spanbay-response",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tower",
+ "url",
+]
+
+[[package]]
+name = "spanbay-gpui"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "serde_json",
+ "spanbay-desktop",
+ "tray-icon",
+]
+
+[[package]]
+name = "spanbay-llm"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "bytes",
+ "chrono",
+ "futures-util",
+ "getrandom 0.4.3",
+ "http",
+ "http-body-util",
+ "httpdate",
+ "hyper",
+ "hyper-util",
+ "if-addrs",
+ "memchr",
+ "percent-encoding",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-llm-domain",
+ "spanbay-llm-ops",
+ "spanbay-llm-protocol",
+ "spanbay-model",
+ "spanbay-store",
+ "tokio",
+ "tower",
+ "url",
+]
+
+[[package]]
+name = "spanbay-llm-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-client-config",
+ "spanbay-model",
+ "spanbay-response",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "spanbay-llm-ops"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "futures-util",
+ "memchr",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-llm-domain",
+ "spanbay-llm-protocol",
+ "spanbay-model",
+ "spanbay-response",
+ "tokio",
+ "tower",
+ "url",
+]
+
+[[package]]
+name = "spanbay-llm-protocol"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "regex",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-model",
+]
+
+[[package]]
+name = "spanbay-model"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "httpdate",
+ "psl",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-response",
+ "thiserror 2.0.21",
+ "url",
+]
+
+[[package]]
+name = "spanbay-response"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "bytes",
+ "memchr",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+]
+
+[[package]]
+name = "spanbay-store"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "memchr",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-client-config",
+ "spanbay-llm-domain",
+ "spanbay-model",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "spanbay-workbench"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "bytes",
+ "chrono",
+ "futures-util",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "percent-encoding",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "spanbay-base",
+ "spanbay-executor",
+ "spanbay-model",
+ "spanbay-store",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
 ]
 
 [[package]]

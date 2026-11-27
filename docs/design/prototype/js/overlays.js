@@ -1,5 +1,5 @@
-/* PingDeck Prototype — Unified Overlay Engine (Dialogs, Wizards, Drawers, Popovers, Toasts) */
-window.PingDeckOverlays = (() => {
+/* SpanBay Prototype — Unified Overlay Engine (Dialogs, Wizards, Drawers, Popovers, Toasts) */
+window.SpanBayOverlays = (() => {
   const byId = (id) => document.getElementById(id);
   const dialogRoot = () => byId("dialog-root");
   const drawerRoot = () => byId("drawer-root");
@@ -66,7 +66,7 @@ window.PingDeckOverlays = (() => {
         <div class="pv-steps-wrap">
           <div class="card-panel">
             <div class="card-panel-head">
-              <span><b>crates/pingdeck-core/src/llm/router.rs</b></span>
+              <span><b>crates/spanbay-core/src/llm/router.rs</b></span>
               <span class="mono"><span class="text-ok">+18</span> <span class="text-bad">-4</span></span>
             </div>
             <div class="diff-box" style="margin-top:0">

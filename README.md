@@ -1,6 +1,6 @@
-# PingDeck
+# SpanBay
 
-PingDeck 是本地优先的桌面 API 工作台，也是 LLM 网关和编码智能体的宿主。
+SpanBay 是本地优先的桌面 API 工作台，也是 LLM 网关和编码智能体的宿主。
 
 你可以在一个应用里调试 HTTP 与 GraphQL 请求，起本地 Mock，编排多步流程，回看历史，管理环境变量。它也能接入 LLM 服务商，开本地网关给 Claude Code、Codex 等客户端用，或在对话里让智能体读代码、改文件、跑命令。数据只写在本机的 SQLite 与文件里，没有账号、云同步和遥测。
 
@@ -14,10 +14,10 @@ PingDeck 是本地优先的桌面 API 工作台，也是 LLM 网关和编码智�
 
 ## 快速开始
 
-先选数据放哪。调试构建写独立的 `com.pingdeck.desktop.dev` 目录，与发布版数据分开。想要一个用完即弃的空库，把 `PINGDECK_DATA_DIR` 设成新目录：
+先选数据放哪。调试构建写独立的 `com.spanbay.desktop.dev` 目录，与发布版数据分开。想要一个用完即弃的空库，把 `SPANBAY_DATA_DIR` 设成新目录：
 
 ```bash
-PINGDECK_DATA_DIR="$(mktemp -d)" cargo run --locked -p pingdeck-gpui   # 桌面应用，临时空库
+SPANBAY_DATA_DIR="$(mktemp -d)" cargo run --locked -p spanbay-gpui   # 桌面应用，临时空库
 ```
 
 窗口打开后，第一步在「请求」里导入 Postman、OpenAPI、HAR 或 cURL，或者新建一个请求点发送。
@@ -25,9 +25,9 @@ PINGDECK_DATA_DIR="$(mktemp -d)" cargo run --locked -p pingdeck-gpui   # 桌面�
 打包当前平台，并对发布构建跑冒烟（脚本自建隔离 HOME）：
 
 ```bash
-cargo build --release -p pingdeck-gpui --locked
+cargo build --release -p spanbay-gpui --locked
 cargo xtask bundle
-scripts/smoke.sh target/release/pingdeck
+scripts/smoke.sh target/release/spanbay
 ```
 
 ## 模块
@@ -60,4 +60,4 @@ scripts/smoke.sh target/release/pingdeck
 
 ## 许可
 
-PingDeck 使用 [MIT](LICENSE)。Rust 第三方依赖许可清单位于 `assets/licenses/rust.txt`。
+SpanBay 使用 [MIT](LICENSE)。Rust 第三方依赖许可清单位于 `assets/licenses/rust.txt`。

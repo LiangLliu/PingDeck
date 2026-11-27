@@ -1,0 +1,45 @@
+[package]
+name = "spanbay-app"
+description = "The composition root (AppState) and the request, workspace, Flow, Mock, settings and system use-cases, and request code-snippet generation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Never enabled by a release build.
+test-support = []
+
+[dependencies]
+spanbay-base = { path = "../spanbay-base" }
+spanbay-response = { path = "../spanbay-response" }
+spanbay-model = { path = "../spanbay-model" }
+spanbay-executor = { path = "../spanbay-executor" }
+spanbay-store = { path = "../spanbay-store" }
+spanbay-workbench = { path = "../spanbay-workbench" }
+spanbay-llm = { path = "../spanbay-llm" }
+spanbay-agent = { path = "../spanbay-agent" }
+base64.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+http.workspace = true
+httpdate.workspace = true
+percent-encoding.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+spanbay-executor = { path = "../spanbay-executor", features = ["test-support"] }
+# The IPC contract test renders the DTOs with ts-rs: turn on `ts` for this crate and below.
+spanbay-llm = { path = "../spanbay-llm", features = ["test-support"] }
+spanbay-store = { path = "../spanbay-store", features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false

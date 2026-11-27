@@ -1,4 +1,4 @@
-# PingDeck: build output, tool caches, local state and editor noise.
+# SpanBay: build output, tool caches, local state and editor noise.
 # Invariant: no rule may shadow a tracked file — `git ls-files -ci --exclude-standard` stays empty.
 
 # ── Rust / Cargo ──────────────────────────────────────────────────────────────

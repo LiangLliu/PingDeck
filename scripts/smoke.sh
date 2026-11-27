@@ -2,12 +2,12 @@
 # smoke.sh: isolated-HOME smoke of the RELEASE build. Required when a change touches startup, the
 # database, the mock server, trace, IPC, secrets or the gateway. UI steps are not scripted: docs/product/smoke-checklist.md.
 #
-#   scripts/smoke.sh [path/to/pingdeck]        (default: $PINGDECK_BIN, then target/release/pingdeck)
+#   scripts/smoke.sh [path/to/spanbay]        (default: $SPANBAY_BIN, then target/release/spanbay)
 #
 # A relative binary path resolves against the repository root (the script cds there first).
 #
 # Never touches the real data directory: HOME (and XDG_*) point into a fresh `mktemp -d` and the script refuses to run
-# when another `pingdeck` process exists (it would also be the target of the quit step). Steps:
+# when another `spanbay` process exists (it would also be the target of the quit step). Steps:
 #   1 launch once to create the database, wait for the schema, quit gracefully
 #   2 seed (sqlite3): a workspace row and `ai` settings with gateway.enabled_on_start=true on a free port
 #   3 launch from the seeded data directory: process stays alive, GET /health answers 200 (gateway auto-start),
@@ -36,21 +36,21 @@ QUIT_TIMEOUT_S=20   # process exit after a graceful quit
 SETTLE_S=3          # a launch that survives this long counts as started
 SCHEMA_SETTLE_S=1   # let the first launch finish its startup writes after the schema appears
 POLL_S=0.25
-# A stored `ai` section version the app accepts; see SETTINGS_VERSION in crates/pingdeck-model/src/settings/mod.rs.
+# A stored `ai` section version the app accepts; see SETTINGS_VERSION in crates/spanbay-model/src/settings/mod.rs.
 AI_SETTINGS_VERSION=2
 
-BIN=${1:-${PINGDECK_BIN:-$ROOT/target/release/pingdeck}}
+BIN=${1:-${SPANBAY_BIN:-$ROOT/target/release/spanbay}}
 STEPS_SKIPPED=()
 H=""
 PID=""
 
 die() {
   echo "FAIL: $*" >&2
-  # The isolated HOME is deleted on exit; keep both stdout/stderr and pingdeck.log visible in CI.
+  # The isolated HOME is deleted on exit; keep both stdout/stderr and spanbay.log visible in CI.
   [ -n "$H" ] && [ -s "$H/app.log" ] && { echo "--- last 40 lines of $H/app.log" >&2; tail -n 40 "$H/app.log" >&2; }
-  [ -n "${DATA:-}" ] && [ -s "$DATA/logs/pingdeck.log" ] && {
-    echo "--- last 40 lines of $DATA/logs/pingdeck.log" >&2
-    tail -n 40 "$DATA/logs/pingdeck.log" >&2
+  [ -n "${DATA:-}" ] && [ -s "$DATA/logs/spanbay.log" ] && {
+    echo "--- last 40 lines of $DATA/logs/spanbay.log" >&2
+    tail -n 40 "$DATA/logs/spanbay.log" >&2
   }
   exit 1
 }
@@ -63,30 +63,30 @@ skip() { # skip <step>: list it once in the final SKIPPED line
 indent_lines() { printf '\n  %s' "${1//$'\n'/$'\n  '}"; } # one indented line per path, spaces kept
 cleanup() {
   [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && kill -KILL "$PID" 2>/dev/null
-  # Optional CI diagnostic copy: preserve app.log and pingdeck.log before the isolated HOME is removed.
-  if [ -n "${PINGDECK_SMOKE_LOG:-}" ] && [ -n "$H" ]; then
-    mkdir -p "$(dirname "$PINGDECK_SMOKE_LOG")" 2>/dev/null || true
+  # Optional CI diagnostic copy: preserve app.log and spanbay.log before the isolated HOME is removed.
+  if [ -n "${SPANBAY_SMOKE_LOG:-}" ] && [ -n "$H" ]; then
+    mkdir -p "$(dirname "$SPANBAY_SMOKE_LOG")" 2>/dev/null || true
     {
       if [ -s "$H/app.log" ]; then
         echo "=== stdout/stderr ($H/app.log) ==="
         cat "$H/app.log"
       fi
-      if [ -n "${DATA:-}" ] && [ -s "$DATA/logs/pingdeck.log" ]; then
-        echo "=== diagnostic log ($DATA/logs/pingdeck.log) ==="
-        cat "$DATA/logs/pingdeck.log"
+      if [ -n "${DATA:-}" ] && [ -s "$DATA/logs/spanbay.log" ]; then
+        echo "=== diagnostic log ($DATA/logs/spanbay.log) ==="
+        cat "$DATA/logs/spanbay.log"
       fi
-    } >"$PINGDECK_SMOKE_LOG" 2>/dev/null || true
-    [ -s "$PINGDECK_SMOKE_LOG" ] || rm -f "$PINGDECK_SMOKE_LOG" 2>/dev/null || true
+    } >"$SPANBAY_SMOKE_LOG" 2>/dev/null || true
+    [ -s "$SPANBAY_SMOKE_LOG" ] || rm -f "$SPANBAY_SMOKE_LOG" 2>/dev/null || true
   fi
   local tmp=${TMPDIR:-/tmp}
   case "$H" in "${tmp%/}"/*|/tmp/*|/var/folders/*) rm -rf "$H" ;; esac
 }
 trap cleanup EXIT
 
-[ -x "$BIN" ] || die "binary not found: $BIN (build it first: cargo build --release -p pingdeck-gpui --locked; or pass the path)"
+[ -x "$BIN" ] || die "binary not found: $BIN (build it first: cargo build --release -p spanbay-gpui --locked; or pass the path)"
 command -v sqlite3 >/dev/null || die "sqlite3 is required to seed and read back the database"
 command -v curl >/dev/null || die "curl is required"
-pgrep -x pingdeck >/dev/null && die "another pingdeck process is running; quit it first (this script would not touch it)"
+pgrep -x spanbay >/dev/null && die "another spanbay process is running; quit it first (this script would not touch it)"
 if [ "$OS" = Linux ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
   command -v xvfb-run >/dev/null && exec xvfb-run -a "$ROOT/scripts/smoke.sh" "$@"
   die "no display: set DISPLAY or install xvfb-run"
@@ -96,20 +96,20 @@ want=$(cargo run -q -p xtask --locked -- schema-fingerprint) || die "cannot comp
 
 H=$(mktemp -d) || die "mktemp failed"
 case "$OS" in
-  Darwin) DATA="$H/Library/Application Support/com.pingdeck.desktop" ;;
-  Linux) DATA="$H/.local/share/com.pingdeck.desktop" ;;
+  Darwin) DATA="$H/Library/Application Support/com.spanbay.desktop" ;;
+  Linux) DATA="$H/.local/share/com.spanbay.desktop" ;;
   *) die "unsupported OS $OS" ;;
 esac
-DB="$DATA/pingdeck.sqlite3"
-REAL_WEBKIT="$HOME/Library/WebKit/pingdeck" # must stay untouched for the whole run
+DB="$DATA/spanbay.sqlite3"
+REAL_WEBKIT="$HOME/Library/WebKit/spanbay" # must stay untouched for the whole run
 MARK=$H/.smoke-start
 : >"$MARK"
 
 launch() {
   # CFFIXED_USER_HOME as well as HOME: WebKit resolves its data directory through CoreFoundation and ignores HOME alone.
-  # PINGDECK_DATA_DIR is dropped so the release build uses its default directory under $H; the client-tool config
+  # SPANBAY_DATA_DIR is dropped so the release build uses its default directory under $H; the client-tool config
   # variables are dropped so no client config outside $H is visible to the app (docs/development.md §4).
-  env -u PINGDECK_DATA_DIR -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GEMINI_CLI_HOME \
+  env -u SPANBAY_DATA_DIR -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GEMINI_CLI_HOME \
     HOME="$H" CFFIXED_USER_HOME="$H" XDG_DATA_HOME="$H/.local/share" XDG_CONFIG_HOME="$H/.config" XDG_CACHE_HOME="$H/.cache" \
     "$BIN" >>"$H/app.log" 2>&1 &
   PID=$!
@@ -227,7 +227,7 @@ if [ "$OS" = Darwin ]; then
   touched=""
   [ ! -d "$REAL_WEBKIT" ] || touched=$(find "$REAL_WEBKIT" -newer "$MARK" -print 2>/dev/null)
   [ -z "$touched" ] || die "the app wrote into the real WebKit data directory $REAL_WEBKIT:$(indent_lines "$touched")"
-  [ ! -d "$H/Library/WebKit/pingdeck" ] || die "unexpected WebKit website data created under $H/Library/WebKit/pingdeck"
+  [ ! -d "$H/Library/WebKit/spanbay" ] || die "unexpected WebKit website data created under $H/Library/WebKit/spanbay"
   ok "zero WebKit data created (pure-Rust GPUI shell verified; real $REAL_WEBKIT untouched)"
 fi
 

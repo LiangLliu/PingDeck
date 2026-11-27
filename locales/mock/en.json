@@ -105,7 +105,7 @@
   "mock.tab_ops.e_g_api_v1_blank": "e.g. /api/v1; blank for root.",
   "mock.tab_ops.endpoint_prefix": "Endpoint Prefix",
   "mock.tab_ops.export": "Export…",
-  "mock.tab_ops.export_pingdeck_json": "Export PingDeck JSON",
+  "mock.tab_ops.export_spanbay_json": "Export SpanBay JSON",
   "mock.tab_ops.find_free": "Find Free",
   "mock.tab_ops.forwards_unmatched_requests_to_the": "Forwards unmatched requests to the upstream URL and supports recording them into routes.",
   "mock.tab_ops.import_export": "Import & Export",

@@ -58,7 +58,7 @@ jobs:
               - 'docs/**'
               - '*.md'
               - 'xtask/**'
-              - 'crates/pingdeck-agent/src/agent/limits.rs'
+              - 'crates/spanbay-agent/src/agent/limits.rs'
             assets:
               - 'tokens/**'
               - 'locales/**'
@@ -190,7 +190,7 @@ jobs:
       - name: Workspace clippy (all targets)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: GPUI UI test-support clippy
-        run: cargo clippy -p pingdeck-gpui --features test-support --all-targets --locked -- -D warnings
+        run: cargo clippy -p spanbay-gpui --features test-support --all-targets --locked -- -D warnings
 
   rust-tests:
     name: Rust tests (${{ matrix.os }})
@@ -206,7 +206,7 @@ jobs:
             pr_nextest: --workspace
           - os: macos-latest
             bubblewrap: "false"
-            pr_nextest: -p pingdeck-agent -p pingdeck-base -p pingdeck-executor -p pingdeck-desktop
+            pr_nextest: -p spanbay-agent -p spanbay-base -p spanbay-executor -p spanbay-desktop
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -247,10 +247,10 @@ jobs:
         run: cargo nextest run --workspace --locked --profile ci --run-ignored only --no-tests=warn
       - name: Run release 10 MiB response formatting budget (nightly)
         if: needs.changes.outputs.nightly == 'true' && !cancelled()
-        run: cargo test -p pingdeck-response --release --locked -- --ignored ten_mib --nocapture
+        run: cargo test -p spanbay-response --release --locked -- --ignored ten_mib --nocapture
       - name: Run release GPUI native 10 MiB Rope & 10k table bench (nightly)
         if: needs.changes.outputs.nightly == 'true' && !cancelled()
-        run: cargo test -p pingdeck-gpui --release --features test-support --locked -- --test-threads=2 --nocapture
+        run: cargo test -p spanbay-gpui --release --features test-support --locked -- --test-threads=2 --nocapture
 
   gpui-ui-tests:
     name: Headless GPUI UI tests (${{ matrix.os }})
@@ -273,7 +273,7 @@ jobs:
         with:
           cache-key: gpui-ui-tests
       - name: Run headless GPUI integration suite
-        run: cargo test -p pingdeck-gpui --features test-support --locked -- --test-threads=2
+        run: cargo test -p spanbay-gpui --features test-support --locked -- --test-threads=2
 
   release-smoke:
     name: Release smoke (${{ matrix.os }})
@@ -297,10 +297,10 @@ jobs:
         with:
           cache-key: release-smoke
       - name: Build pure-Rust GPUI release binary
-        run: cargo build --release -p pingdeck-gpui --locked
+        run: cargo build --release -p spanbay-gpui --locked
       - uses: ./.github/actions/run-smoke
         with:
-          binary: target/release/pingdeck
+          binary: target/release/spanbay
           artifact-suffix: ci-${{ matrix.os }}
 
   ci-gate:

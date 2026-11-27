@@ -1,5 +1,5 @@
 //! Regenerates `fixtures/models-dev-snapshot.json` from a downloaded `models.dev/api.json`.
-//! Pure Rust replacement for `scripts/models-snapshot.mjs`, aligned with `pingdeck-llm-domain`.
+//! Pure Rust replacement for `scripts/models-snapshot.mjs`, aligned with `spanbay-llm-domain`.
 
 use std::fs;
 use std::path::Path;

@@ -33,7 +33,7 @@ fixtures 与模块种子不是同一份全集：fixtures 是界面与测试读�
 
 ```mermaid
 flowchart LR
-  W["PingDeck 工作区<br/>ws_billing Billing platform"] --> C["集合 col_billing_api<br/>4 个目录 / 17 个请求"]
+  W["SpanBay 工作区<br/>ws_billing Billing platform"] --> C["集合 col_billing_api<br/>4 个目录 / 17 个请求"]
   C --> R["请求定义<br/>req_auth / req_create_invoice<br/>req_refund / req_list_invoices"]
   W --> E["环境<br/>Local / Staging 当前 / Production 确认"]
   W --> M["Mock 服务<br/>Billing stub 4010<br/>Webhook sink 4011 / Legacy 4012"]
@@ -188,7 +188,7 @@ fixtures 的客户端视图另用 `cli_claude_code` / `cli_codex` / `cli_zed` �
 
 | 项 | 值 |
 | --- | --- |
-| 文件夹 | `~/me/PingDeck`，分支 `main` |
+| 文件夹 | `~/me/SpanBay`，分支 `main` |
 | 打开的对话 | `ses_open`，标题 `429s from the gateway`，推理强度 low |
 | 用户消息 | 中文：网关这两天老是 429，日志在附件里，截图是 Claude Code 那边的报错，帮查是上游限流还是 router 熔断太敏感 |
 | 附件 | `gateway-429.png`（183,204 B，1440×900）、`gateway-log-1106.json`（214,016 B） |
@@ -207,7 +207,7 @@ fixtures 的客户端视图另用 `cli_claude_code` / `cli_codex` / `cli_zed` �
 
 其他对话标题依次为：`Compare TTFT across relays`（`ses_compare`）、`Summarise today's request trace`、`Write assertions for /invoices`、新 relay 为什么没有余额接口、`Mock the refunds API`、`Gateway failover rules`（置顶）。
 
-**重要边界**：录制脚本里展示的虚构路径（"crates/pingdeck-core/src/llm/router.rs"）、`14 passed`、`9.2 s`、`cargo clippy` 被拒绝与改动结论都是演示叙事，不是仓库的测试结果、代码变更或真实缺陷，不能引用为测试通过的证据。
+**重要边界**：录制脚本里展示的虚构路径（"crates/spanbay-core/src/llm/router.rs"）、`14 passed`、`9.2 s`、`cargo clippy` 被拒绝与改动结论都是演示叙事，不是仓库的测试结果、代码变更或真实缺陷，不能引用为测试通过的证据。
 
 ### 3.8 AI 请求、测试台与样例
 
@@ -230,7 +230,7 @@ fixtures 的客户端视图另用 `cli_claude_code` / `cli_codex` / `cli_zed` �
 
 ## 5. 原型与桌面真实数据边界
 
-离线原型（`docs/design/prototype/index.html`）与测试夹具（`fixtures/`）复用本契约中的虚构实体名与常量。桌面应用（`pingdeck`）不使用这些虚构种子，全部真实业务数据落在用户数据目录的 SQLite 与本地文件中。
+离线原型（`docs/design/prototype/index.html`）与测试夹具（`fixtures/`）复用本契约中的虚构实体名与常量。桌面应用（`spanbay`）不使用这些虚构种子，全部真实业务数据落在用户数据目录的 SQLite 与本地文件中。
 
 ## 6. 维护
 

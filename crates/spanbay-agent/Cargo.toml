@@ -1,0 +1,39 @@
+[package]
+name = "spanbay-agent"
+description = "The agent harness: run loop, permissions and approvals, the OS sandbox, MCP, skills, search/fetch, the tool contract, chat-attachment bridge and path grants."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+[dependencies]
+spanbay-base = { path = "../spanbay-base" }
+spanbay-model = { path = "../spanbay-model" }
+spanbay-store = { path = "../spanbay-store" }
+spanbay-llm = { path = "../spanbay-llm" }
+base64.workspace = true
+cap-std.workspace = true
+dom_query.workspace = true
+futures-util.workspace = true
+getrandom.workspace = true
+globset.workspace = true
+ignore.workspace = true
+memchr.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false

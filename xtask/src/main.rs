@@ -50,7 +50,7 @@ fn usage() -> &'static str {
        check-tokens                          verify tokens/tokens.json OKLCH gamut and WCAG contrast invariants\n  \
        check-version [--tag vX.Y.Z]          verify Cargo.toml and optional UI manifest versions\n  \
        bundle [--binary <p>] [--out <dir>]   package native macOS .app / Linux release bundle\n  \
-       schema-fingerprint [storage-dir]      print the pingdeck-store SQLite schema user_version\n  \
+       schema-fingerprint [storage-dir]      print the spanbay-store SQLite schema user_version\n  \
        free-port                             print an available 127.0.0.1 TCP port\n  \
        models-snapshot <in> [out] [--date]   trim models.dev api.json into fixtures/models-dev-snapshot.json"
 }

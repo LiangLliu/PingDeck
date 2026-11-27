@@ -1,4 +1,4 @@
-/* PingDeck Prototype — Module-Specific Layouts (9 Modules) */
+/* SpanBay Prototype — Module-Specific Layouts (9 Modules) */
 
 /* ── Module 1: Requests (HTTP + AI) ──────────────────────────────────────── */
 .tree-folder { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }

@@ -1,6 +1,6 @@
 # 交互设计
 
-设计者和实现者从这里查界面原则：视觉语言、状态归属、危险确认、焦点与不可信内容。颜色定义在 `tokens/tokens.json`，经 `crates/pingdeck-desktop` 编译并在 `crates/pingdeck-gpui/src/ui` 注入；离线原型见[`design/prototype/index.html`](design/prototype/index.html)。
+设计者和实现者从这里查界面原则：视觉语言、状态归属、危险确认、焦点与不可信内容。颜色定义在 `tokens/tokens.json`，经 `crates/spanbay-desktop` 编译并在 `crates/spanbay-gpui/src/ui` 注入；离线原型见[`design/prototype/index.html`](design/prototype/index.html)。
 
 色域与对比度由 `cargo xtask check-tokens` 检查，架构与文案由 `check-arch`、`check-i18n` 守卫。功能见[产品手册](product.md)，机制见[架构](architecture.md)，取舍见[决策记录](decisions.md)；冲突判断见 [`docs/README.md`](README.md)。
 
@@ -34,13 +34,13 @@
 
 层级由窗口底、窗格、内容面、次级面、凹陷面、浮层依次表达。组件只用语义变量，不写颜色、间距或圆角的字面量。文字分正文、次级正文、元信息和停用四档；停用色只给停用态和非文字装饰。结构分隔用细线，输入框、复选框、开关的边界要达到非文字对比度。选中用主题色的前缘竖条、选中纸面与加粗，表格行用浅底加竖条；竖条只表示选中，深链到达用一次淡出的底色。
 
-色彩主题提供八套低眩光护眼基底色板（靛蓝板岩、深海青岚、极光冰蓝、青瓷护眼、松石翠绿、暖砂护眼、星云靛紫、极简石墨），各自适配浅色纸面与深色模式。单一色板定义位于 `tokens/tokens.json`，由 `crates/pingdeck-desktop` 在编译期嵌入并实时计算 OKLCH 语义色。
+色彩主题提供八套低眩光护眼基底色板（靛蓝板岩、深海青岚、极光冰蓝、青瓷护眼、松石翠绿、暖砂护眼、星云靛紫、极简石墨），各自适配浅色纸面与深色模式。单一色板定义位于 `tokens/tokens.json`，由 `crates/spanbay-desktop` 在编译期嵌入并实时计算 OKLCH 语义色。
 
-在任意色板内，用户可独立设定主题强调色（跟随色板、8 套 OKLCH 预设或自定义 `#RRGGBB`）。代码高亮支持 6 套浅/深成对配色（Catppuccin、Rosé Pine、Tokyo Night、GitHub Clean、One Pro、跟随色板）。经 `crates/pingdeck-gpui/src/ui/syntax_theme.rs` 注入全局 `HighlightTheme` 后，可在「设置 › 外观」四分区工作台与标题栏快捷主题浮层单帧切换。
+在任意色板内，用户可独立设定主题强调色（跟随色板、8 套 OKLCH 预设或自定义 `#RRGGBB`）。代码高亮支持 6 套浅/深成对配色（Catppuccin、Rosé Pine、Tokyo Night、GitHub Clean、One Pro、跟随色板）。经 `crates/spanbay-gpui/src/ui/syntax_theme.rs` 注入全局 `HighlightTheme` 后，可在「设置 › 外观」四分区工作台与标题栏快捷主题浮层单帧切换。
 
 窗口外壳不是网页：除输入框、编辑器和代码外，界面文字默认不可选，双击标题不会选中单词。人们会复制的内容主动开启可选状态，包括响应与聊天正文（流式 Markdown）、日志与表格单元格、代码与差异、错误与提示文字、路径、版本、ID 和地址；区域里的按钮、标签页等控件仍是外壳。
 
-窗口标题栏（`crates/pingdeck-gpui/src/views/shell/chrome.rs`）在 macOS 上通过原生 GPUI `TitleBar` 提供拖拽区与系统红绿灯集成；按钮、输入框和标签页照常点击。
+窗口标题栏（`crates/spanbay-gpui/src/views/shell/chrome.rs`）在 macOS 上通过原生 GPUI `TitleBar` 提供拖拽区与系统红绿灯集成；按钮、输入框和标签页照常点击。
 
 ### 2.2 强调与状态
 
@@ -104,7 +104,7 @@
 | 监听器、连接、审批、进程、回放、响应句柄 | Rust 核心 | 只在进程内；重载页面不停它们，进程退出就结束 |
 | 演示数据 | 演示适配器 | 内存，刷新回到种子 |
 
-业务内容不写进本机存储的界面状态。常规读取不返回秘密，敏感输入只在提交时短暂持有。日志与捕获按已知字段和已存的值脱敏，认不出任意正文里陌生的短秘密。视图层不直接访问存储或底层异步运行时，统一经 `crates/pingdeck-desktop` 与 `crates/pingdeck-gpui/src/bridge` 调用核心。标签会话能恢复编辑，恢复不了实时响应；历史记下发过什么，完整正文可能已被清理。
+业务内容不写进本机存储的界面状态。常规读取不返回秘密，敏感输入只在提交时短暂持有。日志与捕获按已知字段和已存的值脱敏，认不出任意正文里陌生的短秘密。视图层不直接访问存储或底层异步运行时，统一经 `crates/spanbay-desktop` 与 `crates/spanbay-gpui/src/bridge` 调用核心。标签会话能恢复编辑，恢复不了实时响应；历史记下发过什么，完整正文可能已被清理。
 
 ### 3.3 对话模块的信息归属
 
@@ -127,7 +127,7 @@
 
 ## 4. 图标
 
-唯一的图标集是 Lucide，只从 `crates/pingdeck-gpui/src/ui/icons.rs` 的图标表引用。一个概念一个字形，动词用文字写出来，主操作永远有可见的文字标签。同一条头部里不放同形异义的图标。
+唯一的图标集是 Lucide，只从 `crates/spanbay-gpui/src/ui/icons.rs` 的图标表引用。一个概念一个字形，动词用文字写出来，主操作永远有可见的文字标签。同一条头部里不放同形异义的图标。
 
 - 图标按钮只用于通用字形（关闭、复制、更多、搜索、加号、发送、停止、刷新、面板开关等），每个都有可访问名、延迟出现的提示和足够的触达面积。
 - 列表与表格里的状态用状态标记；Lucide 的状态字形只留在 toast 与横幅里，“信息”用 info 字形。“停止”动作用实心方块，“已取消”状态用空心方。
@@ -135,12 +135,12 @@
 
 ## 5. 组件边界
 
-全仓仅 `crates/pingdeck-gpui/src/ui` 允许引入 `gpui_kit::component` 并封装语义原语，业务模块视图留在 `crates/pingdeck-gpui/src/views`。每个原语只读 OKLCH 编译后的语义色板。边界按行为分；层叠类的焦点与 Esc 见 §7，长内容见 §10，破坏动作见 §9.3。
+全仓仅 `crates/spanbay-gpui/src/ui` 允许引入 `gpui_kit::component` 并封装语义原语，业务模块视图留在 `crates/spanbay-gpui/src/views`。每个原语只读 OKLCH 编译后的语义色板。边界按行为分；层叠类的焦点与 Esc 见 §7，长内容见 §10，破坏动作见 §9.3。
 
 - 编辑类（输入框、文本域、数字框）保留光标、选区、输入法组合与撤销，错误挂在字段下，长文本自动增高。
 - 选择类（选择器、菜单、命令面板、模型选择器）外观像输入框、列表是浮层，支持方向键、首字跳转和 Esc，不用原生下拉弹窗。所有选模型的地方共用一个模型选择器。
 - 表格只有只读数据表和可编辑键值表两种。键值表末尾总有一行空白新行；窄容器下键在上、值在下；粘贴多行文本拆成多行。
-- 响应与报文查看统一复用 `crates/pingdeck-gpui/src/ui/payload_viewer.rs`（`PayloadViewer` 与 `payload_block`）。组件自动识别 `JSON / XML / HTML / YAML / Text / Diff`，提供格式化与原文切换、自动换行、语法高亮和一键复制，覆盖全部工作模块。
+- 响应与报文查看统一复用 `crates/spanbay-gpui/src/ui/payload_viewer.rs`（`PayloadViewer` 与 `payload_block`）。组件自动识别 `JSON / XML / HTML / YAML / Text / Diff`，提供格式化与原文切换、自动换行、语法高亮和一键复制，覆盖全部工作模块。
 
 按钮标签是动词加名词，会弹确认或还要再输入的按钮带“…”。停止类按钮点名对象，两个停止不同排；危险样式只给真正危险的动作。分段控件用于同一对象的视图或模式；标签页是唯一的标签样式。对话框里只有主按钮和单行输入框里的 Enter 两条提交路径，失焦不提交。主按钮要么可点并把错误标到字段上，要么写明还缺什么；提交中对话框保持打开，成功才关闭。
 
@@ -272,7 +272,7 @@ Webview 只经 IPC 与核心通信。生产 CSP 只允许本地资源和 IPC 连
 | 运行形态 | 组成 | 能验证 | 验证不了 |
 | --- | --- | --- | --- |
 | 无头测试（`test-support`） | 真实 GPUI 视图树加内存 `DesktopRuntime` | 9 模块挂载、16 套 OKLCH 主题热切、20 页设置、命令面板、10k 虚拟表与 10 MiB JSON Rope 载入 | 真实 OS 窗口合成帧率、真实文件对话框、系统托盘与签名沙箱 |
-| 发布构建（`pingdeck`） | 真实 GPUI Metal/Vulkan 窗口、Rust 核心与本地数据 | 功能、持久化、权限、沙箱、端口、真实启动与空闲内存、平台行为 | 跨机器绝对毫秒比较 |
+| 发布构建（`spanbay`） | 真实 GPUI Metal/Vulkan 窗口、Rust 核心与本地数据 | 功能、持久化、权限、沙箱、端口、真实启动与空闲内存、平台行为 | 跨机器绝对毫秒比较 |
 
 原生组件与压测工作台同时内置于应用「控制台」实用工具中，方便在真实 GPU 窗口下人工核对中文 IME 候选框跟随、流式 Markdown 划选复制与 120fps 滚动。
 
@@ -288,4 +288,4 @@ Webview 只经 IPC 与核心通信。生产 CSP 只允许本地资源和 IPC 连
 | 视觉与键盘 | 一屏一个强调色块；状态有形状和词；最上层控制键盘，关闭后焦点回到触发处 |
 | 宽度与折行 | 窄宽与两种语言下没有无省略号的硬裁切，省略处有悬停提示 |
 
-常用命令：`cargo xtask check-arch`、`cargo xtask check-tokens`、`cargo xtask check-i18n`、`cargo test -p pingdeck-gpui --features test-support --locked`。绝对毫秒数、测试数量与打包字节不作为设计规则，它们随机器与构建变化。
+常用命令：`cargo xtask check-arch`、`cargo xtask check-tokens`、`cargo xtask check-i18n`、`cargo test -p spanbay-gpui --features test-support --locked`。绝对毫秒数、测试数量与打包字节不作为设计规则，它们随机器与构建变化。

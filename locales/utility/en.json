@@ -4,7 +4,7 @@
   "util.bench.sec.editor": "Tree-sitter Code EditorState (JSON syntax highlighting)",
   "util.bench.sec.input": "Single-line InputState (CJK IME / candidate window)",
   "util.bench.sec.textarea": "Multiline TextareaState (Chat Composer selection & wrap)",
-  "util.bench.stream_burst_line": "\n- **Token #{count}**: `pingdeck-desktop` zero-IPC stream coalescing — *GPU 120fps selectable text*.",
+  "util.bench.stream_burst_line": "\n- **Token #{count}**: `spanbay-desktop` zero-IPC stream coalescing — *GPU 120fps selectable text*.",
   "util.bench.stream_sample": "# Streaming Markdown Selection Test\n\nClick **+200 Tokens** to append continuously and verify GPU rendering + `⌘C` copy.\n\n```json\n{\"status\": \"ok\", \"renderer\": \"GPUI Metal/Vulkan\"}\n```\n",
   "util.bench.tab.ime": "1. IME Input",
   "util.bench.tab.json": "4. 10 MiB JSON Editor",

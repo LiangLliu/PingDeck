@@ -1,4 +1,4 @@
-/* PingDeck Prototype — Reusable UI Primitives & Components */
+/* SpanBay Prototype — Reusable UI Primitives & Components */
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -139,7 +139,7 @@
   padding: 8px 10px; font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
   background: var(--bg-surface); overflow: auto;
 }
-/* Unified PayloadViewer / payload_block (mirrors crates/pingdeck-gpui/src/ui/payload_viewer.rs) */
+/* Unified PayloadViewer / payload_block (mirrors crates/spanbay-gpui/src/ui/payload_viewer.rs) */
 .plv-box {
   border: 1px solid var(--border-default); border-radius: var(--r-md);
   background: var(--bg-sunken); overflow: hidden; display: flex; flex-direction: column;
@@ -184,7 +184,7 @@
 .inline-banner.warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn); }
 .inline-banner.bad { background: var(--bad-soft); border-color: var(--bad-border); color: var(--bad); }
 
-/* Unified Bounded Pagination Bar (mirrors crates/pingdeck-gpui/src/ui/pagination.rs) */
+/* Unified Bounded Pagination Bar (mirrors crates/spanbay-gpui/src/ui/pagination.rs) */
 .pg-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   padding: 8px 14px; background: var(--bg-pane); border-top: 1px solid var(--border-subtle);

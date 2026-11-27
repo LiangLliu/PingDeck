@@ -1,4 +1,4 @@
-/* PingDeck Prototype — Sub-Tab & Lower-Pane View Templates */
+/* SpanBay Prototype — Sub-Tab & Lower-Pane View Templates */
 window.PD = window.PD || {};
 
 (() => {
@@ -205,7 +205,7 @@ window.PD = window.PD || {};
             <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">Accept</td><td class="mono">application/json</td><td><span class="tag">显式</span></td></tr>
             <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">Authorization</td><td class="mono">Bearer <span class="url-var">{{token}}</span></td><td><span class="tag tag-accent">集合认证</span></td></tr>
             <tr><td class="text-center"><span class="check-box checked">✓</span></td><td class="mono">X-API-Version</td><td class="mono"><span class="url-var">{{api_version}}</span></td><td><span class="tag">显式</span></td></tr>
-            <tr class="kv-off"><td class="text-center"><span class="check-box"></span></td><td class="mono">User-Agent</td><td class="mono">PingDeck/0.1.0</td><td><span class="tag">自动</span></td></tr>
+            <tr class="kv-off"><td class="text-center"><span class="check-box"></span></td><td class="mono">User-Agent</td><td class="mono">SpanBay/0.1.0</td><td><span class="tag">自动</span></td></tr>
           </tbody>
         </table>`,
       auth: () => `
@@ -372,7 +372,7 @@ window.PD = window.PD || {};
           <table class="kv-table">
             <thead><tr><th>响应头</th><th>值</th></tr></thead>
             <tbody>
-              <tr><td class="mono">X-Mock-Server</td><td class="mono">PingDeck Billing stub</td></tr>
+              <tr><td class="mono">X-Mock-Server</td><td class="mono">SpanBay Billing stub</td></tr>
               <tr><td class="mono">Access-Control-Allow-Origin</td><td class="mono">*</td></tr>
             </tbody>
           </table>
@@ -438,7 +438,7 @@ window.PD = window.PD || {};
           <div class="col-stack-sm fs-xs">
             <div><span class="text-ok">✓</span> 搜索 DeepSeek 429 Retry-After 规范</div>
             <div><span class="text-ok">✓</span> 修改 <code>router.rs</code> 拆分 429 与 5xx 熔断</div>
-            <div><span class="text-ok">✓</span> 运行 <code>cargo test -p pingdeck-core router</code></div>
+            <div><span class="text-ok">✓</span> 运行 <code>cargo test -p spanbay-core router</code></div>
             <div><span class="text-warn">●</span> 等待批准运行 <code>cargo clippy</code></div>
             <div class="text-faint">○ 输出根因摘要与验证结论</div>
           </div>
@@ -474,7 +474,7 @@ window.PD = window.PD || {};
             </table>
           </div>
           <div class="card-panel" style="padding:9px 12px">
-            <div class="row-between"><span class="fs-xs text-muted">▸ 配置备份与恢复记录（2 个工具 · 3 份备份）</span><span class="fs-2xs text-muted">PingDeck 改过的文件与备份</span></div>
+            <div class="row-between"><span class="fs-xs text-muted">▸ 配置备份与恢复记录（2 个工具 · 3 份备份）</span><span class="fs-2xs text-muted">SpanBay 改过的文件与备份</span></div>
           </div>
         </div>`,
       traffic: () => `
@@ -508,7 +508,7 @@ window.PD = window.PD || {};
             ${row("要求客户端令牌鉴权", "每次请求都必须携带有效客户端令牌；未知或已吊销令牌一律返回 401。", sw(true))}
             ${row("在局域网提供服务 (0.0.0.0)", "仅在信任内网临时共享时开启（需要至少一个有效客户端令牌）。", sw(false))}
             ${row("额外允许的 Host 名", "逗号分隔，用于 Docker / devcontainer 或隧道（如 host.docker.internal）。", `<span class="tag mono">localhost, 127.0.0.1</span>`)}
-            ${row("启动时自动开启网关", "PingDeck 打开时自动启动网关。", sw(true))}
+            ${row("启动时自动开启网关", "SpanBay 打开时自动启动网关。", sw(true))}
             ${row("请求体调试捕获", "决定哪些网关交互保留请求与响应体供日志排障。", `<div class="seg"><button data-action="seg-pick">关闭</button><button class="active" data-action="seg-pick">仅出错时</button><button data-action="seg-pick">全部</button></div>`)}
           </div>
           <div class="card-panel">

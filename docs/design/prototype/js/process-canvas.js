@@ -1,4 +1,4 @@
-/* PingDeck Interactive Prototype — Unified ProcessView Canvas Engine
+/* SpanBay Interactive Prototype — Unified ProcessView Canvas Engine
  * Shared by Flows (HTTP Request DAG) and Agent Workflow Monitor Modal.
  * Supports LR / TB / Serpentine Wrap, Center / Top align, Swimlanes,
  * Multi-exit Condition branches, Parallel Fan-out / Join, Layered DataFlow arcs,

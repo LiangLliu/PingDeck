@@ -1,14 +1,14 @@
 //! Static architecture boundary enforcement (`cargo xtask check-arch`).
 //!
-//! Enforces strict 4-layer decoupling between Core (`crates/pingdeck-*`),
-//! UI-agnostic Desktop Host (`crates/pingdeck-desktop`), and thin GPUI Renderer
-//! (`crates/pingdeck-gpui`):
-//!   1. Core crates never depend on `pingdeck-desktop`, `pingdeck-gpui`, `gpui*`, or `tauri*`.
-//!   2. `pingdeck-desktop` never depends on `gpui*`, `tauri*`, or `objc2*`.
-//!   3. Inside `pingdeck-gpui/src/`: `gpui_kit::component` / `gpui_component` is quarantined
+//! Enforces strict 4-layer decoupling between Core (`crates/spanbay-*`),
+//! UI-agnostic Desktop Host (`crates/spanbay-desktop`), and thin GPUI Renderer
+//! (`crates/spanbay-gpui`):
+//!   1. Core crates never depend on `spanbay-desktop`, `spanbay-gpui`, `gpui*`, or `tauri*`.
+//!   2. `spanbay-desktop` never depends on `gpui*`, `tauri*`, or `objc2*`.
+//!   3. Inside `spanbay-gpui/src/`: `gpui_kit::component` / `gpui_component` is quarantined
 //!      inside `src/ui/` (and `src/app/` bootstrap); `src/views/` never imports `gpui_kit::component`,
-//!      `pingdeck_core::storage`, or spawns `tokio::spawn` directly.
-//!   4. Non-test view source files under `crates/pingdeck-gpui/src/views/` stay <= 600 lines.
+//!      `spanbay_core::storage`, or spawns `tokio::spawn` directly.
+//!   4. Non-test view source files under `crates/spanbay-gpui/src/views/` stay <= 600 lines.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -120,15 +120,15 @@ pub fn check_all(root: &Path) -> Result<usize, Vec<String>> {
             };
             checked_crates += 1;
             match name {
-                "pingdeck-desktop" => {
+                "spanbay-desktop" => {
                     check_crate_deps(
                         &crates_dir,
                         name,
-                        &["gpui", "tauri", "objc2", "pingdeck-gpui"],
+                        &["gpui", "tauri", "objc2", "spanbay-gpui"],
                         &mut problems,
                     );
                 }
-                "pingdeck-gpui" => {
+                "spanbay-gpui" => {
                     check_crate_deps(&crates_dir, name, &["tauri", "rusqlite"], &mut problems);
                 }
                 _ => {
@@ -136,7 +136,7 @@ pub fn check_all(root: &Path) -> Result<usize, Vec<String>> {
                     check_crate_deps(
                         &crates_dir,
                         name,
-                        &["pingdeck-desktop", "pingdeck-gpui", "gpui", "tauri"],
+                        &["spanbay-desktop", "spanbay-gpui", "gpui", "tauri"],
                         &mut problems,
                     );
                 }
@@ -144,8 +144,8 @@ pub fn check_all(root: &Path) -> Result<usize, Vec<String>> {
         }
     }
 
-    // Enforce source-level boundaries inside `crates/pingdeck-gpui/src/views`.
-    let views_dir = crates_dir.join("pingdeck-gpui/src/views");
+    // Enforce source-level boundaries inside `crates/spanbay-gpui/src/views`.
+    let views_dir = crates_dir.join("spanbay-gpui/src/views");
     if views_dir.exists() {
         let mut files = Vec::new();
         collect_rs_files(&views_dir, &mut files);
@@ -179,12 +179,12 @@ pub fn check_all(root: &Path) -> Result<usize, Vec<String>> {
                         "views must use `crate::ui::*` adapter instead of `gpui_component` directly",
                     ),
                     (
-                        "pingdeck_core::storage",
-                        "views must go through `pingdeck_desktop` instead of `pingdeck_core::storage`",
+                        "spanbay_core::storage",
+                        "views must go through `spanbay_desktop` instead of `spanbay_core::storage`",
                     ),
                     (
                         "tokio::spawn",
-                        "views must schedule async work through `crate::bridge` / `pingdeck_desktop`",
+                        "views must schedule async work through `crate::bridge` / `spanbay_desktop`",
                     ),
                 ] {
                     if trimmed.contains(needle) {

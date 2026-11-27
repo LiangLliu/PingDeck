@@ -1,4 +1,4 @@
-//! Recomputes the database schema fingerprint (`crates/pingdeck-store/src/storage/schema.rs`)
+//! Recomputes the database schema fingerprint (`crates/spanbay-store/src/storage/schema.rs`)
 //! and provides a zero-Node free TCP port probe for `scripts/smoke.sh`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +16,7 @@ const FNV_PRIME: u32 = 0x0100_0193;
 const POSITIVE_31: u32 = 0x7fff_ffff;
 
 /// FNV-1a over UTF-8 SQL parts, kept to 31 positive bits and never 0.
-/// Mirrors `crates/pingdeck-store/src/storage/schema.rs::fingerprint` byte for byte.
+/// Mirrors `crates/spanbay-store/src/storage/schema.rs::fingerprint` byte for byte.
 pub fn fingerprint(parts: &[&str]) -> i64 {
     fn mix(hash: u32, byte: u8) -> u32 {
         (hash ^ u32::from(byte)).wrapping_mul(FNV_PRIME)
@@ -144,7 +144,7 @@ pub fn run_fingerprint(root: &Path, args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
     let dir = args.first().map_or_else(
-        || root.join("crates/pingdeck-store/src/storage"),
+        || root.join("crates/spanbay-store/src/storage"),
         |p| Path::new(p).to_path_buf(),
     );
     let entries = match fs::read_dir(&dir) {
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn extracts_real_storage_sources() {
-        let dir = crate::repo_root().join("crates/pingdeck-store/src/storage");
+        let dir = crate::repo_root().join("crates/spanbay-store/src/storage");
         let mut sources = BTreeMap::new();
         for entry in fs::read_dir(&dir).unwrap().flatten() {
             let path = entry.path();

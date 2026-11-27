@@ -3,7 +3,7 @@
 这份清单在**发布构建**上人工执行，覆盖脚本无法驱动的端到端闭环。先跑脚本化的那一半：
 
 ```bash
-scripts/smoke.sh target/release/pingdeck
+scripts/smoke.sh target/release/spanbay
 ```
 
 脚本检查隔离数据目录、建库与 schema、网关自启、目录与文件权限、重启读回以及 macOS WebKit 数据隔离。UI、键盘、审批、取消、机密显示、模块交接与客户端联通按下面逐项人工核验。
@@ -42,10 +42,10 @@ env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GEMINI_CLI_HOME \
     XDG_DATA_HOME="$SMOKE_HOME/.local/share" \
     XDG_CONFIG_HOME="$SMOKE_HOME/.config" \
     XDG_CACHE_HOME="$SMOKE_HOME/.cache" \
-    target/release/bundle/macos/PingDeck.app/Contents/MacOS/pingdeck
+    target/release/bundle/macos/SpanBay.app/Contents/MacOS/spanbay
 ```
 
-Linux 用 `target/release/pingdeck`；macOS 用 `.app/Contents/MacOS/pingdeck`。`HOME` 与 `CFFIXED_USER_HOME` 必须指向同一个新目录，真实 `~/Library/Application Support/com.pingdeck.desktop` 与真实 WebKit 目录保持未被写入。
+Linux 用 `target/release/spanbay`；macOS 用 `.app/Contents/MacOS/spanbay`。`HOME` 与 `CFFIXED_USER_HOME` 必须指向同一个新目录，真实 `~/Library/Application Support/com.spanbay.desktop` 与真实 WebKit 目录保持未被写入。
 
 ### 0.3 本机假上游（仅服务商/网关/对话场景）
 
@@ -102,7 +102,7 @@ NODE
 - 期望：新工作区生效且原工作区保留；重启后工作区、请求与历史均可读回。
 
 **#3 结构版本不符时的隔离与新建**（桌面）
-- 动作：在隔离目录里把 `pingdeck.sqlite3` 的 `PRAGMA user_version` 改成错误值后重启。
+- 动作：在隔离目录里把 `spanbay.sqlite3` 的 `PRAGMA user_version` 改成错误值后重启。
 - 期望：主库、`.secrets`、日志与 `attachments` 被改名为 `.bak-<UTC 时间>` 移到一旁，新建空库并弹窗列出备份路径；权限不足无法改名时报错拒绝打开。
 
 **#4 窄屏、缩放、键盘与多主题**（Demo + 桌面）
@@ -111,7 +111,7 @@ NODE
 
 **#5 退出确认、macOS 驻留与单实例**（桌面）
 - 动作：环境留未保存修改后按 `⌘Q` / 菜单退出（点取消）；Mock 或智能体在跑时退出（点取消再确认）；macOS 网关运行时点红灯再点 Dock；同目录用 `open -n` 起第二份进程。
-- 期望：先问未保存文档，再问运行中工作（智能体为危险确认、仅常驻服务为普通确认），取消什么都不发生。macOS 红灯仅隐藏窗口、网关照常应答 `/health`；第二份弹 “PingDeck is already running” 后以 0 退出，不干扰第一份运行。
+- 期望：先问未保存文档，再问运行中工作（智能体为危险确认、仅常驻服务为普通确认），取消什么都不发生。macOS 红灯仅隐藏窗口、网关照常应答 `/health`；第二份弹 “SpanBay is already running” 后以 0 退出，不干扰第一份运行。
 
 ### 1.2 请求、Mock、流程、历史与环境
 
@@ -190,7 +190,7 @@ NODE
 - 不为验证审批超时等 600 秒，也不等 6 小时验证自动同步复查与退避；这些由单元测试覆盖。
 - 不承诺扫描与测试台零 token、零费用；假上游只验证本机流程。
 - 不承诺取消后历史与 Cookie 完全回滚，也不承诺任意正文或未知短机密全部自动脱敏。
-- 不杀非自己启动的 `pingdeck` 或测试进程，不在任何步骤触碰真实 `HOME`、数据目录、客户端配置或真实密钥。
+- 不杀非自己启动的 `spanbay` 或测试进程，不在任何步骤触碰真实 `HOME`、数据目录、客户端配置或真实密钥。
 
 ## 2. 结果记录
 
@@ -204,10 +204,10 @@ NODE
 
 ## 3. 脚本那一半的契约
 
-`scripts/smoke.sh [path/to/pingdeck]`：
+`scripts/smoke.sh [path/to/spanbay]`：
 
-- 默认二进制：`$PINGDECK_BIN`，否则 `target/release/pingdeck`。
-- 只碰 `mktemp -d`；`HOME`、`CFFIXED_USER_HOME`、`XDG_*` 全部指向它；已有 `pingdeck` 进程时拒绝运行。
+- 默认二进制：`$SPANBAY_BIN`，否则 `target/release/spanbay`。
+- 只碰 `mktemp -d`；`HOME`、`CFFIXED_USER_HOME`、`XDG_*` 全部指向它；已有 `spanbay` 进程时拒绝运行。
 - 需要 `sqlite3` 与 `curl`；Linux 无显示时用 `xvfb-run` 重入。
 - 校验建库与 `CURRENT_SCHEMA_VERSION`、播种工作区与网关自启、`/health` 200、目录 `0700` 与文件 `0600`、退出释放端口、重启读回与 macOS WebKit 隔离。
 - 退出码 0 表示通过，1 表示失败或缺少依赖；不覆盖 UI、键盘、审批、取消、流程、同步与视觉布局。

@@ -1,0 +1,26 @@
+[package]
+name = "spanbay-desktop"
+description = "UI-framework-agnostic desktop host, Tokio runtime bridge, stream coalescing, OS service abstractions, OKLCH theme compiler, i18n engine, local UI persistence, and headless ViewModels."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+arboard.workspace = true
+chrono.workspace = true
+notify-rust.workspace = true
+spanbay-core = { path = "../spanbay-core" }
+rfd.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

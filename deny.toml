@@ -7,10 +7,10 @@ yanked = "deny"
 unmaintained = "all"
 ignore = [
     { id = "RUSTSEC-2026-0543", reason = "chrono 0.4.45 is flagged as unmaintained with no security vulnerability; revisit when migrating workspace date/time helpers to jiff or time." },
-    { id = "RUSTSEC-2026-0594", reason = "cookie private-jar nonce reuse only applies to processes that call fork() while using encrypted private cookies; PingDeck neither forks nor enables cookie's private feature." },
+    { id = "RUSTSEC-2026-0594", reason = "cookie private-jar nonce reuse only applies to processes that call fork() while using encrypted private cookies; SpanBay neither forks nor enables cookie's private feature." },
     { id = "RUSTSEC-2024-0384", reason = "instant is a transitive dependency of gpui-pre/winit-era platform helpers; no security vulnerability." },
     { id = "RUSTSEC-2024-0436", reason = "paste is a build-time proc-macro transitive dependency of gpui-pre/gpui-component; no runtime code." },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is a transitive dependency of gpui-pre-http-client; PingDeck's own HTTP stack uses reqwest." },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is a transitive dependency of gpui-pre-http-client; SpanBay's own HTTP stack uses reqwest." },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser is a transitive font shaping dependency of cosmic-text/gpui-pre; no security vulnerability." },
     { id = "RUSTSEC-2026-0206", reason = "rustybuzz is a transitive font shaping dependency of cosmic-text/gpui-pre; no security vulnerability." },
     { id = "RUSTSEC-2026-0370", reason = "zvariant is a Linux D-Bus transitive dependency of ashpd/accesskit_unix/gpui-pre-linux; no security vulnerability." },

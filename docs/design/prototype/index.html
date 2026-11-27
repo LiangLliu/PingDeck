@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PingDeck — UI 与交互设计高保真原型</title>
+  <title>SpanBay — UI 与交互设计高保真原型</title>
   <link rel="stylesheet" href="./styles/tokens.css" />
   <link rel="stylesheet" href="./styles/base.css" />
   <link rel="stylesheet" href="./styles/components.css" />
@@ -14,7 +14,7 @@
   <!-- ── Prototype Review Bar (outside the app window) ── -->
   <header id="proto-bar" class="proto-bar">
     <div class="proto-brand">
-      <span>PingDeck</span>
+      <span>SpanBay</span>
       <span class="proto-pill">交互原型</span>
     </div>
     <span class="proto-sep"></span>
@@ -1017,7 +1017,7 @@
                 <div class="chat-head-meta">
                   <span class="tag mono">DeepSeek / deepseek-v4-pro</span>
                   <button class="tag tag-accent" data-popover="chat-ws">工作区：Billing platform ▾</button>
-                  <button class="tag mono" data-popover="chat-ws">~/me/PingDeck · main</button>
+                  <button class="tag mono" data-popover="chat-ws">~/me/SpanBay · main</button>
                 </div>
               </div>
 
@@ -1040,7 +1040,7 @@
                       <div class="trace-step">
                         <div class="trace-step-rail"><span class="dot dot-ok"></span></div>
                         <div class="flex-1">
-                          <div>已编辑 <b class="mono">crates/pingdeck-core/src/llm/router.rs</b></div>
+                          <div>已编辑 <b class="mono">crates/spanbay-core/src/llm/router.rs</b></div>
                           <div class="diff-box">
                             <div class="diff-head"><span>@@ -212,7 +212,8 @@ impl Router</span><button class="text-accent" data-modal="run-monitor" data-rm-run-idx="0" data-rm-initial-tab="changes">在改动页审阅</button></div>
                             <div class="diff-row">  214   match status {</div>
@@ -1052,7 +1052,7 @@
                       </div>
                       <div class="trace-step">
                         <div class="trace-step-rail"><span class="dot dot-ok"></span></div>
-                        <div class="flex-1">已运行 <code class="text-ink1">cargo test -p pingdeck-core router</code> <span class="text-ok">· 14 项通过 · 9.2 s</span></div>
+                        <div class="flex-1">已运行 <code class="text-ink1">cargo test -p spanbay-core router</code> <span class="text-ok">· 14 项通过 · 9.2 s</span></div>
                       </div>
                     </div>
                   </div>
@@ -1096,12 +1096,12 @@
                 <div id="chat-gate-card" class="gate-card">
                   <div class="gate-head">
                     <span class="dot dot-warn"></span>
-                    <b class="text-ink1">需要在 ~/me/PingDeck 运行命令</b>
+                    <b class="text-ink1">需要在 ~/me/SpanBay 运行命令</b>
                     <span class="tag tag-warn ml-auto">中风险 · 命令执行</span>
                     <span class="text-muted">已等待 1 分钟</span>
                   </div>
                   <div class="gate-body">
-                    <div class="gate-cmd"><span class="text-faint">$</span><span>cargo clippy -p pingdeck-core -- -D warnings</span></div>
+                    <div class="gate-cmd"><span class="text-faint">$</span><span>cargo clippy -p spanbay-core -- -D warnings</span></div>
                     <div class="gate-actions">
                       <span class="fs-2xs text-muted">OS 沙箱已开启 · 仅限当前仓库目录</span>
                       <div class="row-center">
@@ -1178,10 +1178,10 @@
                       <span class="tag tag-accent">计划 3/4</span>
                       <span class="tag">2 子智能体</span>
                     </div>
-                    <div class="fs-xs text-ink2">等待批准：<code>cargo clippy -p pingdeck-core -- -D warnings</code></div>
+                    <div class="fs-xs text-ink2">等待批准：<code>cargo clippy -p spanbay-core -- -D warnings</code></div>
                     <div class="runs-card-meta mono">
                       <span>DeepSeek/deepseek-v4-pro</span>
-                      <span>~/me/PingDeck</span>
+                      <span>~/me/SpanBay</span>
                       <span>5/20 步</span>
                       <span>11.4 s</span>
                       <span>28.9K tok</span>
@@ -1862,7 +1862,7 @@
                             <span id="syntax-active-badge" class="tag tag-accent">Catppuccin · Latte</span>
                           </div>
                           <div id="syntax-preview-box" class="code-box" style="background:var(--bg-surface);margin:0">{
-  <span class="tk-key">"service"</span>: <span class="tk-str">"pingdeck-gateway"</span>,
+  <span class="tk-key">"service"</span>: <span class="tk-str">"spanbay-gateway"</span>,
   <span class="tk-key">"status"</span>: <span class="tk-str">"healthy"</span>,
   <span class="tk-key">"latency_ms"</span>: <span class="tk-num">42</span>,
   <span class="tk-key">"stream"</span>: <span class="tk-kw">true</span>,

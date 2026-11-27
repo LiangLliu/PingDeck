@@ -1,7 +1,7 @@
 name: Release
 
 # Release pipeline (docs/development.md §2.4): 100% pure-Rust desktop packaging & draft release CD.
-# Uses `cargo build --release -p pingdeck-gpui` + `cargo xtask bundle` (zero Node / zero Tauri CLI).
+# Uses `cargo build --release -p spanbay-gpui` + `cargo xtask bundle` (zero Node / zero Tauri CLI).
 on:
   push:
     tags:
@@ -64,17 +64,17 @@ jobs:
             os: macos-latest
             target: aarch64-apple-darwin
             smoke: true
-            binary: target/aarch64-apple-darwin/release/bundle/PingDeck.app/Contents/MacOS/pingdeck
+            binary: target/aarch64-apple-darwin/release/bundle/SpanBay.app/Contents/MacOS/spanbay
           - label: macos-x64
             os: macos-latest
             target: x86_64-apple-darwin
             smoke: false
-            binary: target/x86_64-apple-darwin/release/bundle/PingDeck.app/Contents/MacOS/pingdeck
+            binary: target/x86_64-apple-darwin/release/bundle/SpanBay.app/Contents/MacOS/spanbay
           - label: linux-x64
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             smoke: true
-            binary: target/x86_64-unknown-linux-gnu/release/bundle/pingdeck-linux/bin/pingdeck
+            binary: target/x86_64-unknown-linux-gnu/release/bundle/spanbay-linux/bin/spanbay
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -89,7 +89,7 @@ jobs:
           cache-key: release-${{ matrix.label }}
           target: ${{ matrix.target }}
       - name: Build pure-Rust GPUI release binary
-        run: cargo build --release --target "${{ matrix.target }}" -p pingdeck-gpui --locked
+        run: cargo build --release --target "${{ matrix.target }}" -p spanbay-gpui --locked
       - name: Assemble OS bundle (xtask bundle)
         run: cargo xtask bundle --target "${{ matrix.target }}"
       - name: Smoke-test packaged binary
@@ -110,9 +110,9 @@ jobs:
           mkdir -p "$out"
           bundle_dir="target/${TARGET}/release/bundle"
           if [ "${RUNNER_OS}" = "macOS" ]; then
-            tar -C "${bundle_dir}" -czf "${out}/PingDeck-${VERSION}-${LABEL}.app.tar.gz" PingDeck.app
+            tar -C "${bundle_dir}" -czf "${out}/SpanBay-${VERSION}-${LABEL}.app.tar.gz" SpanBay.app
           else
-            tar -C "${bundle_dir}" -czf "${out}/PingDeck-${VERSION}-${LABEL}.tar.gz" pingdeck-linux
+            tar -C "${bundle_dir}" -czf "${out}/SpanBay-${VERSION}-${LABEL}.tar.gz" spanbay-linux
           fi
           (
             cd "$out"

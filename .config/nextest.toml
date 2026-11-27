@@ -11,7 +11,7 @@ path = "junit.xml"
 gateway-harness = { max-threads = 4 }
 
 [[profile.default.overrides]]
-filter = "(package(pingdeck-llm) & test(/^llm::gateway::tests/)) | (package(pingdeck-workbench) & test(/^mock::tests::/)) | (package(pingdeck-core) & ((binary(demo_conformance) & test(/^gateway_smoke::/)) | binary(gateway_latency)))"
+filter = "(package(spanbay-llm) & test(/^llm::gateway::tests/)) | (package(spanbay-workbench) & test(/^mock::tests::/)) | (package(spanbay-core) & ((binary(demo_conformance) & test(/^gateway_smoke::/)) | binary(gateway_latency)))"
 test-group = "gateway-harness"
 
 # CI (.github/workflows): run everything, report every failure, write JUnit to

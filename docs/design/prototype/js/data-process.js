@@ -1,4 +1,4 @@
-/* PingDeck Interactive Prototype — Unified ProcessView Datasets (HTTP Flows & Agent Workflows) */
+/* SpanBay Interactive Prototype — Unified ProcessView Datasets (HTTP Flows & Agent Workflows) */
 window.PD = window.PD || {};
 
 (() => {
@@ -279,7 +279,7 @@ window.PD = window.PD || {};
           phases: [{ label: "推理思考", ms: 600, color: "var(--accent-mark)" }, { label: "工具执行", ms: 1200, color: "var(--ok)" }],
           pills: [{ text: "并行调研", tone: "accent" }],
           model: "DeepSeek/deepseek-v4-flash", meta: "1.80 s · 3,200 tok",
-          log: "read_file crates/pingdeck-core/src/llm/router.rs:205-248\n定位到 match status 中 429 与 500..=599 合并触发 60s 熔断。",
+          log: "read_file crates/spanbay-core/src/llm/router.rs:205-248\n定位到 match status 中 429 与 500..=599 合并触发 60s 熔断。",
         },
         {
           id: "explore_web", order: 2, kind: "request", lane: "explore", roleTag: "子智能体",
@@ -305,7 +305,7 @@ window.PD = window.PD || {};
           phases: [{ label: "推理思考", ms: 1800, color: "var(--accent-mark)" }, { label: "工具执行", ms: 5400, color: "var(--ok)" }],
           pills: [{ text: "+18 -4", tone: "ok" }, { text: "14/14 passed", tone: "ok" }],
           model: "DeepSeek/deepseek-v4-pro", meta: "7.20 s · 15,820 tok",
-          log: "edit_file crates/pingdeck-core/src/llm/router.rs (+18 -4)\ncargo test -p pingdeck-core router → 14 passed",
+          log: "edit_file crates/spanbay-core/src/llm/router.rs (+18 -4)\ncargo test -p spanbay-core router → 14 passed",
         },
         {
           id: "gate_clippy", order: 5, kind: "request", lane: "verify", roleTag: "待审批关卡",
@@ -314,7 +314,7 @@ window.PD = window.PD || {};
           phases: [{ label: "等待审批", ms: 1080, color: "var(--warn)" }],
           pills: [{ text: "OS 沙箱", tone: "warn" }],
           model: "DeepSeek/deepseek-v4-pro", meta: "已等待 1 分钟 · 3,750 tok",
-          log: "等待批准命令：\ncargo clippy -p pingdeck-core -- -D warnings\n审批统一在对话底部关卡区处理。",
+          log: "等待批准命令：\ncargo clippy -p spanbay-core -- -D warnings\n审批统一在对话底部关卡区处理。",
         },
       ],
       edges: [

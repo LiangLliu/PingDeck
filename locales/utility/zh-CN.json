@@ -4,7 +4,7 @@
   "util.bench.sec.editor": "Tree-sitter Code EditorState（JSON 语法高亮）",
   "util.bench.sec.input": "单行 InputState（中文拼音 IME / 候选框跟随）",
   "util.bench.sec.textarea": "多行 TextareaState（Chat Composer 选区与换行）",
-  "util.bench.stream_burst_line": "\n- **Token #{count}**: `pingdeck-desktop` 零 IPC 推流合帧验证 — *GPU 120fps selectable text*.",
+  "util.bench.stream_burst_line": "\n- **Token #{count}**: `spanbay-desktop` 零 IPC 推流合帧验证 — *GPU 120fps selectable text*.",
   "util.bench.stream_sample": "# 流式 Markdown 划选复制测试\n\n点击 **+200 Tokens** 持续追加，验证 GPU 渲染与鼠标划选 `⌘C` 复制。\n\n```json\n{\"status\": \"ok\", \"renderer\": \"GPUI Metal/Vulkan\"}\n```\n",
   "util.bench.tab.ime": "1. IME 输入",
   "util.bench.tab.json": "4. 10 MiB JSON 编辑器",

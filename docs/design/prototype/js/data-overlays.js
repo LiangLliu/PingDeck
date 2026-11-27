@@ -1,4 +1,4 @@
-/* PingDeck Prototype — Overlay Templates (Popovers, Dialogs/Wizards, Slide-Over Drawers) */
+/* SpanBay Prototype — Overlay Templates (Popovers, Dialogs/Wizards, Slide-Over Drawers) */
 window.PD = window.PD || {};
 
 window.PD.POPOVER_TEMPLATES = {
@@ -48,7 +48,7 @@ window.PD.POPOVER_TEMPLATES = {
     <button class="pop-opt" data-pick-model="Ollama/qwen3-coder:30b"><div class="pop-opt-col"><span class="mono">Ollama/qwen3-coder:30b</span><span class="pop-opt-sub">本地免费 · 127.0.0.1</span></div><span class="mono text-muted">38ms</span></button>`,
   "chat-ws": () => `
     <div class="pop-head"><span>对话上下文绑定</span></div>
-    <div style="padding:6px 8px;font-size:11.5px;color:var(--ink-3);line-height:1.5">已绑定工作区 <b class="text-ink1">Billing platform</b> 与项目目录 <code class="text-ink1">~/me/PingDeck</code>。跨工作区读取将触发强制询问。</div>
+    <div style="padding:6px 8px;font-size:11.5px;color:var(--ink-3);line-height:1.5">已绑定工作区 <b class="text-ink1">Billing platform</b> 与项目目录 <code class="text-ink1">~/me/SpanBay</code>。跨工作区读取将触发强制询问。</div>
     <div class="pop-sep"></div>
     <button class="pop-opt" data-pop-toast="已打开目录选择器（仅桌面端）">更改项目目录…</button>
     <button class="pop-opt" data-nav-to="settings" data-set-page="ai/memory">管理已信任目录 ↗</button>`,
@@ -126,7 +126,7 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
         ${importTab === "import" ? `
         <div class="card-panel">
           <div class="card-panel-head"><span>支持的格式</span><span class="tag">先预览，不直接覆盖</span></div>
-          <div class="row-wrap"><span class="tag tag-accent">OpenAPI 3.1</span><span class="tag">Postman Collection v2.1</span><span class="tag">cURL 命令</span><span class="tag">PingDeck 同步包</span></div>
+          <div class="row-wrap"><span class="tag tag-accent">OpenAPI 3.1</span><span class="tag">Postman Collection v2.1</span><span class="tag">cURL 命令</span><span class="tag">SpanBay 同步包</span></div>
           <div class="code-box" style="height:105px;white-space:pre">检测到 OpenAPI 3.1 规范：Billing API v2
   + 新增 4 个请求（/subscriptions, /coupons…）
   ~ 保留已有 17 个请求（按路径去重，不覆盖本地脚本）
@@ -151,7 +151,7 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
       foot: importTab === "import"
         ? `<span class="dialog-foot-note">不可信导入内容不会自动执行脚本或发起网络请求</span><button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-done="已导入 4 个请求到 Billing API">确认应用导入</button>`
         : importTab === "export"
-          ? `<span class="dialog-foot-note">导出格式兼容 PingDeck 文件夹同步规范</span><button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-done="已导出 billing-platform.pingdeck.json（已脱敏）">导出脱敏 JSON</button>`
+          ? `<span class="dialog-foot-note">导出格式兼容 SpanBay 文件夹同步规范</span><button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-dialog-done="已导出 billing-platform.spanbay.json（已脱敏）">导出脱敏 JSON</button>`
           : `<span class="dialog-foot-note">仅单次导出生效，不会修改默认同步设置</span><button class="btn" data-action="close-dialog">取消</button><button class="btn btn-danger" id="secret-export-confirm" disabled data-dialog-done="已导出含明文秘密的备份文件" data-toast-tone="warn">导出含秘密 JSON</button>`,
     },
     "code-snippets": {
@@ -210,7 +210,7 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
     "allow-scope": {
       title: "选择允许范围 · shell 命令",
       body: `
-        <div class="gate-cmd"><span class="text-faint">$</span><span>cargo clippy -p pingdeck-core -- -D warnings</span></div>
+        <div class="gate-cmd"><span class="text-faint">$</span><span>cargo clippy -p spanbay-core -- -D warnings</span></div>
         <div class="col-stack-sm">
           <label class="list-row selected clickable" style="background:var(--bg-surface)"><input type="radio" name="scope" checked /><div><b>允许本仓库内所有 <code>cargo clippy *</code></b><div class="pop-opt-sub">保存为第 4 层作用域规则，随时可在「设置 › 权限」撤销</div></div></label>
           <label class="list-row clickable" style="background:var(--bg-surface);border-color:var(--border-subtle)"><input type="radio" name="scope" /><div><b>仅本次对话允许 <code>cargo *</code></b><div class="pop-opt-sub">关闭或切换对话后自动失效</div></div></label>
@@ -356,7 +356,7 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
         <div class="code-box" style="height:210px;white-space:pre">{
   "mcpServers": {
     "github": { "url": "https://api.githubcopilot.com/mcp/", "enabled": true },
-    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "~/me/PingDeck"] }
+    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "~/me/SpanBay"] }
   }
 }</div>
         <span class="set-row-desc">提交前将校验字段合法性与命令安全规则，秘密令牌仍存放在独立保险库中。</span>`,

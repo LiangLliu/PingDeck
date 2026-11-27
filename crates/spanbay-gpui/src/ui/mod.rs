@@ -1,0 +1,92 @@
+//! Sole `gpui-kit` component isolation boundary and unified SpanBay Design System.
+//!
+//! Feature views in `src/views/` import ONLY from `crate::ui::*` (enforced by
+//! `cargo xtask check-arch`). Upgrading or replacing `gpui-component` touches only this module.
+
+pub mod assets;
+pub mod dag_canvas;
+pub mod data;
+pub mod dialog;
+pub mod feedback;
+pub mod i18n;
+pub mod icons;
+pub mod layout;
+pub mod menus;
+pub mod pagination;
+pub mod payload_viewer;
+pub mod primitives;
+pub mod process_chrome;
+pub mod syntax_theme;
+pub mod theme;
+pub mod widgets;
+
+// Controlled re-exports of stateful headless/controller types from `gpui-component` so views
+// never reference `gpui_kit::component` directly.
+pub use gpui_kit::Anchor;
+pub use gpui_kit::component::{
+    Disableable, Root, Sizable, Size, StyledExt, WindowExt,
+    button::{ButtonRounded, ButtonVariants},
+    chart::{AreaChart, BarChart, LineChart},
+    checkbox::Checkbox,
+    collapsible::Collapsible,
+    dialog::{AlertDialog, Dialog, DialogButtonProps},
+    diff::{Diff, DiffFile, DiffState},
+    input::{EditorState, InputEvent, InputState, TextareaState},
+    popover::{Popover, PopoverState},
+    progress::Progress,
+    resizable::{ResizablePanelGroup, h_resizable, resizable_panel, v_resizable},
+    scroll::ScrollableElement,
+    sheet::Sheet,
+    slider::{Slider, SliderEvent, SliderState, SliderValue},
+    spinner::Spinner,
+    tab::{Tab, TabBar},
+    table::{Column, ColumnSort, TableDelegate, TableEvent, TableState},
+};
+
+pub use assets::{APP_ICON_PNG_BYTES, SpanBayAssets};
+pub use dag_canvas::{
+    DagEdgeDraw, ProcessGuideDraw, ProcessLaneDraw, dag_edge_canvas, process_stage_canvas,
+};
+pub use data::{choice_chip, data_row, kpi_card, kv_line, table_header};
+pub use dialog::{
+    modal_dialog, responsive_modal_bounds, responsive_sheet_width, viewport_modal,
+    viewport_modal_bounds,
+};
+pub use feedback::{
+    alert_banner, dismissible_banner, empty_inline, empty_state, empty_state_with_actions,
+};
+pub use i18n::{SpanBayLanguage, Tr, active_language, apply_language, tr};
+pub use icons::{UiIcon, app_icon, icon, icon_sized, icon_xs, spanmark};
+pub use layout::{
+    doc_tab, master_pane, meta_pill, number_field, pane_footer, pane_header, section_header,
+    setting_row, settings_section, settings_section_flush, settings_section_padded,
+    settings_sub_well, subtab_strip, toolbar_strip,
+};
+pub use menus::{menu_divider, menu_item, method_color, method_pill, popover_header};
+pub use pagination::{
+    CursorPaginationBar, DEFAULT_PAGE_SIZES, PaginationBar, cursor_pagination_bar, page_slice,
+    pagination_bar,
+};
+pub use payload_viewer::{
+    PayloadBlockOptions, PayloadViewer, format_payload_bytes, highlighter_for_format,
+    payload_block, payload_format_picker,
+};
+pub use primitives::{
+    Tone, app_title_bar, badge, btn_danger, btn_ghost, btn_icon, btn_primary, btn_secondary, card,
+    code_editor, field_row, h_row, kbd_chip, list_row, markdown_view, method_badge,
+    multiline_input, pane_box, section_heading, status_dot, streaming_markdown_view, table_column,
+    text_input, title_bar_options, toggle_switch, v_col, virtual_table,
+};
+pub use process_chrome::{
+    lane_draw_spec, process_edge_label_pill, process_lane_header, process_segmented_waterfall_bar,
+};
+pub use theme::{
+    SpanBayPalette, apply_palette, apply_theme, is_compact, mono_font_size, palette,
+    resolve_is_dark, sync_window_scale, syntax_palette, theme_prefs, to_hsla,
+};
+pub use widgets::{
+    StatusShape, borderless_multiline, checkbox, collapsible_box, diff_lines_preview, filter_chip,
+    kv_chip, metric_datum, pill_btn, popover, popover_trigger_btn, progress_bar, round_icon_btn,
+    search_input, select_pill, slider, spinner_xs, status_indicator, tab_bar_segmented,
+    tab_bar_underline, tab_item, text_tooltip, titlebar_icon_btn, top_accent_card, wrap_root,
+};

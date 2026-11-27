@@ -1,24 +1,24 @@
 [workspace]
 members = [
-    "crates/pingdeck-base",
-    "crates/pingdeck-response",
-    "crates/pingdeck-model",
-    "crates/pingdeck-executor",
-    "crates/pingdeck-store",
-    "crates/pingdeck-workbench",
-    "crates/pingdeck-llm-protocol",
-    "crates/pingdeck-client-config",
-    "crates/pingdeck-llm-domain",
-    "crates/pingdeck-llm-ops",
-    "crates/pingdeck-llm",
-    "crates/pingdeck-agent",
-    "crates/pingdeck-app",
-    "crates/pingdeck-app-llm",
-    "crates/pingdeck-app-agent",
-    "crates/pingdeck-app-sync",
-    "crates/pingdeck-core",
-    "crates/pingdeck-desktop",
-    "crates/pingdeck-gpui",
+    "crates/spanbay-base",
+    "crates/spanbay-response",
+    "crates/spanbay-model",
+    "crates/spanbay-executor",
+    "crates/spanbay-store",
+    "crates/spanbay-workbench",
+    "crates/spanbay-llm-protocol",
+    "crates/spanbay-client-config",
+    "crates/spanbay-llm-domain",
+    "crates/spanbay-llm-ops",
+    "crates/spanbay-llm",
+    "crates/spanbay-agent",
+    "crates/spanbay-app",
+    "crates/spanbay-app-llm",
+    "crates/spanbay-app-agent",
+    "crates/spanbay-app-sync",
+    "crates/spanbay-core",
+    "crates/spanbay-desktop",
+    "crates/spanbay-gpui",
     "xtask",
 ]
 resolver = "2"
@@ -35,7 +35,7 @@ unsafe_code = "forbid"
 dbg_macro = "deny"
 expect_used = "deny"
 panic = "deny"
-# stderr is invisible in a packaged GUI: failures go through `pingdeck_base::logging::log_line`,
+# stderr is invisible in a packaged GUI: failures go through `spanbay_base::logging::log_line`,
 # which writes the diagnostic log (and stderr when no log file is open or in debug builds).
 print_stderr = "deny"
 todo = "deny"

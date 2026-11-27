@@ -340,7 +340,7 @@
   "chat.thread_header.local_folder": "Local folder",
   "chat.thread_header.no_folder_bound": "No folder bound",
   "chat.thread_header.pin_chat": "Pin chat",
-  "chat.thread_header.pingdeck_workspace": "PingDeck Workspace",
+  "chat.thread_header.spanbay_workspace": "SpanBay Workspace",
   "chat.thread_header.session_context": "Session Context",
   "chat.trace.connecting_to_model": "Connecting to model…",
   "chat.trace.generating_response": "Generating response…",
@@ -353,6 +353,6 @@
   "chat.trace.view_full_output": "View full output",
   "chat.trace.waiting_for_first_token": "Waiting for first token…",
   "chat.trace.waiting_for_model": "Waiting for model…",
-  "chat.welcome.how_can_pingdeck_help": "How can PingDeck help?",
+  "chat.welcome.how_can_spanbay_help": "How can SpanBay help?",
   "chat.welcome.native_selectable_streaming_markdown_with": "Native selectable streaming Markdown with tool traces, inline diffs, risk-gated approvals, and OS sandbox isolation."
 }

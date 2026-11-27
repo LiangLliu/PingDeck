@@ -1,6 +1,6 @@
 # 产品需求基线
 
-这份需求基线用于判断 PingDeck 应解决哪些工作问题、一次操作怎样才算完成，以及哪些边界必须向用户说明。它不规定按钮位置、数据库字段或交付批次。
+这份需求基线用于判断 SpanBay 应解决哪些工作问题、一次操作怎样才算完成，以及哪些边界必须向用户说明。它不规定按钮位置、数据库字段或交付批次。
 
 - [产品手册](../product.md)解释对象、作用域和操作语义。
 - [系统架构](../architecture.md)解释执行、数据与信任边界。
@@ -10,7 +10,7 @@
 
 ### 用户在什么场景使用
 
-| 用户与场景 | 当前工作的困难 | PingDeck 应交付的结果 |
+| 用户与场景 | 当前工作的困难 | SpanBay 应交付的结果 |
 | --- | --- | --- |
 | 后端或测试工程师接入、联调、排查 HTTP 接口 | 请求配置、环境、脚本、响应和失败证据分散，修改后难以复现 | 从草稿发出真实请求，定位变量、认证、传输或断言问题，再保存成可重复使用的请求、Mock 或 Flow |
 | AI 工程师接入多个服务商，并供编码客户端使用 | 兼容协议不等于模型可用；密钥、模型名与故障转移散落在客户端配置中 | 验证服务商与模型，按“服务商/模型”名字与备用规则建立可解释的路由，通过本地网关连接客户端并核实真实请求 |
@@ -87,12 +87,12 @@
 
 - Flow 的每次已发送步骤尝试写入 `source = flow` 的历史，运行摘要保留最近 20 次；不把响应 Cookie 写回 Cookie Jar。
 - Flow 抽取值是临时值，但脚本对环境、集合或全局变量的写入会持久化；凭据名或令牌形状的新变量存为机密，不随导出与同步带出明文。前置脚本提交的修改可能在主请求失败或取消后仍存在；它不是一个原子工作流。
-- 请求结果、历史和 Cookie 不组成一次覆盖全链路的事务。历史没写成时响应旁标明“未保存到历史”，失败的发送没写成历史时失败卡同样标明。Cookie 写入失败与没保留的 Set-Cookie 在响应的 Cookie 标签里标明。其余持久化错误记到诊断日志（`logs/pingdeck.log`），“复制诊断”附上最近的错误摘要。用户不能把“已收到响应”等同于“证据已可靠保存”。后者是可见保存失败要求的现有差距。
+- 请求结果、历史和 Cookie 不组成一次覆盖全链路的事务。历史没写成时响应旁标明“未保存到历史”，失败的发送没写成历史时失败卡同样标明。Cookie 写入失败与没保留的 Set-Cookie 在响应的 Cookie 标签里标明。其余持久化错误记到诊断日志（`logs/spanbay.log`），“复制诊断”附上最近的错误摘要。用户不能把“已收到响应”等同于“证据已可靠保存”。后者是可见保存失败要求的现有差距。
 - “Production”只是用户配置的保护标签。普通执行默认只保护非安全方法，可另选保护 GET/HEAD/OPTIONS；脚本 `pm.sendRequest` 受同一个生产确认守卫，没有确认时受保护的方法被拒。不得称为生产环境的完整访问控制。
-- Postman 导出是有损的：单请求超时、重试和代理没有对应字段，导出时列为警告；复杂 JSONPath 断言与 AI 断言在 Postman 里写成跳过的测试，只在重新导入 PingDeck 时还原。重新导入按方法加 URL 路径和目录内名称配对，不记录上次导入的基线，所以“更新”是两方合并，不是三方合并：文件删掉的参数或请求头不会从已存请求里移除。
+- Postman 导出是有损的：单请求超时、重试和代理没有对应字段，导出时列为警告；复杂 JSONPath 断言与 AI 断言在 Postman 里写成跳过的测试，只在重新导入 SpanBay 时还原。重新导入按方法加 URL 路径和目录内名称配对，不记录上次导入的基线，所以“更新”是两方合并，不是三方合并：文件删掉的参数或请求头不会从已存请求里移除。
 - 当前取消不会为被中止的那次请求新增普通历史行；前面已完成的步骤、变量修改及远端副作用保留。HTTP 重试与 Flow 步骤重试是两层机制，Flow 的一条历史可能包含执行器内部的多次传输尝试。
 
-对应实现见 `crates/pingdeck-app/src/app/flow_service.rs::flow_run_impl`、`execution_service.rs::Persistence`、`prod_guard.rs`，以及 `app/tests/items.rs` 的 Flow 重试历史和运行前确认测试。
+对应实现见 `crates/spanbay-app/src/app/flow_service.rs::flow_run_impl`、`execution_service.rs::Persistence`、`prod_guard.rs`，以及 `app/tests/items.rs` 的 Flow 重试历史和运行前确认测试。
 
 ## 4. 闭环二：接入服务商、验证、路由、连接客户端
 
@@ -124,7 +124,7 @@
 
 网关日志和捕获有保留及队列上限，拥塞时可丢捕获或日志，不是财务账本。成本可能来自估价，未知价格不应显示为已知免费；USD 与 CNY 分开呈现，不自动换算。逐客户端可设每分钟请求数、同时请求数、每日与每月预算（按一种币种计）、每日与每月 token 数和令牌到期日；预算读用量汇总，有约 10 秒的滞后，价格未知或币种不同的调用只计入 token 限额。
 
-网关、扫描与配置写入的实现分别在 `crates/pingdeck-llm/src/llm/gateway/{chat.rs,fields.rs}`、`crates/pingdeck-llm-ops/src/llm/sniff/route_probe.rs`、`crates/pingdeck-client-config/src/write.rs`；对应网关跨协议/中途断流测试与配置写入冲突测试。
+网关、扫描与配置写入的实现分别在 `crates/spanbay-llm/src/llm/gateway/{chat.rs,fields.rs}`、`crates/spanbay-llm-ops/src/llm/sniff/route_probe.rs`、`crates/spanbay-client-config/src/write.rs`；对应网关跨协议/中途断流测试与配置写入冲突测试。
 
 ## 5. 闭环三：带上下文的智能体执行与复核
 
@@ -146,7 +146,7 @@
 | 窗口不在前台 | 等待批准、提问、计划批准或费用暂停时默认发系统通知；运行结束通知在设置里开，只报 30 秒以上的运行；通知只写对话名、工具类别与风险或结果，不写命令、路径和参数 |
 | Full access | 用户显式选择，持续到应用重启；保留硬阻止、Block、强制询问与沙箱；未受信任 MCP、出处不明的抓取主机与 shell 远端命令仍询问；没有沙箱时另行确认 |
 | 未绑定对话 | 可以发送；不提供依赖绑定的工具，模型被告知没有工作区；头部给出绑定入口（没有工作区时给创建入口），绑定后下一条消息起生效 |
-| 工作区切换 | 运行沿用对话首次发送时绑定的 PingDeck 工作区与环境，不随壳层切换；空闲时可在对话头部改绑或补绑；工作区被删后对话保留，改绑前不能发送 |
+| 工作区切换 | 运行沿用对话首次发送时绑定的 SpanBay 工作区与环境，不随壳层切换；空闲时可在对话头部改绑或补绑；工作区被删后对话保留，改绑前不能发送 |
 | 停止与排队 | 停止当前工作，不自动执行尚未开始的后续指令；失败、步数上限等结束时队列暂停供用户处理 |
 | 页面重载 | 同一应用进程内的运行继续，界面重新订阅并补齐；旧审批观察者失效，不能让无人查看的审批无限等待 |
 | 应用进程退出或崩溃 | 重启后显示中断，不声称恢复原进程的执行；旧进程与文件日志按可证明的信息修复，不盲杀复用的 PID |
@@ -187,7 +187,7 @@ MCP stdio 服务器是本机外部进程，不受 Chat shell 沙箱保护。安�
 
 A run that is waiting for an approval does not hold one of the concurrent slots.
 
-此表固定在本路径。`cargo xtask check-docs`（`npm run check:docs`）解析英文行键，比对值单元格与 `crates/pingdeck-agent/src/agent/limits.rs` 的常量；`limits.rs` 的测试比对常量与设置默认值。修改值须同时改 `limits.rs`、`AiAgentSettings::default()`，并审阅资源行为。
+此表固定在本路径。`cargo xtask check-docs`（`npm run check:docs`）解析英文行键，比对值单元格与 `crates/spanbay-agent/src/agent/limits.rs` 的常量；`limits.rs` 的测试比对常量与设置默认值。修改值须同时改 `limits.rs`、`AiAgentSettings::default()`，并审阅资源行为。
 
 “前台”指对话有附着视图且主窗口有焦点：窗口失焦期间按无人值守计时，回到焦点即清零。审批、计划批准与费用暂停共用这条规则；审批超时回“未执行”，计划超时停在计划，费用暂停超时以费用上限结束运行并暂停队列。
 
@@ -210,13 +210,13 @@ A run that is waiting for an approval does not hold one of the concurrent slots.
 5. 秘密默认导出占位符；客户端令牌与 TLS 口令不导出。服务商 host 变化时默认解除本地密钥，不把密钥交给新主机。
 6. 自动导出遇到未导入的外部变化（含其他机器的删除，以及本机较新但未看过对方改动的交叉编辑）或读取错误应停止并说明，停止原因在重启后仍可见；不能覆盖其他机器改动或写回其删除来“修复同步”。
 
-文件夹可由 Git 或云盘搬运，PingDeck 不提供云端协调。时间戳、机器时钟与文件系统竞争仍可能影响胜负；它不是多用户协作合并协议。
+文件夹可由 Git 或云盘搬运，SpanBay 不提供云端协调。时间戳、机器时钟与文件系统竞争仍可能影响胜负；它不是多用户协作合并协议。
 
 ### 网络与工具边界
 
 普通 HTTP 调试允许用户访问本机/内网，智能体派生请求、网页抓取、扫描和 AI 自定义目标采用更严格且不同的网络策略。不能用一个“已防 SSRF”标签覆盖这些入口。
 
-出站代理按一条规则选择：请求或服务商自己的代理、本地地址与 `no_proxy` 直连、全局代理，全局也留空时走系统代理（D-268）。直接受控连接会校验并钉扎地址；经显式代理或系统代理时由代理解析域名，PingDeck 只按字面量判定，无法保证代理端 DNS 钉扎。LAN 网关与额外允许 Host 会扩大暴露面，令牌不提供 TLS 加密，隧道风险由用户承担。
+出站代理按一条规则选择：请求或服务商自己的代理、本地地址与 `no_proxy` 直连、全局代理，全局也留空时走系统代理（D-268）。直接受控连接会校验并钉扎地址；经显式代理或系统代理时由代理解析域名，SpanBay 只按字面量判定，无法保证代理端 DNS 钉扎。LAN 网关与额外允许 Host 会扩大暴露面，令牌不提供 TLS 加密，隧道风险由用户承担。
 
 日志脱敏覆盖已知键名与足够长的已存秘密，不是通用敏感信息识别。实时响应、普通正文、附件、工具输出、短秘密和未知编码仍需用户审阅；脱敏后的捕获也不应默认视为可公开材料。
 
@@ -242,10 +242,10 @@ macOS 使用系统 WebKit 与 Seatbelt；Linux 使用 WebKitGTK，shell 沙箱�
 
 优先复核：
 
-- 请求/Flow 的历史、生产守卫、脚本变量与取消：`crates/pingdeck-app/src/app/tests/{execution.rs,items.rs,environments.rs,secret_hosts.rs}`。
-- 网关认证、协议转换与流失败：`crates/pingdeck-llm/src/llm/gateway/tests.rs`、`fields_tests.rs`。
-- 审批、工作区绑定、队列和文件日志：`crates/pingdeck-app-agent/src/agent_service/tests/`。
-- 同步预览、秘密和导入复核：`crates/pingdeck-app-sync/src/sync/tests.rs`。
+- 请求/Flow 的历史、生产守卫、脚本变量与取消：`crates/spanbay-app/src/app/tests/{execution.rs,items.rs,environments.rs,secret_hosts.rs}`。
+- 网关认证、协议转换与流失败：`crates/spanbay-llm/src/llm/gateway/tests.rs`、`fields_tests.rs`。
+- 审批、工作区绑定、队列和文件日志：`crates/spanbay-app-agent/src/agent_service/tests/`。
+- 同步预览、秘密和导入复核：`crates/spanbay-app-sync/src/sync/tests.rs`。
 - 人工发布走查：[smoke checklist](smoke-checklist.md)；命令与隔离数据要求见[开发指南](../development.md)。
 
 运行限制表由 `npm run check:docs` 对照代码常量检查；其余要求按上面的测试位置与走查收集证据。

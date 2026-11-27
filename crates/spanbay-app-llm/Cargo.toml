@@ -1,0 +1,31 @@
+[package]
+name = "spanbay-app-llm"
+description = "LLM use-cases: providers, keys, models, aliases, the model catalog, the gateway, balance, usage and client-config writers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spanbay-base = { path = "../spanbay-base" }
+spanbay-client-config = { path = "../spanbay-client-config" }
+spanbay-model = { path = "../spanbay-model" }
+spanbay-store = { path = "../spanbay-store" }
+spanbay-llm = { path = "../spanbay-llm" }
+spanbay-app = { path = "../spanbay-app" }
+futures-util.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+spanbay-llm = { path = "../spanbay-llm", features = ["test-support"] }
+spanbay-store = { path = "../spanbay-store", features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lib]
+doctest = false

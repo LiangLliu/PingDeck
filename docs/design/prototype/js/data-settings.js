@@ -1,4 +1,4 @@
-/* PingDeck Prototype — Settings Registry (5 Groups / 20 Real Pages) */
+/* SpanBay Prototype — Settings Registry (5 Groups / 20 Real Pages) */
 window.PD = window.PD || {};
 
 (() => {
@@ -88,7 +88,7 @@ window.PD = window.PD || {};
       group: "请求与数据", title: "数据与同步", changed: 0,
       html: () => [
         sec("本地存储", [
-          row("数据目录（SQLite + 明文保险库 0600）", "所有数据仅存本机，无云端同步与遥测。", `<div class="row-center"><span class="tag mono">42.6 MB</span><button class="btn btn-sm" data-toast="已在访达中打开 ~/Library/Application Support/com.pingdeck.desktop">在访达中打开</button></div>`, "仅这台电脑"),
+          row("数据目录（SQLite + 明文保险库 0600）", "所有数据仅存本机，无云端同步与遥测。", `<div class="row-center"><span class="tag mono">42.6 MB</span><button class="btn btn-sm" data-toast="已在访达中打开 ~/Library/Application Support/com.spanbay.desktop">在访达中打开</button></div>`, "仅这台电脑"),
           row("大正文与附件缓存", "可随时清理缓存文件，不影响集合与环境定义。", `<div class="row-center"><span class="tag mono">11.2 MB</span><button class="btn btn-sm" data-toast="已清理 11.2 MB 正文与附件缓存">清理缓存</button></div>`),
         ].join(""), false),
         sec("历史与对话保留", [
@@ -108,7 +108,7 @@ window.PD = window.PD || {};
           row("默认模型", "新建对话时自动选中的主模型或网关别名。", `<button class="select-pill mono" data-popover="chat-model">deepseek-v4-pro ▾</button>`),
           row("主备用链", "主模型失败或超时后的自动回退顺序。", `<span class="tag mono">kimi-k2.6</span> <span class="text-faint">→</span> <span class="tag mono">claude-sonnet-5-5</span>`),
           row("默认思考力度", "支持推理强度的模型按此默认档位运行。", seg(["自动", "低", "中", "高"], 0)),
-          row("默认项目目录", "新对话自动绑定的工作目录。", `<button class="btn btn-sm" data-toast="已打开默认项目目录选择器">~/me/PingDeck</button>`, "仅这台电脑"),
+          row("默认项目目录", "新对话自动绑定的工作目录。", `<button class="btn btn-sm" data-toast="已打开默认项目目录选择器">~/me/SpanBay</button>`, "仅这台电脑"),
           row("自动命名对话", "首轮对话结束后自动生成简短标题。", sw(true)),
         ].join("")),
         sec("上下文窗口", [
@@ -133,11 +133,11 @@ window.PD = window.PD || {};
     "ai/memory": {
       group: "智能体", title: "项目指令与信任", changed: 0,
       html: () => sec("已信任的项目目录", `
-        <p class="set-row-desc">PingDeck 仅从已明确信任的目录读取项目指令（AGENTS.md / CLAUDE.md）与项目内技能，不做静默跨项目记忆。</p>
+        <p class="set-row-desc">SpanBay 仅从已明确信任的目录读取项目指令（AGENTS.md / CLAUDE.md）与项目内技能，不做静默跨项目记忆。</p>
         <table class="kv-table">
           <thead><tr><th>目录路径</th><th>读取内容</th><th>授权时间</th><th style="width:92px">操作</th></tr></thead>
           <tbody>
-            <tr><td class="mono">~/me/PingDeck</td><td><span class="tag">AGENTS.md</span> <span class="tag">2 项技能</span></td><td class="text-muted">今天 09:10</td><td><button class="btn btn-sm btn-danger" data-toast="已撤销 ~/me/PingDeck 的信任授权" data-toast-tone="warn">撤销信任</button></td></tr>
+            <tr><td class="mono">~/me/SpanBay</td><td><span class="tag">AGENTS.md</span> <span class="tag">2 项技能</span></td><td class="text-muted">今天 09:10</td><td><button class="btn btn-sm btn-danger" data-toast="已撤销 ~/me/SpanBay 的信任授权" data-toast-tone="warn">撤销信任</button></td></tr>
             <tr><td class="mono">~/work/billing-api</td><td><span class="tag">AGENTS.md</span></td><td class="text-muted">3 天前</td><td><button class="btn btn-sm btn-danger" data-toast="已撤销 ~/work/billing-api 的信任授权" data-toast-tone="warn">撤销信任</button></td></tr>
           </tbody>
         </table>`, false, true),
@@ -212,8 +212,8 @@ window.PD = window.PD || {};
         <table class="kv-table">
           <thead><tr><th>技能名称</th><th>来源目录</th><th>触发方式</th></tr></thead>
           <tbody>
-            <tr><td><b>api-contract-audit</b></td><td class="mono">~/.pingdeck/skills</td><td><span class="tag mono">/api-contract-audit</span></td></tr>
-            <tr><td><b>sql-migration-review</b></td><td class="mono">~/me/PingDeck/.skills</td><td><span class="tag">项目信任目录</span></td></tr>
+            <tr><td><b>api-contract-audit</b></td><td class="mono">~/.spanbay/skills</td><td><span class="tag mono">/api-contract-audit</span></td></tr>
+            <tr><td><b>sql-migration-review</b></td><td class="mono">~/me/SpanBay/.skills</td><td><span class="tag">项目信任目录</span></td></tr>
           </tbody>
         </table>`, false, true),
     },
@@ -351,7 +351,7 @@ window.PD = window.PD || {};
           <div class="row-center" style="gap:14px">
             <div style="width:48px;height:48px;border-radius:12px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:19px">P</div>
             <div>
-              <div style="font-size:16px;font-weight:600">PingDeck <span class="tag">Desktop</span></div>
+              <div style="font-size:16px;font-weight:600">SpanBay <span class="tag">Desktop</span></div>
               <div class="fs-xs text-muted">版本 0.1.0 · 本地优先桌面 API 工作台与 AI 网关</div>
               <div class="fs-2xs text-faint">无账号 · 无云同步 · 无遥测</div>
             </div>

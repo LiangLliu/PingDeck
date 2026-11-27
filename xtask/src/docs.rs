@@ -271,8 +271,8 @@ fn check_markdown_files(
         (r"本轮", "本轮"),
         (r"/tmp/", "/tmp/ path"),
         (
-            r"-p pingdeck-app --test",
-            "-p pingdeck-app --test (use -p pingdeck-core)",
+            r"-p spanbay-app --test",
+            "-p spanbay-app --test (use -p spanbay-core)",
         ),
         (r"\.(?:rs|ts|tsx|mjs|md|css):\d+", "file:line reference"),
     ]

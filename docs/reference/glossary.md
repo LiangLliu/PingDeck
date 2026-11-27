@@ -12,11 +12,11 @@
 
 | 概念 | zh-CN | en | 出现在哪 | 不用的叫法 | 规则 |
 | --- | --- | --- | --- | --- | --- |
-| 产品名 | PingDeck | PingDeck | 全局 | Pingdeck、pingdeck（界面里） | 不翻译；两侧与汉字之间加空格 |
+| 产品名 | SpanBay | SpanBay | 全局 | Spanbay、spanbay（界面里） | 不翻译；两侧与汉字之间加空格 |
 | API 支柱 | API 工作台 | API workbench | 文档；侧栏不显示 | API 客户端（指本产品或请求模块时）、API 半区 | 只在文档里称呼请求、Mock 服务、流程、历史、环境这一组；界面组头就是工作区切换器 |
 | AI 支柱 | AI | AI | 侧栏组头、文档 | AI 半区、模型服务（作组名） | 组头写「AI · 所有工作区共用」 |
 | 作用域说明 | 所有工作区共用 | Shared across workspaces | AI 组头、⌘K 结果 | 全局（单独用）、应用级（界面里） | “应用级”只在文档里用 |
-| 工作区 | 工作区 | Workspace | 切换器、确认框、对话头部 | 工作空间、workspace（指对话的磁盘目录时） | 只指 PingDeck 里装集合、环境、Mock、流程、历史的容器；不是磁盘目录，也不是安全隔离 |
+| 工作区 | 工作区 | Workspace | 切换器、确认框、对话头部 | 工作空间、workspace（指对话的磁盘目录时） | 只指 SpanBay 里装集合、环境、Mock、流程、历史的容器；不是磁盘目录，也不是安全隔离 |
 | 搜索或跳转 | 搜索或跳转 | Search or jump | 侧栏顶部、⌘K | 命令面板（界面里）、全局搜索 | 唯一的全局搜索入口；文档里可称“命令面板（⌘K）” |
 | 正在运行 | 正在运行 | Running | 侧栏页脚弹层、退出确认 | 活动、后台任务、旁路任务、任务中心 | 列出全部在跑的工作；“活动”退役（原是服务商里调用列表的名字） |
 | 需要你 | 需要你 | Needs you | 侧栏页脚、对话列表、Dock 徽标 | 等待（单独用）、待处理 | 口径只来自一个 `attentionOf` |
@@ -240,7 +240,7 @@
 1. **一个概念一个词，一个英文原文只对应一个中文译法，反过来也一样。** 新词先进本表，zh 与 en 同时加，再写文案。
 2. **模块名就是它装的名词。** 模块名、标签名不能同时是设置页名或别的标签名；装不下就搬内容，不改名迁就。
 3. **空格：**
-   - 汉字与拉丁字母、代码之间加空格：「用 Mock 服务替身」「`max_tokens` 上限」「PingDeck 不会上传」。
+   - 汉字与拉丁字母、代码之间加空格：「用 Mock 服务替身」「`max_tokens` 上限」「SpanBay 不会上传」。
    - 汉字与数字之间不加：「最近7天」「共12条」「21页」。
    - 数字与拉丁单位之间加：「184 ms」「16 KB」「38 tok/s」。
    - 全角标点前后不加空格。
@@ -250,8 +250,8 @@
    - 模块名、对象名在句子里直接写，不加引号、不加书名号：「打开用量与日志」「这个集合运行失败了」。
    - 指界面上的某个控件或标签时用「」：「点「重新扫描」」。用户输入的值用“”：「删除“Billing platform”？」。
    - 不在 zh 里夹可以翻译的英文名词（Flow、Runner、Globals、Trace、Agent），也不半翻译（Cookie 罐、次元、线路）。
-5. **保留拉丁写法的词：** token、TTFT、TTFB、API、URL、HTTP、GraphQL、JSON、SSE、TLS、Mock、MCP、Cookie、ID。协议名照原样：Chat Completions / Responses / Messages / Gemini / Embeddings。品牌与产品名也照原样：PingDeck、Claude Code、Codex、models.dev。
-6. **不用实现词称呼用户看得见的东西：** 嗅探、内核、核心（作主语）、适配器、注入、旁路任务、名额、别名、session、log（指 LLM 调用时）。要写主语时写 PingDeck。
+5. **保留拉丁写法的词：** token、TTFT、TTFB、API、URL、HTTP、GraphQL、JSON、SSE、TLS、Mock、MCP、Cookie、ID。协议名照原样：Chat Completions / Responses / Messages / Gemini / Embeddings。品牌与产品名也照原样：SpanBay、Claude Code、Codex、models.dev。
+6. **不用实现词称呼用户看得见的东西：** 嗅探、内核、核心（作主语）、适配器、注入、旁路任务、名额、别名、session、log（指 LLM 调用时）。要写主语时写 SpanBay。
 7. **设置路径**一律写「设置 › 组 › 页」，由 `settingsRoute` 生成，不手写。
 8. **称呼用“你”**，不用“您”；不写“抱歉”“请稍后”和感叹号；“请”只用在给出下一步时。
 9. **平台中立**：写“这台电脑”，不写“这台 Mac”；快捷键用 `Mod` 抽象渲染。
@@ -260,7 +260,7 @@
 ### 2.2 en
 
 1. **句首大写（sentence case）**：只有第一个词和专有名词大写，例如 “Mock servers”“Usage and logs”“Call log”“Add to flow…”。导航、标签、按钮都按此写，不用 Title Case。
-2. **句中的产品名词写小写**：“Open the call log”“this mock server”；专有名词、协议名、品牌照原样（PingDeck、Chat Completions、Claude Code）。
+2. **句中的产品名词写小写**：“Open the call log”“this mock server”；专有名词、协议名、品牌照原样（SpanBay、Chat Completions、Claude Code）。
 3. **模块名**：可数的对象写复数（Requests、Mock servers、Flows、Environments、Providers），其余写单数或集合名（History、Chat、Usage and logs、Settings）。
 4. **导航名与页名用 “and”，不用 “&”。**
 5. **美式拼写**：canceled、catalog、summarize、color；按钮写 Retry，不写 Try again；写 Sub-agent。

@@ -1,5 +1,5 @@
 {
-  "about": "Error answers of vendors in the provider presets (Chinese wording and vendor codes), each with the failure kind and scope the rules must give. Read by the failure-rule tests of pingdeck-llm-domain.",
+  "about": "Error answers of vendors in the provider presets (Chinese wording and vendor codes), each with the failure kind and scope the rules must give. Read by the failure-rule tests of spanbay-llm-domain.",
   "cases": [
     {"vendor": "zhipu", "status": 429, "body": "{\"error\":{\"code\":\"1113\",\"message\":\"余额不足或无可用资源包,请充值。\"}}", "kind": "quota", "scope": "key"},
     {"vendor": "zhipu", "status": 429, "body": "{\"error\":{\"code\":\"1302\",\"message\":\"您当前使用该API的并发数过高，请降低并发，或联系客服增加限额。\"}}", "kind": "rate_limit", "scope": "key"},

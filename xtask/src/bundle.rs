@@ -1,9 +1,9 @@
 //! Pure-Rust native desktop packager (`cargo xtask bundle`).
 //!
-//! Produces distributable OS bundles directly from the compiled `pingdeck` GPUI release binary
+//! Produces distributable OS bundles directly from the compiled `spanbay` GPUI release binary
 //! without Node.js or Tauri CLI:
-//! - macOS: `<out>/PingDeck.app` (Info.plist + icon.icns + `Contents/MacOS/pingdeck`)
-//! - Linux: `<out>/pingdeck-linux/` (`bin/pingdeck`, `.desktop` entry, icons)
+//! - macOS: `<out>/SpanBay.app` (Info.plist + icon.icns + `Contents/MacOS/spanbay`)
+//! - Linux: `<out>/spanbay-linux/` (`bin/spanbay`, `.desktop` entry, icons)
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,7 +13,7 @@ use crate::version::parse_cargo_workspace_version;
 use crate::{err_line, out_line};
 
 const USAGE: &str = "usage: cargo xtask bundle [--binary <path>] [--out <dir>] [--target <triple>]";
-const BUNDLE_ID: &str = "com.pingdeck.desktop";
+const BUNDLE_ID: &str = "com.spanbay.desktop";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundleConfig {
@@ -23,7 +23,7 @@ pub struct BundleConfig {
     pub target: Option<String>,
 }
 
-/// Generates macOS `Contents/Info.plist` for `PingDeck.app`.
+/// Generates macOS `Contents/Info.plist` for `SpanBay.app`.
 #[must_use]
 pub fn render_macos_info_plist(version: &str) -> String {
     format!(
@@ -34,9 +34,9 @@ pub fn render_macos_info_plist(version: &str) -> String {
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>PingDeck</string>
+  <string>SpanBay</string>
   <key>CFBundleExecutable</key>
-  <string>pingdeck</string>
+  <string>spanbay</string>
   <key>CFBundleIconFile</key>
   <string>icon.icns</string>
   <key>CFBundleIdentifier</key>
@@ -44,7 +44,7 @@ pub fn render_macos_info_plist(version: &str) -> String {
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>PingDeck</string>
+  <string>SpanBay</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -69,19 +69,19 @@ pub fn render_linux_desktop_entry(version: &str) -> String {
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
-         Name=PingDeck\n\
+         Name=SpanBay\n\
          Comment=Local-first API Workbench, AI Gateway & Coding Agent\n\
-         Exec=pingdeck\n\
-         Icon=pingdeck\n\
+         Exec=spanbay\n\
+         Icon=spanbay\n\
          Terminal=false\n\
          Categories=Development;Network;\n\
-         StartupWMClass=pingdeck\n\
+         StartupWMClass=spanbay\n\
          X-AppImage-Version={version}\n"
     )
 }
 
 fn package_macos(root: &Path, cfg: &BundleConfig) -> Result<PathBuf, String> {
-    let app_dir = cfg.out_dir.join("PingDeck.app");
+    let app_dir = cfg.out_dir.join("SpanBay.app");
     let macos_dir = app_dir.join("Contents/MacOS");
     let res_dir = app_dir.join("Contents/Resources");
     if app_dir.exists() {
@@ -93,7 +93,7 @@ fn package_macos(root: &Path, cfg: &BundleConfig) -> Result<PathBuf, String> {
     fs::create_dir_all(&res_dir)
         .map_err(|e| format!("failed to create {}: {e}", res_dir.display()))?;
 
-    let dst_bin = macos_dir.join("pingdeck");
+    let dst_bin = macos_dir.join("spanbay");
     fs::copy(&cfg.binary, &dst_bin).map_err(|e| {
         format!(
             "failed to copy {} -> {}: {e}",
@@ -124,7 +124,7 @@ fn package_macos(root: &Path, cfg: &BundleConfig) -> Result<PathBuf, String> {
 }
 
 fn package_linux(root: &Path, cfg: &BundleConfig) -> Result<PathBuf, String> {
-    let stage = cfg.out_dir.join("pingdeck-linux");
+    let stage = cfg.out_dir.join("spanbay-linux");
     let bin_dir = stage.join("bin");
     let app_dir = stage.join("share/applications");
     let icon_dir = stage.join("share/icons/hicolor/128x128/apps");
@@ -135,7 +135,7 @@ fn package_linux(root: &Path, cfg: &BundleConfig) -> Result<PathBuf, String> {
     for dir in [&bin_dir, &app_dir, &icon_dir] {
         fs::create_dir_all(dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
     }
-    let dst_bin = bin_dir.join("pingdeck");
+    let dst_bin = bin_dir.join("spanbay");
     fs::copy(&cfg.binary, &dst_bin).map_err(|e| {
         format!(
             "failed to copy {} -> {}: {e}",
@@ -151,11 +151,11 @@ fn package_linux(root: &Path, cfg: &BundleConfig) -> Result<PathBuf, String> {
     }
     let icon = root.join("assets/icons/128x128.png");
     if icon.exists() {
-        fs::copy(&icon, icon_dir.join("pingdeck.png"))
+        fs::copy(&icon, icon_dir.join("spanbay.png"))
             .map_err(|e| format!("failed to copy {}: {e}", icon.display()))?;
     }
     fs::write(
-        app_dir.join("com.pingdeck.desktop.desktop"),
+        app_dir.join("com.spanbay.desktop.desktop"),
         render_linux_desktop_entry(&cfg.version),
     )
     .map_err(|e| format!("failed to write .desktop entry: {e}"))?;
@@ -215,16 +215,16 @@ pub fn run(root: &Path, args: &[String]) -> ExitCode {
         None => root.join("target/release"),
     };
     let binary = binary.unwrap_or_else(|| {
-        let primary = release_dir.join("pingdeck");
+        let primary = release_dir.join("spanbay");
         if primary.exists() {
             primary
         } else {
-            release_dir.join("pingdeck-gpui")
+            release_dir.join("spanbay-gpui")
         }
     });
     if !binary.exists() {
         err_line(&format!(
-            "FAIL: release binary not found at {} (run `cargo build --release -p pingdeck-gpui --locked` first)",
+            "FAIL: release binary not found at {} (run `cargo build --release -p spanbay-gpui --locked` first)",
             binary.display()
         ));
         return ExitCode::FAILURE;
@@ -267,12 +267,12 @@ mod tests {
     #[test]
     fn renders_valid_macos_plist_and_linux_desktop() {
         let plist = render_macos_info_plist("1.2.3");
-        assert!(plist.contains("<string>com.pingdeck.desktop</string>"));
+        assert!(plist.contains("<string>com.spanbay.desktop</string>"));
         assert!(plist.contains("<string>1.2.3</string>"));
-        assert!(plist.contains("<string>pingdeck</string>"));
+        assert!(plist.contains("<string>spanbay</string>"));
 
         let desktop = render_linux_desktop_entry("1.2.3");
-        assert!(desktop.contains("Exec=pingdeck"));
+        assert!(desktop.contains("Exec=spanbay"));
         assert!(desktop.contains("X-AppImage-Version=1.2.3"));
     }
 }

@@ -105,7 +105,7 @@
   "mock.tab_ops.e_g_api_v1_blank": "例如 /api/v1，留空表示根路径。",
   "mock.tab_ops.endpoint_prefix": "端点前缀",
   "mock.tab_ops.export": "导出…",
-  "mock.tab_ops.export_pingdeck_json": "导出为 PingDeck JSON",
+  "mock.tab_ops.export_spanbay_json": "导出为 SpanBay JSON",
   "mock.tab_ops.find_free": "推荐端口",
   "mock.tab_ops.forwards_unmatched_requests_to_the": "开启后未匹配路由的请求会透传至目标服务器，并可录制为本地路由。",
   "mock.tab_ops.import_export": "导入与导出",

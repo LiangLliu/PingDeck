@@ -1,0 +1,28 @@
+[package]
+name = "spanbay-store"
+description = "SQLite schema ownership (single baseline schema, user_version = DDL fingerprint), typed workspace/agent/LLM repository, secret vault and attachment CAS."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Exposes `*_for_test` helpers and test fixtures to other crates' tests; never enabled by a release build.
+test-support = []
+
+[dependencies]
+spanbay-base = { path = "../spanbay-base" }
+spanbay-client-config = { path = "../spanbay-client-config" }
+spanbay-llm-domain = { path = "../spanbay-llm-domain" }
+spanbay-model = { path = "../spanbay-model" }
+flate2.workspace = true
+memchr.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lib]
+doctest = false

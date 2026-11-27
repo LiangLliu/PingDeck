@@ -3,7 +3,7 @@ description: Start an isolated Xvfb/openbox session on Linux, run scripts/smoke.
 
 inputs:
   binary:
-    description: Path to the PingDeck release binary to smoke-test.
+    description: Path to the SpanBay release binary to smoke-test.
     required: true
   artifact-suffix:
     description: Suffix for the uploaded failure log artifact name.
@@ -44,12 +44,12 @@ runs:
         xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id #' || { echo "FAIL: openbox did not become ready" >&2; exit 1; }
         vulkaninfo --summary 2>&1 || true
 
-    # smoke.sh creates its own mktemp HOME (and CFFIXED_USER_HOME, XDG_*), drops PINGDECK_DATA_DIR
-    # and client config env vars, and copies app.log + pingdeck.log to PINGDECK_SMOKE_LOG before cleanup.
+    # smoke.sh creates its own mktemp HOME (and CFFIXED_USER_HOME, XDG_*), drops SPANBAY_DATA_DIR
+    # and client config env vars, and copies app.log + spanbay.log to SPANBAY_SMOKE_LOG before cleanup.
     - name: Execute release smoke test
       shell: bash
       env:
-        PINGDECK_SMOKE_LOG: ${{ runner.temp }}/smoke-app.log
+        SPANBAY_SMOKE_LOG: ${{ runner.temp }}/smoke-app.log
       run: scripts/smoke.sh "${{ inputs.binary }}"
 
     - name: Stop virtual display and window manager (Linux)

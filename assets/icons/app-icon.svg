@@ -1,9 +1,9 @@
 <!--
-  PingDeck app icon master. Regenerate platform icons with npm run icons.
-  macOS uses this 1024 canvas; Windows and Linux use a tighter derived crop.
+  SpanBay app icon master.
+  macOS uses this 1024 canvas; Windows and Linux use derived raster exports.
   Body: 832px continuous-corner square (radius 216) centred on 1024.
   No shadow is drawn outside the body.
-  Mark: a "p" whose bowl is a ping: stem, ring, cobalt origin dot (PingMark).
+  Mark: three staggered horizontal span capsules + cobalt origin dot (SpanMark).
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
@@ -16,12 +16,10 @@
   <path fill="url(#body)" d="M928 512v85.81c0 95.08 0 142.61-16.18 193.79-20.34 55.87-64.35 99.88-120.22 120.22C740.42 928 692.89 928 597.81 928H426.19c-95.08 0-142.61 0-193.79-16.18-55.87-20.34-99.88-64.35-120.22-120.22C96 740.42 96 692.89 96 597.81V426.19c0-95.08 0-142.61 16.18-193.79 20.34-55.87 64.35-99.88 120.22-120.22C283.58 96 331.11 96 426.19 96h171.62c95.08 0 142.61 0 193.79 16.18 55.87 20.34 99.88 64.35 120.22 120.22C928 283.58 928 331.11 928 426.19Z"/>
   <!-- hairline rim so the dark body keeps its edge on a dark Dock or taskbar -->
   <path fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="10" clip-path="url(#clip)" d="M928 512v85.81c0 95.08 0 142.61-16.18 193.79-20.34 55.87-64.35 99.88-120.22 120.22C740.42 928 692.89 928 597.81 928H426.19c-95.08 0-142.61 0-193.79-16.18-55.87-20.34-99.88-64.35-120.22-120.22C96 740.42 96 692.89 96 597.81V426.19c0-95.08 0-142.61 16.18-193.79 20.34-55.87 64.35-99.88 120.22-120.22C283.58 96 331.11 96 426.19 96h171.62c95.08 0 142.61 0 193.79 16.18 55.87 20.34 99.88 64.35 120.22 120.22C928 283.58 928 331.11 928 426.19Z"/>
-  <g transform="translate(72.9 61.4) scale(0.880)">
   <g fill="#fff">
-    <rect x="282" y="236" width="104" height="552" rx="52"/>
-    <path fill-rule="evenodd" d="M520 236a196 196 0 1 1 0 392a196 196 0 1 1 0-392zm0 98a98 98 0 1 0 0 196a98 98 0 1 0 0-196z"/>
+    <rect x="428" y="280" width="332" height="120" rx="60"/>
+    <rect x="264" y="452" width="496" height="120" rx="60"/>
+    <rect x="264" y="624" width="332" height="120" rx="60"/>
   </g>
-  <circle cx="520" cy="432" r="54" fill="#5C8BFF"/>
-
-  </g>
+  <circle cx="324" cy="340" r="60" fill="#5C8BFF"/>
 </svg>

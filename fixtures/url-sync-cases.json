@@ -1,5 +1,5 @@
 {
-  "description": "Language-neutral cases for the request URL sync (crates/pingdeck-core/src/app/request_model_service/url_sync.rs). Each case: inputs plus `expected`. Rows are {key,value,enabled}. Generated from the Rust core, cross-checked against the former TypeScript (src/state/tabs/draft.ts); the module docs list the deliberate differences. Consumed by crates/pingdeck-core/tests/url_sync_fixture.rs and src/api/logic/requestModel.test.ts.",
+  "description": "Language-neutral cases for the request URL sync (crates/spanbay-core/src/app/request_model_service/url_sync.rs). Each case: inputs plus `expected`. Rows are {key,value,enabled}. Generated from the Rust core, cross-checked against the former TypeScript (src/state/tabs/draft.ts); the module docs list the deliberate differences. Consumed by crates/spanbay-core/tests/url_sync_fixture.rs and src/api/logic/requestModel.test.ts.",
   "merge_path_variables": [
     {
       "url": "https://x/:id/:name",
@@ -1682,7 +1682,7 @@
         "auth": "Inherit",
         "body": {
           "Graphql": {
-            "query": "query PingDeck {\n  __typename\n}",
+            "query": "query SpanBay {\n  __typename\n}",
             "variables_json": null,
             "operation_name": null
           }

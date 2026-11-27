@@ -1,5 +1,5 @@
 //! Verifies that `docs/product/PRD.md`'s `#### Run limits (normative)` table mirrors
-//! `crates/pingdeck-agent/src/agent/limits.rs` constants and keeps its normative anchor sentence.
+//! `crates/spanbay-agent/src/agent/limits.rs` constants and keeps its normative anchor sentence.
 
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ use regex::Regex;
 use crate::docs::{FailFn, RepoView};
 
 pub const PRD: &str = "docs/product/PRD.md";
-pub const LIMITS_RS: &str = "crates/pingdeck-agent/src/agent/limits.rs";
+pub const LIMITS_RS: &str = "crates/spanbay-agent/src/agent/limits.rs";
 /// First sentence of the paragraph that must immediately follow the table.
 pub const PRD_ANCHOR: &str =
     "A run that is waiting for an approval does not hold one of the concurrent slots.";

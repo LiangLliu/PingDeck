@@ -113,7 +113,7 @@ fn placeholders(value: &str, re: &Regex) -> Vec<String> {
 }
 
 /// Removes literal `{{...}}` template examples (e.g. `{{variable}}`) so placeholder checks only
-/// inspect real `{name}` interpolation holes, matching `crates/pingdeck-desktop/build.rs`.
+/// inspect real `{name}` interpolation holes, matching `crates/spanbay-desktop/build.rs`.
 fn strip_double_brace_templates(value: &str) -> String {
     let bytes = value.as_bytes();
     let len = bytes.len();
@@ -139,7 +139,7 @@ fn strip_double_brace_templates(value: &str) -> String {
 }
 
 /// Converts a locale key suffix into its generated Rust method identifier.
-/// Must stay in sync with `crates/pingdeck-desktop/build.rs::to_snake_ident`.
+/// Must stay in sync with `crates/spanbay-desktop/build.rs::to_snake_ident`.
 fn to_snake_ident(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len() + 8);
     let chars: Vec<char> = raw.chars().collect();
@@ -242,7 +242,7 @@ fn is_rust_keyword(s: &str) -> bool {
     )
 }
 
-/// Keys legitimately looked up dynamically via `pingdeck_desktop::i18n::lookup`.
+/// Keys legitimately looked up dynamically via `spanbay_desktop::i18n::lookup`.
 fn is_dynamic_allowlisted(area: &str, key: &str) -> bool {
     if area != "settings" {
         return false;
@@ -502,7 +502,7 @@ fn collect_source_usage_and_check_hardcoding(
         AREAS.iter().map(|a| (a.dir, a.dir)).collect();
 
     let mut files = Vec::new();
-    for rel_dir in ["crates/pingdeck-desktop/src", "crates/pingdeck-gpui/src"] {
+    for rel_dir in ["crates/spanbay-desktop/src", "crates/spanbay-gpui/src"] {
         let dir = root.join(rel_dir);
         if dir.exists() {
             collect_rs_files(&dir, &mut files);
@@ -513,7 +513,7 @@ fn collect_source_usage_and_check_hardcoding(
     for file in files {
         let rel = file.strip_prefix(root).unwrap_or(&file);
         let rel_str = rel.to_string_lossy().replace('\\', "/");
-        if rel_str.starts_with("crates/pingdeck-desktop/src/i18n/")
+        if rel_str.starts_with("crates/spanbay-desktop/src/i18n/")
             || rel_str.ends_with("/ui_tests.rs")
         {
             continue;

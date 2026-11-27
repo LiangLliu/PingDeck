@@ -1,0 +1,24 @@
+[package]
+name = "spanbay-model"
+description = "The vocabulary every SpanBay crate shares: requests, collections, environments, agent sessions, settings, LLM wire types and the DTOs that cross a layer boundary. No I/O."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+[dependencies]
+spanbay-base = { path = "../spanbay-base" }
+spanbay-response = { path = "../spanbay-response" }
+chrono.workspace = true
+httpdate.workspace = true
+psl.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[lib]
+doctest = false
