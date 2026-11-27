@@ -120,6 +120,9 @@ pub struct KeyBook {
     /// Test clock offset: tests move time forward instead of sleeping.
     #[cfg(test)]
     skew_ms: std::sync::atomic::AtomicU64,
+    /// Optional frozen base timestamp for deterministic unit tests.
+    #[cfg(test)]
+    fixed_now_ms: Option<i64>,
 }
 
 fn millis(duration: Duration) -> i64 {
@@ -144,8 +147,21 @@ impl KeyBook {
         Self::default()
     }
 
+    /// An empty book with a deterministic frozen clock (advances only via [`KeyBook::advance`]).
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_fixed_clock(base_ms: i64) -> Self {
+        Self {
+            fixed_now_ms: Some(base_ms),
+            ..Self::default()
+        }
+    }
+
     /// The current wall clock in Unix ms; tests shift it with [`KeyBook::advance`].
     fn now_ms(&self) -> i64 {
+        #[cfg(test)]
+        let now = self.fixed_now_ms.unwrap_or_else(now_ms);
+        #[cfg(not(test))]
         let now = now_ms();
         #[cfg(test)]
         let now = now.saturating_add(

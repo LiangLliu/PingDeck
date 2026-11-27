@@ -306,6 +306,12 @@ pub struct HealthBook {
     /// Test clock offset: tests move time forward instead of sleeping.
     #[cfg(any(test, feature = "test-support"))]
     skew_ms: std::sync::atomic::AtomicU64,
+    /// Optional frozen monotonic base for deterministic unit tests.
+    #[cfg(any(test, feature = "test-support"))]
+    fixed_now: Option<Instant>,
+    /// Optional frozen wall-clock base (Unix ms) paired with `fixed_now`.
+    #[cfg(any(test, feature = "test-support"))]
+    fixed_wall_ms: Option<i64>,
 }
 
 fn average(previous: f64, sample: f64, first: bool) -> f64 {
@@ -350,6 +356,17 @@ impl HealthBook {
         Self::default()
     }
 
+    /// An empty book with a deterministic frozen clock (advances only via [`HealthBook::advance`]).
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_fixed_clock() -> Self {
+        Self {
+            fixed_now: Some(Instant::now()),
+            fixed_wall_ms: Some(1_700_000_000_000),
+            ..Self::default()
+        }
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     fn skew(&self) -> Duration {
         Duration::from_millis(self.skew_ms.load(std::sync::atomic::Ordering::Relaxed))
@@ -357,20 +374,25 @@ impl HealthBook {
 
     /// The current instant; tests shift it with [`HealthBook::advance`].
     fn now(&self) -> Instant {
-        let now = Instant::now();
         #[cfg(any(test, feature = "test-support"))]
-        let now = now + self.skew();
+        let now = self.fixed_now.unwrap_or_else(Instant::now) + self.skew();
+        #[cfg(not(any(test, feature = "test-support")))]
+        let now = Instant::now();
         now
     }
 
     /// The current wall clock in Unix ms, shifted like [`HealthBook::now`].
     fn wall_ms(&self) -> i64 {
-        let now = pingdeck_base::time::now_ms();
         #[cfg(any(test, feature = "test-support"))]
-        let now = now.saturating_add(
-            i64::try_from(self.skew_ms.load(std::sync::atomic::Ordering::Relaxed))
-                .unwrap_or(i64::MAX),
-        );
+        let now = self
+            .fixed_wall_ms
+            .unwrap_or_else(pingdeck_base::time::now_ms)
+            .saturating_add(
+                i64::try_from(self.skew_ms.load(std::sync::atomic::Ordering::Relaxed))
+                    .unwrap_or(i64::MAX),
+            );
+        #[cfg(not(any(test, feature = "test-support")))]
+        let now = pingdeck_base::time::now_ms();
         now
     }
 

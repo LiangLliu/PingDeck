@@ -6,7 +6,7 @@
 
 Rust 版本由 `rust-toolchain.toml` 固定，含 `clippy` 与 `rustfmt`；应用完全由纯 Rust（GPUI + `gpui-kit`）构建，不依赖 Node.js。
 
-Linux 需安装 X11/Wayland/Vulkan/XKB/Fontconfig 开发包（详见 `.github/actions/setup-linux-deps/action.yml`）。冒烟需要 `sqlite3` 与 `curl`，Linux 退出步骤需要 `wmctrl` 或 `xvfb-run`。
+Linux 需安装 X11/Wayland/Vulkan/XKB/Fontconfig 开发包（详见 `.github/actions/setup-linux-deps/action.yml`）。冒烟需要 `sqlite3` 与 `curl`，Linux 退出步骤需要 `xdotool`（或 `wmctrl`）与 `xvfb-run`。
 
 启动之前先定数据目录：
 
@@ -92,12 +92,10 @@ workspace 三件套是 `cargo fmt --all -- --check`、`cargo clippy --workspace 
 
 `cargo xtask docs` 依次跑 `xtask/src/docs.rs`（链接、锚点、章节引用、路径、运行限制表）与 `xtask/src/docs_lint.rs`（文风零误差检查），修改 `xtask` 后跑 `cargo test -p xtask --locked`。
 
-CI/CD 为 100% 纯 Rust 四层管线，共用 `.github/actions/` 下的复合动作。Rust 测试在 CI 里用 cargo-nextest（`.config/nextest.toml`），本机用 `cargo test`：
+CI/CD 为 100% 纯 Rust 双管线（统一 CI + 独立 Release），共用 `.github/actions/` 下的复合动作。Rust 测试在 CI 里用 cargo-nextest（`.config/nextest.toml`），本机用 `cargo test`：
 
-- `ci.yml`（每个 PR 与推到 main/master）：PR 按路径分流，并行跑静态与架构检查（`fmt`、`check-version`、`check-arch`、`check-i18n`、`check-tokens`、`docs`）、供应链审计（`cargo-deny`）、双平台 `clippy`、`nextest`（Linux 启用 bubblewrap）与无头 GPUI 集成测试，最后由 `ci-gate` 汇总。
-- `main.yml`（推到 main/master 与手动）：macOS 与 Linux 并行编译发布版 `pingdeck` 并执行 `scripts/smoke.sh`，同时并行跑 macOS 全量 `nextest` 与 Linux 规范 `cargo test`。
-- `nightly.yml`（每天与手动）：双平台跑全量、被忽略测试、发布态 10 MiB 响应格式化预算测试、发布态 GPUI 10 MiB Rope 与万行虚拟表压测，以及 `cargo deny`/`cargo audit`/`cargo machete` 审计。
-- `release.yml`（`v*.*.*` 标签与手动预演）：核对清单与标签版本后，并行编译 macOS（arm64、x64）与 Linux（x64）发布二进制，经 `cargo xtask bundle` 打包并通过 `scripts/smoke.sh` 冒烟，生成校验和并创建草稿 Release。
+- `ci.yml`（统一 CI 管线）：PR 按路径分流，并行跑 `xtask` 静态守卫、`cargo-deny`、双平台 `clippy`、`nextest` 与无头 GPUI 集成测试。推到 `main`/`master` 时补齐双平台全量 `nextest` 与发布版 `scripts/smoke.sh` 冒烟；每日定时追加忽略测试、10 MiB 发布压测与 `cargo audit`/`cargo machete`，最终由 `ci-gate` 汇总。
+- `release.yml`（独立发布管线，`v*.*.*` 标签与手动预演）：核对版本号后并行编译 macOS（arm64、x64）与 Linux（x64），经 `cargo xtask bundle` 打包并通过 `scripts/smoke.sh` 冒烟，生成校验和并创建草稿 Release。
 
 ## 3. 测试、性能与压测
 

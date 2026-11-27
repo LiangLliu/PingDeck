@@ -1,17 +1,28 @@
 name: CI
 
-# Tier 1 of 4 (docs/development.md §2.4): 100% pure-Rust parallel PR & main CI.
-#   changes -> fast-checks | supply-chain | rust-clippy (Linux, macOS)
-#              | rust-nextest (Linux+bwrap, macOS) | gpui-ui-tests (macOS, Linux)
-#           -> ci-gate (single required status check for branch protection).
+# Unified pure-Rust CI pipeline (docs/development.md §2.4):
+# - PR: path-filtered static checks, cargo-deny, dual-OS clippy, Linux full + macOS targeted nextest,
+#   and dual-OS headless GPUI UI tests.
+# - Push to main/master: full dual-OS clippy, full dual-OS nextest, dual-OS headless GPUI UI tests,
+#   and dual-OS release binary smoke tests.
+# - Nightly schedule (or manual `run_nightly`): additionally runs ignored tests, release 10 MiB
+#   budgets/benchmarks, cargo-audit, and cargo-machete.
+# - Release packaging & GitHub Releases live separately in `.github/workflows/release.yml`.
 on:
   push:
     branches: [main, master]
   pull_request:
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      run_nightly:
+        description: Also run nightly ignored tests, release 10 MiB budgets, and cargo-audit/machete
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -30,7 +41,8 @@ jobs:
       docs: ${{ steps.resolve.outputs.docs }}
       assets: ${{ steps.resolve.outputs.assets }}
       rust: ${{ steps.resolve.outputs.rust }}
-      rust_lock: ${{ steps.resolve.outputs.rust_lock }}
+      smoke: ${{ steps.resolve.outputs.smoke }}
+      nightly: ${{ steps.resolve.outputs.nightly }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -67,12 +79,8 @@ jobs:
               - 'tokens/**'
               - 'locales/**'
               - 'fixtures/**'
+              - 'scripts/**'
               - '.github/**'
-            rust_lock:
-              - 'Cargo.lock'
-              - 'about.toml'
-              - 'about.hbs'
-              - 'assets/licenses/rust.txt'
       - name: Resolve final flags
         id: resolve
         shell: bash
@@ -82,12 +90,20 @@ jobs:
             echo "docs=true" >> "$GITHUB_OUTPUT"
             echo "assets=true" >> "$GITHUB_OUTPUT"
             echo "rust=true" >> "$GITHUB_OUTPUT"
-            echo "rust_lock=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=${{ steps.filter.outputs.docs }}" >> "$GITHUB_OUTPUT"
             echo "assets=${{ steps.filter.outputs.assets }}" >> "$GITHUB_OUTPUT"
             echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
-            echo "rust_lock=${{ steps.filter.outputs.rust_lock }}" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "smoke=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.run_nightly }}" = "true" ]; then
+            echo "nightly=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "nightly=false" >> "$GITHUB_OUTPUT"
           fi
 
   fast-checks:
@@ -129,7 +145,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
@@ -138,6 +154,18 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories bans sources
+      - name: Set up Rust (nightly audit tools)
+        if: needs.changes.outputs.nightly == 'true'
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key: audit-rust
+          tools: cargo-audit,cargo-machete
+      - name: RustSec advisory audit (cargo-audit)
+        if: needs.changes.outputs.nightly == 'true' && !cancelled()
+        run: cargo audit
+      - name: Unused dependency check (cargo-machete)
+        if: needs.changes.outputs.nightly == 'true' && !cancelled()
+        run: cargo machete
 
   rust-clippy:
     name: Rust clippy (${{ matrix.os }})
@@ -164,21 +192,21 @@ jobs:
       - name: GPUI UI test-support clippy
         run: cargo clippy -p pingdeck-gpui --features test-support --all-targets --locked -- -D warnings
 
-  rust-nextest:
+  rust-tests:
     name: Rust tests (${{ matrix.os }})
     needs: [changes]
     if: needs.changes.outputs.rust == 'true'
-    timeout-minutes: 30
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             bubblewrap: "true"
-            nextest: --workspace
+            pr_nextest: --workspace
           - os: macos-latest
             bubblewrap: "false"
-            nextest: -p pingdeck-agent -p pingdeck-base -p pingdeck-executor -p pingdeck-desktop
+            pr_nextest: -p pingdeck-agent -p pingdeck-base -p pingdeck-executor -p pingdeck-desktop
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -195,7 +223,17 @@ jobs:
           cache-key: nextest
           tools: cargo-nextest
       - name: Run cargo-nextest
-        run: cargo nextest run --locked --profile ci ${{ matrix.nextest }}
+        shell: bash
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          PR_NEXTEST: ${{ matrix.pr_nextest }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_PR" = "true" ]; then
+            cargo nextest run --locked --profile ci $PR_NEXTEST
+          else
+            cargo nextest run --locked --profile ci --workspace
+          fi
       - name: Upload JUnit
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
@@ -204,6 +242,15 @@ jobs:
           path: target/nextest/ci/junit.xml
           retention-days: 14
           if-no-files-found: ignore
+      - name: Run ignored tests (nightly)
+        if: needs.changes.outputs.nightly == 'true' && !cancelled()
+        run: cargo nextest run --workspace --locked --profile ci --run-ignored only --no-tests=warn
+      - name: Run release 10 MiB response formatting budget (nightly)
+        if: needs.changes.outputs.nightly == 'true' && !cancelled()
+        run: cargo test -p pingdeck-response --release --locked -- --ignored ten_mib --nocapture
+      - name: Run release GPUI native 10 MiB Rope & 10k table bench (nightly)
+        if: needs.changes.outputs.nightly == 'true' && !cancelled()
+        run: cargo test -p pingdeck-gpui --release --features test-support --locked -- --test-threads=2 --nocapture
 
   gpui-ui-tests:
     name: Headless GPUI UI tests (${{ matrix.os }})
@@ -228,6 +275,34 @@ jobs:
       - name: Run headless GPUI integration suite
         run: cargo test -p pingdeck-gpui --features test-support --locked -- --test-threads=2
 
+  release-smoke:
+    name: Release smoke (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.smoke == 'true'
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-linux-deps
+        with:
+          gpui: "true"
+          smoke: "true"
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: release-smoke
+      - name: Build pure-Rust GPUI release binary
+        run: cargo build --release -p pingdeck-gpui --locked
+      - uses: ./.github/actions/run-smoke
+        with:
+          binary: target/release/pingdeck
+          artifact-suffix: ci-${{ matrix.os }}
+
   ci-gate:
     name: CI Gate
     if: always()
@@ -236,8 +311,9 @@ jobs:
       - fast-checks
       - supply-chain
       - rust-clippy
-      - rust-nextest
+      - rust-tests
       - gpui-ui-tests
+      - release-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

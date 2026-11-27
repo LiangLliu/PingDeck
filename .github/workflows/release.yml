@@ -1,6 +1,6 @@
 name: Release
 
-# Tier 4 of 4 (docs/development.md §2.4): 100% pure-Rust desktop packaging & draft release CD pipeline.
+# Release pipeline (docs/development.md §2.4): 100% pure-Rust desktop packaging & draft release CD.
 # Uses `cargo build --release -p pingdeck-gpui` + `cargo xtask bundle` (zero Node / zero Tauri CLI).
 on:
   push:

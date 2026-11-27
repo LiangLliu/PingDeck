@@ -38,10 +38,10 @@ runs:
         openbox_pid=$!
         echo "SMOKE_OPENBOX_PID=${openbox_pid}" >> "$GITHUB_ENV"
         for _ in $(seq 1 50); do
-          wmctrl -m >/dev/null 2>&1 && break
+          xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id #' && break
           sleep 0.2
         done
-        wmctrl -m >/dev/null 2>&1 || { echo "FAIL: openbox did not become ready" >&2; exit 1; }
+        xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id #' || { echo "FAIL: openbox did not become ready" >&2; exit 1; }
         vulkaninfo --summary 2>&1 || true
 
     # smoke.sh creates its own mktemp HOME (and CFFIXED_USER_HOME, XDG_*), drops PINGDECK_DATA_DIR

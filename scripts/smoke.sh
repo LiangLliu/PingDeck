@@ -16,8 +16,9 @@
 #   5 macOS: pure-Rust GPUI runtime creates zero WebKit website data (neither real nor isolated)
 # The expected schema version comes from `cargo xtask schema-fingerprint` (the binary must be built from these sources).
 # Graceful quit = NSRunningApplication.terminate on macOS (what Cmd+Q does; a plain SIGTERM exits 143, the app installs no
-# signal handler); on Linux `wmctrl -ic <window>` (needs wmctrl and a display; xvfb-run is used when there is none). When
-# no graceful method exists the step is reported SKIPPED and the app is stopped with SIGTERM.
+# signal handler); on Linux `xdotool windowclose <window>` (or `wmctrl -ic <window>` fallback; needs xdotool/wmctrl and a
+# display; xvfb-run is used when there is none). When no graceful method exists the step is reported SKIPPED and the app is
+# stopped with SIGTERM.
 #
 # Exit codes: 0 every step passed (skipped steps are listed), 1 a step failed or the binary/tools are absent.
 
@@ -30,7 +31,7 @@ OS=$(uname -s)
 
 DB_TIMEOUT_S=40     # database file and schema version after the first launch
 HEALTH_TIMEOUT_S=30 # gateway auto-start after the seeded launch
-WINDOW_TIMEOUT_S=20 # X11 window mapping before wmctrl graceful quit on Linux
+WINDOW_TIMEOUT_S=20 # X11 window mapping before graceful window close on Linux
 QUIT_TIMEOUT_S=20   # process exit after a graceful quit
 SETTLE_S=3          # a launch that survives this long counts as started
 SCHEMA_SETTLE_S=1   # let the first launch finish its startup writes after the schema appears
@@ -125,24 +126,46 @@ quit_app() { # graceful quit; sets QUIT_CODE (empty when skipped) and QUIT_ERR (
   case "$OS" in
     Darwin) osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSRunningApplication.runningApplicationWithProcessIdentifier($PID).terminate" >>"$H/app.log" 2>&1 ;;
     Linux)
-      if ! command -v wmctrl >/dev/null; then
-        skip "graceful quit (wmctrl missing)"; kill -TERM "$PID"; wait "$PID" 2>/dev/null; return 0
+      local closer=""
+      if command -v xdotool >/dev/null; then
+        closer="xdotool"
+      elif command -v wmctrl >/dev/null; then
+        closer="wmctrl"
+      else
+        skip "graceful quit (xdotool/wmctrl missing)"; kill -TERM "$PID"; wait "$PID" 2>/dev/null; return 0
       fi
       local w="" end=$((SECONDS + WINDOW_TIMEOUT_S))
       while alive; do
-        w=$(wmctrl -lp 2>/dev/null | awk -v p="$PID" '$3 == p { print $1; exit }')
+        if [ "$closer" = "xdotool" ]; then
+          w=$(xdotool search --onlyvisible --pid "$PID" 2>/dev/null | head -n 1 || true)
+          if [ -z "$w" ] && command -v xprop >/dev/null; then
+            local cand cpid
+            for cand in $(xprop -root _NET_CLIENT_LIST 2>/dev/null | sed -n 's/.*# //p' | tr ',' ' '); do
+              cpid=$(xprop -id "$cand" _NET_WM_PID 2>/dev/null | awk '/= /{print $NF; exit}')
+              if [ "$cpid" = "$PID" ]; then w="$cand"; break; fi
+            done
+          fi
+        else
+          w=$(wmctrl -lp 2>/dev/null | awk -v p="$PID" '$3 == p { print $1; exit }')
+        fi
         [ -n "$w" ] && break
         [ "$SECONDS" -ge "$end" ] && break
         sleep "$POLL_S"
       done
       if [ -z "$w" ]; then
         {
-          echo "[smoke] wmctrl -lp snapshot (wanted pid $PID):"
-          wmctrl -lp 2>&1 || true
+          echo "[smoke] X11 window discovery failed (tool=$closer, wanted pid $PID):"
+          command -v xdotool >/dev/null && { echo "--- xdotool search --pid $PID ---"; xdotool search --pid "$PID" 2>&1 || true; }
+          command -v xprop >/dev/null && { echo "--- xprop -root _NET_CLIENT_LIST ---"; xprop -root _NET_CLIENT_LIST 2>&1 || true; }
+          command -v xwininfo >/dev/null && { echo "--- xwininfo -root -tree ---"; xwininfo -root -tree 2>&1 || true; }
         } >>"$H/app.log"
-        QUIT_ERR="no window for pid $PID to close (wmctrl)"; kill -KILL "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; return 1
+        QUIT_ERR="no window for pid $PID to close ($closer)"; kill -KILL "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; return 1
       fi
-      wmctrl -ic "$w" ;;
+      if [ "$closer" = "xdotool" ]; then
+        xdotool windowclose "$w"
+      else
+        wmctrl -ic "$w"
+      fi ;;
   esac
   until_true "$QUIT_TIMEOUT_S" gone || { kill -KILL "$PID" 2>/dev/null; wait "$PID" 2>/dev/null; return 1; }
   wait "$PID"; QUIT_CODE=$?

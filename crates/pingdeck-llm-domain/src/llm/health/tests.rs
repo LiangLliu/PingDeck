@@ -31,7 +31,7 @@ fn row(book: &HealthBook) -> HealthSnapshot {
 
 #[test]
 fn consecutive_failures_open_the_circuit_and_one_probe_follows() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     acquire_and_fail(&book, CONFIG);
     assert_eq!(book.acquire("k", "m"), Permit::Allowed);
     book.record("k", "m", Outcome::Failure, Duration::ZERO, CONFIG);
@@ -50,7 +50,7 @@ fn consecutive_failures_open_the_circuit_and_one_probe_follows() {
 
 #[test]
 fn success_resets_the_streak_and_averages_move() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     acquire_and_fail(&book, CONFIG);
     book.record(
         "k",
@@ -68,7 +68,7 @@ fn success_resets_the_streak_and_averages_move() {
 
 #[test]
 fn latency_average_weights_the_newest_sample_by_alpha() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for millis in [100, 200] {
         book.record(
             "k",
@@ -84,7 +84,7 @@ fn latency_average_weights_the_newest_sample_by_alpha() {
 #[test]
 fn three_failures_inside_the_window_open_the_circuit() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for _ in 0..2 {
         acquire_and_fail(&book, config);
         book.advance(Duration::from_secs(10));
@@ -102,7 +102,7 @@ fn three_failures_inside_the_window_open_the_circuit() {
 #[test]
 fn the_same_failures_spread_over_forty_seconds_do_not() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for _ in 0..3 {
         acquire_and_fail(&book, config);
         book.advance(Duration::from_secs(20));
@@ -116,7 +116,7 @@ fn the_same_failures_spread_over_forty_seconds_do_not() {
 #[test]
 fn failed_probes_double_the_cooldown_up_to_the_cap() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for _ in 0..3 {
         acquire_and_fail(&book, config);
     }
@@ -134,7 +134,7 @@ fn failed_probes_double_the_cooldown_up_to_the_cap() {
 #[test]
 fn a_probe_success_closes_and_resets_cooldown_and_failures() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for _ in 0..3 {
         acquire_and_fail(&book, config);
     }
@@ -168,7 +168,7 @@ fn a_probe_success_closes_and_resets_cooldown_and_failures() {
 #[test]
 fn the_cooldown_ceiling_is_never_below_the_first_cooldown() {
     let config = config(1, 30, 60, 5);
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     acquire_and_fail(&book, config);
     assert_eq!(row(&book).cooldown_s, 60);
     book.advance(Duration::from_secs(60));
@@ -180,7 +180,7 @@ fn the_cooldown_ceiling_is_never_below_the_first_cooldown() {
 #[test]
 fn half_open_admits_exactly_one_request_under_concurrency() {
     let config = CircuitConfig::default();
-    let book = Arc::new(HealthBook::new());
+    let book = Arc::new(HealthBook::with_fixed_clock());
     for _ in 0..3 {
         acquire_and_fail(&book, config);
     }
@@ -201,7 +201,7 @@ fn half_open_admits_exactly_one_request_under_concurrency() {
 #[test]
 fn canceling_the_half_open_probe_frees_its_slot_without_counting() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for _ in 0..3 {
         acquire_and_fail(&book, config);
     }
@@ -217,7 +217,7 @@ fn canceling_the_half_open_probe_frees_its_slot_without_counting() {
 #[test]
 fn a_late_failure_while_open_does_not_extend_the_cooldown() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     for _ in 0..3 {
         acquire_and_fail(&book, config);
     }
@@ -230,7 +230,7 @@ fn a_late_failure_while_open_does_not_extend_the_cooldown() {
 #[test]
 fn snapshots_carry_the_open_time_and_the_ui_words() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     assert!(book.snapshot().is_empty());
     acquire_and_fail(&book, config);
     let closed = row(&book);
@@ -268,7 +268,7 @@ fn snapshots_carry_the_open_time_and_the_ui_words() {
 #[test]
 fn blocked_for_does_not_take_the_probe_slot() {
     let config = CircuitConfig::default();
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     assert_eq!(book.blocked_for("k", "m"), None);
     for _ in 0..3 {
         acquire_and_fail(&book, config);
@@ -293,7 +293,7 @@ fn open_pair(book: &HealthBook, key: &str, model: &str, config: CircuitConfig) {
 
 #[test]
 fn earliest_retry_is_the_smallest_remaining_cooldown_in_whole_seconds() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     let slow = config(1, 30, 60, 300);
     let quick = config(1, 30, 8, 300);
     open_pair(&book, "a", "m", slow);
@@ -312,7 +312,7 @@ fn earliest_retry_is_the_smallest_remaining_cooldown_in_whole_seconds() {
 
 #[test]
 fn open_circuits_lists_only_open_pairs_and_can_filter_by_key() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     let one = config(1, 30, 30, 300);
     open_pair(&book, "a", "m1", one);
     open_pair(&book, "a", "m2", one);
@@ -342,7 +342,7 @@ fn open_circuits_lists_only_open_pairs_and_can_filter_by_key() {
 
 #[test]
 fn reset_none_clears_every_pair_and_reset_one_key_only_its_own() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     let one = config(1, 30, 30, 300);
     open_pair(&book, "a", "m", one);
     open_pair(&book, "b", "m", one);
@@ -355,7 +355,7 @@ fn reset_none_clears_every_pair_and_reset_one_key_only_its_own() {
 
 #[test]
 fn failure_rate_orders_keys_and_decays_with_successes() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     let config = CircuitConfig::default();
     book.record("bad", "m", Outcome::Failure, Duration::ZERO, config);
     book.record("good", "m", Outcome::Success, Duration::ZERO, config);
@@ -368,7 +368,7 @@ fn failure_rate_orders_keys_and_decays_with_successes() {
 
 #[test]
 fn a_pair_is_independent_of_other_models_of_the_same_key() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     let one = config(1, 30, 30, 300);
     open_pair(&book, "k", "m1", one);
     assert_eq!(book.acquire("k", "m1"), Permit::Blocked);
@@ -377,7 +377,7 @@ fn a_pair_is_independent_of_other_models_of_the_same_key() {
 
 #[test]
 fn only_real_circuit_transitions_are_reported() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     let record = |outcome| book.record("k", "m", outcome, Duration::ZERO, CONFIG);
     assert!(
         !record(Outcome::Failure),
@@ -427,7 +427,7 @@ fn only_real_circuit_transitions_are_reported() {
 // "Healthy" row with no requests.
 #[test]
 fn canceling_an_unknown_pair_leaves_no_row() {
-    let book = HealthBook::new();
+    let book = HealthBook::with_fixed_clock();
     assert!(!book.record(
         "k",
         "m",

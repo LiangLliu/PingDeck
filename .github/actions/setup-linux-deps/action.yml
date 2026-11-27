@@ -11,7 +11,7 @@ inputs:
     required: false
     default: "false"
   smoke:
-    description: Install sqlite3, xvfb, openbox, and wmctrl for release smoke runs.
+    description: Install sqlite3, xvfb, openbox, xdotool, and x11-utils for release smoke runs.
     required: false
     default: "false"
 
@@ -50,7 +50,8 @@ runs:
             sqlite3
             xvfb
             openbox
-            wmctrl
+            xdotool
+            x11-utils
             libvulkan1
             mesa-vulkan-drivers
             libegl1

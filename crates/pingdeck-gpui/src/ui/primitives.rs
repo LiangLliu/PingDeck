@@ -35,7 +35,7 @@ pub enum Tone {
 #[must_use]
 pub fn title_bar_options() -> TitlebarOptions {
     TitlebarOptions {
-        title: None,
+        title: Some("PingDeck".into()),
         appears_transparent: true,
         traffic_light_position: Some(gpui_kit::point(px(14.0), px(13.0))),
     }

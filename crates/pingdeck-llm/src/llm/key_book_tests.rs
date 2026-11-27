@@ -10,6 +10,12 @@ fn status(code: u16, retry_after_ms: Option<u64>) -> FailureObservation {
     }
 }
 
+const TEST_EPOCH_MS: i64 = 1_700_000_000_000;
+
+fn fixed_book() -> KeyBook {
+    KeyBook::with_fixed_clock(TEST_EPOCH_MS)
+}
+
 fn rest_s(book: &KeyBook, key: &str) -> Option<i64> {
     let now = book.now_ms();
     book.cooling_until(key, "m")
@@ -18,7 +24,7 @@ fn rest_s(book: &KeyBook, key: &str) -> Option<i64> {
 
 #[test]
 fn a_429_rests_for_retry_after_capped_at_ten_minutes() {
-    let book = KeyBook::new();
+    let book = fixed_book();
     book.failed("k", "m", &status(429, Some(45_000)), "429".into(), true);
     assert_eq!(rest_s(&book, "k"), Some(45));
     book.failed("j", "m", &status(429, Some(3_600_000)), "429".into(), true);
@@ -27,7 +33,7 @@ fn a_429_rests_for_retry_after_capped_at_ten_minutes() {
 
 #[test]
 fn a_429_without_retry_after_doubles_up_to_ten_minutes_and_recovers() {
-    let book = KeyBook::new();
+    let book = fixed_book();
     let mut seen = Vec::new();
     for _ in 0..7 {
         book.failed("k", "m", &status(429, None), "429".into(), true);
@@ -53,7 +59,7 @@ fn a_429_without_retry_after_doubles_up_to_ten_minutes_and_recovers() {
 
 #[test]
 fn rejections_rest_thirty_minutes_and_clear_on_demand() {
-    let book = KeyBook::new();
+    let book = fixed_book();
     for code in [401, 402, 403] {
         let key = format!("k{code}");
         book.failed(&key, "m", &status(code, None), "rejected".into(), true);
@@ -65,7 +71,7 @@ fn rejections_rest_thirty_minutes_and_clear_on_demand() {
 
 #[test]
 fn upstream_trouble_and_a_switched_off_cooldown_rest_nothing_but_record_the_error() {
-    let book = KeyBook::new();
+    let book = fixed_book();
     for code in [500, 503, 408, 400] {
         book.failed("k", "m", &status(code, None), format!("{code}"), true);
         assert_eq!(book.cooling_until("k", "m"), None, "{code}");
