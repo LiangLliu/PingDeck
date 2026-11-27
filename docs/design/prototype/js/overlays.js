@@ -6,7 +6,19 @@ window.SpanBayOverlays = (() => {
   const popRoot = () => byId("popover-root");
   const toastRoot = () => byId("toast-root");
 
-  const wizardState = { sniffStep: 1, connectTool: "claude", snippetLang: "curl", importTab: "import" };
+  const wizardState = {
+    sniffStep: 1,
+    sniffName: "relay.acme.dev",
+    sniffUrl: "https://relay.acme.dev",
+    sniffKey: "sk-demo-7f3c",
+    sniffKeyVisible: false,
+    sniffAdvOpen: false,
+    sniffPresetUrl: "https://relay.acme.dev",
+    sniffPresetName: "relay.acme.dev",
+    connectTool: "claude",
+    snippetLang: "curl",
+    importTab: "import",
+  };
   const rmState = {
     runIdx: 0,
     view: "graph",
@@ -158,6 +170,31 @@ window.SpanBayOverlays = (() => {
     box.style.top = `${top}px`;
   }
 
+  function syncSniffDialogUi() {
+    const missing = !wizardState.sniffName.trim() || !wizardState.sniffUrl.trim();
+    const goBtn = byId("sniff-go-btn");
+    const unvBtn = byId("sniff-unverified-btn");
+    const next3Btn = byId("sniff-next-3-btn");
+    if (goBtn) goBtn.disabled = missing;
+    if (unvBtn) {
+      unvBtn.disabled = missing;
+      const disp = wizardState.sniffName.trim() || "未命名服务商";
+      unvBtn.dataset.dialogDone = `已添加未验证服务商「${disp}」`;
+    }
+    if (next3Btn) next3Btn.disabled = !wizardState.sniffName.trim();
+    const pill = byId("sniff-origin-pill");
+    if (pill) {
+      let origin = "";
+      try {
+        if (wizardState.sniffUrl.trim()) origin = new URL(wizardState.sniffUrl.trim()).origin;
+      } catch {
+        origin = "";
+      }
+      pill.textContent = origin ? `Origin: ${origin}` : "";
+      pill.hidden = !origin;
+    }
+  }
+
   function bindConfirmGate(checkboxId, buttonId) {
     const ack = byId(checkboxId);
     const btn = byId(buttonId);
@@ -200,6 +237,12 @@ window.SpanBayOverlays = (() => {
     }
     bindConfirmGate("full-access-ack", "full-access-confirm");
     bindConfirmGate("secret-export-ack", "secret-export-confirm");
+    if (id === "add-provider") {
+      syncSniffDialogUi();
+      if (wizardState.sniffStep === 1 && !wizardState.sniffName.trim()) {
+        byId("sniff-name")?.focus();
+      }
+    }
     if (id === "run-monitor") renderRunMonitor();
   }
 
@@ -235,7 +278,7 @@ window.SpanBayOverlays = (() => {
       return;
     }
 
-    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-pick-flow-run], [data-rm-view], [data-rm-dir], [data-rm-toggle], [data-rm-reset], [data-rm-zoom], [data-rm-run-prev], [data-rm-run-next], [data-rm-close-detail], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
+    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-pick-flow-run], [data-rm-view], [data-rm-dir], [data-rm-toggle], [data-rm-reset], [data-rm-zoom], [data-rm-run-prev], [data-rm-run-next], [data-rm-close-detail], [data-sniff-step], [data-sniff-preset], [data-sniff-toggle-key], [data-sniff-toggle-adv], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
     if (!t) {
       if (!e.target.closest(".pop-box")) closeAllPopovers();
       return;
@@ -243,7 +286,11 @@ window.SpanBayOverlays = (() => {
 
     if (t.dataset.popover) { e.stopPropagation(); openPopover(t.dataset.popover, t); return; }
     if (t.dataset.modal) {
-      if (t.dataset.modal === "add-provider") wizardState.sniffStep = 1;
+      if (t.dataset.modal === "add-provider") {
+        wizardState.sniffStep = 1;
+        wizardState.sniffKeyVisible = false;
+        wizardState.sniffAdvOpen = false;
+      }
       if (t.dataset.modal === "import-export") wizardState.importTab = "import";
       if (t.dataset.modal === "run-monitor") {
         if (t.dataset.rmRunIdx !== undefined) rmState.runIdx = Number(t.dataset.rmRunIdx) || 0;
@@ -254,11 +301,52 @@ window.SpanBayOverlays = (() => {
       return;
     }
     if (t.dataset.drawer) { openDrawer(t.dataset.drawer); return; }
-    if (t.dataset.sniffStep) { wizardState.sniffStep = Number(t.dataset.sniffStep); openDialog("add-provider"); return; }
+    if (t.dataset.sniffStep) {
+      const nextStep = Number(t.dataset.sniffStep);
+      if (nextStep > 1 && !wizardState.sniffName.trim()) {
+        toast("请先输入服务商名称", { tone: "warn" });
+        (byId("sniff-name") || byId("sniff-name-step2"))?.focus();
+        return;
+      }
+      if (nextStep === 2 && !wizardState.sniffUrl.trim()) {
+        toast("请先输入基础 URL 或选择一个预设", { tone: "warn" });
+        byId("sniff-base-url")?.focus();
+        return;
+      }
+      wizardState.sniffStep = nextStep;
+      openDialog("add-provider");
+      return;
+    }
     if (t.dataset.sniffPreset) {
-      const inp = byId("sniff-base-url");
-      if (inp) inp.value = t.dataset.sniffPreset;
+      const url = t.dataset.sniffPreset;
+      const pname = t.dataset.sniffPresetName || "";
+      const prevPresetName = wizardState.sniffPresetName;
+      wizardState.sniffUrl = url;
+      wizardState.sniffPresetUrl = url;
+      wizardState.sniffPresetName = pname;
+      const urlInp = byId("sniff-base-url");
+      if (urlInp) urlInp.value = url;
+      const curName = wizardState.sniffName.trim();
+      if (!curName || curName === prevPresetName) {
+        wizardState.sniffName = pname;
+        const nameInp = byId("sniff-name");
+        if (nameInp) nameInp.value = pname;
+      }
       t.parentElement?.querySelectorAll("[data-sniff-preset]").forEach((b) => b.classList.toggle("tag-accent", b === t));
+      syncSniffDialogUi();
+      return;
+    }
+    if (t.dataset.sniffToggleKey) {
+      wizardState.sniffKeyVisible = !wizardState.sniffKeyVisible;
+      const keyInp = byId("sniff-api-key");
+      if (keyInp) keyInp.type = wizardState.sniffKeyVisible ? "text" : "password";
+      t.textContent = wizardState.sniffKeyVisible ? "隐藏" : "显示";
+      t.title = wizardState.sniffKeyVisible ? "隐藏密钥" : "显示密钥";
+      return;
+    }
+    if (t.dataset.sniffToggleAdv) {
+      wizardState.sniffAdvOpen = !wizardState.sniffAdvOpen;
+      openDialog("add-provider");
       return;
     }
     if (t.dataset.connectTool) { wizardState.connectTool = t.dataset.connectTool; openDialog("connect-client"); return; }
@@ -429,6 +517,19 @@ window.SpanBayOverlays = (() => {
         toast("已发送本地 Mock 测试，命中 201 Created + 回调 200");
         break;
       }
+    }
+  });
+
+  document.addEventListener("input", (e) => {
+    const id = e.target?.id;
+    if (id === "sniff-name" || id === "sniff-name-step2") {
+      wizardState.sniffName = e.target.value;
+      syncSniffDialogUi();
+    } else if (id === "sniff-base-url") {
+      wizardState.sniffUrl = e.target.value;
+      syncSniffDialogUi();
+    } else if (id === "sniff-api-key") {
+      wizardState.sniffKey = e.target.value;
     }
   });
 

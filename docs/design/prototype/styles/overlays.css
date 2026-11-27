@@ -164,3 +164,10 @@
 
 .check-row { display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: var(--r-md); background: var(--bad-soft); border: 1px solid var(--bad-border); font-size: var(--fs-xs); color: var(--ink-1); cursor: pointer; }
 .check-row input { margin-top: 2px; accent-color: var(--bad); }
+
+.sniff-adv-toggle {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; align-self: flex-start;
+  font-size: var(--fs-xs); font-weight: 500; color: var(--ink-3);
+}
+.sniff-adv-toggle:hover { color: var(--ink-1); }
+.sniff-eye-btn { width: auto; padding: 0 6px; font-size: 11px; color: var(--ink-3); }

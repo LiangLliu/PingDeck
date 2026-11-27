@@ -74,8 +74,8 @@ pub use payload_viewer::{
 pub use primitives::{
     Tone, app_title_bar, badge, btn_danger, btn_ghost, btn_icon, btn_primary, btn_secondary, card,
     code_editor, field_row, h_row, kbd_chip, list_row, markdown_view, method_badge,
-    multiline_input, pane_box, section_heading, status_dot, streaming_markdown_view, table_column,
-    text_input, title_bar_options, toggle_switch, v_col, virtual_table,
+    multiline_input, pane_box, secret_input, section_heading, status_dot, streaming_markdown_view,
+    table_column, text_input, title_bar_options, toggle_switch, v_col, virtual_table,
 };
 pub use process_chrome::{
     lane_draw_spec, process_edge_label_pill, process_lane_header, process_segmented_waterfall_bar,

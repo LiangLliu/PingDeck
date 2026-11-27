@@ -65,6 +65,12 @@ pub fn text_input(state: &Entity<InputState>) -> Input {
     Input::new(state).small()
 }
 
+/// Single-line masked secret input widget with a built-in eye show/hide toggle.
+#[must_use]
+pub fn secret_input(state: &Entity<InputState>) -> Input {
+    Input::new(state).small().mask_toggle()
+}
+
 /// Multi-line ordinary text area widget (chat composer, instructions, notes).
 #[must_use]
 pub fn multiline_input(state: &Entity<TextareaState>) -> Textarea {

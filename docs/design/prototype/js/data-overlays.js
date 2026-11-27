@@ -96,7 +96,44 @@ window.PD.POPOVER_TEMPLATES = {
   },
 };
 
-window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importTab }) => {
+window.PD.renderDialogSpec = (id, state) => {
+  const {
+    sniffStep,
+    sniffName = "relay.acme.dev",
+    sniffUrl = "https://relay.acme.dev",
+    sniffKey = "sk-demo-7f3c",
+    sniffKeyVisible = false,
+    sniffAdvOpen = false,
+    sniffPresetUrl = "https://relay.acme.dev",
+    connectTool,
+    snippetLang,
+    importTab,
+  } = state;
+  const escAttr = (s) =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  let sniffOrigin = "";
+  try {
+    if (sniffUrl.trim()) sniffOrigin = new URL(sniffUrl.trim()).origin;
+  } catch {
+    sniffOrigin = "";
+  }
+  const sniffMissing = !sniffName.trim() || !sniffUrl.trim();
+  const sniffDisplayName = sniffName.trim() || "未命名服务商";
+  const SNIFF_PRESETS = [
+    { name: "DeepSeek", url: "https://api.deepseek.com" },
+    { name: "Moonshot Kimi", url: "https://api.moonshot.cn/v1" },
+    { name: "SiliconFlow", url: "https://api.siliconflow.cn/v1" },
+    { name: "OpenRouter", url: "https://openrouter.ai/api/v1" },
+    { name: "OpenAI", url: "https://api.openai.com/v1" },
+    { name: "Anthropic", url: "https://api.anthropic.com" },
+    { name: "Google Gemini", url: "https://generativelanguage.googleapis.com" },
+    { name: "Ollama", url: "http://127.0.0.1:11434" },
+    { name: "new-api 中转站", url: "https://relay.acme.dev" },
+  ];
   const D = {
     "new-request": {
       title: "新建请求、集合或文件夹",
@@ -228,7 +265,7 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
     },
     "add-provider": {
       size: "lg",
-      title: "添加 AI 服务商（智能嗅探向导）",
+      title: "添加 AI 服务商（智能嗅探）",
       body: `
         <div class="stepper">
           <span class="step-pill ${sniffStep === 1 ? "active" : "done"}"><span class="step-n">${sniffStep > 1 ? "✓" : "1"}</span>地址与密钥</span>
@@ -238,20 +275,55 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
           <span class="step-pill ${sniffStep === 3 ? "active" : ""}"><span class="step-n">3</span>审核模型并保存</span>
         </div>
         ${sniffStep === 1 ? `
-          <div class="field-col"><span class="field-label">服务商地址（Base URL）</span><div class="input-box"><input id="sniff-base-url" value="https://relay.acme.dev" /></div></div>
-          <div class="field-col"><span class="field-label">API 密钥（明文 0600 保险库存储，不会离开本机）</span><div class="input-box"><input type="password" value="sk-demo-7f3c" /></div></div>
-          <div class="row-wrap">
-            <button class="tag" data-sniff-preset="https://api.openai.com/v1">OpenAI</button>
-            <button class="tag" data-sniff-preset="https://api.anthropic.com">Anthropic</button>
-            <button class="tag" data-sniff-preset="https://api.deepseek.com">DeepSeek</button>
-            <button class="tag" data-sniff-preset="https://api.moonshot.cn/v1">Moonshot</button>
-            <button class="tag" data-sniff-preset="http://127.0.0.1:11434">Ollama 本地</button>
-            <button class="tag tag-accent" data-sniff-preset="https://relay.acme.dev">new-api 中转站</button>
+          <div class="field-col">
+            <div class="row-between">
+              <span class="field-label">服务商名称 <span class="text-bad fw-600">*</span></span>
+              <span class="fs-2xs text-faint truncate">将作为 AI 对话与网关中的「服务商 / 模型」显示前缀</span>
+            </div>
+            <div class="input-box"><input id="sniff-name" value="${escAttr(sniffName)}" placeholder="例如：DeepSeek / 公司中转 / 个人主力（必填）" required /></div>
+          </div>
+          <div class="field-col">
+            <div class="row-between">
+              <span class="field-label">服务商地址（Base URL） <span class="text-bad fw-600">*</span></span>
+              <span id="sniff-origin-pill" class="tag mono" ${sniffOrigin ? "" : "hidden"}>Origin: ${escAttr(sniffOrigin)}</span>
+            </div>
+            <div class="input-box"><input id="sniff-base-url" value="${escAttr(sniffUrl)}" placeholder="https://api.deepseek.com or relay Base URL…" required /></div>
+            <div class="col-stack-sm" style="gap:5px;padding-top:4px">
+              <span class="fs-2xs text-faint fw-600">快速预设</span>
+              <div class="row-wrap">
+                ${SNIFF_PRESETS.map((p) => `<button type="button" class="tag ${sniffPresetUrl === p.url ? "tag-accent" : ""}" data-sniff-preset="${escAttr(p.url)}" data-sniff-preset-name="${escAttr(p.name)}">${escAttr(p.name)}</button>`).join("")}
+              </div>
+            </div>
+          </div>
+          <div class="field-col">
+            <span class="field-label">API 密钥（明文 0600 保险库，仅存本机）</span>
+            <div class="input-box">
+              <input id="sniff-api-key" type="${sniffKeyVisible ? "text" : "password"}" value="${escAttr(sniffKey)}" placeholder="API 密钥（可选，仅存本机）" />
+              <button type="button" class="btn-icon sniff-eye-btn" data-sniff-toggle-key="1" title="${sniffKeyVisible ? "隐藏密钥" : "显示密钥"}">${sniffKeyVisible ? "隐藏" : "显示"}</button>
+            </div>
+          </div>
+          <div class="col-stack-sm" style="gap:8px">
+            <button type="button" class="sniff-adv-toggle" data-sniff-toggle-adv="1">
+              <span>${sniffAdvOpen ? "▾" : "▸"}</span>
+              <span>高级选项</span>
+            </button>
+            ${sniffAdvOpen ? `
+              <div class="card-panel" style="gap:0;padding:4px 12px">
+                <div class="set-row" style="padding:7px 0"><span class="fs-xs text-ink2">扩展扫描（更多路径变体，上限 20 请求）</span><button type="button" class="switch-ui" data-action="toggle-switch" aria-label="扩展扫描"></button></div>
+                <div class="set-row" style="padding:7px 0"><span class="fs-xs text-ink2">用真实请求验证路由（可能产生极少量费用）</span><button type="button" class="switch-ui" data-action="toggle-switch" aria-label="真实请求验证"></button></div>
+                <div class="set-row" style="padding:7px 0"><span class="fs-xs text-ink2">自定义模型列表路径</span><div class="input-box sm" style="width:220px"><input placeholder="/v1/models (optional)" /></div></div>
+                <div class="set-row" style="padding:7px 0;border:0"><span class="fs-xs text-ink2">独立代理</span><div class="input-box sm" style="width:220px"><input placeholder="direct or http://127.0.0.1:7890" /></div></div>
+              </div>
+            ` : ""}
           </div>
           <span class="set-row-desc">嗅探会向目标地址发送少量探测请求，可能消耗极少量 Token 或产生费用。</span>
         ` : sniffStep === 2 ? `
           <div class="card-panel">
             <div class="card-panel-head"><span>嗅探完成 · 已识别为 new-api 0.9.7</span><span class="tag tag-ok">密钥有效</span></div>
+            <div class="row-between" style="padding:4px 0;border-bottom:1px solid var(--border-subtle)">
+              <span class="field-label">服务商名称 <span class="text-bad fw-600">*</span></span>
+              <div class="input-box sm" style="width:240px"><input id="sniff-name-step2" value="${escAttr(sniffName)}" placeholder="必填" required /></div>
+            </div>
             <table class="kv-table">
               <thead><tr><th>探测阶段</th><th>证据结果</th><th>状态</th></tr></thead>
               <tbody>
@@ -275,10 +347,10 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
             </table>
           </div>`}`,
       foot: sniffStep === 1
-        ? `<button class="btn" data-action="close-dialog">取消</button><button class="btn btn-primary" data-sniff-step="2">开始嗅探探测 →</button>`
+        ? `<button type="button" id="sniff-unverified-btn" class="btn btn-ghost" style="margin-right:auto" ${sniffMissing ? "disabled" : ""} data-dialog-done="已添加未验证服务商「${escAttr(sniffDisplayName)}」">不扫描直接添加</button><button type="button" class="btn" data-action="close-dialog">取消</button><button type="button" id="sniff-go-btn" class="btn btn-primary" ${sniffMissing ? "disabled" : ""} data-sniff-step="2">开始嗅探探测 →</button>`
         : sniffStep === 2
-          ? `<button class="btn" data-sniff-step="1">← 返回修改</button><button class="btn btn-primary" data-sniff-step="3">下一步：审核模型 →</button>`
-          : `<button class="btn" data-sniff-step="2">← 上一步</button><button class="btn btn-primary" data-dialog-done="已添加服务商「relay.acme.dev」及 38 个模型">保存服务商</button>`,
+          ? `<button type="button" class="btn" style="margin-right:auto" data-sniff-step="1">← 返回修改</button><button type="button" id="sniff-next-3-btn" class="btn btn-primary" ${!sniffName.trim() ? "disabled" : ""} data-sniff-step="3">下一步：审核模型 →</button>`
+          : `<button type="button" class="btn" style="margin-right:auto" data-sniff-step="2">← 上一步</button><button type="button" class="btn" data-action="close-dialog">取消</button><button type="button" class="btn btn-primary" ${!sniffName.trim() ? "disabled" : ""} data-dialog-done="已添加服务商「${escAttr(sniffDisplayName)}」及 38 个模型">保存服务商</button>`,
     },
     "connect-client": {
       size: "lg",

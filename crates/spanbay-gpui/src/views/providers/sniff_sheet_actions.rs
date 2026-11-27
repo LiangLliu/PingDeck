@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use gpui_kit::{Context, Window};
+use gpui_kit::{Context, Focusable as _, Window};
 use spanbay_desktop::core::app::{
     ExtraInput, ProviderFromPresetInput, SniffSelection, UnverifiedExtras,
     llm_provider_add_key_from_sniff_impl, llm_provider_apply_resniff_impl,
@@ -21,7 +21,7 @@ use crate::ui::Tone;
 use super::sniff_sheet::{LiveRow, SniffProviderSheet};
 
 impl SniffProviderSheet {
-    pub(super) fn pick_preset(
+    pub(crate) fn pick_preset(
         &mut self,
         preset_id: String,
         window: &mut Window,
@@ -50,7 +50,18 @@ impl SniffProviderSheet {
         }
     }
 
-    pub(super) fn start_sniff(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn start_sniff(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = self.name_input.read(cx).value().trim().to_owned();
+        if name.is_empty() && self.resniff_provider_id.is_none() {
+            self.flash = Some((
+                Tone::Warning,
+                crate::ui::tr(cx).providers().prov_sniff_need_name().into(),
+            ));
+            self.name_input
+                .update(cx, |s, cx| s.focus_handle(cx).focus(window, cx));
+            cx.notify();
+            return;
+        }
         let base_url = self.url_input.read(cx).value().trim().to_owned();
         if base_url.is_empty() && self.resniff_provider_id.is_none() {
             self.flash = Some((
@@ -60,6 +71,8 @@ impl SniffProviderSheet {
                     .prov_sniff_need_url_or_preset()
                     .into(),
             ));
+            self.url_input
+                .update(cx, |s, cx| s.focus_handle(cx).focus(window, cx));
             cx.notify();
             return;
         }
@@ -181,22 +194,40 @@ impl SniffProviderSheet {
     }
 
     pub(super) fn cancel_sniff(&mut self, cx: &mut Context<Self>) {
-        if let Some(tok) = self.cancel_token.clone() {
+        if let Some(tok) = self.cancel_token.take() {
             runtime(cx).state().cancellations.cancel(&tok);
         }
+        self._stream_task = None;
+        self.scanning = false;
+    }
+
+    pub(super) fn close_modal(&mut self, cx: &mut Context<Self>) {
+        self.cancel_sniff(cx);
+        self.parent.update(cx, |p, cx| {
+            p.sniff_modal = None;
+            cx.notify();
+        });
     }
 
     pub(super) fn create_preset_direct(&mut self, cx: &mut Context<Self>) {
         let Some(preset_id) = self.selected_preset_id.clone() else {
             return;
         };
-        let raw_key = self.key_input.read(cx).value().trim().to_owned();
         let raw_name = self.name_input.read(cx).value().trim().to_owned();
+        if raw_name.is_empty() {
+            self.flash = Some((
+                Tone::Warning,
+                crate::ui::tr(cx).providers().prov_sniff_need_name().into(),
+            ));
+            cx.notify();
+            return;
+        }
+        let raw_key = self.key_input.read(cx).value().trim().to_owned();
         let input = ProviderFromPresetInput {
             preset_id,
             region_id: self.selected_region_id.clone(),
             placeholders: BTreeMap::new(),
-            name: (!raw_name.is_empty()).then_some(raw_name),
+            name: Some(raw_name),
             secret: (!raw_key.is_empty()).then_some(raw_key),
         };
         self.saving = true;
@@ -217,6 +248,7 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
+                            p.sniff_modal = None;
                             p.status_msg = Some((
                                 Tone::Success,
                                 crate::ui::tr(cx)
@@ -225,7 +257,6 @@ impl SniffProviderSheet {
                             ));
                             p.reload_all(cx);
                         });
-                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -235,13 +266,29 @@ impl SniffProviderSheet {
         self._tasks.push(task);
     }
 
-    pub(super) fn create_unverified(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn create_unverified(&mut self, cx: &mut Context<Self>) {
+        let name_raw = self.name_input.read(cx).value().trim().to_owned();
+        if name_raw.is_empty() {
+            self.flash = Some((
+                Tone::Warning,
+                crate::ui::tr(cx).providers().prov_sniff_need_name().into(),
+            ));
+            cx.notify();
+            return;
+        }
         let url = self.url_input.read(cx).value().trim().to_owned();
         if url.is_empty() {
+            self.flash = Some((
+                Tone::Warning,
+                crate::ui::tr(cx)
+                    .providers()
+                    .prov_sniff_need_url_or_preset()
+                    .into(),
+            ));
+            cx.notify();
             return;
         }
         let key_raw = self.key_input.read(cx).value().trim().to_owned();
-        let name_raw = self.name_input.read(cx).value().trim().to_owned();
         let preset_id = self.selected_preset_id.clone();
         self.saving = true;
         cx.notify();
@@ -253,7 +300,7 @@ impl SniffProviderSheet {
                     state,
                     &url,
                     Some(Protocol::OpenaiChat),
-                    (!name_raw.is_empty()).then_some(name_raw.as_str()),
+                    Some(name_raw.as_str()),
                     UnverifiedExtras {
                         preset_id: preset_id.as_deref(),
                         api_key: (!key_raw.is_empty()).then_some(key_raw),
@@ -272,6 +319,7 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
+                            p.sniff_modal = None;
                             p.status_msg = Some((
                                 Tone::Success,
                                 crate::ui::tr(cx)
@@ -280,7 +328,6 @@ impl SniffProviderSheet {
                             ));
                             p.reload_all(cx);
                         });
-                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -295,22 +342,15 @@ impl SniffProviderSheet {
             return;
         };
         let report_id = rep.report_id.clone();
-        let name_typed = self.name_input.read(cx).value().trim().to_owned();
-        let default_name = rep
-            .brand_name
-            .clone()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| {
-                rep.root_url
-                    .trim_start_matches("https://")
-                    .trim_start_matches("http://")
-                    .to_owned()
-            });
-        let name = if name_typed.is_empty() {
-            default_name
-        } else {
-            name_typed
-        };
+        let name = self.name_input.read(cx).value().trim().to_owned();
+        if name.is_empty() {
+            self.flash = Some((
+                Tone::Warning,
+                crate::ui::tr(cx).providers().prov_sniff_need_name().into(),
+            ));
+            cx.notify();
+            return;
+        }
         let manual_models: Vec<String> = self
             .manual_models_input
             .read(cx)
@@ -368,6 +408,7 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(saved.id);
+                            p.sniff_modal = None;
                             p.status_msg = Some((
                                 Tone::Success,
                                 crate::ui::tr(cx)
@@ -376,7 +417,6 @@ impl SniffProviderSheet {
                             ));
                             p.reload_all(cx);
                         });
-                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }
@@ -406,9 +446,9 @@ impl SniffProviderSheet {
                         ));
                         parent.update(cx, |p, cx| {
                             p.selection = super::LeftSelection::Provider(k.provider_id);
+                            p.sniff_modal = None;
                             p.reload_all(cx);
                         });
-                        this.pending_close = true;
                     }
                     Err(err) => this.flash = Some((Tone::Danger, err.message().to_owned())),
                 }

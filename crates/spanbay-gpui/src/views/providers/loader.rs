@@ -1,6 +1,6 @@
-//! Async data loading, view navigation, and Smart Sniff slide-over launcher for `ProvidersView`.
+//! Async data loading, view navigation, and Smart Sniff modal launcher for `ProvidersView`.
 
-use gpui_kit::{AppContext as _, Context, ParentElement as _, Window, px};
+use gpui_kit::{AppContext as _, Context, Window};
 use spanbay_desktop::core::app::{
     ProviderModelView, ProviderView, llm_key_list_impl, llm_log_list_impl,
     llm_model_catalog_list_impl, llm_model_list_view_impl, llm_presets_impl,
@@ -15,7 +15,6 @@ use spanbay_desktop::core::model::model_catalog::ModelCatalogQuery;
 use spanbay_desktop::streams::channel_sink;
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into, subscribe_stream_into};
-use crate::ui::WindowExt as _;
 
 use super::{LeftSelection, ProviderTab, ProvidersView, bench, detail_config, sniff_sheet};
 
@@ -222,7 +221,9 @@ impl ProvidersView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let is_resniff = resniff_provider_id.is_some();
+        if let Some(prev) = self.sniff_modal.take() {
+            prev.update(cx, |s, cx| s.cancel_sniff(cx));
+        }
         let parent = cx.entity().clone();
         let presets = self.presets.clone();
         let (resniff_url, resniff_name) = resniff_provider_id
@@ -235,7 +236,7 @@ impl ProvidersView {
                 )
             })
             .unwrap_or((initial_url, None));
-        let sheet_ent = cx.new(|cx| {
+        let modal_ent = cx.new(|cx| {
             sniff_sheet::SniffProviderSheet::new(
                 parent,
                 presets,
@@ -247,19 +248,7 @@ impl ProvidersView {
                 cx,
             )
         });
-        window.open_sheet(cx, move |sheet, w, cx| {
-            let sheet_w =
-                crate::ui::responsive_sheet_width(640.0, f32::from(w.viewport_size().width));
-            sheet
-                .size(px(sheet_w))
-                .title(if is_resniff {
-                    crate::ui::tr(cx).providers().prov_loader_re_scan_provider()
-                } else {
-                    crate::ui::tr(cx)
-                        .providers()
-                        .prov_loader_add_ai_provider_smart_sniff()
-                })
-                .child(sheet_ent.clone())
-        });
+        self.sniff_modal = Some(modal_ent);
+        cx.notify();
     }
 }

@@ -3019,4 +3019,83 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn add_provider_sniff_modal_dialog_lifecycle(cx: &mut TestAppContext) {
+        use crate::views::providers::ProvidersView;
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ProvidersView::new);
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            // 1. Open Add Provider modal dialog with URL only (no provider name).
+            view.update(cx, |v, cx| {
+                v.open_sniff_sheet(
+                    None,
+                    Some("https://relay.example.com".into()),
+                    None,
+                    window,
+                    cx,
+                );
+            });
+            let modal = view
+                .read(cx)
+                .sniff_modal
+                .clone()
+                .expect("Add Provider must open as a centered modal dialog on ProvidersView");
+            assert!(
+                modal.read(cx).name_input.read(cx).value().trim().is_empty(),
+                "provider name starts empty when opened without a preset"
+            );
+
+            // Submitting sniff or unverified creation without a provider name must be rejected.
+            modal.update(cx, |m, cx| {
+                m.start_sniff(window, cx);
+            });
+            assert_eq!(
+                modal.read(cx).step,
+                1,
+                "must stay on Step 1 when name is empty"
+            );
+            assert!(
+                modal.read(cx).flash.is_some(),
+                "missing required name must surface warning flash"
+            );
+
+            modal.update(cx, |m, cx| {
+                m.flash = None;
+                m.create_unverified(cx);
+            });
+            assert!(
+                modal.read(cx).flash.is_some(),
+                "unverified creation must also require a non-empty provider name"
+            );
+
+            // Entering a custom provider name clears the warning flash.
+            let name_input = modal.read(cx).name_input.clone();
+            name_input.update(cx, |st, cx| st.set_value("Team Relay", window, cx));
+            assert_eq!(name_input.read(cx).value().trim(), "Team Relay");
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // Esc / dismiss closes the modal cleanly.
+            let dismissed = view.update(cx, |v, cx| v.dismiss_modal_if_open(cx));
+            assert!(dismissed);
+            assert!(view.read(cx).sniff_modal.is_none());
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        rt.shutdown_blocking();
+    }
 }

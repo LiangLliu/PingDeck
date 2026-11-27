@@ -7,7 +7,7 @@
 //!     `detail_models_table.rs`, `detail_config.rs`, `detail_config_extra.rs`, `detail_config_pricing.rs`)
 //!   - Model Test Bench (`bench.rs`, `bench_table.rs`, `bench_panels.rs`)
 //!   - Full-width Provider Onboarding Hero when no providers exist yet
-//! - Native Slide-Over Sheet (`sniff_sheet.rs`) via `WindowExt::open_sheet`.
+//! - Centered 3-step Smart Sniff Modal Dialog (`sniff_sheet.rs`) via `ui::modal_dialog`.
 
 pub mod actions_models;
 pub mod actions_provider;
@@ -27,6 +27,7 @@ pub mod loader;
 pub mod sidebar;
 pub mod sniff_sheet;
 pub mod sniff_sheet_actions;
+pub mod sniff_sheet_step1;
 pub mod sniff_sheet_steps;
 
 use std::cell::Cell;
@@ -145,6 +146,7 @@ pub struct ProvidersView {
 
     pub config_form: Option<Entity<detail_config::ProviderConfigForm>>,
     pub bench_view: Option<Entity<bench::BenchView>>,
+    pub sniff_modal: Option<Entity<sniff_sheet::SniffProviderSheet>>,
     pub status_msg: Option<(Tone, String)>,
     pub pending_handoff: Cell<Option<ProvidersHandoff>>,
     pub(super) llm_sub_id: Option<u64>,
@@ -233,6 +235,7 @@ impl ProvidersView {
             last_bulk_undo: None,
             config_form: None,
             bench_view: None,
+            sniff_modal: None,
             status_msg: None,
             pending_handoff: Cell::new(None),
             llm_sub_id: None,
@@ -251,6 +254,11 @@ impl ProvidersView {
     }
 
     pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
+        if let Some(sniff) = self.sniff_modal.take() {
+            sniff.update(cx, |s, cx| s.cancel_sniff(cx));
+            cx.notify();
+            return true;
+        }
         let had = self.confirm_delete_key.is_some()
             || self.adding_key_open
             || self.adding_model_open
@@ -305,7 +313,7 @@ impl Render for ProvidersView {
             LeftSelection::Empty => sidebar::render_onboarding_hero(self, cx).into_any_element(),
         };
 
-        h_resizable("providers-main-split")
+        let split = h_resizable("providers-main-split")
             .child(
                 resizable_panel()
                     .size(px(268.0))
@@ -319,6 +327,12 @@ impl Render for ProvidersView {
                         .bg(to_hsla(p.surface))
                         .child(right_content),
                 ),
-            )
+            );
+
+        div()
+            .relative()
+            .size_full()
+            .child(split)
+            .children(self.sniff_modal.clone())
     }
 }
