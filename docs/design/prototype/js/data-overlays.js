@@ -357,59 +357,90 @@ window.PD.renderDialogSpec = (id, { sniffStep, connectTool, snippetLang, importT
     },
     "run-monitor": {
       size: "xl",
-      title: "运行看板 · 任务拓扑与执行瀑布（run_01J9X8）",
+      title: "运行看板 · 执行图（run_01J9X8）",
       body: `
         <div class="rm-canvas">
           <div class="rm-kpis">
-            <div class="kpi-card"><span class="kpi-label">运行状态</span><span class="kpi-val fs-sm text-warn">● 等待审批</span><span class="kpi-sub">cargo clippy 待批准</span></div>
-            <div class="kpi-card"><span class="kpi-label">任务节点</span><span class="kpi-val fs-sm">4 个</span><span class="kpi-sub">3 完成 · 1 阻塞 · 0 失败</span></div>
+            <div class="kpi-card"><span class="kpi-label">运行状态</span><span class="kpi-val fs-sm text-warn">● 待审批</span><span class="kpi-sub">cargo clippy 待批准</span></div>
+            <div class="kpi-card"><span class="kpi-label">执行节点</span><span class="kpi-val fs-sm">5 个</span><span class="kpi-sub">3 完成 · 1 待审批 · 0 失败</span></div>
             <div class="kpi-card"><span class="kpi-label">累计耗时</span><span class="kpi-val fs-sm">11.4 s</span><span class="kpi-sub">并行阶段节省 1.7 s</span></div>
-            <div class="kpi-card"><span class="kpi-label">累计 Token / 费用</span><span class="kpi-val fs-sm">28.9K · ¥0.025</span><span class="kpi-sub">主智能体 + 2 子智能体</span></div>
+            <div class="kpi-card"><span class="kpi-label">累计 token / 费用</span><span class="kpi-val fs-sm">28.9K · ¥0.025</span><span class="kpi-sub">主智能体 + 2 子智能体</span></div>
+          </div>
+          <div class="row-between">
+            <div class="seg" data-rm-view-bar>
+              <button data-rm-view="steps">步骤</button>
+              <button class="active" data-rm-view="graph">执行图</button>
+              <button data-rm-view="timeline">时间轴</button>
+            </div>
+            <span class="tag">自动匹配 · 点击节点查看节点详情</span>
           </div>
           <div class="rm-split">
-            <div class="col-stack" style="min-height:0;overflow-y:auto">
-              <div class="rm-topo">
-                <div class="card-panel-head"><span>Agent 执行拓扑（串行阶段 × 并行分支）</span><span class="tag">点击节点查看详情</span></div>
-                <div class="rm-stage">
-                  <span class="rm-stage-lbl">阶段 1</span>
-                  <div class="rm-stage-nodes">
-                    <button class="rm-node selected" data-rm-node="root"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>主智能体 · 拆解任务</b></span><span class="mono fs-2xs text-muted">1.2s</span></div><span class="fs-2xs text-muted">deepseek-v4-pro · 派发 2 个并行子任务</span></button>
-                  </div>
-                </div>
-                <div class="rm-stage">
-                  <span class="rm-stage-lbl">阶段 2 并行</span>
-                  <div class="rm-stage-nodes">
-                    <button class="rm-node" data-rm-node="explore"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>Explore · 检索 router.rs</b></span><span class="mono fs-2xs text-muted">1.8s</span></div><span class="fs-2xs text-muted">deepseek-v4-flash · 只读 · 3.2K tok</span></button>
-                    <button class="rm-node" data-rm-node="search"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>Search · 核对 429 规范</b></span><span class="mono fs-2xs text-muted">1.7s</span></div><span class="fs-2xs text-muted">web_search · 3 个来源 · 1.9K tok</span></button>
-                  </div>
-                </div>
-                <div class="rm-stage">
-                  <span class="rm-stage-lbl">阶段 3 汇合</span>
-                  <div class="rm-stage-nodes">
-                    <button class="rm-node" data-rm-node="edit"><div class="row-between"><span class="status-mark"><span class="dot dot-warn"></span><b>主智能体 · 编辑与验证</b></span><span class="mono fs-2xs text-warn">等待审批</span></div><span class="fs-2xs text-muted">+18 -4 · 14 项测试通过 · 待运行 clippy</span></button>
+            <div class="col-stack" style="min-height:0;overflow:auto">
+              <div class="rm-view-panel" data-rm-panel="graph">
+                <div class="rm-graph-wrap">
+                  <svg class="rm-graph-svg" viewBox="0 0 760 220" preserveAspectRatio="none" aria-hidden="true">
+                    <path d="M 190 58 C 228 58, 228 58, 266 58" class="rm-edge ok" />
+                    <path d="M 190 58 C 228 58, 228 152, 266 152" class="rm-edge ok" />
+                    <path d="M 486 58 C 524 58, 524 58, 562 58" class="rm-edge ok" />
+                    <path d="M 486 152 C 524 152, 524 58, 562 58" class="rm-edge warn" />
+                    <circle cx="190" cy="58" r="3" class="rm-port ok" />
+                    <circle cx="266" cy="58" r="3" class="rm-port ok" />
+                    <circle cx="266" cy="152" r="3" class="rm-port ok" />
+                    <circle cx="486" cy="58" r="3" class="rm-port ok" />
+                    <circle cx="486" cy="152" r="3" class="rm-port warn" />
+                    <circle cx="562" cy="58" r="3" class="rm-port warn" />
+                  </svg>
+                  <div class="rm-graph-cols">
+                    <div class="rm-graph-col">
+                      <span class="rm-col-lbl">阶段 1</span>
+                      <button class="rm-node selected" data-rm-node="root"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>主智能体 · 启动</b></span><span class="mono fs-2xs text-muted">1.2s</span></div><span class="fs-2xs text-muted">deepseek-v4-pro · 派发 2 并行子智能体</span></button>
+                    </div>
+                    <div class="rm-graph-col">
+                      <span class="rm-col-lbl">阶段 2 · 并行</span>
+                      <div class="rm-group-card">
+                        <span class="rm-group-tab">并行组 · 调研</span>
+                        <button class="rm-node" data-rm-node="explore"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>检索 router.rs</b></span><span class="mono fs-2xs text-muted">1.8s</span></div><span class="fs-2xs text-muted">2/2 已完成 · 展开全部 (2)</span></button>
+                      </div>
+                      <button class="rm-node" data-rm-node="search"><div class="row-between"><span class="status-mark"><span class="dot dot-ok"></span><b>核对 429 规范</b></span><span class="mono fs-2xs text-muted">1.7s</span></div><span class="fs-2xs text-muted">调研 · web_search · 3 来源</span></button>
+                    </div>
+                    <div class="rm-graph-col">
+                      <span class="rm-col-lbl">阶段 3 · 汇合</span>
+                      <button class="rm-node" data-rm-node="edit"><div class="row-between"><span class="status-mark"><span class="dot dot-warn"></span><b>编辑与验证</b></span><span class="mono fs-2xs text-warn">待审批</span></div><span class="fs-2xs text-muted">+18 -4 · 待运行 clippy</span></button>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="card-panel">
-                <div class="card-panel-head"><span>执行瀑布时间线</span><span class="mono fs-2xs text-muted">0.0s — 11.4s</span></div>
-                <div class="rm-wf-row"><span class="truncate">主智能体 · 规划</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:0%;width:11%"></div></div><span class="mono text-right text-muted">1.2s</span></div>
-                <div class="rm-wf-row"><span class="truncate">Explore (并行)</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:16%"></div></div><span class="mono text-right text-muted">1.8s</span></div>
-                <div class="rm-wf-row"><span class="truncate">Search (并行)</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:15%"></div></div><span class="mono text-right text-muted">1.7s</span></div>
-                <div class="rm-wf-row"><span class="truncate">编辑 + 单元测试</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:27%;width:63%"></div></div><span class="mono text-right text-muted">7.2s</span></div>
-                <div class="rm-wf-row"><span class="truncate text-warn">clippy 审批闸门</span><div class="rm-wf-track"><div class="rm-wf-bar warn" style="left:90%;width:10%"></div></div><span class="mono text-right text-warn">等待中</span></div>
+              <div class="rm-view-panel hidden" data-rm-panel="steps">
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>执行步骤 (4)</span><span class="tag">线性轨迹</span></div>
+                  <button class="rm-node" data-rm-node="root"><div class="row-between"><span>1. 主智能体 · 启动</span><span class="mono fs-2xs text-muted">1.2s</span></div></button>
+                  <button class="rm-node" data-rm-node="explore"><div class="row-between"><span>2. 子智能体 · 检索 router.rs</span><span class="mono fs-2xs text-muted">1.8s</span></div></button>
+                  <button class="rm-node" data-rm-node="search"><div class="row-between"><span>3. 子智能体 · 核对 429 规范</span><span class="mono fs-2xs text-muted">1.7s</span></div></button>
+                  <button class="rm-node" data-rm-node="edit"><div class="row-between"><span>4. shell · cargo clippy</span><span class="mono fs-2xs text-warn">待审批</span></div></button>
+                </div>
+              </div>
+              <div class="rm-view-panel hidden" data-rm-panel="timeline">
+                <div class="card-panel">
+                  <div class="card-panel-head"><span>瀑布时间轴</span><span class="mono fs-2xs text-muted">0.0s — 11.4s</span></div>
+                  <div class="rm-wf-row"><span class="truncate">主智能体 · 启动</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:0%;width:11%"></div></div><span class="mono text-right text-muted">1.2s</span></div>
+                  <div class="rm-wf-row"><span class="truncate">调研 · router.rs</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:16%"></div></div><span class="mono text-right text-muted">1.8s</span></div>
+                  <div class="rm-wf-row"><span class="truncate">调研 · 429 规范</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:11%;width:15%"></div></div><span class="mono text-right text-muted">1.7s</span></div>
+                  <div class="rm-wf-row"><span class="truncate">编辑与单测</span><div class="rm-wf-track"><div class="rm-wf-bar ok" style="left:27%;width:63%"></div></div><span class="mono text-right text-muted">7.2s</span></div>
+                  <div class="rm-wf-row"><span class="truncate text-warn">clippy 审批</span><div class="rm-wf-track"><div class="rm-wf-bar warn" style="left:90%;width:10%"></div></div><span class="mono text-right text-warn">待审批</span></div>
+                </div>
               </div>
             </div>
             <div id="rm-node-detail" class="card-panel" style="min-height:0;overflow-y:auto">
-              <div class="card-panel-head"><span>主智能体 · 拆解任务</span><span class="tag tag-ok">已完成</span></div>
+              <div class="card-panel-head"><span>节点详情 · 主智能体 · 启动</span><span class="tag tag-ok">已完成</span></div>
               <div class="fs-xs text-muted">模型：<code class="text-ink1">DeepSeek/deepseek-v4-pro</code></div>
               <div class="fs-xs text-muted">耗时：<b class="mono text-ink1">1.20 s</b> · 消耗 <b class="mono text-ink1">4,210 tok</b></div>
               <div class="code-box" style="white-space:pre-wrap">并行派生 2 个子智能体：
-1. Explore 定位 router.rs 中 429 与 5xx 熔断分支
-2. Search 核对 DeepSeek Retry-After 响应头格式</div>
+1. 调研：定位 router.rs 中 429 与 5xx 熔断分支
+2. 调研：核对 DeepSeek Retry-After 响应头格式</div>
             </div>
           </div>
         </div>`,
-      foot: `<span class="dialog-foot-note">实时同步 Agent 拓扑与子任务状态，无需切换页面</span><button class="btn" data-action="close-dialog">关闭</button>`,
+      foot: `<span class="dialog-foot-note">步骤、执行图与时间轴共享节点选中状态，审批统一在对话关卡区处理</span><button class="btn" data-action="close-dialog">关闭</button>`,
     },
     "reset-all": {
       size: "sm", tone: "danger",

@@ -4,6 +4,7 @@
 //! `cargo xtask check-arch`). Upgrading or replacing `gpui-component` touches only this module.
 
 pub mod assets;
+pub mod dag_canvas;
 pub mod data;
 pub mod dialog;
 pub mod feedback;
@@ -40,6 +41,7 @@ pub use gpui_kit::component::{
 };
 
 pub use assets::{APP_ICON_PNG_BYTES, PingDeckAssets};
+pub use dag_canvas::{DagEdgeDraw, dag_edge_canvas};
 pub use data::{choice_chip, data_row, kpi_card, kv_line, table_header};
 pub use dialog::{modal_dialog, responsive_modal_bounds, responsive_sheet_width};
 pub use feedback::{

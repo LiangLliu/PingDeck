@@ -1,10 +1,12 @@
 //! Run Monitor & Execution Topology controller actions for [`ChatView`].
 
 use gpui_kit::Context;
+use pingdeck_desktop::core::agent::dto::AgentRunTopology;
 use pingdeck_desktop::core::app::{
     agent_board_impl, agent_run_stop_all_impl, agent_run_stop_impl, agent_run_topology_impl,
     agent_session_latest_topology_impl,
 };
+use pingdeck_desktop::state::{RunViewMode, is_graph_available, select_default_view_mode};
 
 use crate::bridge::spawn_blocking_into;
 
@@ -41,7 +43,69 @@ impl ChatView {
             return;
         }
         self.selected_monitor_run_id = Some(run_id);
+        self.selected_graph_node_id = None;
         self.load_selected_topology(cx);
+        cx.notify();
+    }
+
+    /// Resolves the active single-run presentation mode (`Steps` / `Graph` / `Timeline`) along
+    /// with whether it was selected automatically by the adaptive router.
+    #[must_use]
+    pub fn effective_monitor_view_mode(&self, topo: &AgentRunTopology) -> (RunViewMode, bool) {
+        if let Some(&manual) = self.monitor_view_overrides.get(&topo.run.run_id) {
+            if manual == RunViewMode::Graph && !is_graph_available(topo) {
+                return (RunViewMode::Steps, true);
+            }
+            return (manual, false);
+        }
+        (select_default_view_mode(topo), true)
+    }
+
+    /// Persists the user's manual view mode override for `run_id`.
+    pub fn set_monitor_view_mode(
+        &mut self,
+        run_id: String,
+        mode: RunViewMode,
+        cx: &mut Context<Self>,
+    ) {
+        self.monitor_view_overrides.insert(run_id, mode);
+        cx.notify();
+    }
+
+    /// Focuses or clears a selected node/member across Execution Graph, Steps, and Node Inspector.
+    pub fn select_graph_node(&mut self, node_id: Option<String>, cx: &mut Context<Self>) {
+        self.selected_graph_node_id = node_id;
+        cx.notify();
+    }
+
+    /// Toggles expand/collapse of a single Parallel Group card in the Execution Graph.
+    pub fn toggle_graph_group(&mut self, group_id: String, cx: &mut Context<Self>) {
+        if !self.expanded_graph_groups.remove(&group_id) {
+            self.expanded_graph_groups.insert(group_id);
+        }
+        cx.notify();
+    }
+
+    /// Expands all collapsible Parallel Group cards if any are collapsed, else collapses them all.
+    pub fn toggle_all_graph_groups(&mut self, group_ids: &[String], cx: &mut Context<Self>) {
+        let all_open = group_ids
+            .iter()
+            .all(|id| self.expanded_graph_groups.contains(id));
+        if all_open {
+            for id in group_ids {
+                self.expanded_graph_groups.remove(id);
+            }
+        } else {
+            for id in group_ids {
+                self.expanded_graph_groups.insert(id.clone());
+            }
+        }
+        cx.notify();
+    }
+
+    /// Sets the Execution Graph canvas zoom scale (`0.75..=1.15`).
+    pub fn set_graph_zoom(&mut self, zoom: f32, cx: &mut Context<Self>) {
+        self.graph_zoom = zoom.clamp(0.75, 1.15);
         cx.notify();
     }
 

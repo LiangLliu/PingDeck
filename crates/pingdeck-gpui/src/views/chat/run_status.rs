@@ -1,11 +1,18 @@
 //! Shared lifecycle status encoding, elapsed-time formatting, and horizontal waterfall timing
 //! bars used across the Run Monitor, Execution Topology tree, Chat Sidebar, and Inspector.
 
-use gpui_kit::{App, Div, ParentElement as _, Styled as _, div, px};
-use pingdeck_desktop::core::agent::dto::BoardWait;
+use gpui_kit::{
+    AnyElement, App, Context, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div,
+    px,
+};
+use pingdeck_desktop::core::agent::dto::{AgentBoard, BoardWait};
 use pingdeck_desktop::core::agent::model::{AgentRunStatus, SubagentRole};
 
-use crate::ui::{StatusShape, Tone, palette, to_hsla};
+use crate::ui::{
+    StatusShape, Tone, UiIcon, badge, btn_danger, btn_icon, h_row, icon_xs, palette, to_hsla,
+};
+
+use super::ChatView;
 
 /// Maps an agent run's lifecycle status + wait reason to an accessible geometric indicator,
 /// semantic tone, and localized status label.
@@ -176,4 +183,157 @@ pub fn folder_basename(path: &str) -> &str {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(path)
+}
+
+/// Top global telemetry bar rendered above the Run Monitor master/detail split.
+pub fn render_telemetry_bar(board: &AgentBoard, cx: &mut Context<ChatView>) -> AnyElement {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let max_slots = usize::from(board.limits.max_concurrent_runs.max(1));
+    let running_now = board.running.iter().filter(|r| !r.waiting_for_slot).count();
+    let queued_now = board.running.iter().filter(|r| r.waiting_for_slot).count();
+    let active_total = board.running.len()
+        + board
+            .needs_you
+            .iter()
+            .filter(|r| r.run.status.is_active())
+            .count();
+    let waiting_count = board.needs_you.len();
+    let (ok_24h, fail_24h) = count_24h_outcomes(board);
+    let tok_total = board.tokens_today.input + board.tokens_today.output;
+    let cost_txt = format_cost_today(board);
+
+    let mut slot_pips = h_row().gap(px(3.0));
+    for idx in 0..max_slots.min(8) {
+        let filled = idx < running_now;
+        slot_pips = slot_pips.child(
+            div()
+                .size(px(7.0))
+                .rounded(px(999.0))
+                .bg(to_hsla(if filled { p.accent } else { p.line_strong })),
+        );
+    }
+
+    let left_metrics = h_row()
+        .flex_1()
+        .min_w_0()
+        .gap(px(10.0))
+        .flex_wrap()
+        .child(
+            h_row()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .text_color(to_hsla(p.accent))
+                        .child(icon_xs(UiIcon::Activity)),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(to_hsla(p.ink))
+                        .child(ch.monitor_title()),
+                ),
+        )
+        .child(
+            h_row()
+                .gap(px(6.0))
+                .px(px(8.0))
+                .py(px(3.0))
+                .rounded(px(6.0))
+                .bg(to_hsla(p.sunken))
+                .child(slot_pips)
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(to_hsla(p.ink_2))
+                        .child(SharedString::from(ch.monitor_slots(running_now, max_slots))),
+                ),
+        )
+        .children(
+            (queued_now > 0).then(|| badge(ch.monitor_queued_count(queued_now), Tone::Neutral, cx)),
+        )
+        .children((board.active_subagents > 0).then(|| {
+            badge(
+                ch.monitor_subagents_active(board.active_subagents),
+                Tone::Accent,
+                cx,
+            )
+        }))
+        .children(
+            (waiting_count > 0)
+                .then(|| badge(ch.monitor_attention_count(waiting_count), Tone::Warning, cx)),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(SharedString::from(ch.monitor_outcome_24h(ok_24h, fail_24h))),
+        );
+
+    let right_controls = h_row()
+        .flex_shrink_0()
+        .gap(px(8.0))
+        .child(
+            div()
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(SharedString::from(format!(
+                    "{} · {cost_txt}",
+                    ch.sidebar_today_tok(format_tokens_compact(tok_total))
+                ))),
+        )
+        .child(
+            btn_icon("monitor-refresh", UiIcon::Refresh)
+                .tooltip(ch.monitor_refresh())
+                .on_click(cx.listener(|this, _, _, cx| this.refresh_monitor(cx))),
+        )
+        .children((active_total > 0).then(|| {
+            btn_danger("monitor-stop-all", ch.monitor_stop_all())
+                .on_click(cx.listener(|this, _, _, cx| this.request_stop_all_runs(cx)))
+        }));
+
+    h_row()
+        .w_full()
+        .flex_shrink_0()
+        .justify_between()
+        .gap(px(12.0))
+        .px(px(16.0))
+        .py(px(10.0))
+        .bg(to_hsla(p.pane))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.pane)))
+        .child(left_metrics)
+        .child(right_controls)
+        .into_any_element()
+}
+
+fn count_24h_outcomes(board: &AgentBoard) -> (usize, usize) {
+    let mut ok = 0usize;
+    let mut failed = 0usize;
+    for r in board
+        .done
+        .iter()
+        .chain(board.needs_you.iter().filter(|r| !r.run.status.is_active()))
+    {
+        match r.run.status {
+            AgentRunStatus::Completed => ok += 1,
+            AgentRunStatus::Failed | AgentRunStatus::Interrupted => failed += 1,
+            _ => {}
+        }
+    }
+    (ok, failed)
+}
+
+fn format_cost_today(board: &AgentBoard) -> String {
+    if board.cost_today.is_empty() {
+        "—".to_owned()
+    } else {
+        board
+            .cost_today
+            .iter()
+            .map(|c| format!("{} {:.3}", c.currency, c.cost_micro as f64 / 1_000_000.0))
+            .collect::<Vec<_>>()
+            .join(" + ")
+    }
 }

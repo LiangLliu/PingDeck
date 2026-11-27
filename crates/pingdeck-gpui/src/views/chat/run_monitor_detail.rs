@@ -1,178 +1,31 @@
 //! Right-hand detail pane of the full-canvas Run Monitor: selected run header, metadata ribbon,
-//! blocker / failure diagnostic banners, and embedded [`render_topology`] waterfall timeline.
+//! adaptive 3-view switcher (`Steps` / `Graph` / `Timeline`), blocker / failure banners, active
+//! execution canvas, and docked `Node Inspector` (`节点详情`).
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
-    Styled as _, div, px,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use pingdeck_desktop::core::agent::dto::{AgentBoard, BoardWait};
+use pingdeck_desktop::core::agent::dto::{AgentBoard, AgentRunTopology, BoardWait};
 use pingdeck_desktop::core::agent::model::AgentRunStatus;
+use pingdeck_desktop::state::{RunViewMode, is_graph_available};
 
 use crate::ui::{
     ScrollableElement as _, StatusShape, Tone, UiIcon, alert_banner, badge, btn_danger, btn_ghost,
-    btn_icon, btn_primary, btn_secondary, empty_inline, empty_state, h_row, icon_xs, palette,
-    status_indicator, to_hsla, v_col,
+    btn_primary, btn_secondary, choice_chip, empty_inline, empty_state, h_row, icon_xs, palette,
+    status_indicator, text_tooltip, to_hsla, v_col,
 };
 
 use super::ChatView;
+use super::run_graph::{build_run_graph_layout, render_execution_graph};
 use super::run_monitor::all_board_rows;
+use super::run_node_inspector::render_node_inspector;
 use super::run_status::{
     folder_basename, format_elapsed_short, format_tokens_compact, run_status_meta,
 };
+use super::run_steps::render_steps_view;
 use super::run_topology::render_topology;
 use super::types::ChatHandoff;
-
-pub fn render_telemetry_bar(board: &AgentBoard, cx: &mut Context<ChatView>) -> AnyElement {
-    let p = palette(cx);
-    let ch = crate::ui::tr(cx).chat();
-    let max_slots = usize::from(board.limits.max_concurrent_runs.max(1));
-    let running_now = board.running.iter().filter(|r| !r.waiting_for_slot).count();
-    let queued_now = board.running.iter().filter(|r| r.waiting_for_slot).count();
-    let active_total = board.running.len()
-        + board
-            .needs_you
-            .iter()
-            .filter(|r| r.run.status.is_active())
-            .count();
-    let waiting_count = board.needs_you.len();
-    let (ok_24h, fail_24h) = count_24h_outcomes(board);
-    let tok_total = board.tokens_today.input + board.tokens_today.output;
-    let cost_txt = format_cost_today(board);
-
-    let mut slot_pips = h_row().gap(px(3.0));
-    for idx in 0..max_slots.min(8) {
-        let filled = idx < running_now;
-        slot_pips = slot_pips.child(
-            div()
-                .size(px(7.0))
-                .rounded(px(999.0))
-                .bg(to_hsla(if filled { p.accent } else { p.line_strong })),
-        );
-    }
-
-    let left_metrics = h_row()
-        .flex_1()
-        .min_w_0()
-        .gap(px(10.0))
-        .flex_wrap()
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .child(
-                    div()
-                        .text_color(to_hsla(p.accent))
-                        .child(icon_xs(UiIcon::Activity)),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(to_hsla(p.ink))
-                        .child(ch.monitor_title()),
-                ),
-        )
-        .child(
-            h_row()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .py(px(3.0))
-                .rounded(px(6.0))
-                .bg(to_hsla(p.sunken))
-                .child(slot_pips)
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.ink_2))
-                        .child(SharedString::from(ch.monitor_slots(running_now, max_slots))),
-                ),
-        )
-        .children(
-            (queued_now > 0).then(|| badge(ch.monitor_queued_count(queued_now), Tone::Neutral, cx)),
-        )
-        .children((board.active_subagents > 0).then(|| {
-            badge(
-                ch.monitor_subagents_active(board.active_subagents),
-                Tone::Accent,
-                cx,
-            )
-        }))
-        .children(
-            (waiting_count > 0)
-                .then(|| badge(ch.monitor_attention_count(waiting_count), Tone::Warning, cx)),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(SharedString::from(ch.monitor_outcome_24h(ok_24h, fail_24h))),
-        );
-
-    let right_controls = h_row()
-        .flex_shrink_0()
-        .gap(px(8.0))
-        .child(
-            div()
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(SharedString::from(format!(
-                    "{} · {cost_txt}",
-                    ch.sidebar_today_tok(format_tokens_compact(tok_total))
-                ))),
-        )
-        .child(
-            btn_icon("monitor-refresh", UiIcon::Refresh)
-                .tooltip(ch.monitor_refresh())
-                .on_click(cx.listener(|this, _, _, cx| this.refresh_monitor(cx))),
-        )
-        .children((active_total > 0).then(|| {
-            btn_danger("monitor-stop-all", ch.monitor_stop_all())
-                .on_click(cx.listener(|this, _, _, cx| this.request_stop_all_runs(cx)))
-        }));
-
-    h_row()
-        .w_full()
-        .flex_shrink_0()
-        .justify_between()
-        .gap(px(12.0))
-        .px(px(16.0))
-        .py(px(10.0))
-        .bg(to_hsla(p.pane))
-        .border_b_1()
-        .border_color(to_hsla(p.line.composite_over(p.pane)))
-        .child(left_metrics)
-        .child(right_controls)
-        .into_any_element()
-}
-
-fn count_24h_outcomes(board: &AgentBoard) -> (usize, usize) {
-    let mut ok = 0usize;
-    let mut failed = 0usize;
-    for r in board
-        .done
-        .iter()
-        .chain(board.needs_you.iter().filter(|r| !r.run.status.is_active()))
-    {
-        match r.run.status {
-            AgentRunStatus::Completed => ok += 1,
-            AgentRunStatus::Failed | AgentRunStatus::Interrupted => failed += 1,
-            _ => {}
-        }
-    }
-    (ok, failed)
-}
-
-fn format_cost_today(board: &AgentBoard) -> String {
-    if board.cost_today.is_empty() {
-        "—".to_owned()
-    } else {
-        board
-            .cost_today
-            .iter()
-            .map(|c| format!("{} {:.3}", c.currency, c.cost_micro as f64 / 1_000_000.0))
-            .collect::<Vec<_>>()
-            .join(" + ")
-    }
-}
 
 pub fn render_selected_detail(
     view: &ChatView,
@@ -355,99 +208,252 @@ pub fn render_selected_detail(
                 })),
         );
 
-    let mut body = v_col().w_full().gap(px(12.0)).p(px(18.0));
+    let (active_mode, is_auto) = view.effective_monitor_view_mode(topo);
+    let graph_ok = is_graph_available(topo);
+    let view_bar = render_view_mode_bar(topo, active_mode, is_auto, graph_ok, cx);
 
-    if let Some(appr) = &topo.pending_approval {
-        body = body.child(
-            h_row()
-                .w_full()
-                .justify_between()
-                .gap(px(10.0))
-                .px(px(12.0))
-                .py(px(10.0))
-                .rounded(px(8.0))
-                .bg(to_hsla(p.warn_soft))
-                .border_1()
-                .border_color(to_hsla(p.warn_line.composite_over(p.warn_soft)))
-                .child(
-                    h_row()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(8.0))
-                        .child(status_indicator(StatusShape::Warn, cx))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_xs()
-                                .text_color(to_hsla(p.warn))
-                                .child(SharedString::from(appr.summary.clone())),
-                        ),
-                )
-                .child(
-                    btn_secondary("mon-det-handle", ch.monitor_handle_in_chat()).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.open_session_from_monitor(sid_gate.clone(), cx);
-                        }),
-                    ),
-                ),
-        );
-    } else if topo.wait == Some(BoardWait::CostLimit)
-        || topo.run.status == AgentRunStatus::WaitingApproval
-    {
-        body = body.child(
-            h_row()
-                .w_full()
-                .justify_between()
-                .gap(px(10.0))
-                .px(px(12.0))
-                .py(px(9.0))
-                .rounded(px(8.0))
-                .bg(to_hsla(p.warn_soft))
-                .border_1()
-                .border_color(to_hsla(p.warn_line.composite_over(p.warn_soft)))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(to_hsla(p.warn))
-                        .child(status_lbl),
-                )
-                .child(
-                    btn_secondary("mon-det-handle2", ch.monitor_handle_in_chat()).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.open_session_from_monitor(sid_gate.clone(), cx);
-                        }),
-                    ),
-                ),
-        );
-    } else if let Some(err) = &topo.run.error
-        && matches!(
-            topo.run.status,
-            AgentRunStatus::Failed | AgentRunStatus::Interrupted
-        )
-    {
-        body = body.child(alert_banner(
-            Tone::Danger,
-            format!("{} · {err}", ch.monitor_error_heading()),
-            None,
-            cx,
-        ));
-    }
+    let alert_strip = render_run_alert_banner(topo, status_lbl, sid_gate, cx);
 
-    body = body.child(render_topology(view, topo, false, cx));
+    let graph_layout = (active_mode == RunViewMode::Graph || view.selected_graph_node_id.is_some())
+        .then(|| build_run_graph_layout(view, topo, cx));
+    let inspector_pane = graph_layout
+        .as_ref()
+        .and_then(|layout| render_node_inspector(view, topo, layout, cx));
+
+    let main_stage: AnyElement = match active_mode {
+        RunViewMode::Graph => match &graph_layout {
+            Some(layout) => render_execution_graph(view, layout, cx),
+            None => render_steps_view(view, topo, cx),
+        },
+        RunViewMode::Steps => div()
+            .id("chat-monitor-steps-scroll")
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .h_full()
+            .overflow_y_scrollbar()
+            .child(
+                v_col()
+                    .w_full()
+                    .gap(px(12.0))
+                    .p(px(18.0))
+                    .child(render_steps_view(view, topo, cx)),
+            )
+            .into_any_element(),
+        RunViewMode::Timeline => div()
+            .id("chat-monitor-detail-scroll")
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .h_full()
+            .overflow_y_scrollbar()
+            .child(
+                v_col()
+                    .w_full()
+                    .gap(px(12.0))
+                    .p(px(18.0))
+                    .child(render_topology(view, topo, false, cx)),
+            )
+            .into_any_element(),
+    };
 
     v_col()
         .flex_1()
         .min_w_0()
         .h_full()
         .child(header)
+        .child(view_bar)
+        .children(alert_strip)
         .child(
-            div()
-                .id("chat-monitor-detail-scroll")
+            h_row()
                 .flex_1()
                 .min_h_0()
-                .overflow_y_scrollbar()
-                .child(body),
+                .w_full()
+                .items_stretch()
+                .child(main_stage)
+                .children(inspector_pane),
         )
         .into_any_element()
+}
+
+fn render_view_mode_bar(
+    topo: &AgentRunTopology,
+    active_mode: RunViewMode,
+    is_auto: bool,
+    graph_ok: bool,
+    cx: &mut Context<ChatView>,
+) -> AnyElement {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let rid_steps = topo.run.run_id.clone();
+    let rid_graph = topo.run.run_id.clone();
+    let rid_time = topo.run.run_id.clone();
+
+    let graph_btn: AnyElement = if graph_ok {
+        choice_chip(
+            "mon-view-graph",
+            ch.monitor_view_graph(),
+            active_mode == RunViewMode::Graph,
+            cx,
+        )
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.set_monitor_view_mode(rid_graph.clone(), RunViewMode::Graph, cx);
+        }))
+        .into_any_element()
+    } else {
+        div()
+            .id("mon-view-graph-disabled")
+            .px(px(9.0))
+            .py(px(4.0))
+            .rounded(px(6.0))
+            .bg(to_hsla(p.sunken))
+            .border_1()
+            .border_color(to_hsla(p.line.composite_over(p.sunken)))
+            .text_xs()
+            .text_color(to_hsla(p.faint))
+            .tooltip(text_tooltip(ch.monitor_view_graph_disabled()))
+            .child(ch.monitor_view_graph())
+            .into_any_element()
+    };
+
+    h_row()
+        .w_full()
+        .flex_shrink_0()
+        .justify_between()
+        .gap(px(8.0))
+        .px(px(18.0))
+        .py(px(7.0))
+        .bg(to_hsla(p.surface))
+        .border_b_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(
+            h_row()
+                .gap(px(5.0))
+                .child(
+                    choice_chip(
+                        "mon-view-steps",
+                        ch.monitor_view_steps(),
+                        active_mode == RunViewMode::Steps,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_monitor_view_mode(rid_steps.clone(), RunViewMode::Steps, cx);
+                    })),
+                )
+                .child(graph_btn)
+                .child(
+                    choice_chip(
+                        "mon-view-timeline",
+                        ch.monitor_view_timeline(),
+                        active_mode == RunViewMode::Timeline,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_monitor_view_mode(rid_time.clone(), RunViewMode::Timeline, cx);
+                    })),
+                )
+                .children(is_auto.then(|| badge(ch.monitor_view_auto_badge(), Tone::Neutral, cx))),
+        )
+        .into_any_element()
+}
+
+fn render_run_alert_banner(
+    topo: &AgentRunTopology,
+    status_lbl: &'static str,
+    sid_gate: String,
+    cx: &mut Context<ChatView>,
+) -> Option<AnyElement> {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+
+    let inner: AnyElement = if let Some(appr) = &topo.pending_approval {
+        h_row()
+            .w_full()
+            .justify_between()
+            .gap(px(10.0))
+            .px(px(12.0))
+            .py(px(9.0))
+            .rounded(px(8.0))
+            .bg(to_hsla(p.warn_soft))
+            .border_1()
+            .border_color(to_hsla(p.warn_line.composite_over(p.warn_soft)))
+            .child(
+                h_row()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(8.0))
+                    .child(status_indicator(StatusShape::Warn, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_xs()
+                            .text_color(to_hsla(p.warn))
+                            .child(SharedString::from(appr.summary.clone())),
+                    ),
+            )
+            .child(
+                btn_secondary("mon-det-handle", ch.monitor_handle_in_chat()).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.open_session_from_monitor(sid_gate.clone(), cx);
+                    },
+                )),
+            )
+            .into_any_element()
+    } else if topo.wait == Some(BoardWait::CostLimit)
+        || topo.run.status == AgentRunStatus::WaitingApproval
+    {
+        h_row()
+            .w_full()
+            .justify_between()
+            .gap(px(10.0))
+            .px(px(12.0))
+            .py(px(9.0))
+            .rounded(px(8.0))
+            .bg(to_hsla(p.warn_soft))
+            .border_1()
+            .border_color(to_hsla(p.warn_line.composite_over(p.warn_soft)))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.warn))
+                    .child(status_lbl),
+            )
+            .child(
+                btn_secondary("mon-det-handle2", ch.monitor_handle_in_chat()).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.open_session_from_monitor(sid_gate.clone(), cx);
+                    }),
+                ),
+            )
+            .into_any_element()
+    } else if let Some(err) = &topo.run.error
+        && matches!(
+            topo.run.status,
+            AgentRunStatus::Failed | AgentRunStatus::Interrupted
+        )
+    {
+        alert_banner(
+            Tone::Danger,
+            format!("{} · {err}", ch.monitor_error_heading()),
+            None,
+            cx,
+        )
+        .into_any_element()
+    } else {
+        return None;
+    };
+
+    Some(
+        div()
+            .w_full()
+            .flex_shrink_0()
+            .px(px(18.0))
+            .py(px(8.0))
+            .bg(to_hsla(p.surface))
+            .border_b_1()
+            .border_color(to_hsla(p.line.composite_over(p.surface)))
+            .child(inner)
+            .into_any_element(),
+    )
 }

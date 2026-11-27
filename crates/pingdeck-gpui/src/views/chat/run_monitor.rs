@@ -22,8 +22,8 @@ use crate::ui::{
 };
 
 use super::ChatView;
-use super::run_monitor_detail::{render_selected_detail, render_telemetry_bar};
-use super::run_status::{format_elapsed_short, run_status_meta};
+use super::run_monitor_detail::render_selected_detail;
+use super::run_status::{format_elapsed_short, render_telemetry_bar, run_status_meta};
 use super::sidebar_board::group_label;
 use super::types::MonitorFilter;
 

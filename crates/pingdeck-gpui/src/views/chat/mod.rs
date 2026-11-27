@@ -13,9 +13,13 @@ pub mod metrics;
 pub mod modals;
 pub mod reasoning;
 pub mod run_actions;
+pub mod run_graph;
+pub mod run_graph_cards;
 pub mod run_monitor;
 pub mod run_monitor_detail;
+pub mod run_node_inspector;
 pub mod run_status;
+pub mod run_steps;
 pub mod run_topology;
 pub mod run_topology_subagent;
 pub mod session_sync;
@@ -44,7 +48,7 @@ use pingdeck_desktop::core::agent::tools::process::BackgroundProcess;
 use pingdeck_desktop::core::app::{EnvironmentDto, WorkspaceInfo};
 use pingdeck_desktop::core::model::Workspace;
 use pingdeck_desktop::persistence::ChatDraftsStore;
-use pingdeck_desktop::state::ChatThreadState;
+use pingdeck_desktop::state::{ChatThreadState, RunViewMode};
 
 use crate::bridge::runtime;
 use crate::ui::{
@@ -74,6 +78,10 @@ pub struct ChatView {
     pub selected_topology: Option<AgentRunTopology>,
     pub session_topology: Option<AgentRunTopology>,
     pub expanded_topology_nodes: HashSet<String>,
+    pub monitor_view_overrides: HashMap<String, RunViewMode>,
+    pub selected_graph_node_id: Option<String>,
+    pub expanded_graph_groups: HashSet<String>,
+    pub graph_zoom: f32,
     pub search_input: Entity<InputState>,
     pub model_search_input: Entity<InputState>,
     pub question_other_input: Entity<InputState>,
@@ -204,6 +212,10 @@ impl ChatView {
             selected_topology: None,
             session_topology: None,
             expanded_topology_nodes: HashSet::new(),
+            monitor_view_overrides: HashMap::new(),
+            selected_graph_node_id: None,
+            expanded_graph_groups: HashSet::new(),
+            graph_zoom: 1.0,
             search_input,
             model_search_input,
             question_other_input,

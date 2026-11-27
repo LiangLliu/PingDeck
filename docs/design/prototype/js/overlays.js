@@ -133,7 +133,7 @@ window.PingDeckOverlays = (() => {
       return;
     }
 
-    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-rm-node], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
+    const t = e.target.closest("[data-modal], [data-drawer], [data-popover], [data-action], [data-dialog-done], [data-dialog-undo], [data-drawer-done], [data-pop-toast], [data-pick-method], [data-pick-env], [data-pick-perm], [data-pick-model], [data-pick-ai-proto], [data-pick-range], [data-pick-which], [data-pick-proxy], [data-pick-basis], [data-pick-curr], [data-pick-unlisted-prov], [data-rm-node], [data-rm-view], [data-sniff-step], [data-sniff-preset], [data-connect-tool], [data-snippet-lang], [data-import-tab], [data-toast]");
     if (!t) {
       if (!e.target.closest(".pop-box")) closeAllPopovers();
       return;
@@ -280,15 +280,22 @@ window.PingDeckOverlays = (() => {
       closeAllPopovers();
       return;
     }
+    if (t.dataset.rmView) {
+      const target = t.dataset.rmView;
+      const canvas = t.closest(".rm-canvas");
+      canvas?.querySelectorAll("[data-rm-view]").forEach((b) => b.classList.toggle("active", b === t));
+      canvas?.querySelectorAll("[data-rm-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.rmPanel !== target));
+      return;
+    }
     if (t.dataset.rmNode) {
       const nodes = {
-        root: { title: "主智能体 · 拆解任务", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-pro", meta: "1.20 s · 4,210 tok", log: "并行派生 2 个子智能体：\n1. Explore 定位 router.rs 中 429 与 5xx 熔断分支\n2. Search 核对 DeepSeek Retry-After 响应头格式" },
-        explore: { title: "Explore · 检索 router.rs", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-flash", meta: "1.80 s · 3,200 tok", log: "read_file crates/pingdeck-core/src/llm/router.rs:205-248\n定位到 match status 中 429 与 500..=599 合并触发 60s 熔断。" },
-        search: { title: "Search · 核对 429 规范", tag: "已完成", tone: "tag-ok", model: "web_search (只读)", meta: "1.70 s · 1,920 tok", log: "检索 3 个来源：确认 Retry-After 秒数头与退避上限 15s 策略。" },
-        edit: { title: "主智能体 · 编辑与验证", tag: "等待审批", tone: "tag-warn", model: "DeepSeek/deepseek-v4-pro", meta: "7.20 s · 19,570 tok", log: "edit_file router.rs (+18 -4)\ncargo test -p pingdeck-core router → 14 passed\n等待用户批准：cargo clippy -p pingdeck-core -- -D warnings" },
+        root: { title: "节点详情 · 主智能体 · 启动", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-pro", meta: "1.20 s · 4,210 tok", log: "并行派生 2 个子智能体：\n1. 调研：定位 router.rs 中 429 与 5xx 熔断分支\n2. 调研：核对 DeepSeek Retry-After 响应头格式" },
+        explore: { title: "节点详情 · 检索 router.rs", tag: "已完成", tone: "tag-ok", model: "DeepSeek/deepseek-v4-flash", meta: "1.80 s · 3,200 tok", log: "read_file crates/pingdeck-core/src/llm/router.rs:205-248\n定位到 match status 中 429 与 500..=599 合并触发 60s 熔断。" },
+        search: { title: "节点详情 · 核对 429 规范", tag: "已完成", tone: "tag-ok", model: "web_search（只读）", meta: "1.70 s · 1,920 tok", log: "检索 3 个来源：确认 Retry-After 秒数头与退避上限 15s 策略。" },
+        edit: { title: "节点详情 · 编辑与验证", tag: "待审批", tone: "tag-warn", model: "DeepSeek/deepseek-v4-pro", meta: "7.20 s · 19,570 tok", log: "edit_file router.rs (+18 -4)\ncargo test -p pingdeck-core router → 14 passed\n等待用户批准：cargo clippy -p pingdeck-core -- -D warnings" },
       };
       const info = nodes[t.dataset.rmNode];
-      t.closest(".rm-topo")?.querySelectorAll("[data-rm-node]").forEach((n) => n.classList.toggle("selected", n === t));
+      t.closest(".rm-canvas")?.querySelectorAll("[data-rm-node]").forEach((n) => n.classList.toggle("selected", n.dataset.rmNode === t.dataset.rmNode));
       const det = byId("rm-node-detail");
       if (info && det) {
         det.innerHTML = `<div class="card-panel-head"><span>${info.title}</span><span class="tag ${info.tone}">${info.tag}</span></div><div class="fs-xs text-muted">模型：<code class="text-ink1">${info.model}</code></div><div class="fs-xs text-muted">耗时与消耗：<b class="mono text-ink1">${info.meta}</b></div><div class="code-box" style="white-space:pre-wrap">${info.log}</div>`;

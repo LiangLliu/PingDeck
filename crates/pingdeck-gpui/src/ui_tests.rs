@@ -2428,4 +2428,261 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn run_monitor_adaptive_three_views_and_execution_graph_inspector(cx: &mut TestAppContext) {
+        use crate::views::chat::{ChatSidebarMode, ChatView};
+        use pingdeck_desktop::core::agent::dto::{
+            AgentBoard, AgentRunTopology, BoardChanges, BoardLimits, BoardSubagentCounts,
+            ExecutionWave, TokensToday, TopologySubagent, TopologyToolStep,
+        };
+        use pingdeck_desktop::core::agent::model::{
+            AgentRunKind, AgentRunStatus, AgentRunSummary, SubagentRole,
+        };
+        use pingdeck_desktop::core::llm::hub::HubUsage;
+        use pingdeck_desktop::state::{RunViewMode, is_graph_available};
+
+        let make_run = |id: &str, kind: AgentRunKind, status: AgentRunStatus| AgentRunSummary {
+            run_id: id.to_owned(),
+            session_id: "as_test".to_owned(),
+            kind,
+            parent_run_id: None,
+            parent_call_id: None,
+            status,
+            model_label: "deepseek/reasoner".to_owned(),
+            target: None,
+            iterations: 3,
+            usage: HubUsage {
+                input_tokens: Some(1200),
+                output_tokens: Some(450),
+                ..HubUsage::default()
+            },
+            cost_micro_usd: 1500,
+            started_at_ms: 1_000,
+            finished_at_ms: Some(9_000),
+            last_event_ms: Some(9_000),
+            last_step: None,
+            stop_reason: None,
+            error_kind: None,
+            error: None,
+            prompt_version: 1,
+            last_seq: 0,
+            role: Some(SubagentRole::Fast),
+            status_detail: None,
+            cost_currency: Some("USD".to_owned()),
+            failure: None,
+            cap_inapplicable: None,
+        };
+
+        let direct_topo = AgentRunTopology {
+            title: "Explain SQL error".to_owned(),
+            folder: None,
+            run: make_run("run_direct", AgentRunKind::Main, AgentRunStatus::Completed),
+            awake_ms: 1_200,
+            snapshot_ms: 2_200,
+            waiting_for_slot: false,
+            wait: None,
+            pending_approval: None,
+            pending_changes: BoardChanges::default(),
+            plan_done: 0,
+            plan_total: 0,
+            cost_currency: Some("USD".to_owned()),
+            last_answer: Some("Missing GROUP BY column.".to_owned()),
+            queued_turns: 0,
+            queue_paused: false,
+            waves: Vec::new(),
+            subagent_counts: BoardSubagentCounts::default(),
+        };
+
+        let parallel_topo = AgentRunTopology {
+            title: "Refactor gateway auth".to_owned(),
+            folder: Some("/tmp/PingDeck".to_owned()),
+            run: make_run("run_dag", AgentRunKind::Main, AgentRunStatus::Completed),
+            awake_ms: 8_000,
+            snapshot_ms: 9_000,
+            waiting_for_slot: false,
+            wait: None,
+            pending_approval: None,
+            pending_changes: BoardChanges {
+                files: 2,
+                added: 42,
+                removed: 8,
+            },
+            plan_done: 0,
+            plan_total: 0,
+            cost_currency: Some("USD".to_owned()),
+            last_answer: Some("Refactored auth and tests pass.".to_owned()),
+            queued_turns: 0,
+            queue_paused: false,
+            waves: vec![
+                ExecutionWave::ParallelSubagents {
+                    wave_index: 1,
+                    started_ms: Some(2_000),
+                    ended_ms: Some(5_000),
+                    subagents: vec![
+                        TopologySubagent {
+                            run: make_run(
+                                "sub_1",
+                                AgentRunKind::Subagent,
+                                AgentRunStatus::Completed,
+                            ),
+                            parent_call_id: "c_sub_1".to_owned(),
+                            child_session_id: "cs_1".to_owned(),
+                            description: "Audit router.rs".to_owned(),
+                            subagent_kind: "explore".to_owned(),
+                            resumed: false,
+                            awake_ms: 2_800,
+                            pending_approval: None,
+                            last_answer: Some("Checked 429 retry paths.".to_owned()),
+                            tool_calls: vec![TopologyToolStep {
+                                call_id: "tc_1".to_owned(),
+                                name: "grep".to_owned(),
+                                class: "read".to_owned(),
+                                summary: "retry_after".to_owned(),
+                                status: "ok".to_owned(),
+                                started_ms: Some(2_100),
+                                ended_ms: Some(2_300),
+                                duration_ms: Some(200),
+                                exit_code: None,
+                                parallel_safe: true,
+                            }],
+                        },
+                        TopologySubagent {
+                            run: make_run(
+                                "sub_2",
+                                AgentRunKind::Subagent,
+                                AgentRunStatus::Completed,
+                            ),
+                            parent_call_id: "c_sub_2".to_owned(),
+                            child_session_id: "cs_2".to_owned(),
+                            description: "Verify unit tests".to_owned(),
+                            subagent_kind: "explore".to_owned(),
+                            resumed: false,
+                            awake_ms: 2_500,
+                            pending_approval: None,
+                            last_answer: Some("Tests baseline clean.".to_owned()),
+                            tool_calls: Vec::new(),
+                        },
+                    ],
+                },
+                ExecutionWave::ParallelTools {
+                    wave_index: 2,
+                    started_ms: Some(5_200),
+                    ended_ms: Some(6_100),
+                    tools: vec![
+                        TopologyToolStep {
+                            call_id: "tc_2".to_owned(),
+                            name: "read_file".to_owned(),
+                            class: "read".to_owned(),
+                            summary: "auth.rs".to_owned(),
+                            status: "ok".to_owned(),
+                            started_ms: Some(5_200),
+                            ended_ms: Some(5_600),
+                            duration_ms: Some(400),
+                            exit_code: None,
+                            parallel_safe: true,
+                        },
+                        TopologyToolStep {
+                            call_id: "tc_3".to_owned(),
+                            name: "read_file".to_owned(),
+                            class: "read".to_owned(),
+                            summary: "auth_tests.rs".to_owned(),
+                            status: "ok".to_owned(),
+                            started_ms: Some(5_200),
+                            ended_ms: Some(6_100),
+                            duration_ms: Some(900),
+                            exit_code: None,
+                            parallel_safe: true,
+                        },
+                    ],
+                },
+            ],
+            subagent_counts: BoardSubagentCounts {
+                total: 2,
+                completed: 2,
+                ..BoardSubagentCounts::default()
+            },
+        };
+
+        let empty_board = AgentBoard {
+            running: Vec::new(),
+            needs_you: Vec::new(),
+            done: Vec::new(),
+            limits: BoardLimits {
+                max_concurrent_runs: 3,
+                max_subagents: 3,
+                max_steps: 20,
+                approval_timeout_s: 600,
+                queue_messages: 5,
+                auto_compact_pct: Some(85),
+            },
+            cost_today: Vec::new(),
+            tokens_today: TokensToday::default(),
+            running_processes: 0,
+            active_subagents: 0,
+        };
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Ocean, false, false, &settings.appearance, cx);
+        });
+
+        let (chat, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        // 1. Direct answer -> auto Steps, Graph unavailable, renders cleanly.
+        visual.update(|window, cx| {
+            chat.update(cx, |v, cx| {
+                v.sidebar_mode = ChatSidebarMode::Board;
+                v.board = Some(empty_board.clone());
+                v.selected_monitor_run_id = Some("run_direct".to_owned());
+                v.selected_topology = Some(direct_topo.clone());
+                assert!(!is_graph_available(&direct_topo));
+                assert_eq!(
+                    v.effective_monitor_view_mode(&direct_topo),
+                    (RunViewMode::Steps, true)
+                );
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 2. Parallel fan-out run -> auto Graph, expand Parallel Group, open Node Inspector,
+        //    then manually switch to Timeline while preserving selection.
+        visual.update(|window, cx| {
+            chat.update(cx, |v, cx| {
+                v.selected_monitor_run_id = Some("run_dag".to_owned());
+                v.selected_topology = Some(parallel_topo.clone());
+                assert!(is_graph_available(&parallel_topo));
+                assert_eq!(
+                    v.effective_monitor_view_mode(&parallel_topo),
+                    (RunViewMode::Graph, true)
+                );
+                v.toggle_graph_group("grp-tools-run_dag-2".to_owned(), cx);
+                v.select_graph_node(Some("sub:sub_1".to_owned()), cx);
+                v.set_graph_zoom(0.75, cx);
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            chat.update(cx, |v, cx| {
+                v.set_monitor_view_mode("run_dag".to_owned(), RunViewMode::Timeline, cx);
+                assert_eq!(
+                    v.effective_monitor_view_mode(&parallel_topo),
+                    (RunViewMode::Timeline, false)
+                );
+                assert_eq!(v.selected_graph_node_id.as_deref(), Some("sub:sub_1"));
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        rt.shutdown_blocking();
+    }
 }
