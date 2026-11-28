@@ -44,6 +44,9 @@ pub struct ContextBreakdown {
     /// long turn, before its last tool steps) that is not already a summary. The same rule the
     /// compaction itself applies (`context::compaction_cut`).
     pub can_compact: bool,
+    /// User turns that "Compact now" would summarise (`None` when [`Self::can_compact`] is false).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compact_turns: Option<u32>,
 }
 
 /// The parts of a history that are not plain conversation, split off by moving, not cloning.
@@ -91,13 +94,25 @@ pub async fn agent_context_breakdown_impl(
         .map(|message| crate::agent::runner::hub_role(message.role))
         .collect();
     let keep_turns = usize::from(state.settings().ai.agent.keep_recent_turns);
-    let can_compact = session.target.is_some()
-        && compaction_cut(
-            &roles,
-            |index| history[index].role == AgentRole::Summary,
-            keep_turns,
-        )
-        .is_some();
+    let compact_turns = session
+        .target
+        .as_ref()
+        .and_then(|_| {
+            compaction_cut(
+                &roles,
+                |index| history[index].role == AgentRole::Summary,
+                keep_turns,
+            )
+        })
+        .map(|cut| {
+            let turns = history[..cut.split]
+                .iter()
+                .filter(|message| message.role == AgentRole::User)
+                .count()
+                .max(1);
+            u32::try_from(turns).unwrap_or(u32::MAX)
+        });
+    let can_compact = compact_turns.is_some();
 
     let mut split = Split::default();
     for part in history.into_iter().flat_map(|message| message.parts) {
@@ -123,6 +138,7 @@ pub async fn agent_context_breakdown_impl(
         total: 0,
         limit: model.context_limit,
         can_compact,
+        compact_turns,
     };
     breakdown.total = breakdown.system
         + breakdown.instructions

@@ -158,7 +158,10 @@ pub use oauth_service::{
     OAuthTokenInput, TokenInfoDto, oauth_token_clear_impl, oauth_token_fetch_impl,
     oauth_token_refresh_impl, oauth_token_status_impl, oauth_token_store_as_impl,
 };
-pub use open_service::{open_path_impl, open_path_validate, save_text_file_impl};
+pub use open_service::{
+    agent_attachment_open_impl, agent_image_open_impl, open_path_impl, open_path_validate,
+    save_text_file_impl,
+};
 pub use response_service::{BodySource, response_filter_jsonpath_impl, response_format_body_impl};
 pub use reveal_service::{reveal_path_impl, reveal_path_validate};
 pub use secret_hosts::{DeclaredHostDto, HostSource, environment_declared_hosts_impl};
@@ -172,7 +175,7 @@ pub use system_checks::{
     CaBundleInfoDto, ProxyTestDto, ProxyTestOutcome, SearchTestResultDto, ai_search_test_impl,
     network_ca_test_impl, network_proxy_test_impl,
 };
-pub use system_service::system_open_external_impl;
+pub use system_service::{open_external_validate, system_open_external_impl};
 pub use tree_copy_service::{CopyItemInput, CopyItemKind, CopyItemResult, tree_copy_impl};
 pub use tree_service::{
     DeletedKind, RestoreFailureDto, RestoreReportDto, collection_delete_impl, collection_get_impl,
@@ -353,6 +356,7 @@ impl AppState {
         if let Some(dirs) = &self.dirs {
             dirs.ensure()
                 .map_err(|error| AppError::io(format!("{}: {error}", dirs.root.display())))?;
+            let _ = std::fs::remove_dir_all(dirs.tmp.join("open"));
         }
         let store = self.store();
         store

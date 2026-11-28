@@ -901,10 +901,17 @@ impl RunRegistry {
                     (run.session_id.clone(), false, Some(run))
                 }
                 AgentSubscribeTarget::Session { session_id } => {
+                    // `from_seq == Some(0)` means the caller took an idle snapshot (no live run)
+                    // and wants only an active run or future runs — never a full replay of an
+                    // already-persisted finished run in `latest`.
                     let run = state
                         .active
                         .get(session_id)
-                        .or_else(|| state.latest.get(session_id))
+                        .or_else(|| {
+                            (from_seq != Some(0))
+                                .then(|| state.latest.get(session_id))
+                                .flatten()
+                        })
                         .and_then(|id| state.runs.get(id))
                         .cloned();
                     (session_id.clone(), true, run)

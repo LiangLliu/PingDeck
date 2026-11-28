@@ -15,10 +15,9 @@ use crate::ui::{
 };
 
 use super::modal::WorkflowMonitorModal;
-use super::status::{
-    format_elapsed_short, format_model_short, format_relative_age, run_status_meta,
-};
+use super::status::{format_elapsed_short, format_model_short, format_relative_age};
 use super::types::HistoryPickerFilter;
+use crate::ui::run_status_meta;
 
 pub fn render_modal_header(
     view: &WorkflowMonitorModal,
@@ -265,10 +264,7 @@ fn render_history_popover(
                     HistoryPickerFilter::Complex => {
                         item.has_parallel || item.has_task_graph || item.tool_count > 0
                     }
-                    HistoryPickerFilter::Failed => matches!(
-                        item.run.status,
-                        AgentRunStatus::Failed | AgentRunStatus::Interrupted
-                    ),
+                    HistoryPickerFilter::Failed => item.run.status == AgentRunStatus::Failed,
                 })
                 .collect();
 

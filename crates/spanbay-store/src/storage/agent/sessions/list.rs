@@ -73,7 +73,11 @@ fn list_sql(text_match: &str) -> String {
                          ORDER BY m.seq DESC LIMIT 1), ''),
                s.spanbay_workspace_id,
                (SELECT name FROM workspaces WHERE id = s.spanbay_workspace_id),
-               s.forked_from
+               s.forked_from,
+               COALESCE((SELECT SUM(fc.added) FROM agent_file_changes fc
+                         WHERE fc.session_id = s.id AND fc.status IN ('pending', 'conflict')), 0),
+               COALESCE((SELECT SUM(fc.removed) FROM agent_file_changes fc
+                         WHERE fc.session_id = s.id AND fc.status IN ('pending', 'conflict')), 0)
         FROM agent_sessions s
         WHERE (?1 IS NULL OR s.title LIKE ?1 ESCAPE '\\' {text_match})
           AND (?2 = 0 OR s.pinned_at_ms IS NOT NULL)
@@ -119,6 +123,8 @@ fn summary_from_row(
             spanbay_workspace_id: row.get(11)?,
             spanbay_workspace_name: row.get(12)?,
             forked_from: row.get(13)?,
+            pending_added: row.get(14)?,
+            pending_removed: row.get(15)?,
         },
         row.get::<_, Option<String>>(2)?,
     ))

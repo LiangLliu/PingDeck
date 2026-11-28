@@ -2,29 +2,29 @@
 //! Attachments, Workspace/Folder binding, and Redacted Export.
 
 use gpui_kit::{Context, Window};
+use spanbay_desktop::core::agent::attachments::attachment_parts;
 use spanbay_desktop::core::agent::model::{
-    AgentExportFormat, AgentQuestionAnswer, AgentSessionFilter, AgentSessionInput,
-    AgentSessionPatch, AgentTarget,
+    AgentAttachment, AgentQuestionAnswer, AgentSessionFilter, AgentSessionInput, AgentSessionPatch,
+    AgentTarget,
 };
+use spanbay_desktop::core::agent::tools::ask_user::check_answer;
 use spanbay_desktop::core::app::{
-    AppState, agent_attachment_put_path_impl, agent_plan_approve_impl, agent_plan_set_impl,
+    AppState, PickedKind, agent_attachment_describe_path_impl, agent_attachment_put_bytes_impl,
+    agent_attachment_put_path_impl, agent_attachment_read_image_impl, agent_plan_set_impl,
     agent_question_answer_impl, agent_queue_add_impl, agent_queue_clear_impl,
     agent_queue_remove_impl, agent_queue_resume_impl, agent_queue_steer_impl, agent_run_steer_impl,
-    agent_run_unsubscribe_impl, agent_session_bind_spanbay_impl, agent_session_create_impl,
-    agent_session_delete_impl, agent_session_export_redacted_impl, agent_session_list_impl,
+    agent_session_bind_spanbay_impl, agent_session_create_impl, agent_session_list_impl,
     agent_session_restore_impl, environment_list_impl, workspace_list_impl,
 };
-use spanbay_desktop::core::model::hub::HubPart;
-use spanbay_desktop::core::model::settings::ToolApproval;
-use spanbay_desktop::services::{FileFilter, FilePickerSpec, HostDialog, RfdDialog, SaveFileSpec};
-use spanbay_desktop::state::ChatThreadState;
+use spanbay_desktop::services::{FilePickerSpec, HostDialog, RfdDialog};
+use spanbay_desktop::state::RunError;
 
-use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
+use crate::bridge::{spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::ChatView;
 use super::actions::resolve_fallback_target;
-use super::types::{ChatSidebarMode, PendingAttachment};
+use super::types::ChatSidebarMode;
 
 /// Validates `preferred_ws` / `preferred_env` against the live store so session creation and
 /// run start bind to the active SpanBay workspace (and only an environment that belongs to it)
@@ -50,12 +50,31 @@ pub(super) fn resolve_active_binding(
     (Some(ws_id), env_id)
 }
 
+/// Ingests one picked or dropped file path into the attachment store, reading image bytes
+/// through [`agent_attachment_read_image_impl`] + [`agent_attachment_put_bytes_impl`] and storing
+/// PDFs/text via [`agent_attachment_put_path_impl`].
+pub(super) fn ingest_attachment_path(
+    state: &AppState,
+    path: &std::path::Path,
+) -> Result<AgentAttachment, spanbay_desktop::core::error::AppError> {
+    let desc = agent_attachment_describe_path_impl(path)?;
+    match desc.kind {
+        PickedKind::Image => {
+            let bytes = agent_attachment_read_image_impl(state, std::path::Path::new(&desc.path))?;
+            agent_attachment_put_bytes_impl(state, &desc.name, "", &bytes, None)
+        }
+        PickedKind::Pdf | PickedKind::Text | PickedKind::Folder | PickedKind::Unsupported => {
+            agent_attachment_put_path_impl(state, &desc.path, Some(desc.name))
+        }
+    }
+}
 impl ChatView {
     pub fn create_session(&mut self, cx: &mut Context<Self>) {
         self.create_session_with_options(None, None, None, None, cx);
     }
 
     pub fn select_model(&mut self, target: AgentTarget, cx: &mut Context<Self>) {
+        self.context_breakdown = None;
         if self.thread.session_id.is_empty() {
             self.create_session_with_options(Some(target), None, None, None, cx);
         } else {
@@ -109,7 +128,10 @@ impl ChatView {
                     }
                     Err(err) => {
                         let msg = err.message().to_owned();
-                        this.thread.last_error = Some(msg.clone());
+                        this.thread.last_error = Some(RunError {
+                            message: msg.clone(),
+                            failure: None,
+                        });
                         this.status_msg = Some((Tone::Danger, msg));
                     }
                 }
@@ -179,39 +201,17 @@ impl ChatView {
             cx.notify();
             return;
         }
+        let sid_check = sid.clone();
         let next = !self.plan_mode;
         let task = spawn_async_into(
             cx,
             move |state| async move { agent_plan_set_impl(&state, &sid, next).await },
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 match res {
                     Ok(on) => this.plan_mode = on,
-                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn approve_plan(&mut self, mode: Option<ToolApproval>, cx: &mut Context<Self>) {
-        let sid = self.thread.session_id.clone();
-        if sid.is_empty() {
-            return;
-        }
-        let task = spawn_async_into(
-            cx,
-            move |state| async move { agent_plan_approve_impl(&state, &sid, None, mode).await },
-            |this, res, cx| {
-                match res {
-                    Ok(_) => {
-                        this.plan_mode = false;
-                        this.thread.open_gates.clear();
-                        this.status_msg = Some((
-                            Tone::Success,
-                            crate::ui::tr(cx).chat().act_plan_approved().into(),
-                        ));
-                    }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
                 cx.notify();
@@ -228,11 +228,25 @@ impl ChatView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let sid_check = self.thread.session_id.clone();
+        let is_first = self
+            .thread
+            .open_gates
+            .first()
+            .is_some_and(|(_, g)| g.call_id == call_id);
         let choices = self
             .question_draft_choices
-            .remove(&call_id)
+            .get(&call_id)
+            .cloned()
             .unwrap_or_default();
-        let other_raw = self.question_other_input.read(cx).value().trim().to_owned();
+        let other_raw = if is_first {
+            self.question_other_input.read(cx).value().trim().to_owned()
+        } else {
+            self.question_other_inputs
+                .get(&call_id)
+                .map(|inp| inp.read(cx).value().trim().to_owned())
+                .unwrap_or_default()
+        };
         let other = (!other_raw.is_empty()).then_some(other_raw);
         let answer = if skipped {
             AgentQuestionAnswer {
@@ -247,18 +261,39 @@ impl ChatView {
                 skipped: false,
             }
         };
-        self.question_other_input
-            .update(cx, |s, cx| s.set_value("", window, cx));
+        if let Some((_, gate)) = self
+            .thread
+            .open_gates
+            .iter()
+            .find(|(_, g)| g.call_id == call_id)
+            && let Err(e) = check_answer(gate, &answer)
+        {
+            self.status_msg = Some((Tone::Danger, e.message().to_owned()));
+            cx.notify();
+            return;
+        }
+        self.question_draft_choices.remove(&call_id);
+        if is_first {
+            self.question_other_input
+                .update(cx, |s, cx| s.set_value("", window, cx));
+        } else {
+            self.question_other_inputs.remove(&call_id);
+        }
         let cid_check = call_id.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_question_answer_impl(state, &run_id, &call_id, answer),
             move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 match res {
-                    Ok(_) => this
-                        .thread
-                        .open_gates
-                        .retain(|(_, g)| g.call_id != cid_check),
+                    Ok(_) => {
+                        this.thread
+                            .open_gates
+                            .retain(|(_, g)| g.call_id != cid_check);
+                        this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
+                    }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
                 }
                 cx.notify();
@@ -272,18 +307,17 @@ impl ChatView {
         if sid.is_empty() {
             return;
         }
+        let sid_check = sid.clone();
         let skills = std::mem::take(&mut self.selected_skills);
-        let _atts = std::mem::take(&mut self.pending_attachments);
-        let parts = vec![HubPart::Text {
-            text,
-            citations: Vec::new(),
-            origin: None,
-            signature: None,
-        }];
+        let atts = std::mem::take(&mut self.pending_attachments);
+        let parts = attachment_parts(&atts, &text);
         let task = spawn_async_into(
             cx,
             move |state| async move { agent_queue_add_impl(&state, &sid, parts, skills, &[]).await },
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 match res {
                     Ok(q) => {
                         this.thread.queued_turns = q;
@@ -298,35 +332,70 @@ impl ChatView {
         self._tasks.push(task);
     }
 
+    /// Steers the run behind the first waiting plan/question gate (the core settles that gate as a
+    /// revision), else the active run.
     pub fn steer_active_run(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(run) = &self.thread.active_run else {
+        let Some(run_id) = self
+            .thread
+            .open_gates
+            .first()
+            .map(|(run_id, _)| run_id.clone())
+            .or_else(|| self.thread.active_run.as_ref().map(|r| r.run_id.clone()))
+        else {
             return;
         };
-        let text = self.composer.read(cx).value().trim().to_owned();
-        if text.is_empty() {
+        let mut text = self.composer.read(cx).value().trim().to_owned();
+        if !self.diff_comments.is_empty() {
+            let prefix: String = self
+                .diff_comments
+                .drain(..)
+                .map(|c| format!("> @{}:{} — {}", c.path, c.line, c.comment))
+                .collect::<Vec<_>>()
+                .join("\n");
+            text = if text.is_empty() {
+                prefix
+            } else {
+                format!("{prefix}\n\n{text}")
+            };
+        }
+        if text.is_empty() && self.pending_attachments.is_empty() {
             return;
         }
+        self.plan_revising = false;
         self.composer
             .update(cx, |c, cx| c.set_value("", window, cx));
-        let run_id = run.run_id.clone();
-        let att_ids: Vec<String> = self.pending_attachments.drain(..).map(|a| a.id).collect();
+        self.reset_composer_placeholder(window, cx);
+        let atts = std::mem::take(&mut self.pending_attachments);
+        let att_ids: Vec<String> = atts.iter().map(|a| a.id.clone()).collect();
         let skills = std::mem::take(&mut self.selected_skills);
+        let sid_check = self.thread.session_id.clone();
+        let restore_text = text.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_run_steer_impl(state, &run_id, &text, &att_ids, skills, &[]),
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 match res {
                     Ok(true) => {
                         this.status_msg =
                             Some((Tone::Accent, crate::ui::tr(cx).chat().act_steered().into()));
                     }
                     Ok(false) => {
+                        this.pending_draft_sync = Some(restore_text);
+                        this.pending_attachments = atts;
                         this.status_msg = Some((
                             Tone::Warning,
                             crate::ui::tr(cx).chat().act_no_active_run().into(),
                         ));
                     }
-                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
+                    Err(e) => {
+                        // Nothing was delivered: give the message back instead of losing it.
+                        this.pending_draft_sync = Some(restore_text);
+                        this.pending_attachments = atts;
+                        this.status_msg = Some((Tone::Danger, e.message().to_owned()));
+                    }
                 }
                 cx.notify();
             },
@@ -339,10 +408,14 @@ impl ChatView {
         if sid.is_empty() {
             return;
         }
+        let sid_check = sid.clone();
         let task = spawn_async_into(
             cx,
             move |state| async move { agent_queue_resume_impl(&state, &sid).await },
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 if let Ok(q) = res {
                     this.thread.queued_turns = q;
                     this.thread.queue_paused = false;
@@ -358,10 +431,14 @@ impl ChatView {
         if sid.is_empty() {
             return;
         }
+        let sid_check = sid.clone();
         let task = spawn_async_into(
             cx,
             move |state| async move { agent_queue_steer_impl(&state, &sid, &queue_id).await },
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 if let Err(e) = res {
                     this.status_msg = Some((Tone::Danger, e.message().to_owned()));
                 }
@@ -376,10 +453,14 @@ impl ChatView {
         if sid.is_empty() {
             return;
         }
+        let sid_check = sid.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_queue_remove_impl(state, &sid, &queue_id),
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 if let Ok(q) = res {
                     this.thread.queued_turns = q;
                 }
@@ -394,10 +475,14 @@ impl ChatView {
         if sid.is_empty() {
             return;
         }
+        let sid_check = sid.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_queue_clear_impl(state, &sid),
-            |this, res, cx| {
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 if let Ok(q) = res {
                     this.thread.queued_turns = q;
                 }
@@ -408,25 +493,30 @@ impl ChatView {
     }
 
     pub fn pick_attachments(&mut self, cx: &mut Context<Self>) {
+        let sid_check = self.thread.session_id.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| {
                 let paths = RfdDialog.pick_files(&FilePickerSpec::default());
                 let mut added = Vec::new();
-                for path in paths {
-                    let s = path.to_string_lossy().into_owned();
-                    if let Ok(att) = agent_attachment_put_path_impl(state, &s, None) {
-                        added.push(PendingAttachment {
-                            id: att.id,
-                            name: att.name,
-                            size_bytes: att.size_bytes,
-                        });
+                let mut first_err = None;
+                for path in &paths {
+                    match ingest_attachment_path(state, path) {
+                        Ok(att) => added.push(att),
+                        Err(e) if first_err.is_none() => first_err = Some(e),
+                        Err(_) => {}
                     }
                 }
-                added
+                (added, first_err)
             },
-            |this, added, cx| {
+            move |this, (added, first_err), cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 this.pending_attachments.extend(added);
+                if let Some(err) = first_err {
+                    this.status_msg = Some((Tone::Danger, err.message().to_owned()));
+                }
                 cx.notify();
             },
         );
@@ -459,6 +549,7 @@ impl ChatView {
                         if this.thread.session_id == sid_check {
                             this.session = Some(updated);
                             this.environments = envs;
+                            this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
                         }
                     }
                     Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
@@ -495,84 +586,6 @@ impl ChatView {
                 if let Some(dir) = picked {
                     this.bind_folder_path(dir, cx);
                 }
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn export_chat_redacted(&mut self, cx: &mut Context<Self>) {
-        let sid = self.thread.session_id.clone();
-        if sid.is_empty() {
-            return;
-        }
-        let default_name = format!("{}.md", self.thread.title.replace('/', "_"));
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                let text = agent_session_export_redacted_impl(
-                    state,
-                    &sid,
-                    AgentExportFormat::Markdown,
-                    Some(true),
-                )?;
-                let spec = SaveFileSpec {
-                    title: None,
-                    starting_dir: None,
-                    file_name: Some(default_name),
-                    filters: vec![FileFilter {
-                        name: "Markdown / JSON".into(),
-                        extensions: vec!["md".into(), "json".into()],
-                    }],
-                };
-                let Some(dest) = RfdDialog.save_file(&spec) else {
-                    return Ok(None);
-                };
-                std::fs::write(&dest, text).map_err(|e| {
-                    spanbay_desktop::core::error::AppError::io(format!("export write failed: {e}"))
-                })?;
-                Ok::<Option<String>, spanbay_desktop::core::error::AppError>(Some(
-                    dest.display().to_string(),
-                ))
-            },
-            |this, res, cx| {
-                match res {
-                    Ok(Some(path)) => {
-                        this.status_msg =
-                            Some((Tone::Success, crate::ui::tr(cx).chat().act_exported(path)));
-                    }
-                    Ok(None) => {}
-                    Err(e) => this.status_msg = Some((Tone::Danger, e.message().to_owned())),
-                }
-                cx.notify();
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn delete_session_by_id(&mut self, sid: String, cx: &mut Context<Self>) {
-        let sid_check = sid.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| agent_session_delete_impl(state, &sid),
-            move |this, res, cx| {
-                if res.is_ok() {
-                    if this.thread.session_id == sid_check {
-                        if let Some(sub_id) = this.active_sub_id.take() {
-                            agent_run_unsubscribe_impl(runtime(cx).state(), sub_id);
-                        }
-                        this.subscribed_session_id = None;
-                        this.thread = ChatThreadState::default();
-                        this.session = None;
-                        this.audit_tool_calls.clear();
-                        this.persisted_changes.clear();
-                        this.stream_task = None;
-                        this.tick_task = None;
-                        this.submitting = false;
-                        this.pending_user_text = None;
-                    }
-                    this.reload_sessions(cx);
-                }
-                cx.notify();
             },
         );
         self._tasks.push(task);

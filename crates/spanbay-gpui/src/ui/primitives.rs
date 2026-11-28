@@ -98,21 +98,49 @@ pub fn table_column(key: impl Into<SharedString>, name: impl Into<SharedString>)
     Column::new(key, name)
 }
 
-/// Selectable Markdown rich-text renderer.
+/// Validates a Markdown link URL against the core trust boundary (`http`, `https` with host, or
+/// `mailto` without `attach*` parameters); returns the normalized URL or `None`.
 #[must_use]
-pub fn markdown_view(id: impl Into<ElementId>, source: impl Into<SharedString>) -> TextView {
-    TextView::markdown(id, source).selectable(true)
+pub fn validate_markdown_link_url(url: &str) -> Option<String> {
+    spanbay_desktop::core::app::open_external_validate(url).ok()
 }
 
-/// Streaming Markdown rich-text renderer with smooth token fade and text selection.
+fn configure_markdown_security(view: TextView) -> TextView {
+    view.selectable(true)
+        // Never load local `file:`, relative paths, `data:`, or remote images from Markdown.
+        .image_source(|_| gpui_kit::ImageSource::Custom(std::sync::Arc::new(|_, _| None)))
+        .link(|link, _| validate_markdown_link_url(&link.url).map(|url| link.clone().url(url)))
+        .on_link_click(|url, _, _, cx| {
+            let Some(valid) = validate_markdown_link_url(url.as_ref()) else {
+                return;
+            };
+            if cx.has_global::<crate::bridge::CoreBridge>() {
+                drop(crate::bridge::runtime(cx).run_state(move |_| {
+                    let _ = spanbay_desktop::core::app::system_open_external_impl(&valid);
+                }));
+            } else {
+                cx.background_executor()
+                    .spawn(async move {
+                        let _ = spanbay_desktop::core::app::system_open_external_impl(&valid);
+                    })
+                    .detach();
+            }
+        })
+}
+
+/// Selectable Markdown rich-text renderer with scheme-guarded links and blocked image loading.
+#[must_use]
+pub fn markdown_view(id: impl Into<ElementId>, source: impl Into<SharedString>) -> TextView {
+    configure_markdown_security(TextView::markdown(id, source))
+}
+
+/// Streaming Markdown rich-text renderer with smooth token fade, text selection, and link/image guards.
 #[must_use]
 pub fn streaming_markdown_view(
     id: impl Into<ElementId>,
     source: impl Into<SharedString>,
 ) -> TextView {
-    TextView::markdown(id, source)
-        .selectable(true)
-        .stream_fade(true)
+    configure_markdown_security(TextView::markdown(id, source)).stream_fade(true)
 }
 
 /// Primary accent CTA button.
@@ -367,4 +395,32 @@ pub fn list_row(
             .hover(move |s| s.bg(hover_bg).text_color(to_hsla(p.ink)));
     }
     row
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_markdown_link_url;
+
+    #[test]
+    fn markdown_link_scheme_filter_allows_only_safe_http_https_and_mailto() {
+        assert!(validate_markdown_link_url("https://docs.rs/gpui").is_some());
+        assert!(validate_markdown_link_url("http://localhost:8080/health").is_some());
+        assert!(validate_markdown_link_url("mailto:ops@example.com").is_some());
+
+        for unsafe_url in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vscode://file/etc/passwd",
+            "mailto:ops@example.com?attach=/etc/passwd",
+            "/etc/passwd",
+            "relative/path.sh",
+            "",
+        ] {
+            assert!(
+                validate_markdown_link_url(unsafe_url).is_none(),
+                "unsafe URL must be rejected: {unsafe_url}"
+            );
+        }
+    }
 }

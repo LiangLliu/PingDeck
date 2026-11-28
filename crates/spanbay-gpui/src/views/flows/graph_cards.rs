@@ -52,8 +52,11 @@ pub(super) fn render_flow_graph_card(
     let pos = (node.x, node.y);
     let size = (node.w, node.h);
 
+    let dom_id = format!("flow-gnode-{}", step.id);
+    let dbg_id = dom_id.clone();
     let mut card = v_col()
-        .id(SharedString::from(format!("flow-gnode-{}", step.id)))
+        .id(SharedString::from(dom_id))
+        .debug_selector(move || dbg_id)
         .absolute()
         .left(px(node.x * scale))
         .top(px(node.y * scale))
@@ -84,8 +87,10 @@ pub(super) fn render_flow_graph_card(
         )
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
-            if this.drag_suppress_click {
+            let was_dragging = this.drag_state.take().is_some_and(|d| d.dragging);
+            if this.drag_suppress_click || was_dragging {
                 this.drag_suppress_click = false;
+                this.alignment_guides.clear();
                 return;
             }
             this.select_step(Some(sid_sel.clone()), cx);

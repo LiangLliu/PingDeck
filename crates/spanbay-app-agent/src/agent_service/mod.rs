@@ -58,7 +58,10 @@ pub use catalog::{
     agent_tool_entries_impl,
 };
 pub use change_diff::{ChangeDiff, agent_change_diff_impl, agent_change_net_diff_impl};
-pub use changes::{agent_change_keep_impl, agent_change_undo_impl, agent_changes_list_impl};
+pub use changes::{
+    agent_change_keep_impl, agent_change_revert_hunk_impl, agent_change_undo_impl,
+    agent_changes_list_impl,
+};
 pub use config::{
     agent_mcp_last_seq, agent_mcp_server_delete_impl, agent_mcp_server_list_impl,
     agent_mcp_server_log_impl, agent_mcp_server_restart_impl, agent_mcp_server_save_impl,

@@ -5,16 +5,18 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use spanbay_desktop::core::agent::dto::{AgentBoardRow, SessionRunHistoryItem};
+use spanbay_desktop::core::agent::model::AgentRunStatus;
+use spanbay_desktop::state::map_run_status;
 
 use crate::ui::{
     Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, btn_secondary, h_row, icon_xs,
-    palette, status_indicator, to_hsla, v_col,
+    palette, status_row_wait, to_hsla, v_col, wait_kind,
 };
 
 use super::RunsView;
 use super::status::{
     folder_basename, format_elapsed_short, format_model_short, format_relative_age,
-    format_tokens_compact, run_status_meta,
+    format_tokens_compact,
 };
 use super::types::WorkflowTab;
 
@@ -26,12 +28,6 @@ pub(super) fn render_board_row_card(
 ) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
-    let (shape, tone, status_lbl) = run_status_meta(
-        row.run.status,
-        row.wait,
-        row.run.status_detail.as_deref(),
-        cx,
-    );
     let title = if row.title.trim().is_empty() {
         ch.header_new_chat().to_owned()
     } else {
@@ -60,7 +56,16 @@ pub(super) fn render_board_row_card(
         .pending_approval
         .as_ref()
         .map(|a| (to_hsla(p.warn), a.summary.clone()))
-        .or_else(|| row.run.error.as_ref().map(|e| (to_hsla(p.bad), e.clone())))
+        .or_else(|| {
+            row.run.error.as_ref().map(|e| {
+                let col = match row.run.status {
+                    AgentRunStatus::Failed => to_hsla(p.bad),
+                    AgentRunStatus::Interrupted => to_hsla(p.warn),
+                    _ => to_hsla(p.muted),
+                };
+                (col, e.clone())
+            })
+        })
         .or_else(|| {
             row.last_answer
                 .as_ref()
@@ -88,48 +93,40 @@ pub(super) fn render_board_row_card(
                 .flex_1()
                 .min_w_0()
                 .gap(px(5.0))
-                .child(
-                    h_row()
-                        .w_full()
-                        .gap(px(7.0))
-                        .child(status_indicator(shape, cx))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .text_sm()
-                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .text_color(to_hsla(p.ink))
-                                .truncate()
-                                .child(SharedString::from(title)),
-                        )
-                        .child(
-                            h_row()
-                                .flex_shrink_0()
-                                .gap(px(5.0))
-                                .child(badge(status_lbl, tone, cx))
-                                .children((row.plan_total > 0).then(|| {
-                                    badge(
-                                        ch.sidebar_board_plan(row.plan_done, row.plan_total),
-                                        Tone::Accent,
-                                        cx,
-                                    )
-                                }))
-                                .children((row.subagent_counts.total > 0).then(|| {
-                                    badge(
-                                        if row.subagent_counts.active > 0 {
-                                            ch.monitor_sub_active_badge(
-                                                row.subagent_counts.active,
-                                                row.subagent_counts.total,
-                                            )
-                                        } else {
-                                            ch.monitor_sub_badge(row.subagent_counts.total)
-                                        },
-                                        Tone::Neutral,
-                                        cx,
-                                    )
-                                })),
-                        ),
-                )
+                .child(status_row_wait(
+                    SharedString::from(format!("runs-card-head-{}", row.run.run_id)),
+                    map_run_status(row.run.status),
+                    Some(wait_kind(row.wait, row.run.status_detail.as_deref())),
+                    title,
+                    None,
+                    Some(
+                        h_row()
+                            .gap(px(5.0))
+                            .children((row.plan_total > 0).then(|| {
+                                badge(
+                                    ch.sidebar_board_plan(row.plan_done, row.plan_total),
+                                    Tone::Accent,
+                                    cx,
+                                )
+                            }))
+                            .children((row.subagent_counts.total > 0).then(|| {
+                                badge(
+                                    if row.subagent_counts.active > 0 {
+                                        ch.monitor_sub_active_badge(
+                                            row.subagent_counts.active,
+                                            row.subagent_counts.total,
+                                        )
+                                    } else {
+                                        ch.monitor_sub_badge(row.subagent_counts.total)
+                                    },
+                                    Tone::Neutral,
+                                    cx,
+                                )
+                            }))
+                            .into_any_element(),
+                    ),
+                    cx,
+                ))
                 .children(subtitle.map(|(col, txt)| {
                     div()
                         .w_full()
@@ -156,16 +153,22 @@ pub(super) fn render_board_row_card(
                             ch.monitor_steps(row.run.iterations, max_steps),
                         ))
                         .child(SharedString::from(format_elapsed_short(elapsed_ms)))
-                        .children((total_tok > 0).then(|| {
-                            SharedString::from(format!("{} tok", format_tokens_compact(total_tok)))
-                        }))
-                        .children((row.run.cost_micro_usd > 0).then(|| {
-                            let cur = row.cost_currency.as_deref().unwrap_or("USD");
-                            SharedString::from(format!(
-                                "{cur} {:.4}",
-                                row.run.cost_micro_usd as f64 / 1_000_000.0
-                            ))
-                        }))
+                        .children(
+                            (total_tok > 0)
+                                .then(|| ch.context_used(format_tokens_compact(total_tok))),
+                        )
+                        // No amount without a known currency.
+                        .children(
+                            row.cost_currency
+                                .as_deref()
+                                .filter(|_| row.run.cost_micro_usd > 0)
+                                .map(|cur| {
+                                    SharedString::from(format!(
+                                        "{cur} {:.4}",
+                                        row.run.cost_micro_usd as f64 / 1_000_000.0
+                                    ))
+                                }),
+                        )
                         .child(SharedString::from(age)),
                 ),
         )
@@ -235,8 +238,6 @@ pub(super) fn render_history_item_card(
 ) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
-    let (shape, tone, status_lbl) =
-        run_status_meta(item.run.status, None, item.run.status_detail.as_deref(), cx);
     let title = if item.title.trim().is_empty() {
         ch.header_new_chat().to_owned()
     } else {
@@ -269,39 +270,26 @@ pub(super) fn render_history_item_card(
                 .flex_1()
                 .min_w_0()
                 .gap(px(4.0))
-                .child(
-                    h_row()
-                        .w_full()
-                        .gap(px(7.0))
-                        .child(status_indicator(shape, cx))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .text_sm()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .text_color(to_hsla(p.ink))
-                                .truncate()
-                                .child(SharedString::from(title)),
-                        )
-                        .child(
-                            h_row()
-                                .flex_shrink_0()
-                                .gap(px(5.0))
-                                .child(badge(status_lbl, tone, cx))
-                                .children(
-                                    item.has_task_graph.then(|| {
-                                        badge(ch.gates_plan_view_graph(), Tone::Accent, cx)
-                                    }),
-                                )
-                                .children((item.subagent_count > 0).then(|| {
-                                    badge(
-                                        ch.monitor_sub_badge(item.subagent_count),
-                                        Tone::Neutral,
-                                        cx,
-                                    )
-                                })),
-                        ),
-                )
+                .child(status_row_wait(
+                    SharedString::from(format!("runs-hist-head-{}", item.run.run_id)),
+                    map_run_status(item.run.status),
+                    Some(wait_kind(None, item.run.status_detail.as_deref())),
+                    title,
+                    None,
+                    Some(
+                        h_row()
+                            .gap(px(5.0))
+                            .children(
+                                item.has_task_graph
+                                    .then(|| badge(ch.gates_plan_view_graph(), Tone::Accent, cx)),
+                            )
+                            .children((item.subagent_count > 0).then(|| {
+                                badge(ch.monitor_sub_badge(item.subagent_count), Tone::Neutral, cx)
+                            }))
+                            .into_any_element(),
+                    ),
+                    cx,
+                ))
                 .children(item.prompt_preview.as_ref().map(|pr| {
                     div()
                         .w_full()

@@ -15,8 +15,9 @@ use spanbay_desktop::core::agent::dto::{AgentRunTopology, TopologySubagent, Topo
 use spanbay_desktop::services::clipboard;
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_ghost, h_row, icon_xs, markdown_view, palette, progress_bar,
-    section_heading, status_indicator, to_hsla, v_col,
+    Tone, UiIcon, badge, btn_ghost, exit_code_badge, h_row, icon_xs, markdown_view, palette,
+    progress_bar, section_heading, status_indicator, status_label, status_word_color, to_hsla,
+    v_col,
 };
 
 use super::modal::WorkflowMonitorModal;
@@ -25,9 +26,11 @@ pub(super) use super::node_payloads_tools::{
 };
 use super::status::{
     format_elapsed_short, format_model_short, format_tokens_compact, subagent_kind_label,
-    subagent_role_label, tool_status_meta,
+    subagent_role_label,
 };
 use super::types::WorkflowTab;
+use crate::ui::status_visual;
+use spanbay_desktop::state::{GraphNodeStatus, map_tool_status};
 
 pub(super) fn render_main_payload(
     mut col: gpui_kit::Div,
@@ -266,7 +269,12 @@ fn render_subagent_tool_accordion(
     let p = palette(cx);
     let key = format!("subtool-{}", step.call_id);
     let open = view.expanded_sections.contains(&key);
-    let (shape, _) = tool_status_meta(&step.status);
+    let status = map_tool_status(&step.status);
+    let (shape, tone) = status_visual(status);
+    let show_word = !matches!(
+        status,
+        GraphNodeStatus::Running | GraphNodeStatus::Completed
+    );
     let k_toggle = key.clone();
 
     let mut card_col = v_col()
@@ -311,10 +319,17 @@ fn render_subagent_tool_accordion(
                                 .truncate()
                                 .child(SharedString::from(step.summary.clone()))
                         }))
+                        .children(show_word.then(|| {
+                            div()
+                                .flex_shrink_0()
+                                .text_xs()
+                                .text_color(status_word_color(tone, cx))
+                                .child(status_label(status, None, cx))
+                        }))
                         .children(
                             step.exit_code
                                 .filter(|c| *c != 0)
-                                .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
+                                .map(|c| exit_code_badge(c, cx)),
                         ),
                 )
                 .child(

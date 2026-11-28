@@ -47,13 +47,57 @@ pub fn t(lang: Language, key: &str) -> &str {
     lookup(lang, key).unwrap_or(key)
 }
 
-/// Looks up a dynamic localized string and substitutes `{name}` placeholders.
+/// Looks up a dynamic localized string and substitutes `{name}` placeholders in a single pass,
+/// leaving escaped `{{...}}` template text and replacement values untouched.
 #[must_use]
 pub fn t_args(lang: Language, key: &str, args: &[(&str, &str)]) -> String {
-    let mut out = t(lang, key).to_owned();
-    for (name, value) in args {
-        let token = format!("{{{name}}}");
-        out = out.replace(&token, value);
+    interpolate_args(t(lang, key), args)
+}
+
+fn interpolate_args(template: &str, args: &[(&str, &str)]) -> String {
+    if args.is_empty() || !template.contains('{') {
+        return template.to_owned();
+    }
+    let bytes = template.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len);
+    let mut i = 0;
+    while i < len {
+        if bytes[i] == b'{' {
+            if i + 1 < len && bytes[i + 1] == b'{' {
+                out.push_str("{{");
+                i += 2;
+                continue;
+            }
+            let mut j = i + 1;
+            while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                j += 1;
+            }
+            if j > i + 1
+                && j < len
+                && bytes[j] == b'}'
+                && !(j + 1 < len && bytes[j + 1] == b'}')
+                && let Some((_, val)) = args.iter().find(|(name, _)| *name == &template[i + 1..j])
+            {
+                out.push_str(val);
+                i = j + 1;
+                continue;
+            }
+            out.push('{');
+            i += 1;
+            continue;
+        }
+        if bytes[i] == b'}' && i + 1 < len && bytes[i + 1] == b'}' {
+            out.push_str("}}");
+            i += 2;
+            continue;
+        }
+        if let Some(ch) = template[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
     }
     out
 }
@@ -84,8 +128,8 @@ mod tests {
         assert_eq!(tr(Language::En).shell().nav_requests(), "Requests");
         assert_eq!(lookup(Language::En, "shell.nav.requests"), Some("Requests"));
         assert_eq!(lookup(Language::En, "nonexistent.key.xyz"), None);
-        assert_eq!(tr(Language::En).chat().trace_tool_calls(1), "1 tool call");
-        assert_eq!(tr(Language::En).chat().trace_tool_calls(3), "3 tool calls");
+        assert_eq!(tr(Language::En).chat().trace_line_count(1), "1 line");
+        assert_eq!(tr(Language::En).chat().trace_line_count(3), "3 lines");
         assert_eq!(
             tr(Language::En)
                 .environments()
@@ -93,5 +137,16 @@ mod tests {
             "Unresolved {{var}} Scan"
         );
         assert!(lookup(Language::ZhCn, "set.f.tools.get_request.d").is_some());
+    }
+
+    #[test]
+    fn interpolate_args_is_single_pass_and_preserves_double_braces() {
+        assert_eq!(
+            interpolate_args(
+                "Hello {a}, keep {{a}} and {b}",
+                &[("a", "{b}"), ("b", "world")]
+            ),
+            "Hello {b}, keep {{a}} and world"
+        );
     }
 }

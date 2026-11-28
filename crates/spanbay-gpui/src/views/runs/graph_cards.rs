@@ -9,19 +9,20 @@ use gpui_kit::{
 };
 use spanbay_desktop::state::{
     GRAPH_GROUP_TAB_H, GRAPH_MAX_INLINE_MEMBERS, GRAPH_MEMBER_ROW_H, GRAPH_OVERFLOW_ROW_H,
-    GraphNodeKind, GraphNodeMember, PositionedNode,
+    GraphNodeKind, GraphNodeMember, GraphNodeStatus, PositionedNode,
 };
 
 use crate::ui::{
-    Tone, UiIcon, badge, h_row, icon_xs, palette, status_indicator, text_tooltip, to_hsla, v_col,
+    Tone, UiIcon, badge, exit_code_badge, h_row, icon_xs, palette, status_indicator, status_label,
+    status_word_color, text_tooltip, to_hsla, v_col,
 };
 
 use super::graph::card_border_color;
 use super::modal::WorkflowMonitorModal;
 use super::status::{
-    format_elapsed_short, format_model_short, graph_kind_label, graph_status_visual,
-    subagent_role_label,
+    format_elapsed_short, format_model_short, graph_kind_label, subagent_role_label,
 };
+use crate::ui::status_visual;
 
 /// Interactive graph card rendered inside [`WorkflowMonitorModal`].
 pub(super) fn render_modal_graph_card(
@@ -69,9 +70,9 @@ fn render_single_card(
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
     let node = &pnode.node;
-    let selected = view.selected_node_id.as_deref() == Some(node.id.as_str());
-    let (shape, tone) = graph_status_visual(node.status);
-    let border = card_border_color(selected, tone, &p);
+    let selected = view.is_node_selected(&node.id, &node.payload);
+    let (shape, _) = status_visual(node.status);
+    let border = card_border_color(selected, shape, &p);
     let hover_border = to_hsla(p.accent_line.composite_over(p.surface));
     let bg = if selected {
         to_hsla(p.accent_soft.composite_over(p.surface))
@@ -83,8 +84,11 @@ fn render_single_card(
     let npos = (pnode.x, pnode.y);
     let nsize = (pnode.w, pnode.h);
 
+    let dom_id = format!("wf-gnode-{}", node.id);
+    let dbg_id = dom_id.clone();
     let mut body = v_col()
-        .id(SharedString::from(format!("wf-gnode-{}", node.id)))
+        .id(SharedString::from(dom_id))
+        .debug_selector(move || dbg_id)
         .absolute()
         .left(px(pnode.x * scale))
         .top(px(pnode.y * scale))
@@ -115,8 +119,10 @@ fn render_single_card(
         )
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
-            if this.drag_suppress_click {
+            let was_dragging = this.drag_state.take().is_some_and(|d| d.dragging);
+            if this.drag_suppress_click || was_dragging {
                 this.drag_suppress_click = false;
+                this.alignment_guides.clear();
                 return;
             }
             this.select_node(Some(nid.clone()), cx);
@@ -176,7 +182,7 @@ fn render_single_card(
                 .children(
                     node.exit_code
                         .filter(|c| *c != 0)
-                        .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
+                        .map(|c| exit_code_badge(c, cx)),
                 )
                 .children(node.subtitle.as_ref().map(|sub| {
                     div()
@@ -191,8 +197,10 @@ fn render_single_card(
 
     if let Some(wait_txt) = &node.waiting_summary {
         body = body.child(alert_pill(wait_txt, true, cx));
-    } else if let Some(err) = &node.error {
-        body = body.child(alert_pill(err, false, cx));
+    } else if let Some(err) = &node.error
+        && node.status.is_warning_or_error()
+    {
+        body = body.child(alert_pill(err, !node.status.is_terminal_error(), cx));
     }
     body.into_any_element()
 }
@@ -206,9 +214,9 @@ fn render_group_card(
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
     let node = &pnode.node;
-    let selected = view.selected_node_id.as_deref() == Some(node.id.as_str());
-    let (shape, tone) = graph_status_visual(node.status);
-    let border = card_border_color(selected, tone, &p);
+    let selected = view.is_node_selected(&node.id, &node.payload);
+    let (shape, _) = status_visual(node.status);
+    let border = card_border_color(selected, shape, &p);
     let hover_border = to_hsla(p.accent_line.composite_over(p.surface));
     let bg = if selected {
         to_hsla(p.accent_soft.composite_over(p.surface))
@@ -226,8 +234,11 @@ fn render_group_card(
     let tab_h = GRAPH_GROUP_TAB_H * scale;
     let body_h = (pnode.h - GRAPH_GROUP_TAB_H) * scale;
 
+    let dom_id = format!("wf-ggroup-{}", node.id);
+    let dbg_id = dom_id.clone();
     let mut card_body = v_col()
-        .id(SharedString::from(format!("wf-ggroup-{}", node.id)))
+        .id(SharedString::from(dom_id))
+        .debug_selector(move || dbg_id)
         .w_full()
         .h(px(body_h))
         .bg(bg)
@@ -253,8 +264,10 @@ fn render_group_card(
         )
         .on_click(cx.listener(move |this, _, _, cx| {
             cx.stop_propagation();
-            if this.drag_suppress_click {
+            let was_dragging = this.drag_state.take().is_some_and(|d| d.dragging);
+            if this.drag_suppress_click || was_dragging {
                 this.drag_suppress_click = false;
+                this.alignment_guides.clear();
                 return;
             }
             this.select_node(Some(nid_sel.clone()), cx);
@@ -305,13 +318,14 @@ fn render_group_card(
                 .mb(px(3.0))
                 .child(alert_pill(wait_txt, true, cx)),
         );
-    } else if let Some(err) = &node.error {
-        card_body = card_body.child(
-            div()
-                .mx(px(8.0 * scale))
-                .mb(px(3.0))
-                .child(alert_pill(err, false, cx)),
-        );
+    } else if let Some(err) = &node.error
+        && node.status.is_warning_or_error()
+    {
+        card_body = card_body.child(div().mx(px(8.0 * scale)).mb(px(3.0)).child(alert_pill(
+            err,
+            !node.status.is_terminal_error(),
+            cx,
+        )));
     }
 
     if node.expanded {
@@ -442,8 +456,12 @@ fn render_member_row(
     cx: &mut Context<WorkflowMonitorModal>,
 ) -> AnyElement {
     let p = palette(cx);
-    let selected = view.selected_node_id.as_deref() == Some(member.id.as_str());
-    let (shape, _) = graph_status_visual(member.status);
+    let selected = view.is_node_selected(&member.id, &member.payload);
+    let (shape, tone) = status_visual(member.status);
+    let show_word = !matches!(
+        member.status,
+        GraphNodeStatus::Running | GraphNodeStatus::Completed
+    );
     let mid = member.id.clone();
     let row_bg = if selected {
         to_hsla(p.accent_soft)
@@ -484,11 +502,18 @@ fn render_member_row(
                         .truncate()
                         .child(SharedString::from(member.title.clone())),
                 )
+                .children(show_word.then(|| {
+                    div()
+                        .flex_shrink_0()
+                        .text_size(px((10.0 * scale).clamp(9.0, 11.0)))
+                        .text_color(status_word_color(tone, cx))
+                        .child(status_label(member.status, None, cx))
+                }))
                 .children(
                     member
                         .exit_code
                         .filter(|c| *c != 0)
-                        .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
+                        .map(|c| exit_code_badge(c, cx)),
                 ),
         )
         .children(member.elapsed_ms.map(|ms| {

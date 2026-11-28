@@ -4,7 +4,7 @@
 //! sub-agents and parallel-safe tool batches) by merging live [`ActiveRun`] memory snapshots with
 //! persisted `agent_runs` and `agent_tool_calls` rows — with zero SQLite schema changes.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::agent::attention::PendingApprovalSummary;
 use crate::agent::dto::{
@@ -201,9 +201,10 @@ pub fn agent_run_topology_impl(
             AgentRunStatus::Completed => {
                 subagent_counts.completed = subagent_counts.completed.saturating_add(1);
             }
-            AgentRunStatus::Failed | AgentRunStatus::Interrupted => {
+            AgentRunStatus::Failed => {
                 subagent_counts.failed = subagent_counts.failed.saturating_add(1);
             }
+            AgentRunStatus::Interrupted => {}
             AgentRunStatus::Cancelled => {
                 subagent_counts.cancelled = subagent_counts.cancelled.saturating_add(1);
             }
@@ -414,11 +415,9 @@ fn overlay_task_graph_runtime(
                             AgentTodoStatus::InProgress
                         }
                         AgentRunStatus::Completed => AgentTodoStatus::Completed,
-                        AgentRunStatus::Failed | AgentRunStatus::Interrupted => {
-                            AgentTodoStatus::Failed
-                        }
+                        AgentRunStatus::Failed => AgentTodoStatus::Failed,
                         AgentRunStatus::Cancelled => AgentTodoStatus::Cancelled,
-                        AgentRunStatus::Queued => item.status,
+                        AgentRunStatus::Interrupted | AgentRunStatus::Queued => item.status,
                     };
                 }
             }
@@ -874,14 +873,29 @@ fn is_parallel_safe_tool(name: &str, class: &str) -> bool {
     }
 }
 
-fn normalize_audit_status(state: &str) -> &'static str {
+const PENDING_TOOL_RESULT_MARKER: &str = "[interrupted before tool finished]";
+
+fn is_blocked_decider(decided_by: Option<&str>) -> bool {
+    matches!(decided_by, Some("mode" | "plan"))
+        || decided_by.is_some_and(|by| by.starts_with("hard_block:") || by.starts_with("block:"))
+}
+
+fn normalize_audit_status(
+    state: &str,
+    decided_by: Option<&str>,
+    placeholder: bool,
+) -> &'static str {
     match state {
         "output-available" => "ok",
+        "output-error" if placeholder => "interrupted",
         "output-error" => "error",
+        "output-denied" if is_blocked_decider(decided_by) => "blocked",
         "output-denied" => "denied",
         "output-cancelled" => "cancelled",
         "approval-timed-out" => "timed_out",
-        "approval-expired" | "output-superseded" => "superseded",
+        "approval-expired" => "expired",
+        "output-superseded" => "superseded",
+        _ if placeholder => "interrupted",
         "approval-requested" => "waiting_approval",
         _ => "running",
     }
@@ -891,11 +905,14 @@ fn normalize_live_status(state: LiveToolState, result: Option<ToolCallStatus>) -
     if let Some(res) = result {
         return match res {
             ToolCallStatus::Ok => "ok",
-            ToolCallStatus::Error | ToolCallStatus::Interrupted => "error",
-            ToolCallStatus::Denied | ToolCallStatus::Blocked => "denied",
+            ToolCallStatus::Error => "error",
+            ToolCallStatus::Interrupted => "interrupted",
+            ToolCallStatus::Denied => "denied",
+            ToolCallStatus::Blocked => "blocked",
             ToolCallStatus::Cancelled => "cancelled",
             ToolCallStatus::ApprovalTimedOut => "timed_out",
-            ToolCallStatus::Expired | ToolCallStatus::Superseded => "superseded",
+            ToolCallStatus::Expired => "expired",
+            ToolCallStatus::Superseded => "superseded",
         };
     }
     match state {
@@ -909,12 +926,28 @@ fn summarize_args(args: &str) -> String {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(args)
         && let Some(obj) = val.as_object()
     {
+        if let Some(draft) = obj.get("draft").and_then(|v| v.as_object())
+            && let Some(url) = draft
+                .get("url")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+        {
+            let method = draft
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET")
+                .to_ascii_uppercase();
+            return truncate_chars(&format!("{method} {}", url.trim()), SUMMARY_MAX_CHARS);
+        }
         for key in [
             "description",
             "cmd",
             "command",
             "path",
             "file_path",
+            "request_path",
+            "request_id",
+            "provider",
             "url",
             "query",
             "pattern",
@@ -942,26 +975,45 @@ fn record_to_step(
     rec: &AgentToolCallRecord,
     outputs: &HashMap<String, String>,
     changes: &HashMap<String, FileChange>,
+    is_live: bool,
 ) -> TopologyToolStep {
     let duration_ms = match (rec.started_ms, rec.ended_ms) {
         (Some(s), Some(e)) if e >= s => Some((e - s) as u64),
         _ => None,
     };
     let fc = changes.get(&rec.call_id);
+    let raw_out = outputs.get(&rec.call_id);
+    let has_placeholder = raw_out.is_some_and(|s| s.trim() == PENDING_TOOL_RESULT_MARKER);
+    let placeholder = if is_live {
+        has_placeholder && rec.state == "output-error"
+    } else {
+        has_placeholder
+            || !matches!(
+                rec.state.as_str(),
+                "output-available"
+                    | "output-error"
+                    | "output-denied"
+                    | "output-cancelled"
+                    | "approval-timed-out"
+                    | "approval-expired"
+                    | "output-superseded"
+            )
+    };
     TopologyToolStep {
         call_id: rec.call_id.clone(),
         name: rec.name.clone(),
         class: rec.class.clone(),
         summary: summarize_args(&rec.args_json),
-        status: normalize_audit_status(&rec.state).to_owned(),
+        status: normalize_audit_status(&rec.state, rec.decided_by.as_deref(), placeholder)
+            .to_owned(),
         started_ms: rec.started_ms.or(rec.requested_ms),
         ended_ms: rec.ended_ms,
         duration_ms,
         exit_code: rec.exit_code,
         parallel_safe: is_parallel_safe_tool(&rec.name, &rec.class),
         args_preview: format_args_preview(&rec.args_json),
-        output_preview: outputs
-            .get(&rec.call_id)
+        output_preview: raw_out
+            .filter(|_| !has_placeholder)
             .and_then(|s| format_output_preview(s, &rec.class)),
         risk: (!rec.risk.trim().is_empty()).then(|| rec.risk.clone()),
         decision: rec.decision.clone(),
@@ -982,11 +1034,16 @@ fn merge_tool_steps(
     outputs: &HashMap<String, String>,
     changes: &HashMap<String, FileChange>,
 ) -> Vec<TopologyToolStep> {
+    let is_live = live.is_some();
     let mut steps: Vec<TopologyToolStep> = stored
         .iter()
-        .map(|rec| record_to_step(rec, outputs, changes))
+        .map(|rec| record_to_step(rec, outputs, changes, is_live))
         .collect();
-    let mut seen: HashSet<String> = steps.iter().map(|s| s.call_id.clone()).collect();
+    let mut seen: HashMap<String, usize> = steps
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.call_id.clone(), i))
+        .collect();
     if let Some(snap) = live {
         let mut live_args: HashMap<&str, &str> = HashMap::new();
         for part in &snap.parts {
@@ -999,9 +1056,18 @@ fn merge_tool_steps(
             if tc.child_run_id.is_some() && tc.approval.is_some() && tc.name != TASK {
                 continue;
             }
-            if !seen.insert(tc.call_id.clone()) {
+            if let Some(&idx) = seen.get(&tc.call_id) {
+                if matches!(steps[idx].status.as_str(), "running" | "waiting_approval") {
+                    steps[idx].status =
+                        normalize_live_status(tc.state, tc.result.as_ref().map(|r| r.status))
+                            .to_owned();
+                    if steps[idx].duration_ms.is_none() {
+                        steps[idx].duration_ms = tc.result.as_ref().map(|r| r.duration_ms);
+                    }
+                }
                 continue;
             }
+            seen.insert(tc.call_id.clone(), steps.len());
             let args = live_args.get(tc.call_id.as_str()).copied().unwrap_or("");
             let class = if tc.name == TASK { "internal" } else { "tool" };
             let out_prev = outputs
@@ -1052,14 +1118,19 @@ fn build_execution_waves(
     subagents_by_call: &mut HashMap<String, TopologySubagent>,
     mut orphan_subagents: Vec<TopologySubagent>,
 ) -> Vec<ExecutionWave> {
+    let is_live = live.is_some();
     let mut items: Vec<ParentCallItem> = stored
         .iter()
         .map(|rec| ParentCallItem {
             message_id: rec.message_id.clone(),
-            step: record_to_step(rec, outputs, changes),
+            step: record_to_step(rec, outputs, changes, is_live),
         })
         .collect();
-    let mut seen: HashSet<String> = items.iter().map(|i| i.step.call_id.clone()).collect();
+    let mut seen: HashMap<String, usize> = items
+        .iter()
+        .enumerate()
+        .map(|(i, it)| (it.step.call_id.clone(), i))
+        .collect();
     if let Some(snap) = live {
         let mut live_args: HashMap<&str, &str> = HashMap::new();
         for part in &snap.parts {
@@ -1071,9 +1142,21 @@ fn build_execution_waves(
             if tc.child_run_id.is_some() && tc.approval.is_some() && tc.name != TASK {
                 continue;
             }
-            if !seen.insert(tc.call_id.clone()) {
+            if let Some(&idx) = seen.get(&tc.call_id) {
+                if matches!(
+                    items[idx].step.status.as_str(),
+                    "running" | "waiting_approval"
+                ) {
+                    items[idx].step.status =
+                        normalize_live_status(tc.state, tc.result.as_ref().map(|r| r.status))
+                            .to_owned();
+                    if items[idx].step.duration_ms.is_none() {
+                        items[idx].step.duration_ms = tc.result.as_ref().map(|r| r.duration_ms);
+                    }
+                }
                 continue;
             }
+            seen.insert(tc.call_id.clone(), items.len());
             let args = live_args.get(tc.call_id.as_str()).copied().unwrap_or("");
             let class = if tc.name == TASK { "internal" } else { "tool" };
             let out_prev = outputs
@@ -1573,5 +1656,56 @@ mod tests {
         let all_hist = agent_all_runs_history_impl(&state, Some(10)).unwrap();
         assert_eq!(all_hist.len(), 1);
         assert_eq!(all_hist[0].title, "Refactor auth");
+    }
+
+    #[test]
+    fn tool_statuses_keep_blocked_interrupted_and_expired_apart() {
+        let live = |s| normalize_live_status(LiveToolState::Done, Some(s));
+        assert_eq!(live(ToolCallStatus::Blocked), "blocked");
+        assert_eq!(live(ToolCallStatus::Denied), "denied");
+        assert_eq!(live(ToolCallStatus::Interrupted), "interrupted");
+        assert_eq!(live(ToolCallStatus::Error), "error");
+        assert_eq!(live(ToolCallStatus::Expired), "expired");
+        assert_eq!(live(ToolCallStatus::Superseded), "superseded");
+        assert_eq!(
+            normalize_audit_status("approval-expired", None, false),
+            "expired"
+        );
+        assert_eq!(
+            normalize_audit_status("output-superseded", None, false),
+            "superseded"
+        );
+        assert_eq!(
+            normalize_audit_status("output-denied", Some("hard_block:sudo"), false),
+            "blocked"
+        );
+        assert_eq!(
+            normalize_audit_status("output-denied", Some("block:tool"), false),
+            "blocked"
+        );
+        assert_eq!(
+            normalize_audit_status("output-denied", Some("block:rule:r1"), false),
+            "blocked"
+        );
+        assert_eq!(
+            normalize_audit_status("output-denied", Some("plan"), false),
+            "blocked"
+        );
+        assert_eq!(
+            normalize_audit_status("output-denied", Some("user"), false),
+            "denied"
+        );
+        assert_eq!(
+            normalize_audit_status("output-error", None, true),
+            "interrupted"
+        );
+        assert_eq!(
+            normalize_audit_status("input-available", None, true),
+            "interrupted"
+        );
+        assert_eq!(
+            normalize_audit_status("approval-requested", None, true),
+            "interrupted"
+        );
     }
 }

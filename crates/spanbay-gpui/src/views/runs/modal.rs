@@ -40,11 +40,16 @@ pub struct WorkflowMonitorModal {
     pub session_id: String,
     pub run_id: Option<String>,
     pub topology: Option<AgentRunTopology>,
+    pub topology_loaded: bool,
+    pub topology_error: Option<String>,
     pub session_history: Vec<SessionRunHistoryItem>,
     pub history_filter: HistoryPickerFilter,
     pub changes: Vec<FileChange>,
     pub selected_change_id: Option<String>,
     pub selected_change_diff: Option<(String, String, bool)>,
+    pub selected_change_diff_err: Option<(String, String)>,
+    /// Net change of the selected file over all its edits (diff, binary); set with the diff.
+    pub selected_net_diff: Option<(String, bool)>,
     pub processes: Vec<BackgroundProcess>,
     pub show_processes: bool,
     pub tab_overrides: HashMap<String, WorkflowTab>,
@@ -82,11 +87,15 @@ impl WorkflowMonitorModal {
             session_id: String::new(),
             run_id: None,
             topology: None,
+            topology_loaded: false,
+            topology_error: None,
             session_history: Vec::new(),
             history_filter: HistoryPickerFilter::All,
             changes: Vec::new(),
             selected_change_id: None,
             selected_change_diff: None,
+            selected_change_diff_err: None,
+            selected_net_diff: None,
             processes: Vec::new(),
             show_processes: false,
             tab_overrides: HashMap::new(),
@@ -140,7 +149,7 @@ impl WorkflowMonitorModal {
         cx: &mut Context<Self>,
     ) {
         let session_changed = self.session_id != session_id;
-        let run_changed = focus_run_id.is_some() && self.run_id != focus_run_id;
+        let run_changed = self.run_id != focus_run_id;
         self.open = true;
         self.session_id = session_id;
         self.full_output_dialog = None;
@@ -148,6 +157,8 @@ impl WorkflowMonitorModal {
         if session_changed || run_changed {
             self.run_id = focus_run_id;
             self.topology = None;
+            self.topology_loaded = false;
+            self.topology_error = None;
             self.selected_node_id = None;
             self.user_cleared_selection = false;
             self.expanded_sections.clear();
@@ -160,6 +171,8 @@ impl WorkflowMonitorModal {
             self.changes.clear();
             self.selected_change_id = None;
             self.selected_change_diff = None;
+            self.selected_change_diff_err = None;
+            self.selected_net_diff = None;
             self.processes.clear();
             self.show_processes = false;
         }
@@ -213,6 +226,8 @@ impl WorkflowMonitorModal {
             return;
         }
         self.run_id = Some(run_id);
+        self.topology_loaded = false;
+        self.topology_error = None;
         self.selected_node_id = None;
         self.user_cleared_selection = false;
         self.expanded_sections.clear();
@@ -277,6 +292,8 @@ impl WorkflowMonitorModal {
     }
 
     pub fn select_node(&mut self, node_id: Option<String>, cx: &mut Context<Self>) {
+        self.drag_state = None;
+        self.alignment_guides.clear();
         self.user_cleared_selection = node_id.is_none();
         self.selected_node_id = node_id;
         cx.notify();
@@ -486,14 +503,32 @@ impl Render for WorkflowMonitorModal {
                 .child(view_bar)
                 .child(div().flex_1().min_h_0().w_full().child(stage))
                 .into_any_element()
+        } else if self.pending_initial_tab == Some(WorkflowTab::Changes) && !self.changes.is_empty()
+        {
+            render_changes_tab(self, cx)
         } else {
+            let placeholder = if let Some(err) = &self.topology_error {
+                let retry = btn_secondary("wf-topo-retry", crate::ui::tr(cx).common().retry())
+                    .on_click(cx.listener(|this, _, _, cx| this.reload_all(cx)))
+                    .into_any_element();
+                empty_inline(err.clone(), None, Some(retry), cx)
+            } else if self.topology_loaded {
+                empty_inline(
+                    ch.monitor_empty_title(),
+                    Some(gpui_kit::SharedString::from(ch.monitor_empty_hint())),
+                    None,
+                    cx,
+                )
+            } else {
+                empty_inline(ch.monitor_loading_topology(), None, None, cx)
+            };
             div()
                 .size_full()
                 .bg(to_hsla(p.surface))
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(empty_inline(ch.monitor_loading_topology(), None, None, cx))
+                .child(placeholder)
                 .into_any_element()
         };
 

@@ -1,21 +1,77 @@
 //! Expanded detail renderer, inline metrics, localized action verbs, and icons for Chat tool
 //! trace rows (`trace.rs`).
 
+use crate::ui::{
+    Tone, UiIcon, badge, btn_ghost, btn_icon, btn_secondary, code_lines_preview,
+    diff_lines_preview, h_row, icon_xs, kv_chip, mono_font_family, mono_font_size, palette,
+    to_hsla, v_col,
+};
 use gpui_kit::{
     AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
+use spanbay_desktop::core::agent::model::{AgentToolCallRecord, ApprovalScope, OutputStream};
+use spanbay_desktop::core::model::hub::HubPart;
 use spanbay_desktop::services::clipboard;
 use spanbay_desktop::state::{
-    ToolCategory, ToolInlineMetric, ToolPreviewBody, ToolTracePresentation, format_human_bytes,
-    format_mcp_tool_name,
-};
-
-use crate::ui::{
-    Tone, UiIcon, badge, btn_ghost, btn_icon, code_lines_preview, diff_lines_preview, h_row,
-    icon_xs, kv_chip, mono_font_family, mono_font_size, palette, to_hsla, v_col,
+    ApprovalResolution, SettingsSection, ToolCategory, ToolInlineMetric, ToolPreviewBody,
+    ToolTracePresentation, format_human_bytes, format_mcp_tool_name,
 };
 
 use super::ChatView;
+use super::thread_header::render_binding_popover_with_trigger;
+use super::types::ChatHandoff;
+
+/// Localised sentence for one of the 6 core coded tool errors (delta §2.14).
+pub(super) fn localized_tool_error(code: &str, verb: &str, cx: &gpui_kit::App) -> Option<String> {
+    let ch = crate::ui::tr(cx).chat();
+    match code {
+        "not_bound" => Some(ch.tool_error_not_bound(verb)),
+        "workspace_deleted" => Some(ch.tool_error_workspace_deleted(verb)),
+        "tool_unavailable" => Some(ch.tool_error_tool_unavailable(verb)),
+        "invalid_arguments" => Some(ch.tool_error_invalid_arguments(verb)),
+        "timeout" => Some(ch.tool_error_timeout(verb)),
+        "outside_folder" => Some(ch.tool_error_outside_folder(verb)),
+        _ => None,
+    }
+}
+
+/// Follow-up button for actionable coded tool errors (`not_bound`, `workspace_deleted`, `tool_unavailable`).
+pub(super) fn render_coded_error_action(
+    view: &ChatView,
+    call_id: &str,
+    code: &str,
+    cx: &mut Context<ChatView>,
+) -> Option<AnyElement> {
+    let ch = crate::ui::tr(cx).chat();
+    match code {
+        "not_bound" | "workspace_deleted" => Some(
+            render_binding_popover_with_trigger(
+                view,
+                SharedString::from(format!("t-bind-pop-{call_id}")),
+                btn_secondary(
+                    SharedString::from(format!("t-bind-{call_id}")),
+                    ch.tool_error_bind_workspace(),
+                ),
+                cx,
+            )
+            .into_any_element(),
+        ),
+        "tool_unavailable" => Some(
+            btn_secondary(
+                SharedString::from(format!("t-tools-set-{call_id}")),
+                ch.tool_error_open_tool_settings(),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                cx.stop_propagation();
+                this.pending_handoff
+                    .set(Some(ChatHandoff::OpenSettings(SettingsSection::Tools)));
+                cx.notify();
+            }))
+            .into_any_element(),
+        ),
+        _ => None,
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_trace_detail(
@@ -23,7 +79,7 @@ pub(super) fn render_trace_detail(
     tool_name: &str,
     verb: &str,
     pres: &ToolTracePresentation,
-    is_err: bool,
+    tone: Tone,
     spilled: bool,
     has_workspace: bool,
     change_ref: Option<(String, String)>,
@@ -33,18 +89,19 @@ pub(super) fn render_trace_detail(
     let ch = crate::ui::tr(cx).chat();
     let mono = mono_font_family(cx);
     let code_px = (f32::from(mono_font_size(cx)) - 1.5).clamp(10.5, 13.0);
+    let is_err = tone == Tone::Danger;
 
-    let card_bg = if is_err {
-        to_hsla(p.bad_soft.composite_over(p.pane))
-    } else {
-        to_hsla(p.sunken)
+    let (card_bg, card_border) = match tone {
+        Tone::Danger => (
+            to_hsla(p.bad_soft.composite_over(p.pane)),
+            to_hsla(p.bad_line.composite_over(p.pane)),
+        ),
+        Tone::Warning => (
+            to_hsla(p.warn_soft.composite_over(p.pane)),
+            to_hsla(p.warn_line.composite_over(p.pane)),
+        ),
+        _ => (to_hsla(p.sunken), to_hsla(p.line.composite_over(p.sunken))),
     };
-    let card_border = if is_err {
-        to_hsla(p.bad_line.composite_over(p.pane))
-    } else {
-        to_hsla(p.line.composite_over(p.sunken))
-    };
-
     let file_has_more = matches!(
         pres.preview,
         ToolPreviewBody::CodeLines {
@@ -52,10 +109,7 @@ pub(super) fn render_trace_detail(
             ..
         }
     );
-    let has_left_meta = !pres.meta_chips.is_empty()
-        || pres.external_isolated
-        || pres.error_code.is_some()
-        || file_has_more;
+    let has_left_meta = !pres.meta_chips.is_empty() || pres.external_isolated || file_has_more;
     let has_right_actions =
         pres.file_path.is_some() || change_ref.is_some() || pres.can_preview_full;
     let has_body = pres.command_line.is_some()
@@ -80,9 +134,6 @@ pub(super) fn render_trace_detail(
             .items_center();
         for (k, v) in &pres.meta_chips {
             left = left.child(kv_chip(k.clone(), v.clone(), cx));
-        }
-        if let Some(code) = &pres.error_code {
-            left = left.child(badge(code.clone(), Tone::Danger, cx));
         }
         if pres.external_isolated {
             left = left.child(badge(ch.trace_external_isolated(), Tone::Neutral, cx));
@@ -136,7 +187,8 @@ pub(super) fn render_trace_detail(
                 )
                 .icon(icon_xs(UiIcon::FileDiff))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.open_change_diff(fc_id.clone(), fc_path.clone(), cx);
+                    let _ = &fc_id;
+                    this.open_review(Some(fc_path.clone()), cx);
                 })),
             );
         }
@@ -255,10 +307,10 @@ pub(super) fn render_trace_detail(
             card = card.child(diff_lines_preview(text, 18, cx));
         }
         ToolPreviewBody::PlainText { text } => {
-            let fg = if is_err {
-                to_hsla(p.bad)
-            } else {
-                to_hsla(p.ink_2)
+            let fg = match tone {
+                Tone::Danger => to_hsla(p.bad),
+                Tone::Warning => to_hsla(p.warn),
+                _ => to_hsla(p.ink_2),
             };
             card = card.child(
                 div()
@@ -359,23 +411,163 @@ pub(super) fn localized_tool_verb(name: &str, cx: &gpui_kit::App) -> String {
     }
 }
 
-pub(super) fn tool_icon(name: &str, category: ToolCategory) -> UiIcon {
-    match name {
-        "grep" => return UiIcon::Search,
-        "glob" => return UiIcon::FolderOpen,
-        "list_dir" => return UiIcon::Folder,
-        "todo_write" => return UiIcon::ListChecks,
-        _ => {}
+/// Renders `(OutputStream, String)` segments in arrival order with `stdout │` / `stderr │` prefixes.
+pub(super) fn render_interleaved_streams(
+    streams: &[(OutputStream, String)],
+    cx: &gpui_kit::App,
+) -> gpui_kit::Div {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let mono = mono_font_family(cx);
+    let mut col = v_col()
+        .mx(px(12.0))
+        .mb(px(6.0))
+        .px(px(8.0))
+        .py(px(6.0))
+        .gap(px(2.0))
+        .rounded(px(6.0))
+        .bg(to_hsla(p.sunken))
+        .font_family(mono)
+        .text_xs();
+    for (stream, chunk) in streams {
+        let (prefix, fg) = match stream {
+            OutputStream::Stdout => (ch.trace_stream_stdout(), to_hsla(p.ink_2)),
+            OutputStream::Stderr => (ch.trace_stream_stderr(), to_hsla(p.warn)),
+        };
+        for line in chunk.lines() {
+            col = col.child(
+                h_row()
+                    .items_start()
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_color(to_hsla(p.faint))
+                            .child(prefix),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_color(fg)
+                            .child(SharedString::from(line.to_owned())),
+                    ),
+            );
+        }
     }
-    match category {
-        ToolCategory::FileRead | ToolCategory::OutputRead => UiIcon::FileText,
-        ToolCategory::FileSearch => UiIcon::Search,
-        ToolCategory::FileEdit => UiIcon::FilePen,
-        ToolCategory::Shell => UiIcon::SquareTerminal,
-        ToolCategory::SpanBayApi => UiIcon::Send,
-        ToolCategory::Web => UiIcon::Globe,
-        ToolCategory::Subagent => UiIcon::Bot,
-        ToolCategory::Planning => UiIcon::ListTodo,
-        ToolCategory::Mcp | ToolCategory::Other => UiIcon::Wrench,
+    col
+}
+
+pub(super) fn extract_denied_reason(
+    parts: &[HubPart],
+    streams: &[(OutputStream, String)],
+) -> (Option<String>, Option<String>) {
+    let mut body_lines = Vec::new();
+    let mut nudge_lines = Vec::new();
+    let push_text = |raw: &str, body: &mut Vec<String>, nudge: &mut Vec<String>| {
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(rest) = trimmed.strip_prefix("[System notice]") {
+                nudge.push(rest.trim().to_owned());
+            } else if nudge.is_empty() {
+                body.push(trimmed.to_owned());
+            } else {
+                nudge.push(trimmed.to_owned());
+            }
+        }
+    };
+    if !parts.is_empty() {
+        for pt in parts {
+            if let HubPart::Text { text, .. } = pt {
+                push_text(text, &mut body_lines, &mut nudge_lines);
+            }
+        }
+    } else {
+        for (_, chunk) in streams {
+            push_text(chunk, &mut body_lines, &mut nudge_lines);
+        }
+    }
+    let body = body_lines.join("\n");
+    let reason = if let Some(note) = body.strip_prefix("The user denied this call:") {
+        let note = note.trim();
+        (!note.is_empty()).then(|| note.to_owned())
+    } else if body.is_empty() || body == "The user denied this call." {
+        None
+    } else {
+        Some(body)
+    };
+    let nudge = (!nudge_lines.is_empty()).then(|| nudge_lines.join(" "));
+    (reason, nudge)
+}
+
+pub(super) fn format_tech_details(
+    exit_code: Option<i32>,
+    audit: Option<&AgentToolCallRecord>,
+    resolution: Option<ApprovalResolution>,
+    raw_result_first_line: Option<&str>,
+) -> Option<String> {
+    let mut kv = Vec::new();
+    if let Some(code) = exit_code {
+        kv.push(format!("exit_code={code}"));
+    }
+    if let Some(sb) = audit.and_then(|a| a.sandbox.as_deref()) {
+        kv.push(format!("sandbox={sb}"));
+    }
+    if let Some(by) = audit.and_then(|a| a.decided_by.as_deref()) {
+        kv.push(format!("decided_by={by}"));
+    }
+    if let Some(res) = resolution {
+        let sc = match res.scope {
+            ApprovalScope::Once => "once",
+            ApprovalScope::Session => "session",
+            ApprovalScope::WorkspacePattern => "folder",
+            ApprovalScope::Tool => "tool",
+        };
+        kv.push(format!("scope={sc}"));
+    }
+    let mut lines = Vec::new();
+    if let Some(raw) = raw_result_first_line {
+        lines.push(raw.to_owned());
+    }
+    if !kv.is_empty() {
+        lines.push(kv.join(" · "));
+    }
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+pub(super) fn summarize_tool_args(args: &str) -> String {
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(args)
+        && let Some(obj) = val.as_object()
+    {
+        for key in [
+            "description",
+            "cmd",
+            "command",
+            "path",
+            "file_path",
+            "url",
+            "query",
+            "pattern",
+        ] {
+            if let Some(s) = obj.get(key).and_then(|v| v.as_str()) {
+                let mut chars = s.chars();
+                let prefix: String = chars.by_ref().take(80).collect();
+                return if chars.next().is_some() {
+                    format!("{prefix}…")
+                } else {
+                    prefix
+                };
+            }
+        }
+    }
+    let trimmed = args.trim();
+    let mut chars = trimmed.chars();
+    let prefix: String = chars.by_ref().take(70).collect();
+    if chars.next().is_some() {
+        format!("{prefix}…")
+    } else {
+        prefix
     }
 }

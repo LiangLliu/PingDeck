@@ -3,11 +3,12 @@
 use std::time::Duration;
 
 use gpui_kit::{Context, WeakEntity, Window};
-use spanbay_desktop::core::agent::model::NodeRecoveryAction;
+use spanbay_desktop::core::agent::model::{FileChangeStatus, NodeRecoveryAction};
 use spanbay_desktop::core::app::{
-    agent_change_diff_impl, agent_change_keep_impl, agent_change_undo_impl,
-    agent_changes_list_impl, agent_process_kill_impl, agent_process_list_impl, agent_run_stop_impl,
-    agent_run_topology_impl, agent_session_latest_topology_impl, agent_session_run_history_impl,
+    agent_change_diff_impl, agent_change_keep_impl, agent_change_net_diff_impl,
+    agent_change_undo_impl, agent_changes_list_impl, agent_process_kill_impl,
+    agent_process_list_impl, agent_run_stop_impl, agent_run_topology_impl,
+    agent_session_latest_topology_impl, agent_session_run_history_impl,
     agent_task_node_recover_impl, agent_tool_output_read_impl,
 };
 
@@ -94,18 +95,52 @@ impl WorkflowMonitorModal {
 
     pub fn select_change(&mut self, change_id: String, cx: &mut Context<Self>) {
         self.selected_change_id = Some(change_id.clone());
+        self.selected_change_diff_err = None;
         let cid_check = change_id.clone();
+        // Several edits of one file in the same session: also fetch the file's net change (product.md §7).
+        let same_file: Vec<String> = self
+            .changes
+            .iter()
+            .find(|c| c.id == change_id)
+            .filter(|sel| sel.status != FileChangeStatus::Undone)
+            .map(|sel| {
+                self.changes
+                    .iter()
+                    .filter(|c| {
+                        c.session_id == sel.session_id
+                            && c.path == sel.path
+                            && c.folder == sel.folder
+                            && c.status != FileChangeStatus::Undone
+                    })
+                    .map(|c| c.id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
         let task = spawn_blocking_into(
             cx,
-            move |state| agent_change_diff_impl(state, &change_id),
-            move |this, res, cx| {
+            move |state| {
+                let net = (same_file.len() > 1)
+                    .then(|| agent_change_net_diff_impl(state, &same_file).ok())
+                    .flatten();
+                (agent_change_diff_impl(state, &change_id), net)
+            },
+            move |this, (res, net), cx| {
                 if this.selected_change_id.as_deref() != Some(cid_check.as_str()) {
                     return;
                 }
-                if let Ok(dto) = res {
-                    this.selected_change_diff = Some((cid_check, dto.unified_diff, dto.binary));
-                    cx.notify();
+                match res {
+                    Ok(dto) => {
+                        this.selected_change_diff = Some((cid_check, dto.unified_diff, dto.binary));
+                        this.selected_change_diff_err = None;
+                        this.selected_net_diff = net.map(|d| (d.unified_diff, d.binary));
+                    }
+                    Err(err) => {
+                        this.selected_change_diff = None;
+                        this.selected_change_diff_err = Some((cid_check, err.message().to_owned()));
+                        this.selected_net_diff = None;
+                    }
                 }
+                cx.notify();
             },
         );
         self._tasks.push(task);
@@ -127,12 +162,23 @@ impl WorkflowMonitorModal {
         self._tasks.push(task);
     }
 
-    pub fn undo_change(&mut self, change_id: String, cx: &mut Context<Self>) {
+    pub fn undo_change(&mut self, change_id: String, force: bool, cx: &mut Context<Self>) {
         let task = spawn_blocking_into(
             cx,
-            move |state| agent_change_undo_impl(state, &[change_id], false),
+            move |state| agent_change_undo_impl(state, &[change_id], force),
             |this, res, cx| match res {
-                Ok(_) => this.reload_all(cx),
+                Ok(touched) => {
+                    if touched
+                        .iter()
+                        .any(|c| c.status == FileChangeStatus::Conflict)
+                    {
+                        this.status_msg = Some((
+                            Tone::Warning,
+                            crate::ui::tr(cx).common().change_conflict_hint().to_owned(),
+                        ));
+                    }
+                    this.reload_all(cx);
+                }
                 Err(err) => {
                     this.status_msg = Some((Tone::Danger, err.message().to_owned()));
                     cx.notify();
@@ -166,27 +212,57 @@ impl WorkflowMonitorModal {
                 if this.session_id != sid_check || this.run_id != rid_check {
                     return;
                 }
-                if let Ok(Some(topo)) = res {
-                    let actual_rid = topo.run.run_id.clone();
-                    let is_active = topo.run.status.is_active();
-                    this.run_id = Some(actual_rid.clone());
-                    if let Some(init_tab) = this.pending_initial_tab.take() {
-                        this.tab_overrides.insert(actual_rid, init_tab);
+                match res {
+                    Ok(Some(topo)) => {
+                        let actual_rid = topo.run.run_id.clone();
+                        let is_active = topo.run.status.is_active();
+                        if this
+                            .topology
+                            .as_ref()
+                            .is_some_and(|prev| prev.run.run_id != actual_rid)
+                        {
+                            this.selected_node_id = None;
+                            this.user_cleared_selection = false;
+                            this.expanded_sections.clear();
+                            this.pinned_positions.clear();
+                            this.drag_state = None;
+                            this.alignment_guides.clear();
+                        }
+                        this.run_id = Some(actual_rid.clone());
+                        if let Some(init_tab) = this.pending_initial_tab.take() {
+                            this.tab_overrides.insert(actual_rid, init_tab);
+                        }
+                        // Smart default focus: auto-select first waiting/failed node if user hasn't
+                        // manually picked or cleared selection.
+                        if this.selected_node_id.is_none() && !this.user_cleared_selection {
+                            let layout = build_modal_graph_layout(this, &topo, cx);
+                            this.selected_node_id = layout.default_focus_node_id();
+                        }
+                        this.topology = Some(topo);
+                        this.topology_loaded = true;
+                        this.topology_error = None;
+                        if is_active && this.open {
+                            this.start_live_ticker(cx);
+                        } else {
+                            this.tick_task = None;
+                        }
                     }
-                    // Smart default focus: auto-select first waiting/failed node if user hasn't
-                    // manually picked or cleared selection.
-                    if this.selected_node_id.is_none() && !this.user_cleared_selection {
-                        let layout = build_modal_graph_layout(this, &topo, cx);
-                        this.selected_node_id = layout.default_focus_node_id();
-                    }
-                    this.topology = Some(topo);
-                    if is_active && this.open {
-                        this.start_live_ticker(cx);
-                    } else {
+                    Ok(None) => {
+                        this.topology = None;
+                        this.topology_loaded = true;
+                        this.topology_error = None;
                         this.tick_task = None;
                     }
-                    cx.notify();
+                    Err(err) => {
+                        let msg = err.message().to_owned();
+                        this.topology = None;
+                        this.topology_loaded = true;
+                        this.topology_error = Some(msg.clone());
+                        this.status_msg = Some((Tone::Danger, msg));
+                        this.tick_task = None;
+                    }
                 }
+                cx.notify();
             },
         );
         self._tasks.push(task);
@@ -224,15 +300,19 @@ impl WorkflowMonitorModal {
                 if let Ok(list) = res {
                     let first_id = list.first().map(|c| c.id.clone());
                     this.changes = list;
-                    if let Some(sel) = this.selected_change_id.clone()
-                        && !this.changes.iter().any(|c| c.id == sel)
-                    {
-                        this.selected_change_id = None;
-                        this.selected_change_diff = None;
-                    }
-                    if this.selected_change_id.is_none()
-                        && let Some(fid) = first_id
-                    {
+                    if let Some(sel) = this.selected_change_id.clone() {
+                        if this.changes.iter().any(|c| c.id == sel) {
+                            this.select_change(sel, cx);
+                        } else {
+                            this.selected_change_id = None;
+                            this.selected_change_diff = None;
+                            this.selected_change_diff_err = None;
+                            this.selected_net_diff = None;
+                            if let Some(fid) = first_id {
+                                this.select_change(fid, cx);
+                            }
+                        }
+                    } else if let Some(fid) = first_id {
                         this.select_change(fid, cx);
                     }
                     cx.notify();

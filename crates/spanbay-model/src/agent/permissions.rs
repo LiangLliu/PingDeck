@@ -84,6 +84,15 @@ pub struct OperatorHit {
     pub start: usize,
 }
 
+impl OperatorHit {
+    /// Byte length of the operator in the source command (`\n` is displayed as `\n` (2 chars)
+    /// but occupies 1 byte in the raw command string).
+    #[must_use]
+    pub fn source_len(&self) -> usize {
+        if self.op == "\\n" { 1 } else { self.op.len() }
+    }
+}
+
 /// A short label the approval card shows next to a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

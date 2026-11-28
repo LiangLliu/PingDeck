@@ -12,8 +12,11 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use crate::agent::attachments::sniff;
+use crate::agent::model::AttachmentKind;
+use crate::crypto::sha256_hex;
 use crate::error::AppError;
-use crate::platform::HostOs;
+use crate::platform::{HostOs, create_private_dir_all, write_atomic};
 
 use super::reveal_service::{is_allowed, launch, resolve_absolute, reveal_command};
 use super::{AppState, command_error};
@@ -104,6 +107,11 @@ fn confirm_regular_file(target: &Path) -> Result<(), AppError> {
     }
 }
 
+fn launch_confirmed(target: &Path) -> Result<(), AppError> {
+    confirm_regular_file(target)?;
+    let (program, args) = launch_plan(HostOs::current(), target);
+    launch(program, args)
+}
 /// Opens a file of a chat's folder with its default application when its type is on the
 /// allow-list ([`OPENABLE`]) and shows any other file in the file manager (see
 /// [`open_path_validate`] for what is accepted). Blocking: it resolves the path and starts the
@@ -113,9 +121,112 @@ fn confirm_regular_file(target: &Path) -> Result<(), AppError> {
 /// As [`open_path_validate`]; [`AppError::Io`] when the opener cannot be started.
 pub fn open_path_impl(state: &AppState, path: &str) -> Result<(), AppError> {
     let target = open_path_validate(state, path)?;
-    confirm_regular_file(&target)?;
-    let (program, args) = launch_plan(HostOs::current(), &target);
-    launch(program, args)
+    launch_confirmed(&target)
+}
+
+/// Safe allow-listed file extension for a sniffed MIME type; never derived from user or model file
+/// names so opening a staged copy cannot launch a script, HTML page or executable.
+fn open_extension(media_type: &str) -> &'static str {
+    let essence = media_type
+        .split(';')
+        .next()
+        .unwrap_or(media_type)
+        .trim()
+        .to_ascii_lowercase();
+    match essence.as_str() {
+        "image/png" => "png",
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "application/pdf" => "pdf",
+        "text/markdown" => "md",
+        "application/json" => "json",
+        "text/csv" => "csv",
+        "application/yaml" | "text/yaml" => "yaml",
+        "application/toml" | "text/toml" => "toml",
+        _ => "txt",
+    }
+}
+
+/// Writes `bytes` to `<data_dir>/tmp/open/<sha256>.<ext>` with owner-only permissions.
+fn stage_open_bytes(state: &AppState, bytes: &[u8], media_type: &str) -> Result<PathBuf, AppError> {
+    let dirs = state.data_dirs().ok_or_else(|| {
+        AppError::unsupported("opening attachments needs an on-disk data directory")
+    })?;
+    let dir = dirs.tmp.join("open");
+    create_private_dir_all(&dir)
+        .map_err(|error| AppError::io(format!("{}: {error}", dir.display())))?;
+    let target = dir.join(format!(
+        "{}.{}",
+        sha256_hex(bytes),
+        open_extension(media_type)
+    ));
+    write_atomic(&target, bytes, true)
+        .map_err(|error| AppError::io(format!("{}: {error}", target.display())))?;
+    Ok(target)
+}
+
+/// Stages the blob of `id` under `<data_dir>/tmp/open/<sha256>.<ext>` using only its stored hash
+/// and sniffed MIME type (never its display name or an external path).
+fn stage_attachment_for_open(state: &AppState, id: &str) -> Result<PathBuf, AppError> {
+    let attachment = state
+        .store()
+        .get_attachment(id)
+        .map_err(command_error)?
+        .ok_or_else(|| AppError::not_found(format!("attachment {id} not found")))?;
+    if attachment.removed {
+        return Err(AppError::not_found(format!("attachment {id} was removed")));
+    }
+    let bytes = state.attachment_store()?.read(&attachment.sha256)?;
+    stage_open_bytes(state, &bytes, &attachment.media_type)
+}
+
+/// Stages an inline (MCP) image under `<data_dir>/tmp/open/<sha256>.<ext>` after sniffing its
+/// magic bytes so non-image content is never written with an image extension.
+fn stage_inline_image_for_open(
+    state: &AppState,
+    bytes: &[u8],
+    media_type: &str,
+) -> Result<PathBuf, AppError> {
+    let store = state.attachment_store()?;
+    if bytes.len() as u64 > store.max_image_bytes() {
+        return Err(store.too_large(bytes.len() as u64));
+    }
+    let sniffed = sniff(bytes, "", media_type)
+        .filter(|s| s.kind == AttachmentKind::Image && s.width.is_some() && s.height.is_some())
+        .ok_or_else(|| {
+            AppError::validation("only a valid PNG, JPEG, GIF or WebP image can be opened")
+        })?;
+    stage_open_bytes(state, bytes, sniffed.media_type)
+}
+
+/// Writes a temporary copy of attachment `id` under `<data_dir>/tmp/open` with an extension derived
+/// from its sniffed MIME type and opens it with the operating system's default application.
+///
+/// # Errors
+/// [`AppError::NotFound`] for an unknown id or missing blob, [`AppError::Unsupported`] without a
+/// data directory, [`AppError::Io`] when staging or launching fails.
+pub fn agent_attachment_open_impl(state: &AppState, id: &str) -> Result<(), AppError> {
+    let target = stage_attachment_for_open(state, id)?;
+    launch_confirmed(&target)
+}
+
+/// Writes a temporary copy of an inline image (such as an MCP tool result image, which has no
+/// attachment row and may exceed the composer upload's 2,250 px edge cap) under
+/// `<data_dir>/tmp/open` after verifying its image header and opens it with the default
+/// application.
+///
+/// # Errors
+/// [`AppError::Validation`] when `bytes` is not a valid image or exceeds `ai.agent.max_image_mb`,
+/// [`AppError::Unsupported`] without a data directory, [`AppError::Io`] when staging or launching
+/// fails.
+pub fn agent_image_open_impl(
+    state: &AppState,
+    bytes: &[u8],
+    media_type: &str,
+) -> Result<(), AppError> {
+    let target = stage_inline_image_for_open(state, bytes, media_type)?;
+    launch_confirmed(&target)
 }
 
 /// Largest text `save_text_file` writes, in bytes.
@@ -302,5 +413,92 @@ mod tests {
         );
         assert_eq!(open_command(HostOs::Linux, path).0, "xdg-open");
         assert_eq!(open_command(HostOs::Windows, path).0, "explorer");
+    }
+
+    #[test]
+    fn staging_for_open_uses_safe_mime_extension_verifies_image_headers_and_clears_on_start() {
+        use crate::agent::model::AgentAttachment;
+
+        let top = std::env::temp_dir().join(format!("pd-open-stage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&top);
+        std::fs::create_dir_all(top.join("data")).unwrap();
+        let state = AppState::open(top.join("data").join("spanbay.sqlite3")).unwrap();
+        state.on_start().unwrap();
+
+        let store = state.attachment_store().unwrap();
+        let ingested = store
+            .ingest("../../evil.sh", "text/x-shellscript", b"echo hi\n")
+            .unwrap();
+        state
+            .store()
+            .insert_attachment(&AgentAttachment {
+                id: "att-script".to_owned(),
+                sha256: ingested.sha256,
+                name: "evil.sh".to_owned(),
+                media_type: ingested.media_type,
+                size_bytes: ingested.size_bytes,
+                kind: ingested.kind,
+                width: None,
+                height: None,
+                thumb_data_url: None,
+                lines: ingested.lines,
+                created_at_ms: 1,
+                removed: false,
+            })
+            .unwrap();
+        let staged_script = stage_attachment_for_open(&state, "att-script").unwrap();
+        assert!(staged_script.starts_with(top.join("data").join("tmp").join("open")));
+        assert_eq!(
+            staged_script.extension().and_then(|e| e.to_str()),
+            Some("txt")
+        );
+        assert_eq!(std::fs::read(&staged_script).unwrap(), b"echo hi\n");
+
+        state
+            .store()
+            .insert_attachment(&AgentAttachment {
+                id: "att-removed".to_owned(),
+                sha256: staged_script
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_owned(),
+                name: "gone.txt".to_owned(),
+                media_type: "text/plain".to_owned(),
+                size_bytes: 8,
+                kind: AttachmentKind::Text,
+                width: None,
+                height: None,
+                thumb_data_url: None,
+                lines: Some(1),
+                created_at_ms: 2,
+                removed: true,
+            })
+            .unwrap();
+        assert!(matches!(
+            stage_attachment_for_open(&state, "att-removed"),
+            Err(AppError::NotFound { .. })
+        ));
+        // Inline MCP images over the composer's 2,250 px downscale cap still stage when valid PNGs,
+        // while non-image bytes disguised as image/png are rejected.
+        let mut retina = vec![
+            0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, b'I', b'H', b'D', b'R',
+        ];
+        retina.extend_from_slice(&2560_u32.to_be_bytes());
+        retina.extend_from_slice(&1440_u32.to_be_bytes());
+        retina.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+        let staged_inline = stage_inline_image_for_open(&state, &retina, "image/png").unwrap();
+        assert_eq!(
+            staged_inline.extension().and_then(|e| e.to_str()),
+            Some("png")
+        );
+        assert!(matches!(
+            stage_inline_image_for_open(&state, b"#!/bin/sh\n", "image/png"),
+            Err(AppError::Validation { .. })
+        ));
+        state.on_start().unwrap();
+        assert!(!staged_script.exists());
+        assert!(!staged_inline.exists());
+        let _ = std::fs::remove_dir_all(&top);
     }
 }

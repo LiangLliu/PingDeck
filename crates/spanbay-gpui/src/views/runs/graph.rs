@@ -7,8 +7,8 @@ use std::collections::HashSet;
 
 use gpui_kit::{
     AnyElement, App, Context, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    div, px,
+    MouseMoveEvent, MouseUpEvent, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use spanbay_desktop::core::agent::dto::AgentRunTopology;
 use spanbay_desktop::core::agent::model::AgentTodoItem;
@@ -19,15 +19,17 @@ use spanbay_desktop::state::{
 };
 
 use crate::ui::{
-    DagEdgeDraw, ProcessGuideDraw, ProcessLaneDraw, ScrollableElement as _, Tone, UiIcon, badge,
-    dag_edge_canvas, h_row, icon_xs, lane_draw_spec, palette, process_edge_label_pill,
-    process_lane_header, process_stage_canvas, status_indicator, to_hsla, v_col,
+    DagEdgeDraw, ProcessGuideDraw, ProcessLaneDraw, ScrollableElement as _, StatusShape, Tone,
+    UiIcon, badge, dag_edge_canvas, h_row, icon_xs, lane_draw_spec, palette,
+    process_edge_label_pill, process_lane_header, process_stage_canvas, status_indicator, to_hsla,
+    v_col,
 };
 
 use super::graph_cards::render_modal_graph_card;
 use super::modal::WorkflowMonitorModal;
-use super::status::{graph_kind_label, graph_status_visual, subagent_role_label};
+use super::status::{graph_kind_label, subagent_role_label};
 use super::types::GraphDragState;
+use crate::ui::status_visual;
 
 const DRAG_ACTIVATION_PX: f32 = 4.0;
 
@@ -57,6 +59,10 @@ impl WorkflowMonitorModal {
         neighbors: &[PositionedProcessNode],
         cx: &mut Context<Self>,
     ) {
+        if ev.pressed_button != Some(MouseButton::Left) {
+            self.cancel_node_drag(cx);
+            return;
+        }
         let Some(drag) = &mut self.drag_state else {
             return;
         };
@@ -68,6 +74,7 @@ impl WorkflowMonitorModal {
             return;
         }
         drag.dragging = true;
+        self.drag_suppress_click = true;
         let raw_x = (drag.start_node_pos.0 + screen_dx / drag.scale).max(20.0);
         let raw_y = (drag.start_node_pos.1 + screen_dy / drag.scale).max(24.0);
         let (sx, sy, guides) = snap_drag_position(
@@ -83,6 +90,16 @@ impl WorkflowMonitorModal {
         cx.notify();
     }
 
+    pub(super) fn cancel_node_drag(&mut self, cx: &mut Context<Self>) {
+        let had_drag = self.drag_state.take().is_some();
+        self.drag_suppress_click = false;
+        let had_guides = !self.alignment_guides.is_empty();
+        self.alignment_guides.clear();
+        if had_drag || had_guides {
+            cx.notify();
+        }
+    }
+
     pub(super) fn end_node_drag(&mut self, cx: &mut Context<Self>) {
         let Some(drag) = self.drag_state.take() else {
             return;
@@ -90,12 +107,15 @@ impl WorkflowMonitorModal {
         if drag.dragging {
             self.drag_suppress_click = true;
         }
+        let had_guides = !self.alignment_guides.is_empty();
         self.alignment_guides.clear();
-        cx.notify();
+        if drag.dragging || had_guides {
+            cx.notify();
+        }
     }
 }
 
-fn graph_labels(ch: spanbay_desktop::i18n::Chat) -> GraphBuildLabels<'static> {
+pub(super) fn graph_labels(ch: spanbay_desktop::i18n::Chat) -> GraphBuildLabels<'static> {
     GraphBuildLabels {
         trigger_title: ch.graph_trigger_node(),
         summary_title: ch.graph_summary_node(),
@@ -316,18 +336,36 @@ pub fn render_execution_graph(
         .w(px(canvas_w))
         .h(px(canvas_h))
         .flex_shrink_0()
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _, _, cx| {
+                this.drag_suppress_click = false;
+                this.cancel_node_drag(cx);
+            }),
+        )
         .on_mouse_move(cx.listener(move |this, ev: &MouseMoveEvent, _, cx| {
             if this.drag_state.is_some() {
                 this.update_node_drag(ev, &neighbors_for_snap, cx);
             }
         }))
+        .capture_any_mouse_up(cx.listener(|this, ev: &MouseUpEvent, _, cx| {
+            if ev.button == MouseButton::Left {
+                this.end_node_drag(cx);
+            }
+        }))
         .on_mouse_up(
             MouseButton::Left,
-            cx.listener(|this, _, _, cx| this.end_node_drag(cx)),
+            cx.listener(|this, _, _, cx| {
+                this.end_node_drag(cx);
+                this.drag_suppress_click = false;
+            }),
         )
         .on_mouse_up_out(
             MouseButton::Left,
-            cx.listener(|this, _, _, cx| this.end_node_drag(cx)),
+            cx.listener(|this, _, _, cx| {
+                this.end_node_drag(cx);
+                this.drag_suppress_click = false;
+            }),
         )
         .on_click(cx.listener(|this, _, _, cx| {
             if this.drag_suppress_click {
@@ -416,8 +454,8 @@ fn render_preview_graph_card(pnode: &PositionedNode, scale: f32, cx: &App) -> An
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
     let node = &pnode.node;
-    let (shape, tone) = graph_status_visual(node.status);
-    let border = card_border_color(false, tone, &p);
+    let (shape, _) = status_visual(node.status);
+    let border = card_border_color(false, shape, &p);
 
     if let Some(tab_text) = &node.group_tab
         && !node.members.is_empty()
@@ -544,16 +582,16 @@ fn edge_color(tone: GraphEdgeTone, p: &spanbay_desktop::theme::ResolvedPalette) 
 
 pub(super) fn card_border_color(
     selected: bool,
-    tone: Tone,
+    shape: StatusShape,
     p: &spanbay_desktop::theme::ResolvedPalette,
 ) -> gpui_kit::Hsla {
     if selected {
         return to_hsla(p.accent);
     }
-    match tone {
-        Tone::Danger => to_hsla(p.bad_line.composite_over(p.surface)),
-        Tone::Warning => to_hsla(p.warn_line.composite_over(p.surface)),
-        Tone::Accent => to_hsla(p.accent_line.composite_over(p.surface)),
+    match shape {
+        StatusShape::Bad => to_hsla(p.bad_line.composite_over(p.surface)),
+        StatusShape::Warn => to_hsla(p.warn_line.composite_over(p.surface)),
+        StatusShape::Run => to_hsla(p.accent_line.composite_over(p.surface)),
         _ => to_hsla(p.line_strong.composite_over(p.surface)),
     }
 }

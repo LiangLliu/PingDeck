@@ -16,8 +16,9 @@ use crate::crypto::sha256_hex;
 use crate::settings::ToolApproval;
 
 use super::super::{
-    agent_blob_put_impl, agent_blob_read_impl, agent_change_keep_impl, agent_change_undo_impl,
-    agent_changes_list_impl, agent_run_start_impl, agent_run_stop_impl,
+    agent_blob_put_impl, agent_blob_read_impl, agent_change_keep_impl,
+    agent_change_revert_hunk_impl, agent_change_undo_impl, agent_changes_list_impl,
+    agent_run_start_impl, agent_run_stop_impl,
 };
 
 /// A pending edit of `path` in `folder` from `before` to the bytes hashed as `after_sha256`.
@@ -379,4 +380,113 @@ async fn changing_the_folder_is_refused_while_the_chat_has_an_active_run() {
     wait_terminal(&seen, 1).await;
     let moved = move_chat(&world.state, &session, second.path()).unwrap();
     assert_ne!(moved.workspace_dir, session.workspace_dir);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn revert_hunk_reverts_one_hunk_of_multi_hunk_change_and_rejects_conflict_or_escape() {
+    let before = "line1\nold_top\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nold_bot\nline12\n";
+    let after = "line1\nnew_top_a\nnew_top_b\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nnew_bot\nline12\n";
+    let workspace = workspace_with("multi.txt", after);
+    let world = world(scripted(Vec::new()));
+    let session = chat(&world, ToolApproval::AutoAll, Some(workspace.path()));
+    let row = edit_row(
+        &world.state,
+        &session,
+        "fc-multi",
+        session.workspace_dir.clone(),
+        "multi.txt",
+        before.as_bytes(),
+        sha256_hex(after.as_bytes()),
+    );
+
+    // Revert hunk 0 (top edit) while keeping hunk 1 (bottom edit).
+    let updated = agent_change_revert_hunk_impl(&world.state, &row.id, 0).unwrap();
+    assert_eq!(updated.status, FileChangeStatus::Pending);
+    assert_eq!((updated.added, updated.removed), (1, 1));
+    let disk = fs::read_to_string(workspace.path().join("multi.txt")).unwrap();
+    assert!(disk.contains("old_top\n") && !disk.contains("new_top_a"));
+    assert!(disk.contains("new_bot\n"));
+
+    // Revert the remaining hunk (now hunk 0) -> file matches before, status becomes Undone.
+    let undone = agent_change_revert_hunk_impl(&world.state, &row.id, 0).unwrap();
+    assert_eq!(undone.status, FileChangeStatus::Undone);
+    assert_eq!(
+        fs::read_to_string(workspace.path().join("multi.txt")).unwrap(),
+        before
+    );
+
+    // Conflict when the file on disk was modified externally since the diff was computed.
+    fs::write(workspace.path().join("conflict.txt"), "external edit\n").unwrap();
+    let conflict_row = edit_row(
+        &world.state,
+        &session,
+        "fc-hunk-conflict",
+        session.workspace_dir.clone(),
+        "conflict.txt",
+        b"before\n",
+        sha256_hex(b"agent after\n"),
+    );
+    let err = agent_change_revert_hunk_impl(&world.state, &conflict_row.id, 0).unwrap_err();
+    assert!(matches!(err, AppError::Conflict { .. }));
+    let stored = agent_changes_list_impl(&world.state, &session.id)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.id == conflict_row.id)
+        .unwrap();
+    assert_eq!(stored.status, FileChangeStatus::Conflict);
+    assert_eq!(
+        fs::read_to_string(workspace.path().join("conflict.txt")).unwrap(),
+        "external edit\n"
+    );
+
+    // Path escape is rejected before touching any file outside the workspace.
+    let outside = workspace
+        .path()
+        .parent()
+        .unwrap()
+        .join(format!("spanbay-hunk-escape-{}.txt", std::process::id()));
+    fs::write(&outside, "outside\n").unwrap();
+    let escape_row = edit_row(
+        &world.state,
+        &session,
+        "fc-hunk-escape",
+        session.workspace_dir.clone(),
+        &format!("../{}", outside.file_name().unwrap().to_string_lossy()),
+        b"planted\n",
+        sha256_hex(b"outside\n"),
+    );
+    let escape_err = agent_change_revert_hunk_impl(&world.state, &escape_row.id, 0).unwrap_err();
+    assert!(matches!(escape_err, AppError::Validation { .. }));
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "outside\n");
+    let _ = fs::remove_file(&outside);
+
+    // Deleted-file change (after_sha256 == None) is rejected with Validation, never marked Conflict.
+    let deleted_row = FileChange {
+        id: "fc-deleted".to_owned(),
+        session_id: session.id.clone(),
+        run_id: "r".to_owned(),
+        call_id: "c-del".to_owned(),
+        path: "gone.txt".to_owned(),
+        folder: session.workspace_dir.clone(),
+        kind: FileChangeKind::Edit,
+        before_sha256: Some(agent_blob_put_impl(&world.state, b"was here\n").unwrap()),
+        after_sha256: None,
+        added: 0,
+        removed: 1,
+        status: FileChangeStatus::Pending,
+        created_at_ms: 2000,
+    };
+    world
+        .state
+        .store()
+        .insert_file_change(&deleted_row)
+        .unwrap();
+    let del_err = agent_change_revert_hunk_impl(&world.state, &deleted_row.id, 0).unwrap_err();
+    assert!(matches!(del_err, AppError::Validation { .. }));
+    let del_stored = agent_changes_list_impl(&world.state, &session.id)
+        .unwrap()
+        .into_iter()
+        .find(|r| r.id == deleted_row.id)
+        .unwrap();
+    assert_eq!(del_stored.status, FileChangeStatus::Pending);
 }

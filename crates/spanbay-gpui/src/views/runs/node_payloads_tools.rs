@@ -6,16 +6,19 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use spanbay_desktop::core::agent::dto::{AgentRunTopology, TopologySubagent, TopologyToolStep};
-use spanbay_desktop::state::{GraphNodeMember, SelectedGraphTarget};
+use spanbay_desktop::state::{GraphNodeMember, GraphNodeStatus, SelectedGraphTarget};
 
 use crate::ui::{
-    PayloadBlockOptions, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_secondary, h_row, icon_xs,
-    palette, payload_block, section_heading, status_indicator, to_hsla, v_col,
+    PayloadBlockOptions, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_secondary,
+    exit_code_badge, h_row, icon_xs, palette, payload_block, section_heading, status_indicator,
+    status_label, status_word_color, to_hsla, v_col,
 };
 
 use super::modal::WorkflowMonitorModal;
-use super::status::{compact_tool_row, format_elapsed_short, graph_status_visual, waterfall_bar};
+use super::status::{compact_tool_row, format_elapsed_short, waterfall_bar};
 use super::types::WorkflowTab;
+use crate::ui::status_visual;
+use spanbay_desktop::state::map_tool_status;
 
 pub(super) fn render_tool_payload(
     mut col: gpui_kit::Div,
@@ -33,26 +36,21 @@ pub(super) fn render_tool_payload(
     let mut has_audit = false;
     if let Some(code) = step.exit_code {
         has_audit = true;
-        audit_row = audit_row.child(badge(
-            format!("exit {code}"),
-            if code == 0 {
-                Tone::Success
-            } else {
-                Tone::Danger
-            },
-            cx,
-        ));
+        audit_row = audit_row.child(if code == 0 {
+            badge(ch.trace_exit_code(code), Tone::Neutral, cx)
+        } else {
+            exit_code_badge(code, cx)
+        });
     }
     if let Some(risk) = &step.risk {
         has_audit = true;
-        let rtone = if risk == "high" {
-            Tone::Danger
-        } else if risk == "medium" {
-            Tone::Warning
-        } else {
-            Tone::Neutral
+        let (label, rtone) = match risk.as_str() {
+            "high" => (ch.approval_risk_high(), Tone::Danger),
+            "medium" => (ch.approval_risk_medium(), Tone::Warning),
+            "low" => (ch.approval_risk_low(), Tone::Neutral),
+            other => (other, Tone::Neutral),
         };
-        audit_row = audit_row.child(badge(risk.clone(), rtone, cx));
+        audit_row = audit_row.child(badge(label.to_owned(), rtone, cx));
     }
     if let Some(dec) = &step.decision {
         has_audit = true;
@@ -168,7 +166,8 @@ pub(super) fn render_tool_payload(
     }
 
     // Output preview (default expanded for exec/errors, collapsible for bulky read/search tools).
-    let default_open_out = step.class == "exec" || step.status == "error";
+    let default_open_out =
+        step.class == "exec" || map_tool_status(&step.status).is_warning_or_error();
     if let Some(out) = &step.output_preview {
         col = col.child(collapsible_text_block(
             view,
@@ -219,7 +218,7 @@ pub(super) fn render_tool_payload(
 
 pub(super) fn render_group_payload(
     mut col: gpui_kit::Div,
-    target: SelectedGraphTarget<'_>,
+    target: Option<SelectedGraphTarget<'_>>,
     subagents: &[TopologySubagent],
     tools: &[TopologyToolStep],
     cx: &mut Context<WorkflowMonitorModal>,
@@ -227,7 +226,7 @@ pub(super) fn render_group_payload(
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
 
-    if let SelectedGraphTarget::Node(pnode) = target {
+    if let Some(SelectedGraphTarget::Node(pnode)) = target {
         let count = pnode.node.members.len();
         let max_ms = pnode
             .node
@@ -241,7 +240,7 @@ pub(super) fn render_group_payload(
         if count >= 2 {
             let mut gantt = v_col().w_full().gap(px(5.0));
             for m in &pnode.node.members {
-                let (_, tone) = graph_status_visual(m.status);
+                let (shape, _) = status_visual(m.status);
                 let frac = (m.elapsed_ms.unwrap_or(0) as f32 / max_ms as f32).clamp(0.06, 1.0);
                 gantt = gantt.child(
                     h_row()
@@ -257,7 +256,7 @@ pub(super) fn render_group_payload(
                                 .truncate()
                                 .child(SharedString::from(m.title.clone())),
                         )
-                        .child(waterfall_bar(0.0, frac, 92.0, tone, cx))
+                        .child(waterfall_bar(0.0, frac, 92.0, shape, cx))
                         .child(
                             div()
                                 .w(px(44.0))
@@ -343,7 +342,11 @@ fn clickable_member_row(
 ) -> AnyElement {
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
-    let (shape, _) = graph_status_visual(member.status);
+    let (shape, tone) = status_visual(member.status);
+    let show_word = !matches!(
+        member.status,
+        GraphNodeStatus::Running | GraphNodeStatus::Completed
+    );
     let mid = member.id.clone();
     let stop_id = member.stop_run_id.clone();
 
@@ -377,7 +380,14 @@ fn clickable_member_row(
                         .text_color(to_hsla(p.ink))
                         .truncate()
                         .child(SharedString::from(member.title.clone())),
-                ),
+                )
+                .children(show_word.then(|| {
+                    div()
+                        .flex_shrink_0()
+                        .text_xs()
+                        .text_color(status_word_color(tone, cx))
+                        .child(status_label(member.status, None, cx))
+                })),
         )
         .child(
             h_row()

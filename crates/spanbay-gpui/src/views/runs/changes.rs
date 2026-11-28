@@ -11,12 +11,12 @@ use gpui_kit::{
 use spanbay_desktop::core::agent::model::{FileChangeKind, FileChangeStatus};
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary,
+    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger, btn_ghost, btn_primary,
     diff_lines_preview, empty_inline, h_row, icon_xs, palette, section_heading, to_hsla, v_col,
 };
 
 use super::modal::WorkflowMonitorModal;
-
+use super::status::file_change_status_label;
 pub fn render_changes_tab(
     view: &WorkflowMonitorModal,
     cx: &mut Context<WorkflowMonitorModal>,
@@ -118,7 +118,11 @@ pub fn render_changes_tab(
                             h_row()
                                 .gap(px(4.0))
                                 .child(badge(kind_lbl, Tone::Neutral, cx))
-                                .child(badge(format!("{:?}", fc.status), status_tone, cx)),
+                                .child(badge(
+                                    file_change_status_label(fc.status, cx),
+                                    status_tone,
+                                    cx,
+                                )),
                         )
                         .child(
                             h_row()
@@ -185,37 +189,87 @@ pub fn render_changes_tab(
             fc.status,
             FileChangeStatus::Pending | FileChangeStatus::Conflict
         );
+        let is_conflict = fc.status == FileChangeStatus::Conflict;
         let cid_keep = fc.id.clone();
         let cid_undo = fc.id.clone();
-        let diff_body: AnyElement = match &view.selected_change_diff {
-            Some((did, _, true)) if did == &fc.id => div()
-                .p(px(16.0))
-                .text_xs()
-                .text_color(to_hsla(p.muted))
-                .child(ch.modals_binary_file_changed())
-                .into_any_element(),
-            Some((did, diff_txt, false)) if did == &fc.id => div()
-                .id("wf-chg-diff-scroll")
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .p(px(14.0))
-                .overflow_scrollbar()
-                .child(diff_lines_preview(diff_txt, 600, cx))
-                .into_any_element(),
-            _ => div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(empty_inline(
-                    crate::ui::tr(cx).common().loading(),
-                    None,
-                    None,
-                    cx,
-                ))
-                .into_any_element(),
+        let diff_or_binary = |diff: &str, binary: bool| -> AnyElement {
+            if binary {
+                div()
+                    .text_xs()
+                    .text_color(to_hsla(p.muted))
+                    .child(ch.modals_binary_file_changed())
+                    .into_any_element()
+            } else {
+                diff_lines_preview(diff, 600, cx).into_any_element()
+            }
         };
+        let diff_body: AnyElement =
+            match (&view.selected_change_diff, &view.selected_change_diff_err) {
+                (Some((did, diff_txt, binary)), _) if did == &fc.id => {
+                    let mut body = v_col()
+                        .id("wf-chg-diff-scroll")
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .gap(px(10.0))
+                        .p(px(14.0))
+                        .overflow_scrollbar();
+                    if is_conflict {
+                        body = body.child(alert_banner(
+                            Tone::Warning,
+                            crate::ui::tr(cx).common().change_conflict_hint(),
+                            None,
+                            cx,
+                        ));
+                    }
+                    // Several edits of this file: the net change first, the edit itself below.
+                    if let Some((net_txt, net_binary)) = &view.selected_net_diff {
+                        let edits = view
+                            .changes
+                            .iter()
+                            .filter(|c| {
+                                c.session_id == fc.session_id
+                                    && c.path == fc.path
+                                    && c.folder == fc.folder
+                                    && c.status != FileChangeStatus::Undone
+                            })
+                            .count();
+                        body = body
+                            .child(section_heading(ch.changes_net_change(edits), cx))
+                            .child(diff_or_binary(net_txt, *net_binary))
+                            .child(section_heading(ch.changes_per_edit(), cx));
+                    }
+                    body.child(diff_or_binary(diff_txt, *binary))
+                        .into_any_element()
+                }
+                (_, Some((eid, err_msg))) if eid == &fc.id => v_col()
+                    .flex_1()
+                    .w_full()
+                    .gap(px(10.0))
+                    .p(px(14.0))
+                    .children(is_conflict.then(|| {
+                        alert_banner(
+                            Tone::Warning,
+                            crate::ui::tr(cx).common().change_conflict_hint(),
+                            None,
+                            cx,
+                        )
+                    }))
+                    .child(alert_banner(Tone::Danger, err_msg.clone(), None, cx))
+                    .into_any_element(),
+                _ => div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(empty_inline(
+                        crate::ui::tr(cx).common().loading(),
+                        None,
+                        None,
+                        cx,
+                    ))
+                    .into_any_element(),
+            };
 
         v_col()
             .flex_1()
@@ -273,11 +327,16 @@ pub fn render_changes_tab(
                                 ))
                             }))
                             .children(actionable.then(|| {
-                                btn_danger("wf-chg-undo", ch.inspector_undo()).on_click(
-                                    cx.listener(move |this, _, _, cx| {
-                                        this.undo_change(cid_undo.clone(), cx);
-                                    }),
-                                )
+                                let undo_lbl = if is_conflict {
+                                    crate::ui::tr(cx).common().change_force_undo()
+                                } else {
+                                    ch.inspector_undo()
+                                };
+                                btn_danger("wf-chg-undo", undo_lbl).on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.undo_change(cid_undo.clone(), is_conflict, cx);
+                                    },
+                                ))
                             })),
                     ),
             )

@@ -20,7 +20,8 @@ use gpui_kit::component::{
 use gpui_kit::{
     AnyElement, AnyView, App, AppContext as _, Div, ElementId, Entity, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px, transparent_black,
+    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Window, div, px,
+    transparent_black,
 };
 
 use super::icons::{UiIcon, icon_sized, icon_xs};
@@ -38,7 +39,7 @@ pub fn wrap_root(view: impl Into<AnyView>, window: &mut Window, cx: &mut App) ->
 ///
 /// Every semantic state has a distinct geometry so status remains legible under color-vision
 /// deficiency: filled circle (`Ok`), haloed dot (`Live`), triangle (`Warn`), 45-degree diamond
-/// (`Bad`), hollow ring (`Idle`), and rotating arc (`Run`).
+/// (`Bad`), hollow ring (`Idle`), rotating arc (`Run`), and hollow square (`Stopped`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusShape {
     Ok,
@@ -47,6 +48,7 @@ pub enum StatusShape {
     Bad,
     Idle,
     Run,
+    Stopped,
 }
 
 /// Renders an accessible geometric status indicator.
@@ -97,7 +99,79 @@ pub fn status_indicator(shape: StatusShape, cx: &App) -> AnyElement {
             .xsmall()
             .color(to_hsla(p.accent))
             .into_any_element(),
+        StatusShape::Stopped => div()
+            .size(px(8.0))
+            .rounded(px(1.5))
+            .border_2()
+            .border_color(to_hsla(p.faint))
+            .flex_shrink_0()
+            .into_any_element(),
     }
+}
+
+/// Hairline divider with a centered neutral label (context compaction markers).
+#[must_use]
+pub fn labeled_divider(label: impl Into<SharedString>, cx: &App) -> Div {
+    let p = palette(cx);
+    let line = || {
+        div()
+            .flex_1()
+            .h(px(1.0))
+            .bg(to_hsla(p.line.composite_over(p.surface)))
+    };
+    h_row()
+        .gap(px(10.0))
+        .py(px(4.0))
+        .child(line())
+        .child(super::primitives::badge(label, Tone::Neutral, cx))
+        .child(line())
+}
+
+/// Non-zero process exit code badge (`Exit code N`); signals, timeouts and cancels have none.
+#[must_use]
+pub fn exit_code_badge(code: i32, cx: &App) -> Div {
+    super::primitives::badge(
+        super::i18n::tr(cx).chat().trace_exit_code(code),
+        Tone::Danger,
+        cx,
+    )
+}
+
+/// Bounded image thumbnail (at most 160 px on either side); the caller wires clicks.
+#[must_use]
+pub fn image_thumb(image: std::sync::Arc<gpui_kit::Image>, cx: &App) -> Div {
+    let p = palette(cx);
+    div()
+        .rounded(px(6.0))
+        .overflow_hidden()
+        .border_1()
+        .border_color(to_hsla(p.line.composite_over(p.surface)))
+        .child(
+            gpui_kit::img(image)
+                .max_w(px(160.0))
+                .max_h(px(160.0))
+                .object_fit(gpui_kit::ObjectFit::Contain),
+        )
+}
+
+/// An image scaled to fit its box (both sides fill, aspect kept): the image viewer.
+#[must_use]
+pub fn image_fit(image: std::sync::Arc<gpui_kit::Image>) -> Div {
+    div().size_full().child(
+        gpui_kit::img(image)
+            .size_full()
+            .object_fit(gpui_kit::ObjectFit::Contain),
+    )
+}
+
+/// An image at its pixel dimensions (for the viewer's "Actual size" mode).
+#[must_use]
+pub fn image_actual(image: std::sync::Arc<gpui_kit::Image>, dims: Option<(u32, u32)>) -> Div {
+    let mut el = gpui_kit::img(image);
+    if let Some((w, h)) = dims {
+        el = el.w(px(w as f32)).h(px(h as f32));
+    }
+    div().child(el)
 }
 
 /// Builds a native GPUI tooltip closure for any stateful element without exposing

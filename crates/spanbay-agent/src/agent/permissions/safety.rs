@@ -864,3 +864,37 @@ pub fn is_protected_word(word: &str) -> bool {
         || word.starts_with(".claude")
         || word.starts_with(".agents")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::chain_operators;
+
+    #[test]
+    fn chain_operators_with_cjk_and_consecutive_newlines_have_exact_byte_spans() {
+        let cmd = "echo 你好世界\n\ncargo test -- --nocapture &&\necho 完成\n";
+        let hits = chain_operators(cmd);
+        assert_eq!(
+            hits.iter().map(|h| h.op.as_str()).collect::<Vec<_>>(),
+            ["\\n", "\\n", "&&", "\\n", "\\n"]
+        );
+        let mut prev_end = 0;
+        for hit in &hits {
+            let start = cmd
+                .char_indices()
+                .nth(hit.start)
+                .expect("valid char index")
+                .0;
+            let end = start + hit.source_len();
+            assert!(start >= prev_end, "operator ranges must not overlap");
+            assert!(cmd.is_char_boundary(start));
+            assert!(cmd.is_char_boundary(end));
+            let expected = if hit.op == "\\n" {
+                "\n"
+            } else {
+                hit.op.as_str()
+            };
+            assert_eq!(&cmd[start..end], expected);
+            prev_end = end;
+        }
+    }
+}

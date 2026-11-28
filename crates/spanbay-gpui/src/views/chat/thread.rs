@@ -1,199 +1,43 @@
-//! Center conversation message stream for AI Chat: user bubbles, assistant prose,
-//! collapsible thinking, tool trace cards with full-output modal, per-message actions
-//! (Copy / Edit / Retry / Fork / Delete), and Jump-to-latest pill.
+//! Redesigned chat turn blocks: compact right-aligned user pills with hover actions (~75% max width)
+//! and cohesive left-aligned, borderless assistant turns (`.overhaul/chat-redesign-spec.md` §3–§6).
 
-use std::collections::HashMap;
-
-use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, ScrollEvent, SharedString,
-    StatefulInteractiveElement as _, Styled as _, div, px,
-};
-use spanbay_desktop::core::agent::model::{AgentMessage, AgentRole, AgentToolCallRecord};
-use spanbay_desktop::core::model::hub::HubPart;
-use spanbay_desktop::services::clipboard;
+use std::time::Instant;
 
 use crate::ui::{
-    Disableable as _, ScrollableElement as _, StatusShape, Tone, UiIcon, badge, btn_ghost,
-    btn_icon, btn_secondary, h_row, icon_xs, kv_chip, markdown_view, palette, status_indicator,
-    to_hsla, v_col,
+    StatusShape, Tone, UiIcon, alert_banner, badge, btn_icon, h_row, icon_xs, labeled_divider,
+    markdown_view, mono_font_family, palette, status_indicator, streaming_markdown_view, to_hsla,
+    v_col,
+};
+use gpui_kit::{
+    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px, relative,
+};
+use spanbay_desktop::core::agent::model::{AgentMessage, SkillUndeliveredReason};
+use spanbay_desktop::core::model::hub::HubPart;
+use spanbay_desktop::services::clipboard;
+use spanbay_desktop::state::{
+    AssistantTurnView, LiveToolCall, TranscriptDensity, TurnActivityItem,
 };
 
 use super::ChatView;
-use super::metrics::{format_effort_short, render_message_footer};
-use super::reasoning::{ReasoningKind, extract_message_reasoning, render_reasoning_block};
-use super::trace::{render_live_turn, render_message_tool_traces};
+use super::live_turn::{
+    render_live_turn_banners, render_plan_block, render_turn_changes_card, render_turn_footer,
+};
+use super::media::{render_citations, render_sources, render_user_attachments};
+use super::metrics::{format_duration_ms, format_effort_short};
+use super::reasoning::{render_reasoning_block, render_sealed_reasoning_row};
+use super::run_topology_subagent::render_live_subagent_group;
+use super::trace::{render_explore_group, render_turn_tool_call};
 use super::types::ChatModal;
-use super::welcome::render_welcome_empty;
 
-pub fn render_messages(view: &ChatView, cx: &mut Context<ChatView>) -> impl IntoElement {
-    let p = palette(cx);
-    let has_live = view.is_run_active()
-        || !view.thread.streaming_text.is_empty()
-        || !view.thread.streaming_reasoning.is_empty()
-        || !view.thread.tool_calls.is_empty();
-    let has_pending_user = view.pending_user_text.is_some();
-
-    let mut col = v_col()
-        .w_full()
-        .max_w(px(1080.0))
-        .mx_auto()
-        .gap(px(16.0))
-        .py(px(16.0))
-        .px(px(16.0));
-
-    if view.thread.messages.is_empty() && !has_live && !has_pending_user {
-        col = col.child(render_welcome_empty(cx));
-    } else {
-        if view.has_earlier_messages {
-            col = col.child(
-                h_row().w_full().justify_center().child(
-                    btn_secondary(
-                        "chat-load-earlier",
-                        if view.loading_earlier_messages {
-                            crate::ui::tr(cx).common().loading()
-                        } else {
-                            crate::ui::tr(cx).chat().thread_load_earlier()
-                        },
-                    )
-                    .disabled(view.loading_earlier_messages)
-                    .on_click(cx.listener(|this, _, _, cx| this.load_earlier_messages(cx))),
-                ),
-            );
-        }
-        let mut tool_results: HashMap<&str, (&[HubPart], bool)> = HashMap::new();
-        for msg in &view.thread.messages {
-            for part in &msg.parts {
-                if let HubPart::ToolResult {
-                    call_id,
-                    content,
-                    is_error,
-                    ..
-                } = part
-                {
-                    tool_results.insert(call_id.as_str(), (content.as_slice(), *is_error));
-                }
-            }
-        }
-        let audit_map: HashMap<&str, &AgentToolCallRecord> = view
-            .audit_tool_calls
-            .iter()
-            .map(|r| (r.call_id.as_str(), r))
-            .collect();
-
-        for msg in &view.thread.messages {
-            match msg.role {
-                AgentRole::User => {
-                    col = col.child(render_user_message(view, msg, cx));
-                }
-                AgentRole::Assistant => {
-                    col = col.child(render_assistant_message(
-                        view,
-                        msg,
-                        &tool_results,
-                        &audit_map,
-                        cx,
-                    ));
-                }
-                AgentRole::Tool => {}
-                AgentRole::Summary => {
-                    col = col.child(render_compaction_divider(cx));
-                }
-            }
-        }
-
-        if let Some(pending_text) = &view.pending_user_text {
-            col = col.child(render_pending_user_bubble(pending_text, cx));
-        }
-
-        if has_live {
-            col = col.child(render_live_turn(view, cx));
-        }
-    }
-
-    if let Some(err) = &view.thread.last_error {
-        col = col.child(
-            h_row()
-                .gap(px(8.0))
-                .p(px(12.0))
-                .rounded(px(10.0))
-                .bg(to_hsla(p.bad_soft))
-                .border_1()
-                .border_color(to_hsla(p.bad_line.composite_over(p.bad_soft)))
-                .child(status_indicator(StatusShape::Bad, cx))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_xs()
-                        .text_color(to_hsla(p.bad))
-                        .child(SharedString::from(err.clone())),
-                ),
-        );
-    }
-
-    let max_scroll_y = view.scroll_handle.max_offset().y.as_f32().max(0.0);
-    let show_jump =
-        max_scroll_y > 40.0 && (!view.stick_to_bottom || view.distance_from_bottom() > 48.0);
-    let jump_label = if has_live {
-        crate::ui::tr(cx).chat().thread_jump_to_latest()
-    } else {
-        crate::ui::tr(cx).chat().thread_latest()
-    };
-
-    div()
-        .relative()
-        .flex_1()
-        .min_h_0()
-        .w_full()
-        .child(
-            div()
-                .id("chat-messages-scroll")
-                .size_full()
-                .overflow_y_scroll()
-                .track_scroll(&view.scroll_handle)
-                .on_scroll(cx.listener(|this, ev: &ScrollEvent, window, cx| {
-                    let delta_y = ev.delta.pixel_delta(window.line_height()).y.as_f32();
-                    if delta_y > 0.5 {
-                        // Scrolling upward toward earlier messages: immediately release follow lock.
-                        if this.stick_to_bottom {
-                            this.stick_to_bottom = false;
-                            cx.notify();
-                        }
-                    } else if delta_y < -0.5 && !this.stick_to_bottom {
-                        let max_y = this.scroll_handle.max_offset().y.as_f32().max(0.0);
-                        let cur_y = this.scroll_handle.offset().y.as_f32();
-                        let dist_now = (max_y + cur_y).max(0.0);
-                        let next_y = (cur_y + delta_y).clamp(-max_y, 0.0);
-                        let dist_est = (max_y + next_y).max(0.0);
-                        if dist_now <= 24.0 || dist_est <= 16.0 {
-                            this.stick_to_bottom = true;
-                            cx.notify();
-                        }
-                    }
-                }))
-                .child(col),
-        )
-        .vertical_scrollbar(&view.scroll_handle)
-        .children(show_jump.then(|| {
-            div().absolute().right(px(18.0)).bottom(px(10.0)).child(
-                btn_secondary("chat-jump-bottom", jump_label).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.stick_to_bottom = true;
-                        this.scroll_handle.scroll_to_bottom();
-                        cx.notify();
-                    },
-                )),
-            )
-        }))
-}
-
-fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElement {
+pub(super) fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElement {
     let p = palette(cx);
     v_col().w_full().items_end().child(
         div()
-            .max_w(px(780.0))
+            .max_w(relative(0.75))
             .px(px(14.0))
-            .py(px(10.0))
-            .rounded(px(16.0))
+            .py(px(8.0))
+            .rounded(px(14.0))
             .bg(to_hsla(p.bubble_user))
             .border_1()
             .border_color(to_hsla(p.line.composite_over(p.bubble_user)))
@@ -201,7 +45,7 @@ fn render_pending_user_bubble(text: &str, cx: &gpui_kit::App) -> impl IntoElemen
     )
 }
 
-fn render_user_message(
+pub(super) fn render_user_message(
     view: &ChatView,
     msg: &AgentMessage,
     cx: &mut Context<ChatView>,
@@ -214,254 +58,52 @@ fn render_user_message(
     let mid_br = msg.id.clone();
     let mid_del = msg.id.clone();
     let idle = !view.is_run_active();
+    let turn_start = msg.is_turn_boundary();
+    let group_name = SharedString::from(format!("user-turn-{}", msg.id));
 
-    v_col()
-        .w_full()
-        .items_end()
-        .gap(px(4.0))
+    let actions_bar = h_row()
+        .gap(px(2.0))
+        .opacity(0.0)
+        .group_hover(group_name.clone(), |s| s.opacity(1.0))
         .child(
-            div()
-                .max_w(px(780.0))
-                .px(px(14.0))
-                .py(px(10.0))
-                .rounded(px(16.0))
-                .bg(to_hsla(p.bubble_user))
-                .border_1()
-                .border_color(to_hsla(p.line.composite_over(p.bubble_user)))
-                .child(markdown_view(
-                    SharedString::from(format!("chat-u-{}", msg.id)),
-                    text,
-                )),
-        )
-        .children((!msg.attachments.is_empty()).then(|| {
-            let mut row = h_row().gap(px(4.0)).flex_wrap().justify_end();
-            for att in &msg.attachments {
-                row = row.child(kv_chip("file", att.name.clone(), cx));
-            }
-            row
-        }))
-        .child(
-            h_row()
-                .gap(px(2.0))
-                .child(
-                    btn_icon(SharedString::from(format!("u-cp-{}", msg.id)), UiIcon::Copy)
-                        .tooltip(crate::ui::tr(cx).common().copy())
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let _ = clipboard::set_text(&txt_cp);
-                            this.status_msg =
-                                Some((Tone::Success, crate::ui::tr(cx).common().copied().into()));
-                            cx.notify();
-                        })),
-                )
-                .children(idle.then(|| {
-                    btn_icon(
-                        SharedString::from(format!("u-ed-{}", msg.id)),
-                        UiIcon::Pencil,
-                    )
-                    .tooltip(crate::ui::tr(cx).chat().thread_edit_rerun())
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.modal_textarea.update(cx, |s, cx| {
-                            s.set_value(txt_ed.clone(), window, cx);
-                        });
-                        this.active_modal = Some(ChatModal::EditMessage {
-                            message_id: mid_ed.clone(),
-                        });
-                        cx.notify();
-                    }))
-                }))
-                .child(
-                    btn_icon(
-                        SharedString::from(format!("u-br-{}", msg.id)),
-                        UiIcon::Branch,
-                    )
-                    .tooltip(crate::ui::tr(cx).chat().thread_branch_here())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.branch_from_message(mid_br.clone(), cx);
-                    })),
-                )
-                .children(idle.then(|| {
-                    btn_icon(
-                        SharedString::from(format!("u-dl-{}", msg.id)),
-                        UiIcon::Trash,
-                    )
-                    .tooltip(crate::ui::tr(cx).chat().thread_delete_2())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.delete_message(mid_del.clone(), cx);
-                    }))
-                })),
-        )
-}
-
-fn render_assistant_message(
-    view: &ChatView,
-    msg: &AgentMessage,
-    tool_results: &HashMap<&str, (&[HubPart], bool)>,
-    audit_map: &HashMap<&str, &AgentToolCallRecord>,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
-    let p = palette(cx);
-    let raw_model = msg.meta.served_model.as_deref().or(msg.model.as_deref());
-    let model = raw_model
-        .map(|raw| view.format_raw_model_label(raw))
-        .unwrap_or_else(|| "Assistant".to_owned());
-
-    let recorded_dur = view.thinking_durations.get(&msg.id).copied();
-    let (r_info, text_chunks) = extract_message_reasoning(msg, recorded_dur);
-    let tool_calls: Vec<(&str, &str, &str)> = msg
-        .parts
-        .iter()
-        .filter_map(|part| match part {
-            HubPart::ToolCall {
-                id,
-                name,
-                arguments,
-                ..
-            } => Some((id.as_str(), name.as_str(), arguments.as_str())),
-            _ => None,
-        })
-        .collect();
-
-    let r_key = format!("reason-{}", msg.id);
-    let reason_open = view.expanded_reasoning.contains(&r_key);
-
-    let mut body = v_col().w_full().gap(px(10.0)).child(
-        h_row()
-            .gap(px(8.0))
-            .flex_wrap()
-            .child(
-                div()
-                    .size(px(22.0))
-                    .rounded(px(7.0))
-                    .bg(to_hsla(p.accent_soft))
-                    .text_color(to_hsla(p.accent_ink))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(icon_xs(UiIcon::Sparkles)),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                    .text_color(to_hsla(p.ink))
-                    .child(SharedString::from(model.clone())),
-            )
-            .children(msg.meta.reasoning_effort.map(|eff| {
-                badge(
-                    format_effort_short(eff, crate::ui::active_language(cx)),
-                    Tone::Accent,
-                    cx,
-                )
-            })),
-    );
-
-    let sealed_reasoning = r_info.kind == ReasoningKind::Sealed;
-    if r_info.kind == ReasoningKind::Plaintext {
-        let k_click = r_key.clone();
-        body = body.child(render_reasoning_block(
-            r_key,
-            reason_open,
-            false,
-            r_info.text,
-            r_info.duration_ms,
-            r_info.reasoning_tokens,
-            cx.listener(move |this, _, _, cx| this.toggle_reasoning(k_click.clone(), cx)),
-            cx,
-        ));
-    }
-
-    if !tool_calls.is_empty() {
-        body = body.child(render_message_tool_traces(
-            view,
-            &tool_calls,
-            tool_results,
-            audit_map,
-            cx,
-        ));
-    }
-
-    let joined_text = text_chunks.join("\n");
-    if !joined_text.is_empty() {
-        body = body.child(div().pl(px(30.0)).child(markdown_view(
-            SharedString::from(format!("chat-a-{}", msg.id)),
-            joined_text.clone(),
-        )));
-    }
-
-    if let Some(err) = &msg.error {
-        body = body.child(
-            h_row()
-                .ml(px(30.0))
-                .gap(px(6.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded(px(7.0))
-                .bg(to_hsla(p.bad_soft))
-                .text_xs()
-                .text_color(to_hsla(p.bad))
-                .child(status_indicator(StatusShape::Bad, cx))
-                .child(SharedString::from(err.clone())),
-        );
-    }
-
-    let mid_retry = msg.id.clone();
-    let mid_br = msg.id.clone();
-    let mid_del = msg.id.clone();
-    let idle = !view.is_run_active();
-    let actions_row = h_row()
-        .pl(px(30.0))
-        .gap(px(4.0))
-        .child(
-            btn_icon(SharedString::from(format!("a-cp-{}", msg.id)), UiIcon::Copy)
-                .tooltip(crate::ui::tr(cx).chat().thread_copy_2())
+            btn_icon(SharedString::from(format!("u-cp-{}", msg.id)), UiIcon::Copy)
+                .tooltip(crate::ui::tr(cx).common().copy())
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    let _ = clipboard::set_text(&joined_text);
-                    this.status_msg = Some((
-                        Tone::Success,
-                        crate::ui::tr(cx).chat().thread_copied_2().into(),
-                    ));
+                    let _ = clipboard::set_text(&txt_cp);
+                    this.status_msg =
+                        Some((Tone::Success, crate::ui::tr(cx).common().copied().into()));
                     cx.notify();
                 })),
         )
-        .children(idle.then(|| {
+        .children((idle && turn_start).then(|| {
             btn_icon(
-                SharedString::from(format!("a-rt-{}", msg.id)),
-                UiIcon::Refresh,
+                SharedString::from(format!("u-ed-{}", msg.id)),
+                UiIcon::Pencil,
             )
-            .tooltip(crate::ui::tr(cx).chat().thread_regenerate())
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.retry_message(mid_retry.clone(), cx);
+            .tooltip(crate::ui::tr(cx).chat().thread_edit_rerun())
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.modal_textarea.update(cx, |s, cx| {
+                    s.set_value(txt_ed.clone(), window, cx);
+                });
+                this.active_modal = Some(ChatModal::EditMessage {
+                    message_id: mid_ed.clone(),
+                });
+                cx.notify();
             }))
         }))
-        .child(
+        .children(turn_start.then(|| {
             btn_icon(
-                SharedString::from(format!("a-br-{}", msg.id)),
+                SharedString::from(format!("u-br-{}", msg.id)),
                 UiIcon::Branch,
             )
-            .tooltip(crate::ui::tr(cx).chat().thread_branch_2())
+            .tooltip(crate::ui::tr(cx).chat().thread_branch_here())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.branch_from_message(mid_br.clone(), cx);
-            })),
-        )
-        .children(
-            (!tool_calls.is_empty())
-                .then_some(msg.run_id.clone())
-                .flatten()
-                .map(|rid| {
-                    let count = tool_calls.len();
-                    btn_ghost(
-                        SharedString::from(format!("a-wf-{}", msg.id)),
-                        crate::ui::tr(cx).chat().monitor_turn_pill(count),
-                    )
-                    .icon(icon_xs(UiIcon::Activity))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.open_workflow_modal(Some(rid.clone()), None, cx);
-                    }))
-                }),
-        )
+            }))
+        }))
         .children(idle.then(|| {
             btn_icon(
-                SharedString::from(format!("a-dl-{}", msg.id)),
+                SharedString::from(format!("u-dl-{}", msg.id)),
                 UiIcon::Trash,
             )
             .tooltip(crate::ui::tr(cx).chat().thread_delete_2())
@@ -470,42 +112,393 @@ fn render_assistant_message(
             }))
         }));
 
-    body = body.child(actions_row);
-    if let Some(footer) = render_message_footer(
-        msg,
-        view.thread.context_limit_tokens,
-        view.thread.cost_currency.as_deref(),
-        sealed_reasoning,
-        cx,
-    ) {
-        body = body.child(footer);
+    v_col()
+        .id(SharedString::from(format!("u-turn-{}", msg.id)))
+        .group(group_name)
+        .w_full()
+        .items_end()
+        .gap(px(4.0))
+        .children(render_user_attachments(view, &msg.attachments, cx))
+        .child(
+            h_row()
+                .w_full()
+                .justify_end()
+                .gap(px(8.0))
+                .child(actions_bar)
+                .child(
+                    div()
+                        .max_w(relative(0.75))
+                        .px(px(14.0))
+                        .py(px(8.0))
+                        .rounded(px(14.0))
+                        .bg(to_hsla(p.bubble_user))
+                        .border_1()
+                        .border_color(to_hsla(p.line.composite_over(p.bubble_user)))
+                        .child(markdown_view(
+                            SharedString::from(format!("chat-u-{}", msg.id)),
+                            text,
+                        )),
+                ),
+        )
+        .children(view.thread.skills_undelivered.get(&msg.id).map(|skills| {
+            let ch = crate::ui::tr(cx).chat();
+            let mut col = v_col().items_end().gap(px(2.0));
+            for s in skills {
+                let line = match s.reason {
+                    SkillUndeliveredReason::Unavailable => {
+                        ch.skills_undelivered_unavailable(&s.name)
+                    }
+                    SkillUndeliveredReason::Unreadable => ch.skills_undelivered_unreadable(&s.name),
+                    SkillUndeliveredReason::TooLong => ch.skills_undelivered_too_long(&s.name),
+                };
+                col = col.child(
+                    h_row()
+                        .gap(px(5.0))
+                        .text_xs()
+                        .text_color(to_hsla(p.warn))
+                        .child(status_indicator(StatusShape::Warn, cx))
+                        .child(SharedString::from(line)),
+                );
+            }
+            col
+        }))
+}
+
+/// Returns whether `turn`'s activity spine is currently collapsed in `view`.
+#[must_use]
+pub fn is_turn_collapsed(view: &ChatView, turn: &AssistantTurnView) -> bool {
+    if turn.is_live || turn.has_failure || turn.spine.is_empty() {
+        return false;
+    }
+    let fold_key = format!("turn-fold-{}", turn.turn_id);
+    turn.auto_collapsed ^ view.expanded_traces.contains(&fold_key)
+}
+
+/// Formats the 1-line summary for a collapsed turn's fold bar (`已工作 11.4s · 编辑 2个文件，已探索 3个文件，2次搜索`).
+#[must_use]
+pub fn format_turn_fold_summary(turn: &AssistantTurnView, cx: &gpui_kit::App) -> String {
+    let ch = crate::ui::tr(cx).chat();
+    let f = &turn.fold_stats;
+    let dur = format_duration_ms(f.duration_ms);
+    if f.edited_files > 0 {
+        ch.turn_fold_all(&dur, f.edited_files, f.explored_files, f.searches)
+    } else if f.explored_files > 0 || f.searches > 0 {
+        ch.turn_fold_explore(&dur, f.explored_files, f.searches)
+    } else {
+        ch.turn_fold_tools(&dur, f.total_tools.max(1))
+    }
+}
+
+/// Renders a cohesive, borderless, left-aligned assistant turn block (`AssistantTurnView`).
+pub fn render_assistant_turn(
+    view: &ChatView,
+    turn: &AssistantTurnView,
+    cx: &mut Context<ChatView>,
+) -> impl IntoElement {
+    let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let mono = mono_font_family(cx);
+    let collapsed = is_turn_collapsed(view, turn);
+    let group_name = SharedString::from(format!("asst-turn-{}", turn.turn_id));
+
+    let model_label = if turn.models_used.is_empty() {
+        ch.thread_assistant().to_owned()
+    } else {
+        turn.models_used
+            .iter()
+            .map(|raw| view.format_raw_model_label(raw))
+            .collect::<Vec<_>>()
+            .join(" → ")
+    };
+
+    let header_timing = if turn.is_live {
+        let steps = view.thread.active_run.as_ref().map_or_else(
+            || turn.totals.step_count.max(1) as u32,
+            |r| r.iterations.max(1),
+        );
+        let secs = view
+            .run_started_at
+            .map_or(turn.totals.duration_ms / 1_000, |s| {
+                Instant::now().saturating_duration_since(s).as_secs()
+            });
+        Some(format!("· {}", ch.composer_step_elapsed(steps, secs)))
+    } else if turn.totals.duration_ms > 0 {
+        Some(format!("· {}", format_duration_ms(turn.totals.duration_ms)))
+    } else {
+        None
+    };
+
+    let can_fold_turn = !turn.is_live && !turn.has_failure && !turn.spine.is_empty();
+    let tid_head_fold = turn.turn_id.clone();
+
+    let mut turn_head = h_row()
+        .id(SharedString::from(format!("turn-head-{}", turn.turn_id)))
+        .w_full()
+        .gap(px(6.0))
+        .min_h(px(22.0))
+        .child(
+            div()
+                .font_family(mono.clone())
+                .text_xs()
+                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                .text_color(to_hsla(p.ink_2))
+                .child(SharedString::from(model_label)),
+        )
+        .children(turn.reasoning_effort.map(|eff| {
+            badge(
+                format_effort_short(eff, crate::ui::active_language(cx)),
+                Tone::Neutral,
+                cx,
+            )
+        }))
+        .children(header_timing.map(|tm| {
+            div()
+                .font_family(mono.clone())
+                .text_size(px(11.0))
+                .text_color(to_hsla(p.faint))
+                .child(SharedString::from(tm))
+        }));
+    if can_fold_turn {
+        turn_head = turn_head
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.toggle_turn_fold(tid_head_fold.clone(), cx);
+            }));
+    }
+
+    let mut body = v_col()
+        .id(SharedString::from(format!("asst-turn-{}", turn.turn_id)))
+        .group(group_name.clone())
+        .w_full()
+        .gap(px(6.0));
+
+    if turn.is_live
+        && let Some(banners) = render_live_turn_banners(view, cx)
+    {
+        body = body.child(banners);
+    }
+
+    body = body.child(turn_head);
+
+    if collapsed {
+        let fold_summary = format_turn_fold_summary(turn, cx);
+        let tid_fold = turn.turn_id.clone();
+        let has_diff = turn.fold_stats.added_lines > 0 || turn.fold_stats.removed_lines > 0;
+        let fold_bar = div()
+            .id(SharedString::from(format!(
+                "turn-fold-bar-{}",
+                turn.turn_id
+            )))
+            .w_full()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .gap(px(8.0))
+            .px(px(8.0))
+            .py(px(4.5))
+            .rounded(px(6.0))
+            .bg(to_hsla(p.pane))
+            .border_1()
+            .border_color(to_hsla(p.line.composite_over(p.pane)))
+            .cursor_pointer()
+            .hover(|s| s.bg(to_hsla(p.hover.composite_over(p.pane))))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.toggle_turn_fold(tid_fold.clone(), cx);
+            }))
+            .child(
+                h_row()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(7.0))
+                    .child(status_indicator(StatusShape::Ok, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_xs()
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(to_hsla(p.ink_2))
+                            .child(SharedString::from(fold_summary)),
+                    ),
+            )
+            .child(
+                h_row()
+                    .flex_shrink_0()
+                    .gap(px(6.0))
+                    .children(has_diff.then(|| {
+                        h_row()
+                            .gap(px(3.0))
+                            .font_family(mono)
+                            .text_size(px(11.0))
+                            .child(div().text_color(to_hsla(p.ok)).child(SharedString::from(
+                                format!("+{}", turn.fold_stats.added_lines),
+                            )))
+                            .child(div().text_color(to_hsla(p.bad)).child(SharedString::from(
+                                format!("−{}", turn.fold_stats.removed_lines),
+                            )))
+                    }))
+                    .child(
+                        div()
+                            .text_color(to_hsla(p.faint))
+                            .child(icon_xs(UiIcon::ChevronRight)),
+                    ),
+            );
+        body = body.child(fold_bar);
+    } else if !turn.spine.is_empty() {
+        let mut spine_col = v_col()
+            .id(SharedString::from(format!("turn-spine-{}", turn.turn_id)))
+            .w_full()
+            .gap(px(2.0));
+        for item in &turn.spine {
+            match item {
+                TurnActivityItem::Reasoning {
+                    key,
+                    text,
+                    duration_ms,
+                    is_live,
+                    sealed,
+                } => {
+                    if *sealed {
+                        spine_col = spine_col
+                            .child(render_sealed_reasoning_row(key, cx).into_any_element());
+                    } else {
+                        let open = if *is_live {
+                            !view.collapsed_live_reasoning
+                        } else {
+                            view.expanded_reasoning.contains(key)
+                                || view.expanded_traces.contains(key)
+                                || view.density == TranscriptDensity::Verbose
+                        };
+                        let k_click = key.clone();
+                        let effective_dur = if *is_live {
+                            view.thinking_started_at.map(|started| {
+                                let end = view.thinking_ended_at.unwrap_or_else(Instant::now);
+                                end.saturating_duration_since(started).as_millis() as u64
+                            })
+                        } else {
+                            *duration_ms
+                        };
+                        spine_col = spine_col.child(
+                            render_reasoning_block(
+                                key.clone(),
+                                open,
+                                *is_live,
+                                text.clone(),
+                                effective_dur,
+                                cx.listener(move |this, _, _, cx| {
+                                    this.toggle_reasoning(k_click.clone(), cx)
+                                }),
+                                cx,
+                            )
+                            .into_any_element(),
+                        );
+                    }
+                }
+                TurnActivityItem::ExploreGroup(group) => {
+                    spine_col = spine_col.child(render_explore_group(view, group, cx));
+                }
+                TurnActivityItem::ToolCall(tc) => {
+                    spine_col = spine_col.child(render_turn_tool_call(view, tc, cx));
+                }
+                TurnActivityItem::SubagentGroup { calls, .. } => {
+                    let refs: Vec<&LiveToolCall> = calls.iter().collect();
+                    spine_col = spine_col
+                        .child(render_live_subagent_group(view, &refs, cx).into_any_element());
+                }
+                TurnActivityItem::PlanBlock {
+                    call_id,
+                    args_json,
+                    result_parts,
+                    status,
+                    actively_revising,
+                    next_user_text,
+                } => {
+                    spine_col = spine_col.child(render_plan_block(
+                        call_id,
+                        args_json,
+                        (!result_parts.is_empty()).then_some(result_parts.as_slice()),
+                        *status,
+                        *actively_revising,
+                        next_user_text.as_deref(),
+                        cx,
+                    ));
+                }
+                TurnActivityItem::IntermediateText { key, markdown } => {
+                    spine_col = spine_col.child(div().py(px(2.0)).child(markdown_view(
+                        SharedString::from(format!("chat-inter-{key}")),
+                        markdown.clone(),
+                    )));
+                }
+                TurnActivityItem::SteerNote { message_id, text } => {
+                    spine_col = spine_col.child(
+                        div()
+                            .id(SharedString::from(format!("steer-note-{message_id}")))
+                            .w_full()
+                            .px(px(8.0))
+                            .py(px(4.0))
+                            .rounded(px(5.0))
+                            .bg(to_hsla(p.accent_soft))
+                            .border_l_2()
+                            .border_color(to_hsla(p.accent))
+                            .text_xs()
+                            .text_color(to_hsla(p.accent_ink))
+                            .child(SharedString::from(ch.turn_steer_note(text))),
+                    );
+                }
+                TurnActivityItem::CompactionDivider { .. } => {
+                    spine_col = spine_col.child(labeled_divider(ch.thread_context_compacted(), cx));
+                }
+            }
+        }
+        body = body.child(spine_col);
+    } else if turn.is_live && turn.final_markdown.is_empty() {
+        body = body.child(
+            h_row()
+                .gap(px(8.0))
+                .py(px(2.0))
+                .text_xs()
+                .text_color(to_hsla(p.muted))
+                .child(status_indicator(StatusShape::Run, cx))
+                .child(ch.thread_thinking()),
+        );
+    }
+
+    if !turn.final_markdown.is_empty() {
+        let md_id = SharedString::from(format!("chat-a-{}", turn.turn_id));
+        let md_el = if turn.final_is_streaming {
+            streaming_markdown_view(md_id, turn.final_markdown.clone()).into_any_element()
+        } else {
+            markdown_view(md_id, turn.final_markdown.clone()).into_any_element()
+        };
+        body = body.child(div().w_full().child(md_el));
+    }
+
+    if !turn.sources.is_empty() {
+        body = body.child(render_sources(&turn.turn_id, &turn.sources, cx));
+    } else if !turn.citations.is_empty() {
+        body = body.child(render_citations(&turn.turn_id, &turn.citations, cx));
+    }
+
+    if let Some(changes_card) = render_turn_changes_card(turn, cx) {
+        body = body.child(changes_card);
+    }
+
+    if let Some(err) = &turn.inline_error {
+        body = body.child(alert_banner(
+            Tone::Danger,
+            SharedString::from(err.clone()),
+            None,
+            cx,
+        ));
+    }
+
+    if !turn.is_live {
+        body = body.child(render_turn_footer(view, turn, group_name, cx));
     }
 
     body
-}
-
-fn render_compaction_divider(cx: &gpui_kit::App) -> impl IntoElement {
-    let p = palette(cx);
-    h_row()
-        .gap(px(10.0))
-        .py(px(4.0))
-        .child(
-            div()
-                .flex_1()
-                .h(px(1.0))
-                .bg(to_hsla(p.line.composite_over(p.surface))),
-        )
-        .child(badge(
-            crate::ui::tr(cx).chat().thread_context_compacted(),
-            Tone::Neutral,
-            cx,
-        ))
-        .child(
-            div()
-                .flex_1()
-                .h(px(1.0))
-                .bg(to_hsla(p.line.composite_over(p.surface))),
-        )
 }
 
 fn extract_text_parts(parts: &[HubPart]) -> String {

@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 arboard.workspace = true
+base64.workspace = true
 chrono.workspace = true
 notify-rust.workspace = true
 spanbay-core = { path = "../spanbay-core" }

@@ -290,6 +290,8 @@ impl FlowsView {
     }
 
     pub fn select_step(&mut self, step_id: Option<String>, cx: &mut Context<Self>) {
+        self.drag_state = None;
+        self.alignment_guides.clear();
         self.snapshot_inputs(cx);
         match step_id {
             Some(id) => {

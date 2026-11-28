@@ -6,7 +6,10 @@
 //! into a structured, line-bounded monospace snippet or diff on demand.
 
 use serde_json::Value;
+pub use spanbay_core::agent::tools::submit_plan::PlanOutcomeKind;
 use spanbay_core::agent::untrusted::{strip_coded_error_prefix, strip_external_envelope};
+use spanbay_core::model::hub::HubPart;
+use spanbay_core::model::settings::ToolApproval;
 
 /// Maximum number of whole lines rendered inline when expanding a tool call.
 pub const INLINE_PREVIEW_MAX_LINES: usize = 14;
@@ -105,6 +108,52 @@ pub struct ToolTracePresentation {
     pub can_preview_full: bool,
 }
 
+/// How a `submit_plan` call settled, parsed from the first line of its result
+/// (`docs/architecture.md` §11.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlanOutcome {
+    pub kind: PlanOutcomeKind,
+    pub mode: Option<ToolApproval>,
+}
+
+/// Parses the first line `{"plan":{"outcome":"approved|revise|timed_out","mode":"..."}}` of a
+/// built-in `submit_plan` tool result (`docs/architecture.md` §11.1). MCP results are wrapped in
+/// `<external_data>` envelopes, so inspecting the unstripped first line ignores MCP lookalikes.
+#[must_use]
+pub fn plan_outcome(parts: &[HubPart]) -> Option<PlanOutcome> {
+    let text = parts.iter().find_map(|part| match part {
+        HubPart::Text { text, .. } => Some(text.as_str()),
+        HubPart::ToolResult { name, content, .. }
+            if !name.as_deref().is_some_and(|n| n.starts_with("mcp__")) =>
+        {
+            content.iter().find_map(|inner| match inner {
+                HubPart::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+        }
+        _ => None,
+    })?;
+    let first_line = text.lines().next()?.trim();
+    if !first_line.starts_with(r#"{"plan":"#) {
+        return None;
+    }
+    let plan = serde_json::from_str::<Value>(first_line)
+        .ok()?
+        .get("plan")?
+        .clone();
+    let kind = match plan.get("outcome")?.as_str()? {
+        "approved" => PlanOutcomeKind::Approved,
+        "revise" => PlanOutcomeKind::Revise,
+        "timed_out" => PlanOutcomeKind::TimedOut,
+        _ => return None,
+    };
+    let mode = (kind == PlanOutcomeKind::Approved)
+        .then(|| plan.get("mode"))
+        .flatten()
+        .and_then(|v| serde_json::from_value::<ToolApproval>(v.clone()).ok());
+    Some(PlanOutcome { kind, mode })
+}
+
 /// Classifies a tool name into its display [`ToolCategory`].
 #[must_use]
 pub fn classify_tool(name: &str) -> ToolCategory {
@@ -166,6 +215,27 @@ pub fn format_tool_trace(
     };
 
     let Some(raw) = raw_output.filter(|s| !s.trim().is_empty()) else {
+        if !is_error
+            && name == "todo_write"
+            && let Some((todo_metric, todo_lines, todo_full)) = parse_todo_write_args(args_obj)
+        {
+            let (preview, truncated_inline) =
+                build_head_code_preview(&todo_lines, false, INLINE_PREVIEW_MAX_LINES);
+            return ToolTracePresentation {
+                category,
+                target,
+                metric: Some(todo_metric),
+                file_path,
+                command_line,
+                meta_chips,
+                raw_args_display,
+                external_isolated: false,
+                error_code: None,
+                cleaned_full_output: Some(todo_full),
+                preview,
+                can_preview_full: spilled_to_disk || truncated_inline,
+            };
+        }
         let metric =
             file_diff_stats.map(|(added, removed)| ToolInlineMetric::DiffStats { added, removed });
         return ToolTracePresentation {
@@ -606,8 +676,18 @@ fn extract_arg_presentation(
             return ExtractedArgs::simple(truncate_chars(pid, 88), chips);
         }
         "send_request" | "create_request" => {
-            let method = get_str("method").unwrap_or("").to_ascii_uppercase();
+            let draft = obj.and_then(|m| m.get("draft")).and_then(Value::as_object);
+            let draft_url = draft
+                .and_then(|d| d.get("url"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty());
+            let raw_method = get_str("method")
+                .or_else(|| draft.and_then(|d| d.get("method")).and_then(Value::as_str))
+                .unwrap_or(if draft_url.is_some() { "GET" } else { "" });
+            let method = raw_method.to_ascii_uppercase();
             let url = get_str("url")
+                .or(draft_url)
+                .or_else(|| get_str("request_path"))
                 .or_else(|| get_str("name"))
                 .or_else(|| get_str("request_id"))
                 .unwrap_or("");
@@ -620,6 +700,18 @@ fn extract_arg_presentation(
                 chips.push(("env".to_owned(), env.to_owned()));
             }
             return ExtractedArgs::simple(truncate_chars(&label, 88), chips);
+        }
+        "get_request" => {
+            let req = get_str("request_path")
+                .or_else(|| get_str("request_id"))
+                .unwrap_or("");
+            return ExtractedArgs::simple(truncate_chars(req, 88), chips);
+        }
+        "run_probe" => {
+            let provider = get_str("provider")
+                .or_else(|| get_str("provider_id"))
+                .unwrap_or("");
+            return ExtractedArgs::simple(truncate_chars(provider, 88), chips);
         }
         "web_search" => {
             let q = get_str("query").unwrap_or("");
@@ -664,8 +756,10 @@ fn extract_arg_presentation(
             "question",
             "title",
             "name",
+            "request_path",
             "request_id",
             "history_id",
+            "provider",
             "provider_id",
             "url",
             "query",
@@ -756,8 +850,8 @@ struct ParsedFileOutput {
 
 impl ParsedFileOutput {
     fn line_range_metric(&self) -> Option<ToolInlineMetric> {
-        let first = self.lines.first().and_then(|l| l.line_no);
-        let last = self.lines.last().and_then(|l| l.line_no);
+        let first = self.lines.iter().find_map(|l| l.line_no);
+        let last = self.lines.iter().rev().find_map(|l| l.line_no);
         match (first, last) {
             (Some(start), Some(end)) if end >= start => {
                 Some(ToolInlineMetric::LineRange { start, end })
@@ -773,7 +867,8 @@ fn parse_numbered_file_output(clean: &str) -> ParsedFileOutput {
     let mut end_idx = raw_lines.len();
     let mut file_has_more = false;
 
-    // Strip the LLM-only continuation hint appended by `fs/ops.rs::read_text`.
+    // Strip the LLM-only continuation or end hint appended by `fs/ops.rs::read_text` and
+    // `agent_tools/attachment.rs::read`.
     while end_idx > 0 && raw_lines[end_idx - 1].trim().is_empty() {
         end_idx -= 1;
     }
@@ -783,8 +878,22 @@ fn parse_numbered_file_output(clean: &str) -> ParsedFileOutput {
         while end_idx > 0 && raw_lines[end_idx - 1].trim().is_empty() {
             end_idx -= 1;
         }
+    } else if end_idx > 1 && is_read_attachment_end_marker(raw_lines[end_idx - 1]) {
+        end_idx -= 1;
+        while end_idx > 0 && raw_lines[end_idx - 1].trim().is_empty() {
+            end_idx -= 1;
+        }
     }
-    let slice = &raw_lines[..end_idx];
+    let mut start_idx = 0usize;
+    if start_idx < end_idx
+        && is_read_attachment_header_marker(raw_lines[start_idx])
+        && raw_lines[start_idx + 1..end_idx]
+            .iter()
+            .any(|l| parse_numbered_line(l).is_some())
+    {
+        start_idx += 1;
+    }
+    let slice = &raw_lines[start_idx..end_idx];
 
     let mut parsed_lines = Vec::with_capacity(slice.len());
     let mut numbered_hits = 0usize;
@@ -830,7 +939,17 @@ fn parse_numbered_file_output(clean: &str) -> ParsedFileOutput {
 
 fn is_read_file_more_marker(line: &str) -> bool {
     let t = line.trim();
-    t.starts_with("[Showing lines ") && t.ends_with(']')
+    (t.starts_with("[Showing lines ") || t.starts_with("[showing lines ")) && t.ends_with(']')
+}
+
+fn is_read_attachment_header_marker(line: &str) -> bool {
+    let t = line.trim();
+    t.starts_with('[') && t.ends_with(" bytes]") && t.contains(" lines, ")
+}
+
+fn is_read_attachment_end_marker(line: &str) -> bool {
+    let t = line.trim();
+    t.starts_with("[end of ") && t.ends_with(']')
 }
 
 fn parse_numbered_line(line: &str) -> Option<(usize, &str)> {
@@ -1269,5 +1388,131 @@ mod tests {
             }
             other => panic!("expected CodeLines checklist, got {other:?}"),
         }
+        let live_pres = format_tool_trace("todo_write", args, None, false, false, None);
+        assert_eq!(live_pres.target, "Fix reducer");
+        assert_eq!(live_pres.metric, Some(ToolInlineMetric::Entries(3)));
+        assert!(matches!(
+            live_pres.preview,
+            ToolPreviewBody::CodeLines { ref lines, .. } if lines.len() == 3
+        ));
+    }
+
+    #[test]
+    fn spanbay_api_tools_and_read_attachment_extract_targets_and_line_ranges() {
+        let draft_send = format_tool_trace(
+            "send_request",
+            r#"{"draft":{"method":"post","url":"https://api.example.com/v1/items"},"environment":"Staging"}"#,
+            None,
+            false,
+            false,
+            None,
+        );
+        assert_eq!(draft_send.target, "POST https://api.example.com/v1/items");
+
+        let path_send = format_tool_trace(
+            "send_request",
+            r#"{"request_path":"Billing/Create Invoice"}"#,
+            None,
+            false,
+            false,
+            None,
+        );
+        assert_eq!(path_send.target, "Billing/Create Invoice");
+
+        let get_req = format_tool_trace(
+            "get_request",
+            r#"{"request_path":"Auth/Login"}"#,
+            None,
+            false,
+            false,
+            None,
+        );
+        assert_eq!(get_req.target, "Auth/Login");
+
+        let probe = format_tool_trace(
+            "run_probe",
+            r#"{"provider":"openai","models":["gpt-5"]}"#,
+            None,
+            false,
+            false,
+            None,
+        );
+        assert_eq!(probe.target, "openai");
+
+        let att_single = format_tool_trace(
+            "read_attachment",
+            r#"{"attachment":"notes.txt"}"#,
+            Some("[notes.txt: 1 lines, 11 bytes]\n1\thello world\n[end of notes.txt]\n"),
+            false,
+            false,
+            None,
+        );
+        assert_eq!(
+            att_single.metric,
+            Some(ToolInlineMetric::LineRange { start: 1, end: 1 })
+        );
+        assert_eq!(
+            att_single.cleaned_full_output.as_deref(),
+            Some("hello world")
+        );
+
+        let att_more = format_tool_trace(
+            "read_attachment",
+            r#"{"attachment":"big.log"}"#,
+            Some(
+                "[big.log: 50 lines, 600 bytes]\n1\tfirst\n2\tsecond\n[showing lines 1 to 2; continue with offset 3]\n",
+            ),
+            false,
+            false,
+            None,
+        );
+        assert_eq!(
+            att_more.metric,
+            Some(ToolInlineMetric::LineRange { start: 1, end: 2 })
+        );
+        assert!(matches!(
+            att_more.preview,
+            ToolPreviewBody::CodeLines {
+                file_has_more: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn plan_outcome_parses_builtin_first_line_and_ignores_mcp_envelopes() {
+        use spanbay_core::agent::tools::submit_plan::plan_outcome_line;
+        let (open, close) = envelope_tags("mcp:srv");
+
+        let parts = |line: String| vec![HubPart::text(format!("{line}\nBody text"))];
+        assert_eq!(
+            plan_outcome(&parts(plan_outcome_line(
+                PlanOutcomeKind::Approved,
+                Some(ToolApproval::AutoReadOnly),
+            ))),
+            Some(PlanOutcome {
+                kind: PlanOutcomeKind::Approved,
+                mode: Some(ToolApproval::AutoReadOnly),
+            })
+        );
+        assert_eq!(
+            plan_outcome(&parts(plan_outcome_line(PlanOutcomeKind::Revise, None))),
+            Some(PlanOutcome {
+                kind: PlanOutcomeKind::Revise,
+                mode: None,
+            })
+        );
+        assert_eq!(
+            plan_outcome(&parts(plan_outcome_line(PlanOutcomeKind::TimedOut, None))),
+            Some(PlanOutcome {
+                kind: PlanOutcomeKind::TimedOut,
+                mode: None,
+            })
+        );
+        let mcp_lookalike = format!(
+            "{open}\n{}\n{close}",
+            plan_outcome_line(PlanOutcomeKind::Approved, Some(ToolApproval::Ask))
+        );
+        assert_eq!(plan_outcome(&[HubPart::text(mcp_lookalike)]), None);
     }
 }

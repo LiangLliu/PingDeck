@@ -561,3 +561,75 @@ fn an_idle_chat_rebinds_to_another_workspace_and_a_running_one_is_refused() {
     agent_session_bind_spanbay_impl(&state, &made.id, "ws_ops", Some("env_prod".into()))
         .expect("no-op");
 }
+
+#[tokio::test]
+async fn context_breakdown_reports_compact_turns_from_compaction_cut() {
+    let state = state();
+    let made = session(&state, "Context");
+    agent_session_update_impl(
+        &state,
+        &made.id,
+        AgentSessionPatch {
+            target: Some(crate::agent::model::AgentTarget::Named {
+                name: "fast".into(),
+            }),
+            ..AgentSessionPatch::default()
+        },
+    )
+    .expect("set target");
+    for turn in 1..=2 {
+        append(
+            &state,
+            &message(
+                &made.id,
+                &format!("u{turn}"),
+                AgentRole::User,
+                "q",
+                turn * 2 - 1,
+            ),
+        );
+        append(
+            &state,
+            &message(
+                &made.id,
+                &format!("a{turn}"),
+                AgentRole::Assistant,
+                "a",
+                turn * 2,
+            ),
+        );
+    }
+    let within_keep = crate::agent_service::agent_context_breakdown_impl(&state, &made.id)
+        .await
+        .expect("breakdown");
+    assert!(!within_keep.can_compact);
+    assert_eq!(within_keep.compact_turns, None);
+
+    for turn in 3..=5 {
+        append(
+            &state,
+            &message(
+                &made.id,
+                &format!("u{turn}"),
+                AgentRole::User,
+                "q",
+                turn * 2 - 1,
+            ),
+        );
+        append(
+            &state,
+            &message(
+                &made.id,
+                &format!("a{turn}"),
+                AgentRole::Assistant,
+                "a",
+                turn * 2,
+            ),
+        );
+    }
+    let compactable = crate::agent_service::agent_context_breakdown_impl(&state, &made.id)
+        .await
+        .expect("breakdown");
+    assert!(compactable.can_compact);
+    assert_eq!(compactable.compact_turns, Some(3));
+}

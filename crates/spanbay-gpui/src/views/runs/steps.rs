@@ -12,15 +12,18 @@ use spanbay_desktop::core::agent::dto::{
 };
 
 use crate::ui::{
-    Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, card, h_row, icon_xs, markdown_view,
-    palette, section_heading, status_indicator, to_hsla, v_col,
+    Tone, UiIcon, WaitKind, badge, btn_danger, btn_ghost, btn_primary, card, exit_code_badge,
+    h_row, icon_xs, markdown_view, palette, section_heading, status_indicator, status_label,
+    status_word_color, to_hsla, v_col,
 };
 
 use super::modal::WorkflowMonitorModal;
 use super::status::{
-    format_elapsed_short, format_model_short, format_tokens_compact, run_status_meta,
-    subagent_kind_label, subagent_role_label, tool_status_meta,
+    format_elapsed_short, format_model_short, format_tokens_compact, subagent_kind_label,
+    subagent_role_label,
 };
+use crate::ui::{run_status_meta, status_visual};
+use spanbay_desktop::state::{GraphNodeStatus, map_tool_status};
 
 const ROUND_GROUP_THRESHOLD: usize = 8;
 const STEPS_PER_ROUND: usize = 4;
@@ -181,15 +184,22 @@ fn render_direct_answer_summary(
                             &topo.run.model_label,
                         )))
                         .children((total_tok > 0).then(|| {
-                            SharedString::from(format!("{} tok", format_tokens_compact(total_tok)))
+                            crate::ui::tr(cx)
+                                .chat()
+                                .context_used(format_tokens_compact(total_tok))
                         }))
-                        .children((topo.run.cost_micro_usd > 0).then(|| {
-                            let cur = topo.cost_currency.as_deref().unwrap_or("USD");
-                            SharedString::from(format!(
-                                "{cur} {:.4}",
-                                topo.run.cost_micro_usd as f64 / 1_000_000.0
-                            ))
-                        })),
+                        // No amount without a known currency.
+                        .children(
+                            topo.cost_currency
+                                .as_deref()
+                                .filter(|_| topo.run.cost_micro_usd > 0)
+                                .map(|cur| {
+                                    SharedString::from(format!(
+                                        "{cur} {:.4}",
+                                        topo.run.cost_micro_usd as f64 / 1_000_000.0
+                                    ))
+                                }),
+                        ),
                 )
                 .children(topo.user_prompt.as_ref().map(|pr| {
                     v_col()
@@ -322,7 +332,7 @@ fn render_flat_step(
     match item {
         FlatStep::Subagent(sub) => {
             let node_id = format!("sub:{}", sub.run.run_id);
-            let selected = view.selected_node_id.as_deref() == Some(node_id.as_str());
+            let selected = view.is_subagent_selected(&sub.run.run_id);
             let (shape, tone, status_lbl) =
                 run_status_meta(sub.run.status, None, sub.run.status_detail.as_deref(), cx);
             let stop_id = sub.run.run_id.clone();
@@ -442,7 +452,17 @@ fn render_flat_step(
         FlatStep::Tool(step) => {
             let node_id = format!("tool:{}", step.call_id);
             let selected = view.selected_node_id.as_deref() == Some(node_id.as_str());
-            let (shape, _) = tool_status_meta(&step.status);
+            let status = map_tool_status(&step.status);
+            let (shape, tone) = status_visual(status);
+            let show_word = !matches!(
+                status,
+                GraphNodeStatus::Running | GraphNodeStatus::Completed
+            );
+            let wait = match step.name.as_str() {
+                "submit_plan" => Some(WaitKind::Plan),
+                "ask_user" => Some(WaitKind::Question),
+                _ => Some(WaitKind::Approval),
+            };
             let nid_click = node_id.clone();
             let bg = if selected {
                 to_hsla(p.accent_soft)
@@ -507,10 +527,17 @@ fn render_flat_step(
                                 .truncate()
                                 .child(SharedString::from(step.summary.clone()))
                         }))
+                        .children(show_word.then(|| {
+                            div()
+                                .flex_shrink_0()
+                                .text_xs()
+                                .text_color(status_word_color(tone, cx))
+                                .child(status_label(status, wait, cx))
+                        }))
                         .children(
                             step.exit_code
                                 .filter(|c| *c != 0)
-                                .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
+                                .map(|c| exit_code_badge(c, cx)),
                         )
                         .children((step.file_change_id.is_some()).then(|| {
                             badge(

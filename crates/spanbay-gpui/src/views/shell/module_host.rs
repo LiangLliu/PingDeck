@@ -373,8 +373,11 @@ impl ModuleHost {
         window: &mut Window,
         cx: &mut Context<V>,
     ) {
-        let view = self.ensure_requests(workspace_id, None, window, cx);
+        let view = self.ensure_requests(workspace_id.clone(), None, window, cx);
         view.update(cx, |r, cx| {
+            if workspace_id.is_some() && r.workspace_id != workspace_id {
+                r.set_workspace(workspace_id, cx);
+            }
             r.open_saved_request_by_id(request_id, window, cx);
         });
     }

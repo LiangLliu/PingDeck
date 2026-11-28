@@ -47,9 +47,10 @@ impl RequestsView {
             self.open_request_tab(&req, window, cx);
             return;
         }
+        let rt = runtime(cx);
+        let state = rt.state();
         if let Some(ws_id) = self.workspace_id.clone()
-            && let Ok(reqs) =
-                spanbay_desktop::core::app::request_list_impl(runtime(cx).state(), ws_id)
+            && let Ok(reqs) = spanbay_desktop::core::app::request_list_impl(state, ws_id)
         {
             self.requests = reqs;
             if let Some(req) = self
@@ -59,6 +60,23 @@ impl RequestsView {
                 .cloned()
             {
                 self.open_request_tab(&req, window, cx);
+                return;
+            }
+        }
+        if let Ok(workspaces) = spanbay_desktop::core::app::workspace_list_impl(state) {
+            for ws in workspaces {
+                let wid = ws.id.as_str().to_owned();
+                if self.workspace_id.as_deref() == Some(wid.as_str()) {
+                    continue;
+                }
+                if let Ok(reqs) = spanbay_desktop::core::app::request_list_impl(state, wid.clone())
+                    && let Some(req) = reqs.iter().find(|r| r.id.as_str() == request_id).cloned()
+                {
+                    self.set_workspace(Some(wid), cx);
+                    self.requests = reqs;
+                    self.open_request_tab(&req, window, cx);
+                    return;
+                }
             }
         }
     }

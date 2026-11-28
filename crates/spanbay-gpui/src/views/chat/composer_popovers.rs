@@ -1,6 +1,8 @@
-//! Native anchored popovers & context meter for the Chat composer:
-//! Skills (`/`), Permission mode, Reasoning effort, searchable Model selector, and Context meter.
+//! Native anchored popovers for the slimmed 5-control Chat composer:
+//! Skills (`/`), unified Execution Mode (`Ask / Auto read-only / Plan / Full access`), and
+//! unified Model · Reasoning Effort · Web Search selector.
 
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{Context, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
 use spanbay_desktop::core::agent::model::ReasoningEffort;
 use spanbay_desktop::core::app::agent_sandbox_test_impl;
@@ -104,45 +106,42 @@ pub fn render_skills_popover(view: &ChatView, cx: &mut Context<ChatView>) -> imp
         })
 }
 
-pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> impl IntoElement {
-    let (label, glyph) = match mode {
-        ToolApproval::Ask => (
-            crate::ui::tr(cx).chat().composer_popovers_ask(),
-            UiIcon::Shield,
-        ),
-        ToolApproval::AutoReadOnly => (
-            crate::ui::tr(cx).chat().composer_popovers_auto_reads(),
-            UiIcon::ShieldCheck,
-        ),
-        ToolApproval::AutoAll => (
-            crate::ui::tr(cx).chat().composer_perm_full(),
-            UiIcon::ShieldAlert,
-        ),
+pub fn render_perm_popover(
+    view: &ChatView,
+    mode: ToolApproval,
+    cx: &mut Context<ChatView>,
+) -> impl IntoElement {
+    let ch = crate::ui::tr(cx).chat();
+    let plan_on = view.plan_mode;
+    let (label, glyph) = if plan_on {
+        (ch.composer_plan(), UiIcon::ListChecks)
+    } else {
+        match mode {
+            ToolApproval::Ask => (ch.composer_popovers_ask(), UiIcon::Shield),
+            ToolApproval::AutoReadOnly => (ch.composer_popovers_auto_reads(), UiIcon::ShieldCheck),
+            ToolApproval::AutoAll => (ch.composer_perm_full(), UiIcon::ShieldAlert),
+        }
     };
     let chat_ref = cx.entity().clone();
     let options: [(ToolApproval, &str, &str); 3] = [
         (
             ToolApproval::Ask,
-            crate::ui::tr(cx).chat().composer_perm_ask(),
-            crate::ui::tr(cx)
-                .chat()
-                .composer_popovers_confirm_before_every_tool_call(),
+            ch.composer_perm_ask(),
+            ch.composer_popovers_confirm_before_every_tool_call(),
         ),
         (
             ToolApproval::AutoReadOnly,
-            crate::ui::tr(cx).chat().composer_popovers_auto_read_only(),
-            crate::ui::tr(cx)
-                .chat()
-                .composer_popovers_auto_allow_reads_ask_for(),
+            ch.composer_popovers_auto_read_only(),
+            ch.composer_popovers_auto_allow_reads_ask_for(),
         ),
         (
             ToolApproval::AutoAll,
-            crate::ui::tr(cx).chat().composer_perm_full(),
-            crate::ui::tr(cx)
-                .chat()
-                .composer_popovers_auto_run_tools_hard_blocks(),
+            ch.composer_perm_full(),
+            ch.composer_popovers_auto_run_tools_hard_blocks(),
         ),
     ];
+    let plan_title = ch.plan_region();
+    let plan_desc = ch.composer_plan_desc();
 
     popover("chat-perm-popover")
         .anchor(Anchor::BottomLeft)
@@ -150,11 +149,11 @@ pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> im
             "chat-perm-trigger",
             label,
             Some(glyph),
-            mode == ToolApproval::AutoAll,
+            plan_on || mode == ToolApproval::AutoAll,
         ))
         .content(move |_st, _window, pop_cx| {
             let pop_p = palette(pop_cx);
-            let mut box_el = v_col().w(px(276.0)).gap(px(4.0)).child(
+            let mut box_el = v_col().w(px(284.0)).gap(px(4.0)).child(
                 div().px(px(6.0)).pb(px(2.0)).child(section_heading(
                     crate::ui::tr(pop_cx)
                         .chat()
@@ -163,7 +162,7 @@ pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> im
                 )),
             );
             for (opt, title, desc) in options {
-                let selected = opt == mode;
+                let selected = !plan_on && opt == mode;
                 let entity = chat_ref.clone();
                 let pop_handle = pop_cx.entity().clone();
                 box_el = box_el.child(
@@ -172,7 +171,12 @@ pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> im
                         selected,
                         pop_cx,
                         move |_, window, cx| {
-                            entity.update(cx, |this, cx| this.request_permission_mode(opt, cx));
+                            entity.update(cx, |this, cx| {
+                                if this.plan_mode {
+                                    this.toggle_plan_mode(cx);
+                                }
+                                this.request_permission_mode(opt, cx);
+                            });
                             pop_handle.update(cx, |st, cx| st.dismiss(window, cx));
                         },
                     )
@@ -196,6 +200,37 @@ pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> im
                     })),
                 );
             }
+            let ent_plan = chat_ref.clone();
+            let pop_plan = pop_cx.entity().clone();
+            box_el = box_el.child(
+                list_row("chat-plan-toggle", plan_on, pop_cx, move |_, window, cx| {
+                    ent_plan.update(cx, |this, cx| this.toggle_plan_mode(cx));
+                    pop_plan.update(cx, |st, cx| st.dismiss(window, cx));
+                })
+                .child(
+                    v_col()
+                        .flex_1()
+                        .gap(px(1.0))
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                                .text_color(to_hsla(pop_p.ink))
+                                .child(plan_title),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(pop_p.muted))
+                                .child(plan_desc),
+                        ),
+                )
+                .children(plan_on.then(|| {
+                    div()
+                        .text_color(to_hsla(pop_p.accent))
+                        .child(icon_xs(UiIcon::Check))
+                })),
+            );
             let ent_link = chat_ref.clone();
             let pop_link = pop_cx.entity().clone();
             let sb = agent_sandbox_test_impl();
@@ -237,104 +272,17 @@ pub fn render_perm_popover(mode: ToolApproval, cx: &mut Context<ChatView>) -> im
         })
 }
 
-pub fn render_effort_popover(
-    effort: Option<ReasoningEffort>,
-    missing_reasoning_quirk: bool,
-    cx: &mut Context<ChatView>,
-) -> impl IntoElement {
-    let label = match effort {
-        None => crate::ui::tr(cx).chat().composer_popovers_effort_auto(),
-        Some(ReasoningEffort::Minimal) => {
-            crate::ui::tr(cx).chat().composer_popovers_effort_minimal()
-        }
-        Some(ReasoningEffort::Low) => crate::ui::tr(cx).chat().composer_popovers_effort_low(),
-        Some(ReasoningEffort::Medium) => crate::ui::tr(cx).chat().composer_popovers_effort_medium(),
-        Some(ReasoningEffort::High) => crate::ui::tr(cx).chat().composer_popovers_effort_high(),
-        Some(ReasoningEffort::Max) => crate::ui::tr(cx).chat().composer_popovers_effort_max(),
-    };
-    let chat_ref = cx.entity().clone();
-    let opts: [(Option<ReasoningEffort>, &str); 6] = [
-        (
-            None,
-            crate::ui::tr(cx)
-                .chat()
-                .composer_popovers_auto_model_default(),
-        ),
-        (
-            Some(ReasoningEffort::Minimal),
-            crate::ui::tr(cx).chat().composer_popovers_minimal(),
-        ),
-        (
-            Some(ReasoningEffort::Low),
-            crate::ui::tr(cx).chat().composer_popovers_low(),
-        ),
-        (
-            Some(ReasoningEffort::Medium),
-            crate::ui::tr(cx).chat().composer_popovers_medium(),
-        ),
-        (
-            Some(ReasoningEffort::High),
-            crate::ui::tr(cx).chat().composer_popovers_high(),
-        ),
-        (
-            Some(ReasoningEffort::Max),
-            crate::ui::tr(cx).chat().composer_popovers_max(),
-        ),
-    ];
-
-    popover("chat-effort-popover")
-        .anchor(Anchor::BottomLeft)
-        .trigger(pill_btn(
-            "chat-effort-trigger",
-            label,
-            Some(UiIcon::Brain),
-            effort.is_some(),
-        ))
-        .content(move |_st, _window, pop_cx| {
-            let pop_p = palette(pop_cx);
-            let mut list = v_col().w(px(230.0)).gap(px(2.0));
-            for (val, text) in opts {
-                let selected = val == effort;
-                let entity = chat_ref.clone();
-                let pop_handle = pop_cx.entity().clone();
-                list = list.child(
-                    list_row(
-                        SharedString::from(format!("effort-opt-{val:?}")),
-                        selected,
-                        pop_cx,
-                        move |_, window, cx| {
-                            entity.update(cx, |this, cx| this.set_reasoning_effort(val, cx));
-                            pop_handle.update(cx, |st, cx| st.dismiss(window, cx));
-                        },
-                    )
-                    .justify_between()
-                    .child(div().text_xs().child(text))
-                    .children(selected.then(|| {
-                        div()
-                            .text_color(to_hsla(pop_p.accent))
-                            .child(icon_xs(UiIcon::Check))
-                    })),
-                );
-            }
-            if missing_reasoning_quirk {
-                list = list.child(
-                    div()
-                        .mt(px(4.0))
-                        .pt(px(6.0))
-                        .px(px(6.0))
-                        .border_t_1()
-                        .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
-                        .text_size(px(11.0))
-                        .text_color(to_hsla(pop_p.muted))
-                        .child(
-                            crate::ui::tr(pop_cx)
-                                .chat()
-                                .composer_popovers_custom_provider_has_no_reasoning(),
-                        ),
-                );
-            }
-            list
-        })
+#[must_use]
+pub fn effort_trigger_label(effort: Option<ReasoningEffort>, cx: &gpui_kit::App) -> &'static str {
+    let ch = crate::ui::tr(cx).chat();
+    match effort {
+        None => ch.composer_popovers_effort_auto(),
+        Some(ReasoningEffort::Minimal) => ch.composer_popovers_effort_minimal(),
+        Some(ReasoningEffort::Low) => ch.composer_popovers_effort_low(),
+        Some(ReasoningEffort::Medium) => ch.composer_popovers_effort_medium(),
+        Some(ReasoningEffort::High) => ch.composer_popovers_effort_high(),
+        Some(ReasoningEffort::Max) => ch.composer_popovers_effort_max(),
+    }
 }
 
 pub fn render_model_popover(
@@ -345,15 +293,24 @@ pub fn render_model_popover(
 ) -> impl IntoElement {
     let models = view.available_models.clone();
     let current_target = view.session.as_ref().and_then(|s| s.target.clone());
+    let effort = view.session.as_ref().and_then(|s| s.reasoning_effort);
+    let web_on = view.session.as_ref().is_some_and(|s| s.web_enabled);
+    let missing_reasoning_quirk = view.active_provider_missing_reasoning_quirk();
     let chat_ref = cx.entity().clone();
     let search_ent = view.model_search_input.clone();
+    let effort_lbl = effort_trigger_label(effort, cx);
+    let mut trigger_text = format!("{model_label} · {effort_lbl}");
+    if web_on {
+        trigger_text.push_str(" · ");
+        trigger_text.push_str(crate::ui::tr(cx).chat().composer_web());
+    }
 
     popover("chat-model-popover")
         .anchor(Anchor::BottomRight)
         .trigger(
             pill_btn(
                 "chat-model-trigger",
-                SharedString::from(model_label),
+                SharedString::from(trigger_text),
                 Some(if highlight_missing {
                     UiIcon::Warning
                 } else {
@@ -361,10 +318,11 @@ pub fn render_model_popover(
                 }),
                 highlight_missing,
             )
-            .max_w(px(280.0)),
+            .max_w(px(340.0)),
         )
         .content(move |_st, _window, pop_cx| {
             let pop_p = palette(pop_cx);
+            let pch = crate::ui::tr(pop_cx).chat();
             let q = search_ent.read(pop_cx).value().trim().to_ascii_lowercase();
             let filtered: Vec<_> = models
                 .iter()
@@ -382,9 +340,7 @@ pub fn render_model_popover(
                 .border_b_1()
                 .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
                 .child(section_heading(
-                    crate::ui::tr(pop_cx)
-                        .chat()
-                        .composer_popovers_select_model(),
+                    pch.composer_popovers_select_model(),
                     pop_cx,
                 ))
                 .child(search_input(&search_ent, pop_cx));
@@ -395,14 +351,10 @@ pub fn render_model_popover(
                     .py(px(12.0))
                     .text_xs()
                     .text_color(to_hsla(pop_p.muted))
-                    .child(
-                        crate::ui::tr(pop_cx)
-                            .chat()
-                            .composer_popovers_no_matching_models_add_one(),
-                    )
+                    .child(pch.composer_popovers_no_matching_models_add_one())
                     .into_any_element()
             } else {
-                let scroll_h = ((filtered.len() as f32) * 32.0 + 8.0).clamp(64.0, 300.0);
+                let scroll_h = ((filtered.len() as f32) * 32.0 + 8.0).clamp(64.0, 240.0);
                 let mut rows = v_col().w_full().gap(px(2.0)).py(px(4.0));
                 for (i, m) in filtered.iter().enumerate() {
                     let target = m.target();
@@ -469,6 +421,78 @@ pub fn render_model_popover(
                     .into_any_element()
             };
 
-            v_col().w(px(340.0)).gap(px(2.0)).child(header).child(body)
+            let effort_opts: [(Option<ReasoningEffort>, &str); 6] = [
+                (None, pch.composer_popovers_auto_model_default()),
+                (
+                    Some(ReasoningEffort::Minimal),
+                    pch.composer_popovers_minimal(),
+                ),
+                (Some(ReasoningEffort::Low), pch.composer_popovers_low()),
+                (
+                    Some(ReasoningEffort::Medium),
+                    pch.composer_popovers_medium(),
+                ),
+                (Some(ReasoningEffort::High), pch.composer_popovers_high()),
+                (Some(ReasoningEffort::Max), pch.composer_popovers_max()),
+            ];
+            let mut effort_row = h_row().w_full().gap(px(2.0)).flex_wrap();
+            for (val, text) in effort_opts {
+                let selected = val == effort;
+                let entity = chat_ref.clone();
+                effort_row = effort_row.child(
+                    btn_ghost(SharedString::from(format!("effort-opt-{val:?}")), text)
+                        .when(selected, |b| {
+                            b.bg(to_hsla(pop_p.accent_soft))
+                                .text_color(to_hsla(pop_p.accent_ink))
+                        })
+                        .on_click(move |_, _, cx| {
+                            entity.update(cx, |this, cx| this.set_reasoning_effort(val, cx));
+                        }),
+                );
+            }
+            let ent_web = chat_ref.clone();
+            let footer = v_col()
+                .w_full()
+                .gap(px(6.0))
+                .pt(px(6.0))
+                .px(px(6.0))
+                .border_t_1()
+                .border_color(to_hsla(pop_p.line.composite_over(pop_p.surface)))
+                .child(effort_row)
+                .children(missing_reasoning_quirk.then(|| {
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(to_hsla(pop_p.muted))
+                        .child(pch.composer_popovers_custom_provider_has_no_reasoning())
+                }))
+                .child(
+                    h_row()
+                        .w_full()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(to_hsla(pop_p.ink_2))
+                                .child(pch.composer_web()),
+                        )
+                        .child(
+                            pill_btn(
+                                "chat-web-toggle",
+                                pch.composer_web(),
+                                Some(UiIcon::Globe),
+                                web_on,
+                            )
+                            .on_click(move |_, _, cx| {
+                                ent_web.update(cx, |this, cx| this.toggle_web_enabled(cx));
+                            }),
+                        ),
+                );
+
+            v_col()
+                .w(px(348.0))
+                .gap(px(2.0))
+                .child(header)
+                .child(body)
+                .child(footer)
         })
 }

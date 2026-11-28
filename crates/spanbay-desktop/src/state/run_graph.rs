@@ -13,7 +13,8 @@ use spanbay_core::agent::dto::{
     AgentRunTopology, ExecutionWave, TopologySubagent, TopologyToolStep,
 };
 use spanbay_core::agent::model::{
-    AgentRunStatus, AgentTodoItem, AgentTodoStatus, SubagentRole, TaskNodeKind,
+    AgentRunStatus, AgentTodoItem, AgentTodoStatus, AgentToolCallRecord, SubagentRole,
+    TaskNodeKind, ToolCallStatus,
 };
 
 use super::process_graph::{
@@ -95,6 +96,16 @@ pub enum GraphNodeStatus {
     Cancelled,
     Interrupted,
     Skipped,
+    /// The user said no.
+    Denied,
+    /// A rule or the mode refused the call.
+    Blocked,
+    /// The approval timed out; the call did not run.
+    TimedOut,
+    /// The approval became moot before an answer.
+    Expired,
+    /// A newer instruction replaced the call.
+    Superseded,
 }
 
 impl GraphNodeStatus {
@@ -103,9 +114,19 @@ impl GraphNodeStatus {
         matches!(self, Self::Queued | Self::Running | Self::Waiting)
     }
 
+    /// Only a real failure; the "N failed" counts read this.
     #[must_use]
     pub const fn is_terminal_error(self) -> bool {
-        matches!(self, Self::Failed | Self::Interrupted)
+        matches!(self, Self::Failed)
+    }
+
+    /// Ended in a failure or a warning state (interrupted, blocked, timed out).
+    #[must_use]
+    pub const fn is_warning_or_error(self) -> bool {
+        matches!(
+            self,
+            Self::Failed | Self::Interrupted | Self::Blocked | Self::TimedOut
+        )
     }
 }
 
@@ -352,6 +373,27 @@ impl ExecutionGraphLayout {
                 });
             }
         }
+        if let Some(sub_id) = selected_id.strip_prefix("sub:") {
+            for pnode in &self.nodes {
+                if matches!(
+                    &pnode.node.payload,
+                    GraphNodePayload::Subagent(sub) if sub.run.run_id == sub_id
+                ) {
+                    return Some(SelectedGraphTarget::Node(pnode));
+                }
+                if let Some(member) = pnode.node.members.iter().find(|m| {
+                    matches!(
+                        &m.payload,
+                        GraphNodePayload::Subagent(sub) if sub.run.run_id == sub_id
+                    )
+                }) {
+                    return Some(SelectedGraphTarget::Member {
+                        parent: pnode,
+                        member,
+                    });
+                }
+            }
+        }
         None
     }
 
@@ -416,11 +458,11 @@ impl ExecutionGraphLayout {
                 .node
                 .members
                 .iter()
-                .find(|m| m.status.is_terminal_error())
+                .find(|m| m.status.is_warning_or_error())
             {
                 return Some(m.id.clone());
             }
-            if pnode.node.status.is_terminal_error() {
+            if pnode.node.status.is_warning_or_error() {
                 return Some(pnode.node.id.clone());
             }
         }
@@ -696,10 +738,12 @@ pub fn build_graph_from_topology_with_policy(
                     tools.iter().map(|t| tool_to_member(t, now_ms)).collect();
                 let status = aggregate_member_status(&members);
                 let elapsed = span_duration_ms(*started_ms, *ended_ms, now_ms);
-                let error = tools
+                let error = members
                     .iter()
-                    .find(|t| t.status == "error")
+                    .position(|m| m.status.is_terminal_error())
+                    .and_then(|i| tools.get(i))
                     .map(|t| format!("{} · {}", t.name, t.summary));
+                let waiting_summary = members.iter().find_map(|m| m.waiting_summary.clone());
                 nodes.push(GraphNode {
                     id: gid.clone(),
                     task_id: None,
@@ -716,7 +760,7 @@ pub fn build_graph_from_topology_with_policy(
                     step_count: Some(tools.len() as u32),
                     exit_code: tools.iter().find_map(|t| t.exit_code.filter(|c| *c != 0)),
                     error,
-                    waiting_summary: None,
+                    waiting_summary,
                     stop_run_id: None,
                     group_tab: Some(format!("{} · {}", labels.parallel_group, labels.kind_tool)),
                     members,
@@ -751,9 +795,18 @@ pub fn build_graph_from_topology_with_policy(
                     resumed: false,
                     step_count: None,
                     exit_code: tool.exit_code,
-                    error: (status == GraphNodeStatus::Failed).then(|| tool.summary.clone()),
-                    waiting_summary: (status == GraphNodeStatus::Waiting)
-                        .then(|| tool.summary.clone()),
+                    error: status.is_terminal_error().then(|| {
+                        tool.output_preview
+                            .clone()
+                            .unwrap_or_else(|| tool.summary.clone())
+                    }),
+                    waiting_summary: (status == GraphNodeStatus::Waiting).then(|| {
+                        if tool.summary.is_empty() {
+                            tool.name.clone()
+                        } else {
+                            tool.summary.clone()
+                        }
+                    }),
                     stop_run_id: None,
                     group_tab: None,
                     members: Vec::new(),
@@ -893,8 +946,13 @@ const fn map_to_process_status(status: GraphNodeStatus) -> ProcessNodeStatus {
         GraphNodeStatus::Completed => ProcessNodeStatus::Completed,
         GraphNodeStatus::Failed => ProcessNodeStatus::Failed,
         GraphNodeStatus::Cancelled => ProcessNodeStatus::Cancelled,
-        GraphNodeStatus::Interrupted => ProcessNodeStatus::Interrupted,
-        GraphNodeStatus::Skipped => ProcessNodeStatus::Skipped,
+        GraphNodeStatus::Interrupted | GraphNodeStatus::Blocked | GraphNodeStatus::TimedOut => {
+            ProcessNodeStatus::Interrupted
+        }
+        GraphNodeStatus::Skipped
+        | GraphNodeStatus::Denied
+        | GraphNodeStatus::Expired
+        | GraphNodeStatus::Superseded => ProcessNodeStatus::Skipped,
     }
 }
 
@@ -1113,13 +1171,24 @@ pub fn layout_dag_nodes_with_policy(
 }
 
 fn classify_edge_style(from: GraphNodeStatus, to: GraphNodeStatus) -> (GraphEdgeTone, bool) {
-    if to == GraphNodeStatus::Skipped || from == GraphNodeStatus::Cancelled {
+    if matches!(
+        to,
+        GraphNodeStatus::Skipped
+            | GraphNodeStatus::Denied
+            | GraphNodeStatus::Expired
+            | GraphNodeStatus::Superseded
+    ) || from == GraphNodeStatus::Cancelled
+    {
         return (GraphEdgeTone::Skipped, true);
     }
     if from.is_terminal_error() || to.is_terminal_error() {
         return (GraphEdgeTone::Danger, false);
     }
-    if from == GraphNodeStatus::Waiting || to == GraphNodeStatus::Waiting {
+    if from == GraphNodeStatus::Waiting
+        || to == GraphNodeStatus::Waiting
+        || from.is_warning_or_error()
+        || to.is_warning_or_error()
+    {
         return (GraphEdgeTone::Warning, true);
     }
     if from == GraphNodeStatus::Running || to == GraphNodeStatus::Running {
@@ -1232,36 +1301,69 @@ fn tool_to_member(step: &TopologyToolStep, now_ms: i64) -> GraphNodeMember {
         subagent_kind: None,
         exit_code: step.exit_code,
         stop_run_id: None,
-        error: (status == GraphNodeStatus::Failed).then(|| step.summary.clone()),
-        waiting_summary: (status == GraphNodeStatus::Waiting).then(|| step.summary.clone()),
+        error: status.is_terminal_error().then(|| {
+            step.output_preview
+                .clone()
+                .unwrap_or_else(|| step.summary.clone())
+        }),
+        waiting_summary: (status == GraphNodeStatus::Waiting).then(|| {
+            if step.summary.is_empty() {
+                step.name.clone()
+            } else {
+                step.summary.clone()
+            }
+        }),
         payload: GraphNodePayload::ToolStep(Box::new(step.clone())),
     }
 }
 
-fn aggregate_member_status(members: &[GraphNodeMember]) -> GraphNodeStatus {
-    if members.iter().any(|m| m.status == GraphNodeStatus::Waiting) {
+/// Aggregates child statuses into one group/wave/card status (`docs/design.md` §2.2).
+#[must_use]
+pub fn aggregate_statuses(statuses: &[GraphNodeStatus]) -> GraphNodeStatus {
+    if statuses.contains(&GraphNodeStatus::Waiting) {
         return GraphNodeStatus::Waiting;
     }
-    if members.iter().any(|m| m.status == GraphNodeStatus::Running) {
+    if statuses.contains(&GraphNodeStatus::Running) {
         return GraphNodeStatus::Running;
     }
-    if members.iter().any(|m| m.status.is_terminal_error()) {
+    if statuses.iter().any(|s| s.is_terminal_error()) {
         return GraphNodeStatus::Failed;
     }
-    if members
-        .iter()
-        .any(|m| matches!(m.status, GraphNodeStatus::Queued | GraphNodeStatus::Pending))
-    {
+    // The dominant warning: an interruption outranks a timeout, which outranks a block.
+    for warn in [
+        GraphNodeStatus::Interrupted,
+        GraphNodeStatus::TimedOut,
+        GraphNodeStatus::Blocked,
+    ] {
+        if statuses.contains(&warn) {
+            return warn;
+        }
+    }
+    if statuses.contains(&GraphNodeStatus::Queued) {
         return GraphNodeStatus::Queued;
     }
-    if !members.is_empty()
-        && members
-            .iter()
-            .all(|m| m.status == GraphNodeStatus::Cancelled)
-    {
-        return GraphNodeStatus::Cancelled;
+    if statuses.contains(&GraphNodeStatus::Pending) {
+        return GraphNodeStatus::Pending;
+    }
+    if !statuses.is_empty() && !statuses.contains(&GraphNodeStatus::Completed) {
+        for stopped in [
+            GraphNodeStatus::Denied,
+            GraphNodeStatus::Cancelled,
+            GraphNodeStatus::Expired,
+            GraphNodeStatus::Superseded,
+            GraphNodeStatus::Skipped,
+        ] {
+            if statuses.contains(&stopped) {
+                return stopped;
+            }
+        }
     }
     GraphNodeStatus::Completed
+}
+
+fn aggregate_member_status(members: &[GraphNodeMember]) -> GraphNodeStatus {
+    let statuses: Vec<GraphNodeStatus> = members.iter().map(|m| m.status).collect();
+    aggregate_statuses(&statuses)
 }
 
 fn wave_started_ms(wave: &ExecutionWave) -> Option<i64> {
@@ -1286,7 +1388,7 @@ pub const fn map_todo_status(status: AgentTodoStatus) -> GraphNodeStatus {
         AgentTodoStatus::Completed => GraphNodeStatus::Completed,
         AgentTodoStatus::Cancelled => GraphNodeStatus::Cancelled,
         AgentTodoStatus::Failed => GraphNodeStatus::Failed,
-        AgentTodoStatus::Blocked => GraphNodeStatus::Skipped,
+        AgentTodoStatus::Blocked => GraphNodeStatus::Blocked,
     }
 }
 
@@ -1553,7 +1655,7 @@ fn task_runtime_overlay(
             AgentTodoStatus::Completed => GraphNodeStatus::Completed,
             AgentTodoStatus::Failed => GraphNodeStatus::Failed,
             AgentTodoStatus::Cancelled => GraphNodeStatus::Cancelled,
-            AgentTodoStatus::Blocked => GraphNodeStatus::Skipped,
+            AgentTodoStatus::Blocked => GraphNodeStatus::Blocked,
             _ => map_run_status(sub.run.status),
         };
         let elapsed = if sub.run.status.is_active() {
@@ -1596,17 +1698,306 @@ pub const fn map_run_status(status: AgentRunStatus) -> GraphNodeStatus {
     }
 }
 
+/// Maps a topology tool status string (`spanbay-app-agent` `topology.rs`).
 #[must_use]
 pub fn map_tool_status(status: &str) -> GraphNodeStatus {
     match status {
         "ok" => GraphNodeStatus::Completed,
         "running" => GraphNodeStatus::Running,
-        "waiting_approval" | "denied" | "timed_out" => GraphNodeStatus::Waiting,
+        "waiting_approval" => GraphNodeStatus::Waiting,
+        "denied" => GraphNodeStatus::Denied,
+        "blocked" => GraphNodeStatus::Blocked,
+        "timed_out" => GraphNodeStatus::TimedOut,
         "error" => GraphNodeStatus::Failed,
+        "interrupted" => GraphNodeStatus::Interrupted,
         "cancelled" => GraphNodeStatus::Cancelled,
-        "superseded" => GraphNodeStatus::Skipped,
+        "expired" => GraphNodeStatus::Expired,
+        "superseded" => GraphNodeStatus::Superseded,
         _ => GraphNodeStatus::Pending,
     }
+}
+
+/// Maps how a live tool call ended.
+#[must_use]
+pub const fn map_tool_call_status(status: ToolCallStatus) -> GraphNodeStatus {
+    match status {
+        ToolCallStatus::Ok => GraphNodeStatus::Completed,
+        ToolCallStatus::Error => GraphNodeStatus::Failed,
+        ToolCallStatus::Interrupted => GraphNodeStatus::Interrupted,
+        ToolCallStatus::Denied => GraphNodeStatus::Denied,
+        ToolCallStatus::Blocked => GraphNodeStatus::Blocked,
+        ToolCallStatus::Cancelled => GraphNodeStatus::Cancelled,
+        ToolCallStatus::ApprovalTimedOut => GraphNodeStatus::TimedOut,
+        ToolCallStatus::Expired => GraphNodeStatus::Expired,
+        ToolCallStatus::Superseded => GraphNodeStatus::Superseded,
+    }
+}
+
+/// Whether `decided_by` names a policy/rule/mode block rather than a user denial.
+#[must_use]
+pub fn is_blocked_decider(decided_by: Option<&str>) -> bool {
+    matches!(decided_by, Some("mode" | "plan"))
+        || decided_by.is_some_and(|by| by.starts_with("hard_block:") || by.starts_with("block:"))
+}
+
+/// Maps a stored audit row. The table keeps Interrupted as `output-error` (or an unfinished state
+/// when the process crashed) and Blocked as `output-denied`; `placeholder` (the result is the
+/// crash-recovery marker) and `decided_by` tell them apart.
+#[must_use]
+pub fn map_audit_tool_state(record: &AgentToolCallRecord, placeholder: bool) -> GraphNodeStatus {
+    match record.state.as_str() {
+        "output-available" => GraphNodeStatus::Completed,
+        "output-error" if placeholder => GraphNodeStatus::Interrupted,
+        "output-error" => GraphNodeStatus::Failed,
+        "output-denied" if is_blocked_decider(record.decided_by.as_deref()) => {
+            GraphNodeStatus::Blocked
+        }
+        "output-denied" => GraphNodeStatus::Denied,
+        "output-cancelled" => GraphNodeStatus::Cancelled,
+        "approval-timed-out" => GraphNodeStatus::TimedOut,
+        "approval-expired" => GraphNodeStatus::Expired,
+        "output-superseded" => GraphNodeStatus::Superseded,
+        _ if placeholder => GraphNodeStatus::Interrupted,
+        "approval-requested" => GraphNodeStatus::Waiting,
+        _ => GraphNodeStatus::Running,
+    }
+}
+
+/// Fallback node synthesized from [`AgentRunTopology`] when a `Steps` or `Timeline` selection is
+/// not directly present in the active graph layout.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FallbackGraphSelection {
+    pub node: GraphNode,
+    pub stage: usize,
+    pub parent_crumb: Option<(String, String)>,
+}
+
+/// Synthesizes a standalone [`GraphNode`] (with its stage index and optional parent breadcrumb)
+/// from `topo` when `selected_id` comes from `Steps` or `Timeline` (`main-start-*`,
+/// `main-end-*`, `sub:*`, `tool:*`) and is not directly present in the active graph layout
+/// (e.g. structured Task Graph mode or >4 parallel sub-agents).
+#[must_use]
+pub fn synthesize_fallback_node(
+    topo: &AgentRunTopology,
+    selected_id: &str,
+    now_ms: i64,
+    labels: &GraphBuildLabels<'_>,
+) -> Option<FallbackGraphSelection> {
+    if selected_id == format!("main-start-{}", topo.run.run_id) {
+        let run_start = topo.run.started_at_ms;
+        let first_wave_start = topo
+            .waves
+            .first()
+            .and_then(wave_started_ms)
+            .unwrap_or(run_start);
+        let trigger_ms = (first_wave_start - run_start).max(0) as u64;
+        let status = if topo.waves.is_empty() {
+            map_run_status(topo.run.status)
+        } else {
+            GraphNodeStatus::Completed
+        };
+        return Some(FallbackGraphSelection {
+            node: GraphNode {
+                id: selected_id.to_owned(),
+                task_id: None,
+                attempt: 0,
+                stage_hint: Some(0),
+                kind: GraphNodeKind::Main,
+                title: labels.trigger_title.to_owned(),
+                subtitle: Some(topo.run.model_label.clone()),
+                status,
+                elapsed_ms: (trigger_ms > 0).then_some(trigger_ms),
+                role: None,
+                subagent_kind: None,
+                resumed: false,
+                step_count: None,
+                exit_code: None,
+                error: None,
+                waiting_summary: None,
+                stop_run_id: None,
+                group_tab: None,
+                members: Vec::new(),
+                expanded: false,
+                depends_on: Vec::new(),
+                payload: GraphNodePayload::MainRun { is_summary: false },
+            },
+            stage: 0,
+            parent_crumb: None,
+        });
+    }
+    if selected_id == format!("main-end-{}", topo.run.run_id) {
+        let term_active = topo.run.status.is_active();
+        let total_elapsed = if term_active {
+            (now_ms - topo.run.started_at_ms).max(topo.awake_ms as i64) as u64
+        } else {
+            topo.awake_ms
+        };
+        let stage = topo.waves.len() + 1;
+        return Some(FallbackGraphSelection {
+            node: GraphNode {
+                id: selected_id.to_owned(),
+                task_id: None,
+                attempt: 0,
+                stage_hint: Some(stage),
+                kind: GraphNodeKind::Main,
+                title: if term_active {
+                    labels.joining_title.to_owned()
+                } else {
+                    labels.summary_title.to_owned()
+                },
+                subtitle: topo.last_answer.clone(),
+                status: map_run_status(topo.run.status),
+                elapsed_ms: (!term_active).then_some(total_elapsed),
+                role: None,
+                subagent_kind: None,
+                resumed: false,
+                step_count: Some(topo.run.iterations),
+                exit_code: None,
+                error: topo.run.error.clone(),
+                waiting_summary: topo.pending_approval.as_ref().map(|a| a.summary.clone()),
+                stop_run_id: term_active.then(|| topo.run.run_id.clone()),
+                group_tab: None,
+                members: Vec::new(),
+                expanded: false,
+                depends_on: Vec::new(),
+                payload: GraphNodePayload::MainRun { is_summary: true },
+            },
+            stage,
+            parent_crumb: None,
+        });
+    }
+    if let Some(sub_id) = selected_id.strip_prefix("sub:") {
+        for (w_idx, wave) in topo.waves.iter().enumerate() {
+            match wave {
+                ExecutionWave::ParallelSubagents { subagents, .. } => {
+                    if let Some(sub) = subagents.iter().find(|s| s.run.run_id == sub_id) {
+                        let node = subagent_to_graph_node(
+                            selected_id.to_owned(),
+                            w_idx + 1,
+                            sub,
+                            &[],
+                            false,
+                            now_ms,
+                            None,
+                        );
+                        return Some(FallbackGraphSelection {
+                            node,
+                            stage: w_idx + 1,
+                            parent_crumb: None,
+                        });
+                    }
+                }
+                ExecutionWave::SingleSubagent { subagent, .. } if subagent.run.run_id == sub_id => {
+                    let node = subagent_to_graph_node(
+                        selected_id.to_owned(),
+                        w_idx + 1,
+                        subagent,
+                        &[],
+                        false,
+                        now_ms,
+                        None,
+                    );
+                    return Some(FallbackGraphSelection {
+                        node,
+                        stage: w_idx + 1,
+                        parent_crumb: None,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    if let Some(call_id) = selected_id.strip_prefix("tool:") {
+        let build_tool_node = |step: &TopologyToolStep, stage: usize| -> GraphNode {
+            let status = map_tool_status(&step.status);
+            let elapsed = step
+                .duration_ms
+                .or_else(|| span_duration_ms(step.started_ms, step.ended_ms, now_ms));
+            GraphNode {
+                id: selected_id.to_owned(),
+                task_id: None,
+                attempt: 0,
+                stage_hint: Some(stage),
+                kind: infer_tool_node_kind(&step.name, &step.class),
+                title: step.name.clone(),
+                subtitle: (!step.summary.is_empty()).then(|| step.summary.clone()),
+                status,
+                elapsed_ms: elapsed,
+                role: None,
+                subagent_kind: None,
+                resumed: false,
+                step_count: None,
+                exit_code: step.exit_code,
+                error: status.is_terminal_error().then(|| {
+                    step.output_preview
+                        .clone()
+                        .unwrap_or_else(|| step.summary.clone())
+                }),
+                waiting_summary: (status == GraphNodeStatus::Waiting).then(|| {
+                    if step.summary.is_empty() {
+                        step.name.clone()
+                    } else {
+                        step.summary.clone()
+                    }
+                }),
+                stop_run_id: None,
+                group_tab: None,
+                members: Vec::new(),
+                expanded: false,
+                depends_on: Vec::new(),
+                payload: GraphNodePayload::ToolStep(Box::new(step.clone())),
+            }
+        };
+        for (w_idx, wave) in topo.waves.iter().enumerate() {
+            let stage = w_idx + 1;
+            match wave {
+                ExecutionWave::SerialTool { tool, .. } if tool.call_id == call_id => {
+                    return Some(FallbackGraphSelection {
+                        node: build_tool_node(tool, stage),
+                        stage,
+                        parent_crumb: None,
+                    });
+                }
+                ExecutionWave::ParallelTools { tools, .. } => {
+                    if let Some(step) = tools.iter().find(|t| t.call_id == call_id) {
+                        return Some(FallbackGraphSelection {
+                            node: build_tool_node(step, stage),
+                            stage,
+                            parent_crumb: None,
+                        });
+                    }
+                }
+                ExecutionWave::ParallelSubagents { subagents, .. } => {
+                    for sub in subagents {
+                        if let Some(step) = sub.tool_calls.iter().find(|t| t.call_id == call_id) {
+                            let crumb =
+                                (format!("sub:{}", sub.run.run_id), sub.description.clone());
+                            return Some(FallbackGraphSelection {
+                                node: build_tool_node(step, stage),
+                                stage,
+                                parent_crumb: Some(crumb),
+                            });
+                        }
+                    }
+                }
+                ExecutionWave::SingleSubagent { subagent, .. } => {
+                    if let Some(step) = subagent.tool_calls.iter().find(|t| t.call_id == call_id) {
+                        let crumb = (
+                            format!("sub:{}", subagent.run.run_id),
+                            subagent.description.clone(),
+                        );
+                        return Some(FallbackGraphSelection {
+                            node: build_tool_node(step, stage),
+                            stage,
+                            parent_crumb: Some(crumb),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 fn infer_tool_node_kind(name: &str, class: &str) -> GraphNodeKind {
@@ -1939,7 +2330,24 @@ mod tests {
         ];
 
         // Even before any runtime waves arrive, structured TaskGraph enables & defaults to Graph.
-        let mut topo = base_topology(Vec::new(), 1, 0);
+        let mut topo = base_topology(
+            vec![
+                ExecutionWave::SingleSubagent {
+                    wave_index: 1,
+                    started_ms: Some(2_000),
+                    ended_ms: Some(4_500),
+                    subagent: Box::new(sample_sub("s1", "Audit router", AgentRunStatus::Completed)),
+                },
+                ExecutionWave::SerialTool {
+                    wave_index: 2,
+                    started_ms: Some(5_000),
+                    ended_ms: Some(5_500),
+                    tool: Box::new(sample_tool("parent_sh", "shell", "ok")),
+                },
+            ],
+            2,
+            1,
+        );
         topo.task_graph = tasks.clone();
         assert!(is_graph_available(&topo));
         assert_eq!(select_default_view_mode(&topo), RunViewMode::Graph);
@@ -1952,5 +2360,156 @@ mod tests {
             preview.find_selection("task:n1"),
             Some(SelectedGraphTarget::Member { member, .. }) if member.task_id.as_deref() == Some("n1")
         ));
+
+        let live_graph =
+            build_graph_from_topology(&topo, &HashSet::new(), 11_000, &sample_labels());
+        assert!(matches!(
+            live_graph.find_selection("sub:s1"),
+            Some(SelectedGraphTarget::Member { member, .. }) if member.task_id.as_deref() == Some("n1")
+        ));
+        assert!(
+            synthesize_fallback_node(&topo, "main-start-run_main", 11_000, &sample_labels())
+                .is_some()
+        );
+        assert!(
+            synthesize_fallback_node(&topo, "tool:parent_sh", 11_000, &sample_labels()).is_some()
+        );
+        assert!(
+            synthesize_fallback_node(&topo, "tool:s1-t1", 11_000, &sample_labels())
+                .is_some_and(|fb| fb.parent_crumb.is_some())
+        );
+    }
+
+    #[test]
+    fn audit_rows_and_topology_strings_keep_every_tool_outcome_apart() {
+        let row = |state: &str, decided_by: Option<&str>| AgentToolCallRecord {
+            session_id: "s".into(),
+            call_id: "c".into(),
+            run_id: "r".into(),
+            message_id: None,
+            name: "shell".into(),
+            class: "exec".into(),
+            state: state.into(),
+            args_json: "{}".into(),
+            risk: "low".into(),
+            decided_by: decided_by.map(str::to_owned),
+            decision: None,
+            decided_ms: None,
+            started_ms: None,
+            ended_ms: None,
+            exit_code: None,
+            sandbox: None,
+            truncated: false,
+            output_bytes: 0,
+            spill_ref: None,
+            requested_ms: None,
+        };
+        let cases = [
+            ("output-available", None, false, GraphNodeStatus::Completed),
+            ("output-error", None, false, GraphNodeStatus::Failed),
+            ("output-error", None, true, GraphNodeStatus::Interrupted),
+            (
+                "output-denied",
+                Some("user"),
+                false,
+                GraphNodeStatus::Denied,
+            ),
+            (
+                "output-denied",
+                Some("hard_block:sudo"),
+                false,
+                GraphNodeStatus::Blocked,
+            ),
+            (
+                "output-denied",
+                Some("block:tool"),
+                false,
+                GraphNodeStatus::Blocked,
+            ),
+            (
+                "output-denied",
+                Some("block:rule:r1"),
+                false,
+                GraphNodeStatus::Blocked,
+            ),
+            (
+                "output-denied",
+                Some("plan"),
+                false,
+                GraphNodeStatus::Blocked,
+            ),
+            (
+                "output-denied",
+                Some("mode"),
+                false,
+                GraphNodeStatus::Blocked,
+            ),
+            ("output-cancelled", None, false, GraphNodeStatus::Cancelled),
+            ("approval-timed-out", None, false, GraphNodeStatus::TimedOut),
+            ("approval-expired", None, false, GraphNodeStatus::Expired),
+            (
+                "output-superseded",
+                None,
+                false,
+                GraphNodeStatus::Superseded,
+            ),
+            ("approval-requested", None, false, GraphNodeStatus::Waiting),
+            (
+                "approval-requested",
+                None,
+                true,
+                GraphNodeStatus::Interrupted,
+            ),
+            ("input-available", None, true, GraphNodeStatus::Interrupted),
+            ("input-streaming", None, false, GraphNodeStatus::Running),
+        ];
+        for (state, by, placeholder, want) in cases {
+            assert_eq!(
+                map_audit_tool_state(&row(state, by), placeholder),
+                want,
+                "{state} {by:?} placeholder={placeholder}"
+            );
+        }
+        for (s, want) in [
+            ("denied", GraphNodeStatus::Denied),
+            ("blocked", GraphNodeStatus::Blocked),
+            ("timed_out", GraphNodeStatus::TimedOut),
+            ("expired", GraphNodeStatus::Expired),
+            ("superseded", GraphNodeStatus::Superseded),
+            ("interrupted", GraphNodeStatus::Interrupted),
+        ] {
+            assert_eq!(map_tool_status(s), want);
+        }
+    }
+
+    #[test]
+    fn an_interrupted_tool_marks_its_group_without_counting_as_a_failure() {
+        let members: Vec<GraphNodeMember> = [
+            sample_tool("a", "grep", "ok"),
+            sample_tool("b", "shell", "interrupted"),
+        ]
+        .iter()
+        .map(|t| tool_to_member(t, 0))
+        .collect();
+        let status = aggregate_member_status(&members);
+        assert_eq!(status, GraphNodeStatus::Interrupted);
+        assert!(!status.is_terminal_error());
+        assert!(
+            members[1].error.is_none(),
+            "warning states do not populate the red failure banner"
+        );
+        assert_eq!(
+            aggregate_statuses(&[GraphNodeStatus::Pending, GraphNodeStatus::Pending]),
+            GraphNodeStatus::Pending
+        );
+        for stopped in [
+            GraphNodeStatus::Denied,
+            GraphNodeStatus::Expired,
+            GraphNodeStatus::Superseded,
+            GraphNodeStatus::Skipped,
+            GraphNodeStatus::Cancelled,
+        ] {
+            assert_eq!(aggregate_statuses(&[stopped, stopped]), stopped);
+        }
     }
 }

@@ -9,8 +9,8 @@
 
 use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    div, px,
+    MouseMoveEvent, MouseUpEvent, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use spanbay_desktop::state::{
     DataFlowVisibility, FlowGraphLayout, GuideOrientation, ProcessEdgeLayer, ProcessEdgeTone,
@@ -55,6 +55,10 @@ impl FlowsView {
         geometry: &ProcessGraphGeometry,
         cx: &mut Context<Self>,
     ) {
+        if ev.pressed_button != Some(MouseButton::Left) {
+            self.cancel_step_drag(cx);
+            return;
+        }
         let Some(drag) = &mut self.drag_state else {
             return;
         };
@@ -66,6 +70,7 @@ impl FlowsView {
             return;
         }
         drag.dragging = true;
+        self.drag_suppress_click = true;
         let raw_x = (drag.start_pos.0 + sdx / drag.scale).max(20.0);
         let raw_y = (drag.start_pos.1 + sdy / drag.scale).max(24.0);
         let (sx, sy, guides) = snap_drag_position(
@@ -90,6 +95,16 @@ impl FlowsView {
         cx.notify();
     }
 
+    pub(super) fn cancel_step_drag(&mut self, cx: &mut Context<Self>) {
+        let had_drag = self.drag_state.take().is_some();
+        self.drag_suppress_click = false;
+        let had_guides = !self.alignment_guides.is_empty();
+        self.alignment_guides.clear();
+        if had_drag || had_guides {
+            cx.notify();
+        }
+    }
+
     pub(super) fn end_step_drag(&mut self, cx: &mut Context<Self>) {
         let Some(drag) = self.drag_state.take() else {
             return;
@@ -107,8 +122,11 @@ impl FlowsView {
                 self.dirty = true;
             }
         }
+        let had_guides = !self.alignment_guides.is_empty();
         self.alignment_guides.clear();
-        cx.notify();
+        if drag.dragging || had_guides {
+            cx.notify();
+        }
     }
 }
 
@@ -237,18 +255,36 @@ pub fn render_flow_graph(
         .w(px(canvas_w))
         .h(px(canvas_h))
         .flex_shrink_0()
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _, _, cx| {
+                this.drag_suppress_click = false;
+                this.cancel_step_drag(cx);
+            }),
+        )
         .on_mouse_move(cx.listener(move |this, ev: &MouseMoveEvent, _, cx| {
             if this.drag_state.is_some() {
                 this.update_step_drag(ev, &geom_for_drag, cx);
             }
         }))
+        .capture_any_mouse_up(cx.listener(|this, ev: &MouseUpEvent, _, cx| {
+            if ev.button == MouseButton::Left {
+                this.end_step_drag(cx);
+            }
+        }))
         .on_mouse_up(
             MouseButton::Left,
-            cx.listener(|this, _, _, cx| this.end_step_drag(cx)),
+            cx.listener(|this, _, _, cx| {
+                this.end_step_drag(cx);
+                this.drag_suppress_click = false;
+            }),
         )
         .on_mouse_up_out(
             MouseButton::Left,
-            cx.listener(|this, _, _, cx| this.end_step_drag(cx)),
+            cx.listener(|this, _, _, cx| {
+                this.end_step_drag(cx);
+                this.drag_suppress_click = false;
+            }),
         )
         .on_click(cx.listener(|this, _, _, cx| {
             if this.drag_suppress_click {

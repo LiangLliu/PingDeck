@@ -3,29 +3,27 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use gpui_kit::{Context, Window};
+use gpui_kit::{Context, FollowMode, Window};
 use spanbay_desktop::core::agent::approvals::ApprovalAnswer;
 use spanbay_desktop::core::agent::dto::AgentRunInput;
 use spanbay_desktop::core::agent::model::{
     AgentRole, AgentRunStatus, AgentSessionInput, AgentSessionPatch, AgentTarget, ApprovalDecision,
-    ApprovalScope, ReasoningEffort,
+    ApprovalScope,
 };
 use spanbay_desktop::core::app::{
-    AgentPageRequest, AppState, agent_approval_answer_impl, agent_run_continue_impl,
-    agent_run_start_impl, agent_run_stop_impl, agent_run_unsubscribe_impl,
-    agent_session_create_impl, agent_session_get_impl, agent_session_update_impl,
-    agent_workspace_info_impl, environment_list_impl, llm_model_list_impl, llm_provider_list_impl,
+    AgentPageRequest, AppState, agent_approval_answer_impl, agent_plan_set_impl,
+    agent_run_continue_impl, agent_run_start_impl, agent_run_stop_impl, agent_session_create_impl,
+    agent_session_get_impl, agent_session_update_impl, agent_workspace_info_impl,
+    environment_list_impl, llm_model_list_impl, llm_provider_list_impl,
 };
-use spanbay_desktop::core::model::settings::ToolApproval;
-use spanbay_desktop::state::ChatThreadState;
+use spanbay_desktop::state::{ChatThreadState, RunError, provisional_run_summary};
 
 use crate::bridge::{runtime, spawn_async_into, spawn_blocking_into};
 use crate::ui::Tone;
 
 use super::actions_extra::resolve_active_binding;
-use super::types::ChatModal;
+use super::types::LastApprovalNotice;
 use super::{ChatView, ModelOption, ProviderChatMeta};
-
 pub(super) fn load_model_options(
     state: &AppState,
 ) -> (Vec<ModelOption>, HashMap<String, ProviderChatMeta>) {
@@ -91,19 +89,13 @@ impl ChatView {
     ) {
         let prev_sid = self.thread.session_id.clone();
         if !prev_sid.is_empty() && (!self.thread.messages.is_empty() || self.is_run_active()) {
-            let current_text = self.composer.read(cx).value().to_string();
+            let current_text = self
+                .pending_draft_sync
+                .take()
+                .unwrap_or_else(|| self.composer.read(cx).value().to_string());
             self.drafts.set(&prev_sid, current_text);
             runtime(cx).save_chat_drafts(&self.drafts);
-            if let Some(sub_id) = self.active_sub_id.take() {
-                agent_run_unsubscribe_impl(runtime(cx).state(), sub_id);
-            }
-            self.subscribed_session_id = None;
-            self.stream_task = None;
-            self.thread = ChatThreadState::default();
-            self.session = None;
-            self.audit_tool_calls.clear();
-            self.submitting = false;
-            self.pending_user_text = None;
+            self.reset_session_view(String::new(), None, cx);
         }
         self.composer
             .update(cx, |c, cx| c.set_value(context_markdown, window, cx));
@@ -115,8 +107,30 @@ impl ChatView {
     }
 
     pub fn send_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.composer.read(cx).value().trim().to_owned();
+        if self.editing_queue_id.is_some() {
+            self.save_edited_queued_turn(window, cx);
+            return;
+        }
+        let mut text = self.composer.read(cx).value().trim().to_owned();
+        if !self.diff_comments.is_empty() {
+            let prefix: String = self
+                .diff_comments
+                .drain(..)
+                .map(|c| format!("> @{}:{} — {}", c.path, c.line, c.comment))
+                .collect::<Vec<_>>()
+                .join("\n");
+            text = if text.is_empty() {
+                prefix
+            } else {
+                format!("{prefix}\n\n{text}")
+            };
+        }
         if text.is_empty() && self.pending_attachments.is_empty() {
+            return;
+        }
+        // A waiting plan or question takes the text as a revision (design §7), not a queued turn.
+        if !self.thread.open_gates.is_empty() {
+            self.steer_active_run(window, cx);
             return;
         }
         if self.submitting || self.is_run_active() {
@@ -135,16 +149,26 @@ impl ChatView {
         let skills = std::mem::take(&mut self.selected_skills);
 
         self.submitting = true;
+        self.plan_revising = false;
+        self.last_approval_notice = None;
         self.run_started_at = Some(Instant::now());
         self.start_elapsed_ticker(cx);
         self.thinking_started_at = None;
         self.thinking_ended_at = None;
+        if self.has_later_messages {
+            self.thread.messages.clear();
+            self.thread.messages_version = self.thread.messages_version.wrapping_add(1);
+            self.turn_inputs_version = self.turn_inputs_version.wrapping_add(1);
+            self.has_later_messages = false;
+            self.load_later_failed = false;
+            self.loaded_earlier_once = false;
+            self.resync(cx);
+        }
         self.pending_user_text = Some(text.clone());
         self.collapsed_live_reasoning = false;
         self.thread.last_error = None;
         self.status_msg = None;
-        self.stick_to_bottom = true;
-        self.scroll_handle.scroll_to_bottom();
+        self.list_state.set_follow_mode(FollowMode::Tail);
         cx.notify();
 
         let sid = self.thread.session_id.clone();
@@ -152,6 +176,8 @@ impl ChatView {
             let text_for_run = text;
             let active_ws = self.active_workspace_id.clone();
             let active_env = self.active_environment_id.clone();
+            let want_plan = self.plan_mode;
+            let epoch = self.stream_epoch;
             let task = spawn_blocking_into(
                 cx,
                 move |state| {
@@ -178,26 +204,44 @@ impl ChatView {
                         .and_then(|p| agent_workspace_info_impl(state, p).ok());
                     Ok::<_, spanbay_desktop::core::error::AppError>((session, envs, ws_info))
                 },
-                move |this, res, cx| match res {
-                    Ok((session, envs, ws_info)) => {
-                        let id = session.id.clone();
-                        this.thread = ChatThreadState::new(id.clone(), session.title.clone());
-                        this.environments = envs;
-                        this.workspace_info = ws_info;
-                        this.session = Some(session);
-                        this.ensure_subscribed(&id, cx);
-                        this.refresh_catalog(cx);
-                        this.dispatch_run(id, text_for_run, attachment_ids, skills, cx);
+                move |this, res, cx| {
+                    if this.stream_epoch != epoch || !this.thread.session_id.is_empty() {
+                        return;
                     }
-                    Err(err) => {
-                        this.submitting = false;
-                        this.run_started_at = None;
-                        this.pending_user_text = None;
-                        this.pending_draft_sync = Some(text_for_run);
-                        let msg = err.message().to_owned();
-                        this.thread.last_error = Some(msg.clone());
-                        this.status_msg = Some((Tone::Danger, msg));
-                        cx.notify();
+                    match res {
+                        Ok((session, envs, ws_info)) => {
+                            let id = session.id.clone();
+                            this.thread = ChatThreadState::new(id.clone(), session.title.clone());
+                            this.environments = envs;
+                            this.workspace_info = ws_info;
+                            this.session = Some(session);
+                            this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
+                            this.plan_mode = want_plan;
+                            this.ensure_subscribed(&id, cx);
+                            this.refresh_catalog(cx);
+                            this.dispatch_run(
+                                id,
+                                text_for_run,
+                                attachment_ids,
+                                skills,
+                                want_plan,
+                                cx,
+                            );
+                        }
+                        Err(err) => {
+                            this.submitting = false;
+                            this.run_started_at = None;
+                            this.tick_task = None;
+                            this.pending_user_text = None;
+                            this.pending_draft_sync = Some(text_for_run);
+                            let msg = err.message().to_owned();
+                            this.thread.last_error = Some(RunError {
+                                message: msg.clone(),
+                                failure: None,
+                            });
+                            this.status_msg = Some((Tone::Danger, msg));
+                            cx.notify();
+                        }
                     }
                 },
             );
@@ -208,7 +252,7 @@ impl ChatView {
         self.drafts.set(&sid, String::new());
         runtime(cx).save_chat_drafts(&self.drafts);
         self.ensure_subscribed(&sid, cx);
-        self.dispatch_run(sid, text, attachment_ids, skills, cx);
+        self.dispatch_run(sid, text, attachment_ids, skills, false, cx);
     }
 
     fn dispatch_run(
@@ -217,6 +261,7 @@ impl ChatView {
         text: String,
         attachment_ids: Vec<String>,
         skills: Vec<String>,
+        enable_plan: bool,
         cx: &mut Context<Self>,
     ) {
         let original_text = text.clone();
@@ -283,6 +328,9 @@ impl ChatView {
                         run_env_id = env_id;
                     }
                 }
+                if enable_plan {
+                    let _ = agent_plan_set_impl(&state, &sid, true).await;
+                }
                 let sid_post = sid.clone();
                 let bound_on_start = run_ws_id.is_some();
                 let input = AgentRunInput {
@@ -338,8 +386,9 @@ impl ChatView {
                 {
                     this.session = Some(updated);
                 }
+                this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
                 match res {
-                    Ok(_) => {
+                    Ok(started) => {
                         if let Some(provisional) = provisional_title
                             && this.title_generated_sessions.insert(sid_for_cb.clone())
                         {
@@ -350,30 +399,43 @@ impl ChatView {
                                 cx,
                             );
                         }
-                        if this.thread.session_id == sid_for_cb
-                            && this.thread.active_run.as_ref().is_some_and(|r| {
-                                matches!(
-                                    r.status,
-                                    AgentRunStatus::Queued
-                                        | AgentRunStatus::Running
-                                        | AgentRunStatus::WaitingApproval
-                                )
-                            })
-                        {
+                        if this.thread.session_id == sid_for_cb {
+                            this.latest_session_run_id = Some(started.run_id.clone());
+                            // Seed `active_run` if `RunStarted` has not arrived yet (e.g.
+                            // `dispatch_run` beat `ensure_subscribed`) so Stop/Steer/queue work.
+                            if this
+                                .thread
+                                .active_run
+                                .as_ref()
+                                .is_none_or(|r| r.run_id != started.run_id && !r.status.is_active())
+                            {
+                                this.thread.active_run = Some(provisional_run_summary(
+                                    started.run_id,
+                                    sid_for_cb.clone(),
+                                    AgentRunStatus::Queued,
+                                    this.session.as_ref().and_then(|s| s.target.clone()),
+                                    None,
+                                    0,
+                                ));
+                            }
                             this.submitting = false;
                         }
-                        this.auto_scroll_if_following();
                     }
                     Err(err) => {
+                        if this.thread.session_id != sid_for_cb {
+                            return;
+                        }
                         this.submitting = false;
                         this.run_started_at = None;
                         this.tick_task = None;
                         this.pending_user_text = None;
                         this.pending_draft_sync = Some(original_text);
                         let msg = err.message().to_owned();
-                        this.thread.last_error = Some(msg.clone());
+                        this.thread.last_error = Some(RunError {
+                            message: msg.clone(),
+                            failure: None,
+                        });
                         this.status_msg = Some((Tone::Danger, msg));
-                        this.auto_scroll_if_following();
                     }
                 }
                 cx.notify();
@@ -383,28 +445,53 @@ impl ChatView {
     }
 
     pub fn stop_active_run(&mut self, cx: &mut Context<Self>) {
-        let Some(run) = &self.thread.active_run else {
+        let active_run_id = self
+            .thread
+            .active_run
+            .as_ref()
+            .filter(|r| r.status.is_active())
+            .map(|r| r.run_id.clone());
+        let sid = self.thread.session_id.clone();
+        if active_run_id.is_none() && sid.is_empty() {
             self.submitting = false;
             self.tick_task = None;
             cx.notify();
             return;
-        };
-        let run_id = run.run_id.clone();
+        }
         let task = spawn_blocking_into(
             cx,
-            move |state| agent_run_stop_impl(state, &run_id),
+            move |state| {
+                let id = active_run_id.or_else(|| {
+                    state
+                        .agent
+                        .runs
+                        .active_for_session(&sid)
+                        .map(|r| r.run_id.clone())
+                });
+                id.is_some_and(|run_id| agent_run_stop_impl(state, &run_id))
+            },
             |_, _, _| {},
         );
         self._tasks.push(task);
     }
 
     pub fn continue_cost_pause(&mut self, run_id: String, proceed: bool, cx: &mut Context<Self>) {
+        let sid_check = self.thread.session_id.clone();
+        let run_check = run_id.clone();
         let task = spawn_blocking_into(
             cx,
             move |state| agent_run_continue_impl(state, &run_id, proceed),
-            |this, _, cx| {
-                this.thread.cost_pause = None;
-                cx.notify();
+            move |this, _, cx| {
+                if this.thread.session_id == sid_check
+                    && this
+                        .thread
+                        .cost_pause
+                        .as_ref()
+                        .is_some_and(|p| p.run_id == run_check)
+                {
+                    this.thread.cost_pause = None;
+                    cx.notify();
+                }
             },
         );
         self._tasks.push(task);
@@ -426,61 +513,45 @@ impl ChatView {
             edited_arguments: None,
             allow_network_once,
         };
+        self.send_approval_answer(run_id, call_id, answer, cx);
+    }
+
+    pub(super) fn send_approval_answer(
+        &mut self,
+        run_id: String,
+        call_id: String,
+        answer: ApprovalAnswer,
+        cx: &mut Context<Self>,
+    ) {
+        let sid_check = self.thread.session_id.clone();
+        let rid_done = run_id.clone();
+        let cid_done = call_id.clone();
+        let notice = LastApprovalNotice {
+            call_id: call_id.clone(),
+            decision: answer.decision,
+            scope: answer.scope,
+            reason: answer.message.clone(),
+        };
         let task = spawn_blocking_into(
             cx,
             move |state| agent_approval_answer_impl(state, &run_id, &call_id, answer),
-            |this, res, cx| {
-                if let Err(err) = res {
-                    this.status_msg = Some((Tone::Danger, err.message().to_owned()));
-                    cx.notify();
-                }
-            },
-        );
-        self._tasks.push(task);
-    }
-
-    pub fn patch_session(&mut self, patch: AgentSessionPatch, cx: &mut Context<Self>) {
-        let sid = self.thread.session_id.clone();
-        if !sid.is_empty() {
-            self.patch_session_by_id(sid, patch, cx);
-        }
-    }
-
-    pub fn patch_session_by_id(
-        &mut self,
-        sid: String,
-        patch: AgentSessionPatch,
-        cx: &mut Context<Self>,
-    ) {
-        let refresh_folder_info = patch.workspace_dir.is_some();
-        let sid_check = sid.clone();
-        let task = spawn_blocking_into(
-            cx,
-            move |state| {
-                let updated = agent_session_update_impl(state, &sid, patch)?;
-                let ws_info = if refresh_folder_info {
-                    Some(
-                        updated
-                            .workspace_dir
-                            .as_deref()
-                            .and_then(|p| agent_workspace_info_impl(state, p).ok()),
-                    )
-                } else {
-                    None
-                };
-                Ok::<_, spanbay_desktop::core::error::AppError>((updated, ws_info))
-            },
             move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
                 match res {
-                    Ok((updated, ws_info)) => {
-                        if this.thread.session_id == sid_check {
-                            this.thread.title = updated.title.clone();
-                            this.session = Some(updated);
-                            if let Some(info) = ws_info {
-                                this.workspace_info = info;
-                            }
-                        }
-                        this.refresh_catalog(cx);
+                    Ok(true) => {
+                        this.last_approval_notice = Some(notice);
+                        this.thread
+                            .pending_approvals
+                            .retain(|a| !(a.run_id == rid_done && a.call_id == cid_done));
+                        this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
+                    }
+                    Ok(false) => {
+                        this.thread
+                            .pending_approvals
+                            .retain(|a| !(a.run_id == rid_done && a.call_id == cid_done));
+                        this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
                     }
                     Err(err) => {
                         this.status_msg = Some((Tone::Danger, err.message().to_owned()));
@@ -492,79 +563,36 @@ impl ChatView {
         self._tasks.push(task);
     }
 
-    pub fn request_permission_mode(&mut self, mode: ToolApproval, cx: &mut Context<Self>) {
-        if mode == ToolApproval::AutoAll {
-            self.active_modal = Some(ChatModal::FullAccessConfirm {
-                acknowledged: false,
-            });
-            cx.notify();
+    /// Banner "Retry": reruns the session's head turn (never an earlier search slice end).
+    pub(super) fn retry_last_turn(&mut self, cx: &mut Context<Self>) {
+        let target_id = if self.has_later_messages {
+            self.session
+                .as_ref()
+                .and_then(|s| s.head_message_id.clone())
         } else {
-            self.set_permission_mode(mode, cx);
+            self.thread
+                .messages
+                .last()
+                .map(|m| m.id.clone())
+                .or_else(|| {
+                    self.session
+                        .as_ref()
+                        .and_then(|s| s.head_message_id.clone())
+                })
+        };
+        if let Some(id) = target_id {
+            self.thread.last_error = None;
+            if self.has_later_messages {
+                self.thread.messages.clear();
+                self.thread.messages_version = self.thread.messages_version.wrapping_add(1);
+                self.turn_inputs_version = self.turn_inputs_version.wrapping_add(1);
+                self.has_later_messages = false;
+                self.load_later_failed = false;
+                self.loaded_earlier_once = false;
+                self.list_state.set_follow_mode(FollowMode::Tail);
+                self.resync(cx);
+            }
+            self.retry_message(id, cx);
         }
-    }
-
-    pub fn set_permission_mode(&mut self, mode: ToolApproval, cx: &mut Context<Self>) {
-        self.patch_session(
-            AgentSessionPatch {
-                permission_mode: Some(mode),
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub fn set_reasoning_effort(
-        &mut self,
-        effort: Option<ReasoningEffort>,
-        cx: &mut Context<Self>,
-    ) {
-        self.patch_session(
-            AgentSessionPatch {
-                reasoning_effort: Some(effort),
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub fn toggle_web_enabled(&mut self, cx: &mut Context<Self>) {
-        let next = !self.session.as_ref().is_some_and(|s| s.web_enabled);
-        self.patch_session(
-            AgentSessionPatch {
-                web_enabled: Some(next),
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub fn toggle_pinned(&mut self, cx: &mut Context<Self>) {
-        let next = !self
-            .session
-            .as_ref()
-            .is_some_and(|s| s.pinned_at_ms.is_some());
-        self.patch_session(
-            AgentSessionPatch {
-                pinned: Some(next),
-                ..Default::default()
-            },
-            cx,
-        );
-    }
-
-    pub fn save_instructions(&mut self, cx: &mut Context<Self>) {
-        let text = self.instructions_input.read(cx).value().trim().to_owned();
-        self.patch_session(
-            AgentSessionPatch {
-                instructions: Some(text),
-                ..AgentSessionPatch::default()
-            },
-            cx,
-        );
-        self.status_msg = Some((
-            Tone::Success,
-            crate::ui::tr(cx).chat().actions_saved_instructions().into(),
-        ));
-        cx.notify();
     }
 }

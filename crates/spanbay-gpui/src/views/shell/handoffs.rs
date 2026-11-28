@@ -529,6 +529,21 @@ impl AppShell {
                     self.navigate(NavModule::Usage, cx);
                     self.modules.open_usage_run_id(run_id, window, cx);
                 }
+                ChatHandoff::OpenRequest {
+                    workspace_id,
+                    request_id,
+                } => {
+                    // Same target as the palette's "open request": the saved request's tab.
+                    if let Some(wid) = &workspace_id
+                        && self.state.active_workspace_id.as_deref() != Some(wid.as_str())
+                    {
+                        self.switch_workspace(wid.clone(), cx);
+                    }
+                    let ws_id = workspace_id.or_else(|| self.state.active_workspace_id.clone());
+                    self.navigate(NavModule::Requests, cx);
+                    self.modules
+                        .open_saved_request_by_id(ws_id, request_id, window, cx);
+                }
                 ChatHandoff::OpenWorkflowModal {
                     session_id,
                     run_id,

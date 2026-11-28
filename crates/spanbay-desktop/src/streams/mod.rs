@@ -5,7 +5,7 @@
 //! to immediately return `true`, so core producers reap gone subscribers automatically.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use spanbay_core::agent::model::{AgentEnvelope, AgentEvent};
 use spanbay_core::model::events::{EventSink, StreamCoalescer};
@@ -13,6 +13,15 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::Instant as TokioInstant;
+
+/// Waits before each retry after an agent subscription fails or its stream ends.
+pub const AGENT_RESUBSCRIBE_DELAYS: [Duration; 3] = [
+    Duration::from_secs(1),
+    Duration::from_secs(3),
+    Duration::from_secs(9),
+];
+/// After the retries are spent (the stream is marked degraded), the next attempt waits this long.
+pub const AGENT_RESUBSCRIBE_BACKOFF: Duration = Duration::from_secs(60);
 
 /// Drop-guard that aborts an in-flight Tokio [`JoinHandle`] if the outer UI task is cancelled,
 /// ensuring stream receivers drop immediately and upstream [`EventSink::is_gone`] becomes `true`.
@@ -114,15 +123,16 @@ pub fn channel_sink<E: Send + 'static>() -> (Arc<dyn EventSink<E>>, StreamReceiv
     (Arc::new(sink), rx)
 }
 
-/// Creates a coalescing `Arc<dyn EventSink<AgentEnvelope>>` using Tokio timers (zero parked OS
-/// threads) paired with its [`StreamReceiver`].
+/// Concrete coalescing sink type for agent streams (exposes [`CoalescingSink::with_bypass`] so
+/// resync snapshots never straddle a held-back coalesced delta).
+pub type AgentStreamSink = CoalescingSink<AgentEnvelope, ChannelSink<AgentEnvelope>>;
+
+/// Creates a coalescing [`AgentStreamSink`] using Tokio timers (zero parked OS threads) paired
+/// with its [`StreamReceiver`].
 #[must_use]
 pub fn coalesced_agent_sink(
     tokio: Handle,
-) -> (
-    Arc<dyn EventSink<AgentEnvelope>>,
-    StreamReceiver<AgentEnvelope>,
-) {
+) -> (Arc<AgentStreamSink>, StreamReceiver<AgentEnvelope>) {
     let (raw_sink, rx) = ChannelSink::pair();
     let coalesced = CoalescingSink::new(raw_sink, tokio, is_agent_delta, merge_agent_delta);
     (Arc::new(coalesced), rx)
@@ -144,6 +154,7 @@ struct State<E> {
     coalescer: StreamCoalescer<E>,
     timer_armed: bool,
     closed: bool,
+    bypass_depth: usize,
 }
 
 impl<E, S> Clone for CoalescingSink<E, S> {
@@ -169,6 +180,7 @@ impl<E: Send + 'static, S: EventSink<E> + 'static> CoalescingSink<E, S> {
                     coalescer: StreamCoalescer::new(is_delta, merge),
                     timer_armed: false,
                     closed: false,
+                    bypass_depth: 0,
                 }),
             }),
         }
@@ -190,10 +202,45 @@ impl<E: Send + 'static, S: EventSink<E> + 'static> CoalescingSink<E, S> {
         }
     }
 
+    /// Runs `f` while flushing any pending coalesced delta beforehand and bypassing coalescing for
+    /// any deltas emitted during `f`, so a snapshot taken inside `f` can never land mid-envelope.
+    pub fn with_bypass<R>(&self, f: impl FnOnce() -> R) -> R {
+        {
+            let mut state = self.lock();
+            if !state.closed {
+                let pending = state.coalescer.flush();
+                self.deliver(&mut state, pending);
+            }
+            state.bypass_depth += 1;
+        }
+        struct Guard<'a, E, S>(&'a CoalescingSink<E, S>);
+        impl<E, S> Drop for Guard<'_, E, S> {
+            fn drop(&mut self) {
+                let mut state = self
+                    .0
+                    .shared
+                    .state
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                state.bypass_depth = state.bypass_depth.saturating_sub(1);
+            }
+        }
+        let _guard = Guard(self);
+        f()
+    }
+
     pub fn push_at(&self, event: E, now: Instant) -> bool {
         let mut state = self.lock();
         if state.closed {
             return false;
+        }
+        if state.bypass_depth > 0 {
+            let pending = state.coalescer.flush();
+            self.deliver(&mut state, pending);
+            if !state.closed {
+                self.deliver(&mut state, std::iter::once(event));
+            }
+            return !state.closed;
         }
         let ready = state.coalescer.push(event, now);
         self.deliver(&mut state, ready);
@@ -273,7 +320,7 @@ pub fn merge_agent_delta(
     prev: &mut AgentEnvelope,
     next: AgentEnvelope,
 ) -> Result<(), AgentEnvelope> {
-    if prev.run_id != next.run_id {
+    if prev.run_id != next.run_id || next.first_seq != prev.seq.saturating_add(1) {
         return Err(next);
     }
     let AgentEnvelope {
@@ -408,5 +455,30 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
         assert_eq!((batch[1].first_seq, batch[1].seq), (2, 3));
+    }
+
+    #[test]
+    fn merge_agent_delta_refuses_non_contiguous_sequences() {
+        let mut prev = text(2, "a");
+        let skipped = text(4, "b");
+        let err = merge_agent_delta(&mut prev, skipped).unwrap_err();
+        assert_eq!(err.seq, 4);
+        assert_eq!(prev.seq, 2);
+    }
+
+    #[tokio::test]
+    async fn coalescing_sink_bypass_flushes_pending_and_delivers_unmerged() {
+        let (raw, mut rx) = ChannelSink::pair();
+        let sink = CoalescingSink::new(raw, Handle::current(), is_agent_delta, merge_agent_delta);
+        let start = Instant::now();
+        assert!(sink.push_at(text(1, "a"), start));
+        assert!(sink.push_at(text(2, "b"), start + Duration::from_millis(1)));
+        // seq 2 is held by coalescer until bypass flushes it and delivers seq 3 unmerged.
+        sink.with_bypass(|| {
+            assert!(sink.push_at(text(3, "c"), start + Duration::from_millis(2)));
+        });
+        let batch = rx.drain_ready(16);
+        let spans: Vec<(u64, u64)> = batch.iter().map(|e| (e.first_seq, e.seq)).collect();
+        assert_eq!(spans, [(1, 1), (2, 2), (3, 3)]);
     }
 }

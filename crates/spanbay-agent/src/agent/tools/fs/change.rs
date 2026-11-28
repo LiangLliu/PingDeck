@@ -159,3 +159,81 @@ pub fn undo_file_change(
         }
     }
 }
+
+/// What [`revert_file_hunk`] did on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RevertHunkOutcome {
+    /// The hunk was reverted and the file on disk still differs from `before`.
+    Updated {
+        after_sha256: String,
+        added: u32,
+        removed: u32,
+    },
+    /// Reverting the hunk restored the file to `before` (or removed a created file whose only
+    /// hunk was reverted), so the whole change is now undone.
+    Undone { after_sha256: Option<String> },
+    /// The file on disk no longer matches `expected_after_sha256`; nothing was written.
+    Conflict,
+}
+
+/// Reverts one hunk (`hunk_index`, 0-based) of a recorded file change, checking that the file
+/// stayed inside `workspace` and still holds the content whose hash is `expected_after_sha256`.
+/// Writes the updated file atomically via [`fs_safe::write_in`].
+///
+/// # Errors
+/// [`AppError::Validation`] for a path outside the workspace, binary content, or an out-of-range
+/// `hunk_index`, and [`AppError::Io`]-style errors from the file system.
+pub fn revert_file_hunk(
+    workspace: &Path,
+    path: &str,
+    before: Option<&[u8]>,
+    expected_after_sha256: Option<&str>,
+    hunk_index: usize,
+) -> Result<RevertHunkOutcome, AppError> {
+    let workspace = super::paths::canonical_workspace(workspace)?;
+    let target = PathGuard::for_process(None).resolve_plain(&workspace, path, true)?;
+    let inside = target
+        .strip_prefix(&workspace)
+        .map_err(|_| AppError::validation(format!("{path} is outside the workspace")))?;
+    let io = |error: std::io::Error| AppError::io(format!("{path}: {error}"));
+    let seen = fs_safe::identity(&target)?;
+    let current = match fs::read(&target) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(io(error)),
+    };
+    let Some((current_bytes, expected)) = current.as_deref().zip(expected_after_sha256) else {
+        return Ok(RevertHunkOutcome::Conflict);
+    };
+    if sha256_hex(current_bytes) != expected {
+        return Ok(RevertHunkOutcome::Conflict);
+    }
+    let before_str = match before {
+        Some(bytes) => Some(
+            std::str::from_utf8(bytes)
+                .map_err(|_| AppError::validation("Cannot revert a hunk of a binary file"))?,
+        ),
+        None => None,
+    };
+    let current_str = std::str::from_utf8(current_bytes)
+        .map_err(|_| AppError::validation("Cannot revert a hunk of a binary file"))?;
+    let updated = spanbay_base::diff::revert_diff_hunk(before_str, current_str, hunk_index)
+        .ok_or_else(|| AppError::validation(format!("hunk {hunk_index} is out of range")))?;
+    if before_str.is_none() && updated.is_empty() {
+        fs_safe::remove_in(&workspace, inside, seen)?;
+        return Ok(RevertHunkOutcome::Undone { after_sha256: None });
+    }
+    fs_safe::write_in(&workspace, inside, seen, updated.as_bytes())?;
+    let after_sha256 = sha256_hex(updated.as_bytes());
+    if before_str.is_some_and(|b| b == updated) {
+        return Ok(RevertHunkOutcome::Undone {
+            after_sha256: Some(after_sha256),
+        });
+    }
+    let (added, removed) = spanbay_base::diff::change_counts(before_str, &updated);
+    Ok(RevertHunkOutcome::Updated {
+        after_sha256,
+        added,
+        removed,
+    })
+}

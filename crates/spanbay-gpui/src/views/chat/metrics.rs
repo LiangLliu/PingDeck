@@ -1,78 +1,35 @@
-//! Chat metrics formatting, cost/speed calculation, and inline `<think>` tag extraction
-//! for AI Chat messages and live streaming turns.
+//! Chat metrics formatting, cost/speed calculation, inline `<think>` extraction, and the
+//! hover-only per-turn metrics pill + 7-item breakdown popover (`.overhaul/chat-redesign-spec.md` §6.3).
 
-use gpui_kit::{IntoElement as _, ParentElement as _, SharedString, Styled as _, px};
-use spanbay_desktop::core::agent::model::{AgentMessage, AgentStopReason, ReasoningEffort};
+use gpui_kit::{Context, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px};
+use spanbay_desktop::core::agent::model::{AgentStopReason, ReasoningEffort};
 use spanbay_desktop::core::model::settings::Language;
+use spanbay_desktop::state::{AssistantTurnView, extract_inline_thinking_text};
 
-use crate::ui::{Tone, UiIcon, badge, h_row, kv_chip, metric_datum};
+use crate::ui::{h_row, mono_font_family, palette, popover, popover_trigger_btn, to_hsla, v_col};
 
-/// Extracts inline `<think>...</think>` or `<thinking>...</thinking>` blocks from text
-/// (common on OpenAI-compatible relays that embed thinking inside `content`).
-/// Returns `(reasoning_segments, cleaned_answer_text)`.
+use super::ChatView;
+
+/// Extracts inline `<think>...</think>` or `<thinking>...</thinking>` blocks from text.
+#[must_use]
 pub fn extract_inline_thinking(raw: &str, streaming: bool) -> (Vec<String>, String) {
-    let mut reasoning = Vec::new();
-    let mut answer = String::with_capacity(raw.len());
-    let mut rest = raw;
-
-    while !rest.is_empty() {
-        let next_open = find_open_tag(rest);
-        let Some((open_idx, open_len, close_tag)) = next_open else {
-            answer.push_str(rest);
-            break;
-        };
-        answer.push_str(&rest[..open_idx]);
-        let after_open = &rest[open_idx + open_len..];
-        if let Some(close_idx) = after_open.find(close_tag) {
-            let inner = after_open[..close_idx].trim();
-            if !inner.is_empty() {
-                reasoning.push(inner.to_owned());
-            }
-            rest = &after_open[close_idx + close_tag.len()..];
-        } else if streaming {
-            let inner = after_open.trim_start();
-            if !inner.is_empty() {
-                reasoning.push(inner.to_owned());
-            }
-            break;
-        } else {
-            // Unclosed tag on a finished message: still preserve as answer so text is never lost.
-            answer.push_str(&rest[open_idx..]);
-            break;
-        }
-    }
-
-    (reasoning, answer.trim().to_owned())
+    extract_inline_thinking_text(raw, streaming)
 }
 
-fn find_open_tag(s: &str) -> Option<(usize, usize, &'static str)> {
-    let a = s.find("<think>").map(|i| (i, "<think>".len(), "</think>"));
-    let b = s
-        .find("<thinking>")
-        .map(|i| (i, "<thinking>".len(), "</thinking>"));
-    match (a, b) {
-        (Some(x), Some(y)) => Some(if x.0 <= y.0 { x } else { y }),
-        (Some(x), None) => Some(x),
-        (None, Some(y)) => Some(y),
-        (None, None) => None,
-    }
-}
-
-/// Formats millisecond durations cleanly: `<1000ms` as `420ms`, `>=1000ms` as `2.35s`.
+/// Formats millisecond durations cleanly: `<1000ms` as `420ms`, `>=1000ms` as `2.3s`.
 #[must_use]
 pub fn format_duration_ms(ms: u64) -> String {
     if ms < 1_000 {
         format!("{ms}ms")
     } else if ms < 60_000 {
-        format!("{:.2}s", ms as f64 / 1_000.0)
+        format!("{:.1}s", ms as f64 / 1_000.0)
     } else {
         let secs = ms / 1_000;
         format!("{}m {}s", secs / 60, secs % 60)
     }
 }
 
-/// Formats token counts compactly (`<1000` as exact integer, `>=1000` as `12.4K` / `1.2M`) so
-/// long sessions never overflow the per-message statistics footer.
+/// Formats token counts compactly (`<1000` as exact integer, `>=1000` as `12.4K` / `1.2M`).
 #[must_use]
 pub fn format_tokens_compact(n: u64) -> String {
     if n >= 1_000_000 {
@@ -101,27 +58,36 @@ pub fn format_tokens_int(n: u64) -> String {
     out
 }
 
-/// Formats micro-USD (or micro-currency) cost cleanly.
+/// Formats micro-currency amounts (`US$0.52`, `¥0.04`) shared by footers, cost gates and popovers.
+#[must_use]
+pub fn format_money(micro: i64, currency: &str) -> String {
+    let val = micro.max(0) as f64 / 1_000_000.0;
+    let sym = match currency {
+        "USD" | "" => "US$",
+        "CNY" | "RMB" => "¥",
+        "EUR" => "€",
+        "GBP" => "£",
+        "JPY" => "¥",
+        other => return format!("{other} {val:.2}"),
+    };
+    if val == 0.0 {
+        format!("{sym}0.00")
+    } else if val < 0.0001 {
+        format!("{sym}{val:.6}")
+    } else if val < 0.01 {
+        format!("{sym}{val:.4}")
+    } else if val < 0.1 && (val * 1_000.0).round() as i64 % 10 != 0 {
+        format!("{sym}{val:.3}")
+    } else {
+        format!("{sym}{val:.2}")
+    }
+}
+
+/// Formats micro-USD (or micro-currency) cost cleanly when positive.
 #[must_use]
 pub fn format_cost_micro(micro: i64, currency: Option<&str>) -> Option<String> {
-    if micro <= 0 {
-        return None;
-    }
-    let val = micro as f64 / 1_000_000.0;
-    let sym = match currency {
-        Some("CNY" | "RMB") => "¥",
-        Some("EUR") => "€",
-        Some("GBP") => "£",
-        Some("JPY") => "¥",
-        _ => "$",
-    };
-    if val < 0.0001 {
-        Some(format!("{sym}{val:.6}"))
-    } else if val < 0.01 {
-        Some(format!("{sym}{val:.4}"))
-    } else {
-        Some(format!("{sym}{val:.3}"))
-    }
+    let cur = currency.map(str::trim).filter(|c| !c.is_empty())?;
+    (micro > 0).then(|| format_money(micro, cur))
 }
 
 #[must_use]
@@ -135,240 +101,223 @@ pub const fn format_effort_short(effort: ReasoningEffort, lang: Language) -> &'s
     }
 }
 
-/// Renders a concise, overflow-proof per-message statistics footer below an assistant reply
-/// using monochrome theme-adaptive vector icons for the 6 essential metrics:
-/// Input (`CornerDownRight`), Output (`CornerUpRight`), Context (`Database`),
-/// Duration (`Timer`), Speed (`Zap`), and Cost (`Coins`), each with a full-detail hover tooltip.
-pub fn render_message_footer(
-    msg: &AgentMessage,
-    context_limit_tokens: Option<u64>,
+/// Formats the compact hover pill text (`11.4s · 19.5K token · US$0.018 ⓘ`) for a turn.
+#[must_use]
+pub fn format_turn_metrics_pill(
+    turn: &AssistantTurnView,
     fallback_currency: Option<&str>,
-    sealed_reasoning: bool,
     cx: &gpui_kit::App,
-) -> Option<gpui_kit::Div> {
-    let mut chips: Vec<gpui_kit::AnyElement> = Vec::new();
-    let mut datums: Vec<gpui_kit::AnyElement> = Vec::new();
-    let mid = &msg.id;
-
-    for src in msg.meta.sources.iter().take(4) {
-        chips.push(
-            kv_chip(format!("[{}]", src.source_id), src.title.clone(), cx).into_any_element(),
+) -> Option<String> {
+    let t = &turn.totals;
+    let mut parts: Vec<String> = Vec::with_capacity(3);
+    if t.duration_ms > 0 {
+        parts.push(format_duration_ms(t.duration_ms));
+    }
+    let total_tok = t.total_tokens();
+    if total_tok > 0 {
+        parts.push(
+            crate::ui::tr(cx)
+                .chat()
+                .context_used(format_tokens_compact(total_tok)),
         );
     }
-
-    let mut out_tok_val = 0u64;
-    if let Some(u) = &msg.usage {
-        let in_tok = u.input_tokens.unwrap_or(0);
-        let out_tok = u.output_tokens.unwrap_or(0);
-        out_tok_val = out_tok;
-
-        if in_tok > 0 || out_tok > 0 {
-            datums.push(
-                metric_datum(
-                    SharedString::from(format!("stat-in-{mid}")),
-                    UiIcon::CornerDownRight,
-                    format_tokens_compact(in_tok),
-                    crate::ui::tr(cx)
-                        .chat()
-                        .metrics_input_tokens(format_tokens_int(in_tok)),
-                    Tone::Neutral,
-                    cx,
-                )
-                .into_any_element(),
-            );
-            datums.push(
-                metric_datum(
-                    SharedString::from(format!("stat-out-{mid}")),
-                    UiIcon::CornerUpRight,
-                    format_tokens_compact(out_tok),
-                    crate::ui::tr(cx)
-                        .chat()
-                        .metrics_output_tokens(format_tokens_int(out_tok)),
-                    Tone::Neutral,
-                    cx,
-                )
-                .into_any_element(),
-            );
-        }
-
-        // Context size sent on this turn (input tokens vs model window limit when known).
-        // Escalates to theme-aware Warning (>=70%) and Danger (>=85%) tones as the window fills.
-        if in_tok > 0 {
-            let (ctx_val, ctx_tip, ctx_tone) = match context_limit_tokens.filter(|&lim| lim > 0) {
-                Some(lim) => {
-                    let pct = ((in_tok as f64 / lim as f64) * 100.0).min(100.0);
-                    let tone = if pct >= 85.0 {
-                        Tone::Danger
-                    } else if pct >= 70.0 {
-                        Tone::Warning
-                    } else {
-                        Tone::Neutral
-                    };
-                    let val = format!(
-                        "{}/{} ({:.0}%)",
-                        format_tokens_compact(in_tok),
-                        format_tokens_compact(lim),
-                        pct,
-                    );
-                    let tip = crate::ui::tr(cx).chat().metrics_context_window(
-                        format_tokens_int(in_tok),
-                        format_tokens_int(lim),
-                        format!("{:.1}", pct),
-                    );
-                    (val, tip, tone)
-                }
-                None => (
-                    format_tokens_compact(in_tok),
-                    crate::ui::tr(cx)
-                        .chat()
-                        .metrics_context_window_tokens(format_tokens_int(in_tok)),
-                    Tone::Neutral,
-                ),
-            };
-            datums.push(
-                metric_datum(
-                    SharedString::from(format!("stat-ctx-{mid}")),
-                    UiIcon::Database,
-                    ctx_val,
-                    ctx_tip,
-                    ctx_tone,
-                    cx,
-                )
-                .into_any_element(),
-            );
-        }
+    let cur = t.cost_currency.as_deref().or(fallback_currency);
+    if let Some(c) = format_cost_micro(t.cost_micro_usd, cur) {
+        parts.push(c);
     }
-
-    let r_tok = msg
-        .usage
-        .as_ref()
-        .and_then(|u| u.reasoning_tokens)
-        .filter(|&n| n > 0);
-    if let Some(rt) = r_tok {
-        let ch = crate::ui::tr(cx).chat();
-        let tip = if sealed_reasoning {
-            ch.metrics_reasoning_tokens_sealed(format_tokens_int(rt))
-        } else {
-            ch.metrics_reasoning_tokens(format_tokens_int(rt))
-        };
-        datums.push(
-            metric_datum(
-                SharedString::from(format!("stat-reason-{mid}")),
-                UiIcon::Brain,
-                format_tokens_compact(rt),
-                tip,
-                Tone::Neutral,
-                cx,
-            )
-            .into_any_element(),
-        );
-    } else if sealed_reasoning {
-        datums.push(
-            metric_datum(
-                SharedString::from(format!("stat-reason-{mid}")),
-                UiIcon::Brain,
-                "—",
-                crate::ui::tr(cx).chat().metrics_reasoning_sealed_no_tok(),
-                Tone::Neutral,
-                cx,
-            )
-            .into_any_element(),
-        );
-    }
-
-    let total_ms = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
-        (Some(ttft), Some(stream)) => Some(ttft.saturating_add(stream)),
-        (Some(ttft), None) => Some(ttft),
-        (None, Some(stream)) => Some(stream),
-        (None, None) => None,
-    };
-    if let Some(ms) = total_ms.filter(|&v| v > 0) {
-        let dur_val = format_duration_ms(ms);
-        let dur_tip = match (msg.meta.ttft_ms, msg.meta.stream_ms) {
-            (Some(ttft), Some(stream)) if ttft > 0 && stream > 0 => {
-                crate::ui::tr(cx).chat().metrics_duration_ttft_stream(
-                    &dur_val,
-                    format_duration_ms(ttft),
-                    format_duration_ms(stream),
-                )
-            }
-            _ => crate::ui::tr(cx).chat().metrics_duration(&dur_val),
-        };
-        datums.push(
-            metric_datum(
-                SharedString::from(format!("stat-dur-{mid}")),
-                UiIcon::Timer,
-                dur_val,
-                dur_tip,
-                Tone::Neutral,
-                cx,
-            )
-            .into_any_element(),
-        );
-    }
-
-    if out_tok_val > 0
-        && let Some(stream_ms) = msg.meta.stream_ms.filter(|&ms| ms > 0)
-    {
-        let tps = out_tok_val as f64 / (stream_ms as f64 / 1_000.0);
-        datums.push(
-            metric_datum(
-                SharedString::from(format!("stat-tps-{mid}")),
-                UiIcon::Zap,
-                format!("{tps:.1}/s"),
-                crate::ui::tr(cx)
-                    .chat()
-                    .metrics_output_speed_tok_s(format!("{:.1}", tps)),
-                Tone::Neutral,
-                cx,
-            )
-            .into_any_element(),
-        );
-    }
-
-    let currency = msg.cost_currency.as_deref().or(fallback_currency);
-    if let Some(cost_str) = format_cost_micro(msg.cost_micro_usd, currency) {
-        datums.push(
-            metric_datum(
-                SharedString::from(format!("stat-cost-{mid}")),
-                UiIcon::Coins,
-                cost_str.clone(),
-                crate::ui::tr(cx).chat().metrics_estimated_cost(cost_str),
-                Tone::Neutral,
-                cx,
-            )
-            .into_any_element(),
-        );
-    }
-
-    if let Some(stop) = msg.meta.stop_reason
-        && !matches!(stop, AgentStopReason::Completed)
-    {
-        let label = match stop {
-            AgentStopReason::MaxIterations => crate::ui::tr(cx).chat().metrics_max_steps(),
-            AgentStopReason::CostLimit => crate::ui::tr(cx).chat().metrics_cost_cap(),
-            AgentStopReason::OutputLimit => crate::ui::tr(cx).chat().metrics_output_limit(),
-            AgentStopReason::ContextFull => crate::ui::tr(cx).chat().metrics_context_full(),
-            AgentStopReason::NoProgress => crate::ui::tr(cx).chat().metrics_no_progress(),
-            AgentStopReason::Completed => "",
-        };
-        if !label.is_empty() {
-            chips.push(badge(label, Tone::Warning, cx).into_any_element());
-        }
-    }
-
-    if chips.is_empty() && datums.is_empty() {
+    if parts.is_empty() && !t.sealed_reasoning {
         return None;
     }
+    if parts.is_empty() {
+        parts.push("—".to_owned());
+    }
+    Some(format!("{} \u{24D8}", parts.join(" · ")))
+}
+
+/// Renders the hover-only metrics pill and its 7-item breakdown popover for an [`AssistantTurnView`].
+pub fn render_turn_metrics_pill(
+    view: &ChatView,
+    turn: &AssistantTurnView,
+    fallback_currency: Option<&str>,
+    cx: &mut Context<ChatView>,
+) -> Option<gpui_kit::AnyElement> {
+    let pill_text = format_turn_metrics_pill(turn, fallback_currency, cx)?;
+    let p = palette(cx);
+    let mono = mono_font_family(cx);
+    let ch = crate::ui::tr(cx).chat();
+    let t = &turn.totals;
+
+    let route_val = if turn.models_used.is_empty() {
+        ch.thread_assistant().to_owned()
+    } else {
+        turn.models_used
+            .iter()
+            .map(|m| view.format_raw_model_label(m))
+            .collect::<Vec<_>>()
+            .join(" → ")
+    };
+    let steps_val = if t.hidden_todo_count > 0 {
+        ch.turn_metrics_steps_hidden(
+            t.step_count.max(1),
+            t.visible_tool_count + t.hidden_todo_count,
+            t.hidden_todo_count,
+        )
+    } else {
+        ch.turn_metrics_steps_val(t.step_count.max(1), t.visible_tool_count)
+    };
+    let in_out_val = format!(
+        "{} · {}",
+        ch.metrics_input_tokens(format_tokens_int(t.input_tokens)),
+        ch.metrics_output_tokens(format_tokens_int(t.output_tokens)),
+    );
+    let reason_part = if t.reasoning_tokens > 0 {
+        if t.sealed_reasoning {
+            ch.metrics_reasoning_tokens_sealed(format_tokens_int(t.reasoning_tokens))
+        } else {
+            ch.metrics_reasoning_tokens(format_tokens_int(t.reasoning_tokens))
+        }
+    } else if t.sealed_reasoning {
+        ch.metrics_reasoning_sealed_no_tok().to_owned()
+    } else {
+        ch.metrics_reasoning_tokens("0")
+    };
+    let reason_cache_val = format!(
+        "{reason_part} · {} {}",
+        ch.inspector_tabs_cached_input(),
+        format_tokens_int(t.cached_input_tokens),
+    );
+    let ctx_val = match t.context_limit_tokens.filter(|&lim| lim > 0) {
+        Some(lim) => {
+            let pct = ((t.peak_context_tokens as f64 / lim as f64) * 100.0).min(100.0);
+            ch.metrics_context_window(
+                format_tokens_int(t.peak_context_tokens),
+                format_tokens_int(lim),
+                format!("{pct:.0}"),
+            )
+        }
+        None => ch.metrics_context_window_tokens(format_tokens_int(t.peak_context_tokens)),
+    };
+    let dur_val = format_duration_ms(t.duration_ms);
+    let dur_part = match t.ttft_ms.filter(|&ms| ms > 0) {
+        Some(ttft) if t.stream_ms > 0 => ch.metrics_duration_ttft_stream(
+            &dur_val,
+            format_duration_ms(ttft),
+            format_duration_ms(t.stream_ms),
+        ),
+        _ => ch.metrics_duration(&dur_val),
+    };
+    let speed_val = match t.tokens_per_sec() {
+        Some(tps) => format!(
+            "{dur_part} · {}",
+            ch.metrics_output_speed_tok_s(format!("{tps:.1}"))
+        ),
+        None => dur_part,
+    };
+    let cur = t.cost_currency.as_deref().or(fallback_currency);
+    let cost_val = format_cost_micro(t.cost_micro_usd, cur)
+        .map(|c| ch.metrics_estimated_cost(c))
+        .unwrap_or_else(|| "—".to_owned());
+
+    let rows: [(&'static str, String); 7] = [
+        (ch.turn_metrics_route(), route_val),
+        (ch.turn_metrics_steps(), steps_val),
+        (ch.turn_metrics_in_out(), in_out_val),
+        (ch.turn_metrics_reason_cache(), reason_cache_val),
+        (ch.turn_metrics_ctx(), ctx_val),
+        (ch.turn_metrics_speed(), speed_val),
+        (ch.turn_metrics_cost(), cost_val),
+    ];
+    let title = ch.turn_metrics_title().to_owned();
+    let tid = turn.turn_id.clone();
+
+    let trigger = popover_trigger_btn(
+        SharedString::from(format!("turn-metrics-pill-{tid}")),
+        div()
+            .px(px(6.0))
+            .py(px(2.0))
+            .font_family(mono)
+            .text_size(px(11.0))
+            .text_color(to_hsla(p.muted))
+            .child(SharedString::from(pill_text)),
+    );
 
     Some(
-        h_row()
-            .pl(px(30.0))
-            .pt(px(2.0))
-            .gap_x(px(12.0))
-            .gap_y(px(4.0))
-            .flex_wrap()
-            .children(chips)
-            .children(datums),
+        popover(SharedString::from(format!("turn-metrics-pop-{tid}")))
+            .trigger(trigger)
+            .content(move |_, _, cx| {
+                let p = palette(cx);
+                let mono = mono_font_family(cx);
+                let mut col = v_col()
+                    .w(px(360.0))
+                    .p(px(10.0))
+                    .gap(px(6.0))
+                    .text_xs()
+                    .child(
+                        div()
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(to_hsla(p.ink))
+                            .pb(px(2.0))
+                            .border_b_1()
+                            .border_color(to_hsla(p.line.composite_over(p.overlay)))
+                            .child(SharedString::from(title.clone())),
+                    );
+                for (k, v) in &rows {
+                    col = col.child(
+                        h_row()
+                            .w_full()
+                            .justify_between()
+                            .gap(px(10.0))
+                            .child(div().flex_shrink_0().text_color(to_hsla(p.muted)).child(*k))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .font_family(mono.clone())
+                                    .text_color(to_hsla(p.ink))
+                                    .child(SharedString::from(v.clone())),
+                            ),
+                    );
+                }
+                col
+            })
+            .into_any_element(),
     )
+}
+
+/// Why a run stopped early, in words; `None` for a normal completion.
+#[must_use]
+pub fn stop_reason_label(stop: AgentStopReason, cx: &gpui_kit::App) -> Option<&'static str> {
+    let ch = crate::ui::tr(cx).chat();
+    match stop {
+        AgentStopReason::Completed => None,
+        AgentStopReason::MaxIterations => Some(ch.metrics_max_steps()),
+        AgentStopReason::CostLimit => Some(ch.metrics_cost_cap()),
+        AgentStopReason::OutputLimit => Some(ch.metrics_output_limit()),
+        AgentStopReason::ContextFull => Some(ch.metrics_context_full()),
+        AgentStopReason::NoProgress => Some(ch.metrics_no_progress()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_inline_thinking, format_cost_micro};
+
+    #[test]
+    fn extract_inline_thinking_preserves_fenced_and_inline_code_tags() {
+        let raw = "<think>step 1</think>\nUse `<think>inline</think>` or:\n```xml\n<think>fenced</think>\n```\nDone.";
+        let (reasons, answer) = extract_inline_thinking(raw, false);
+        assert_eq!(reasons, ["step 1"]);
+        assert!(answer.contains("`<think>inline</think>`"));
+        assert!(answer.contains("```xml\n<think>fenced</think>\n```"));
+    }
+
+    #[test]
+    fn format_cost_micro_requires_explicit_currency() {
+        assert_eq!(format_cost_micro(15_000, None), None);
+        assert_eq!(format_cost_micro(15_000, Some("")), None);
+        assert_eq!(
+            format_cost_micro(15_000, Some("USD")).as_deref(),
+            Some("US$0.015")
+        );
+    }
 }

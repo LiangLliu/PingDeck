@@ -574,6 +574,91 @@ pub struct LiveToolResult {
     pub summary: String,
     /// Time from start of execution (or decision) to the end.
     pub duration_ms: u64,
+    /// The exit status of the process behind the result (a shell call).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+}
+
+/// The request an approval card shows, kept while the call waits so a reattached chat draws the
+/// same card: the `ToolApprovalRequired` fields without run, call and name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveApprovalRequest {
+    /// Complete arguments as JSON text (also for a sub-agent call, which has no part).
+    pub arguments: String,
+    /// The tool's permission class.
+    pub class: ToolClass,
+    /// This call only reads.
+    pub read_only: bool,
+    /// This call may destroy data.
+    pub destructive: bool,
+    /// The shell sandbox a `shell` call runs under here.
+    pub sandbox: SandboxKind,
+    /// Why approval is needed.
+    pub reason: String,
+    /// What the card shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<ToolApprovalPreview>,
+    /// The shell would run without network.
+    pub network: bool,
+    /// The event's `risk`, parsed.
+    pub risk: RiskLevel,
+    /// One plain line of what the call does.
+    pub summary: String,
+    /// The whole command, URL or argument text, for a Low-risk call only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_text: Option<String>,
+    /// Everything the card shows (risk, tags, offered scopes, why it asks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<Box<ApprovalCard>>,
+    /// When the call started waiting for approval, in Unix milliseconds.
+    #[serde(default)]
+    pub requested_at_ms: i64,
+}
+
+impl LiveApprovalRequest {
+    /// The request of a `ToolApprovalRequired`; `None` for any other event. An unknown `risk`
+    /// string counts as Medium.
+    #[must_use]
+    pub fn from_event(event: &AgentEvent, requested_at_ms: i64) -> Option<Self> {
+        use serde::de::IntoDeserializer;
+        let AgentEvent::ToolApprovalRequired {
+            arguments,
+            class,
+            read_only,
+            destructive,
+            sandbox,
+            reason,
+            preview,
+            network,
+            risk,
+            summary,
+            full_text,
+            card,
+            ..
+        } = event
+        else {
+            return None;
+        };
+        let risk = RiskLevel::deserialize(
+            IntoDeserializer::<serde::de::value::Error>::into_deserializer(risk.as_str()),
+        )
+        .unwrap_or(RiskLevel::Medium);
+        Some(Self {
+            arguments: arguments.clone(),
+            class: *class,
+            read_only: *read_only,
+            destructive: *destructive,
+            sandbox: *sandbox,
+            reason: reason.clone(),
+            preview: preview.clone(),
+            network: *network,
+            risk,
+            summary: summary.clone(),
+            full_text: full_text.clone(),
+            card: card.clone(),
+            requested_at_ms,
+        })
+    }
 }
 
 /// One tool call of the running model turn. Its name and the arguments so far are the matching
@@ -594,10 +679,10 @@ pub struct LiveToolCall {
     /// Set once `state` is `Done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<LiveToolResult>,
-    /// The approval card while `state` is `WaitingApproval` (when the permission check built
-    /// one), so a reattached chat can draw the card without the evicted `ToolApprovalRequired`.
+    /// The approval request while `state` is `WaitingApproval`, so a reattached chat can draw
+    /// the card without the evicted `ToolApprovalRequired`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approval: Option<Box<ApprovalCard>>,
+    pub approval: Option<Box<LiveApprovalRequest>>,
 }
 
 /// The run's last `Usage` event, for a chat that reattaches after the replay ring evicted it.
@@ -828,6 +913,12 @@ pub struct AgentSessionSummary {
     /// The chat this one was branched from ("Branch into new chat"); the list marks a branch by it.
     #[serde(default)]
     pub forked_from: Option<String>,
+    /// Lines added across pending/conflicting file changes in this session.
+    #[serde(default)]
+    pub pending_added: u32,
+    /// Lines removed across pending/conflicting file changes in this session.
+    #[serde(default)]
+    pub pending_removed: u32,
 }
 
 /// One page of the session list.
@@ -985,7 +1076,7 @@ pub struct AgentExportPreview {
 
 /// Lifecycle state of a run. Wire values are the `snake_case` names, `waiting_approval`
 /// included.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentRunStatus {
     /// Waiting for one of the top-level slots or for the chat's lock.
@@ -1240,7 +1331,7 @@ impl From<Vec<HubPart>> for QueuedContent {
 
 /// How one tool call ended. Wire values are `snake_case`: `approval_timed_out` is the call whose
 /// approval nobody answered in time (the tool state `approval-timed-out`), which is not a denial.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolCallStatus {
     /// The tool succeeded.

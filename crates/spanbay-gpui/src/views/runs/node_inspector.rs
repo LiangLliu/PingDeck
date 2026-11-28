@@ -10,26 +10,25 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use spanbay_desktop::core::agent::dto::AgentRunTopology;
-use spanbay_desktop::core::agent::model::NodeRecoveryAction;
+use spanbay_desktop::core::agent::model::{AgentRunStatus, NodeRecoveryAction};
 use spanbay_desktop::state::{
     ExecutionGraphLayout, GraphNodeKind, GraphNodePayload, GraphNodeStatus, SelectedGraphTarget,
+    synthesize_fallback_node,
 };
 
 use crate::ui::{
-    ScrollableElement as _, Tone, UiIcon, alert_banner, badge, btn_danger, btn_ghost, btn_icon,
-    btn_primary, btn_secondary, h_row, icon_xs, palette, section_heading, status_indicator,
-    text_input, to_hsla, v_col,
+    ScrollableElement as _, Tone, UiIcon, WaitKind, alert_banner, badge, btn_danger, btn_ghost,
+    btn_icon, btn_primary, btn_secondary, h_row, icon_xs, palette, section_heading,
+    status_indicator, status_label, status_visual, text_input, to_hsla, v_col, wait_kind,
 };
 
+use super::graph::graph_labels;
 use super::modal::WorkflowMonitorModal;
 use super::node_payloads::{
     render_group_payload, render_main_payload, render_planned_task_payload,
     render_subagent_payload, render_tool_payload,
 };
-use super::status::{
-    format_elapsed_short, graph_kind_label, graph_status_label, graph_status_visual,
-};
-
+use super::status::{format_elapsed_short, graph_kind_label};
 pub fn render_node_inspector(
     view: &WorkflowMonitorModal,
     topo: &AgentRunTopology,
@@ -37,9 +36,19 @@ pub fn render_node_inspector(
     cx: &mut Context<WorkflowMonitorModal>,
 ) -> Option<AnyElement> {
     let selected_id = view.selected_node_id.as_deref()?;
-    let target = layout.find_selection(selected_id)?;
     let p = palette(cx);
     let ch = crate::ui::tr(cx).chat();
+    let target_opt = layout.find_selection(selected_id);
+    let fallback_opt = if target_opt.is_none() {
+        let now_ref = if topo.run.status.is_active() {
+            spanbay_desktop::core::app::current_time_ms().max(topo.snapshot_ms)
+        } else {
+            topo.run.finished_at_ms.unwrap_or(topo.snapshot_ms)
+        };
+        synthesize_fallback_node(topo, selected_id, now_ref, &graph_labels(ch))
+    } else {
+        None
+    };
 
     let (
         node_key,
@@ -57,8 +66,8 @@ pub fn render_node_inspector(
         waiting,
         error,
         payload,
-    ) = match target {
-        SelectedGraphTarget::Node(pnode) => {
+    ) = match (target_opt, &fallback_opt) {
+        (Some(SelectedGraphTarget::Node(pnode)), _) => {
             let n = &pnode.node;
             (
                 n.id.clone(),
@@ -78,7 +87,7 @@ pub fn render_node_inspector(
                 &n.payload,
             )
         }
-        SelectedGraphTarget::Member { parent, member } => (
+        (Some(SelectedGraphTarget::Member { parent, member }), _) => (
             member.id.clone(),
             member.title.clone(),
             member.status,
@@ -99,9 +108,43 @@ pub fn render_node_inspector(
             member.error.clone(),
             &member.payload,
         ),
+        (None, Some(fb)) => (
+            fb.node.id.clone(),
+            fb.node.title.clone(),
+            fb.node.status,
+            fb.node.kind,
+            fb.stage,
+            fb.node.elapsed_ms,
+            fb.parent_crumb.clone(),
+            Vec::new(),
+            Vec::new(),
+            fb.node.stop_run_id.clone(),
+            fb.node.task_id.clone(),
+            fb.node.attempt,
+            fb.node.waiting_summary.clone(),
+            fb.node.error.clone(),
+            &fb.node.payload,
+        ),
+        (None, None) => return None,
     };
 
-    let (shape, tone) = graph_status_visual(status);
+    let wait = match payload {
+        GraphNodePayload::MainRun { .. } | GraphNodePayload::PlannedTask { .. } => {
+            Some(wait_kind(topo.wait, topo.run.status_detail.as_deref()))
+        }
+        GraphNodePayload::Subagent(sub) => Some(wait_kind(None, sub.run.status_detail.as_deref())),
+        GraphNodePayload::ToolStep(step) => Some(match step.name.as_str() {
+            "submit_plan" => WaitKind::Plan,
+            "ask_user" => WaitKind::Question,
+            _ => WaitKind::Approval,
+        }),
+        GraphNodePayload::ParallelGroup { subagents, .. } => subagents
+            .iter()
+            .find(|s| s.run.status == AgentRunStatus::WaitingApproval)
+            .map(|s| wait_kind(None, s.run.status_detail.as_deref()))
+            .or_else(|| Some(wait_kind(topo.wait, topo.run.status_detail.as_deref()))),
+    };
+    let (shape, tone) = status_visual(status);
     let sid_chat = topo.run.session_id.clone();
     let log_run_id = match payload {
         GraphNodePayload::Subagent(sub) => sub.run.run_id.clone(),
@@ -183,7 +226,7 @@ pub fn render_node_inspector(
                         .w_full()
                         .gap(px(5.0))
                         .flex_wrap()
-                        .child(badge(graph_status_label(status, cx), tone, cx))
+                        .child(badge(status_label(status, wait, cx), tone, cx))
                         .child(badge(graph_kind_label(kind, cx), Tone::Neutral, cx))
                         .children(
                             (attempt > 0)
@@ -240,12 +283,21 @@ pub fn render_node_inspector(
                 ),
         );
     } else if let Some(err_msg) = error {
-        body = body.child(alert_banner(
-            Tone::Danger,
-            format!("{} · {err_msg}", ch.monitor_error_heading()),
-            None,
-            cx,
-        ));
+        if status.is_terminal_error() {
+            body = body.child(alert_banner(
+                Tone::Danger,
+                format!("{} · {err_msg}", ch.monitor_error_heading()),
+                None,
+                cx,
+            ));
+        } else if status.is_warning_or_error() {
+            body = body.child(alert_banner(
+                Tone::Warning,
+                format!("{} · {err_msg}", status_label(status, wait, cx)),
+                None,
+                cx,
+            ));
+        }
     }
 
     if !upstream.is_empty() {
@@ -265,13 +317,15 @@ pub fn render_node_inspector(
         ));
     }
 
-    // Selective node-level recovery console for failed / interrupted / cancelled / skipped Task Graph nodes.
+    // Selective node-level recovery console for failed / interrupted / blocked / cancelled /
+    // skipped Task Graph nodes.
     if !topo.run.status.is_active()
         && let Some(tid) = task_id
         && matches!(
             status,
             GraphNodeStatus::Failed
                 | GraphNodeStatus::Interrupted
+                | GraphNodeStatus::Blocked
                 | GraphNodeStatus::Cancelled
                 | GraphNodeStatus::Skipped
         )
@@ -343,7 +397,7 @@ pub fn render_node_inspector(
             render_tool_payload(body, view, topo, step, &node_key, cx)
         }
         GraphNodePayload::ParallelGroup { subagents, tools } => {
-            render_group_payload(body, target, subagents, tools, cx)
+            render_group_payload(body, target_opt, subagents, tools, cx)
         }
         GraphNodePayload::PlannedTask { objective, summary } => {
             render_planned_task_payload(body, objective, summary.as_deref(), cx)

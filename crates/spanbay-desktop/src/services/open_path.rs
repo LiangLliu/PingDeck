@@ -5,7 +5,6 @@
 //! (`open` on macOS, `xdg-open` on Linux) without blocking the UI thread.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use spanbay_core::error::AppError;
 
@@ -39,43 +38,6 @@ pub fn resolve_workspace_open_target(
         ));
     }
     Ok(canonical_target)
-}
-
-/// Opens a file or directory inside `workspace_dir` with the host OS default application.
-///
-/// # Errors
-/// Propagates confinement errors from [`resolve_workspace_open_target`] or spawn failures from
-/// the host launcher.
-pub fn open_workspace_file(workspace_dir: &Path, raw_path: &str) -> Result<(), AppError> {
-    let target = resolve_workspace_open_target(workspace_dir, raw_path)?;
-    #[cfg(target_os = "macos")]
-    let mut cmd = {
-        let mut c = Command::new("open");
-        c.arg(&target);
-        c
-    };
-    #[cfg(target_os = "linux")]
-    let mut cmd = {
-        let mut c = Command::new("xdg-open");
-        c.arg(&target);
-        c
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = target;
-        return Err(AppError::unsupported(
-            "opening files externally is not supported on this platform",
-        ));
-    }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|err| AppError::io(format!("failed to launch host file opener: {err}")))?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]

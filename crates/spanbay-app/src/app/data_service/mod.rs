@@ -387,6 +387,9 @@ pub fn clear_attachments_impl(
     if options.dry_run {
         return Ok(report);
     }
+    if let Some(dirs) = state.data_dirs() {
+        let _ = std::fs::remove_dir_all(dirs.tmp.join("open"));
+    }
     for row in &present {
         store.remove(&row.sha256)?;
     }

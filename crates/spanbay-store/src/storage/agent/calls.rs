@@ -289,6 +289,32 @@ impl WorkspaceStore {
         )?)
     }
 
+    /// Updates the post-change hash, line counts, and status of one journal row after a partial
+    /// (per-hunk) revert.
+    pub fn update_file_change_after_revert(
+        &self,
+        session_id: &str,
+        id: &str,
+        after_sha256: Option<&str>,
+        added: u32,
+        removed: u32,
+        status: FileChangeStatus,
+    ) -> Result<bool, StorageError> {
+        Ok(self.connection.execute(
+            "UPDATE agent_file_changes
+             SET after_sha256 = ?3, added = ?4, removed = ?5, status = ?6
+             WHERE session_id = ?1 AND id = ?2",
+            params![
+                session_id,
+                id,
+                after_sha256,
+                added,
+                removed,
+                status.as_str()
+            ],
+        )? > 0)
+    }
+
     /// Flips a row written before its file was ([`FileChangeStatus::Applying`]) to
     /// [`FileChangeStatus::Pending`] once the file is in place; returns whether it was applying.
     pub fn finish_file_change(&self, id: &str) -> Result<bool, StorageError> {

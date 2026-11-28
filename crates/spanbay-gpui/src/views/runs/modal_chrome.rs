@@ -7,7 +7,9 @@ use gpui_kit::{
 };
 use spanbay_desktop::core::agent::dto::AgentRunTopology;
 use spanbay_desktop::core::agent::tools::process::ProcessState;
-use spanbay_desktop::state::{CrossAlignment, ExecutionGraphLayout, LayoutDirection};
+use spanbay_desktop::state::{
+    CrossAlignment, ExecutionGraphLayout, GraphNodePayload, LayoutDirection,
+};
 
 use crate::ui::{
     StatusShape, Tone, UiIcon, badge, btn_danger, btn_ghost, btn_primary, btn_secondary, card,
@@ -18,10 +20,46 @@ use crate::ui::{
 use super::modal::WorkflowMonitorModal;
 use super::status::{
     folder_basename, format_elapsed_short, format_model_short, format_tokens_compact,
-    run_status_meta,
 };
 use super::types::WorkflowTab;
+use crate::ui::run_status_meta;
 
+impl WorkflowMonitorModal {
+    #[must_use]
+    pub fn is_subagent_selected(&self, sub_run_id: &str) -> bool {
+        let Some(sel) = self.selected_node_id.as_deref() else {
+            return false;
+        };
+        if sel.strip_prefix("sub:") == Some(sub_run_id) {
+            return true;
+        }
+        if let Some(tid) = sel.strip_prefix("task:")
+            && let Some(topo) = &self.topology
+        {
+            return topo
+                .task_graph
+                .iter()
+                .any(|t| t.id == tid && t.run_id.as_deref() == Some(sub_run_id));
+        }
+        false
+    }
+
+    #[must_use]
+    pub fn is_node_selected(&self, node_id: &str, payload: &GraphNodePayload) -> bool {
+        let Some(sel) = self.selected_node_id.as_deref() else {
+            return false;
+        };
+        if sel == node_id {
+            return true;
+        }
+        if let GraphNodePayload::Subagent(sub) = payload
+            && sel.strip_prefix("sub:") == Some(sub.run.run_id.as_str())
+        {
+            return true;
+        }
+        false
+    }
+}
 pub fn render_modal_telemetry(
     view: &WorkflowMonitorModal,
     topo: &AgentRunTopology,
@@ -87,15 +125,22 @@ pub fn render_modal_telemetry(
                     ch.monitor_steps_short(topo.run.iterations),
                 ))
                 .children((total_tok > 0).then(|| {
-                    SharedString::from(format!("{} tok", format_tokens_compact(total_tok)))
+                    crate::ui::tr(cx)
+                        .chat()
+                        .context_used(format_tokens_compact(total_tok))
                 }))
-                .children((topo.run.cost_micro_usd > 0).then(|| {
-                    let cur = topo.cost_currency.as_deref().unwrap_or("USD");
-                    SharedString::from(format!(
-                        "{cur} {:.4}",
-                        topo.run.cost_micro_usd as f64 / 1_000_000.0
-                    ))
-                }))
+                // No amount without a known currency.
+                .children(
+                    topo.cost_currency
+                        .as_deref()
+                        .filter(|_| topo.run.cost_micro_usd > 0)
+                        .map(|cur| {
+                            SharedString::from(format!(
+                                "{cur} {:.4}",
+                                topo.run.cost_micro_usd as f64 / 1_000_000.0
+                            ))
+                        }),
+                )
                 .children((topo.pending_changes.files > 0).then(|| {
                     h_row()
                         .gap(px(4.0))

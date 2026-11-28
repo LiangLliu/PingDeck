@@ -32,7 +32,8 @@ use super::{
     ToolRegistry, ToolSource, ToolSpec,
 };
 pub use change::{
-    AppliedWrite, BeforeWrite, FileChangeRecord, UndoOutcome, apply_write, undo_file_change,
+    AppliedWrite, BeforeWrite, FileChangeRecord, RevertHunkOutcome, UndoOutcome, apply_write,
+    revert_file_hunk, undo_file_change,
 };
 pub use diff::unified_diff;
 pub use hashes::ReadHashes;

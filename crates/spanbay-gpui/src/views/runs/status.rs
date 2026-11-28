@@ -5,92 +5,12 @@
 use gpui_kit::{
     AnyElement, App, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
-use spanbay_desktop::core::agent::dto::{AgentBoard, BoardWait, TopologyToolStep};
-use spanbay_desktop::core::agent::model::{AgentRunStatus, SubagentRole};
-use spanbay_desktop::state::{GraphNodeKind, GraphNodeStatus};
+use spanbay_desktop::core::agent::dto::{AgentBoard, TopologyToolStep};
+use spanbay_desktop::core::agent::model::{AgentRunStatus, FileChangeStatus, SubagentRole};
+use spanbay_desktop::core::agent::tools::process::ProcessState;
+use spanbay_desktop::state::{GraphNodeKind, map_tool_status};
 
-use crate::ui::{StatusShape, Tone, badge, h_row, palette, status_indicator, to_hsla, v_col};
-
-/// Maps an agent run's lifecycle status + wait reason to an accessible geometric indicator,
-/// semantic tone, and localized status label.
-#[must_use]
-pub fn run_status_meta(
-    status: AgentRunStatus,
-    wait: Option<BoardWait>,
-    status_detail: Option<&str>,
-    cx: &App,
-) -> (StatusShape, Tone, &'static str) {
-    let ch = crate::ui::tr(cx).chat();
-    match status {
-        AgentRunStatus::Queued => (StatusShape::Idle, Tone::Neutral, ch.run_status_queued()),
-        AgentRunStatus::Running => (StatusShape::Run, Tone::Accent, ch.run_status_running()),
-        AgentRunStatus::WaitingApproval => {
-            let label = if wait == Some(BoardWait::CostLimit) || status_detail == Some("cost limit")
-            {
-                ch.run_status_waiting_cost()
-            } else if status_detail == Some("plan") {
-                ch.run_status_waiting_plan()
-            } else if status_detail == Some("question") {
-                ch.run_status_waiting_question()
-            } else {
-                ch.run_status_waiting_approval()
-            };
-            (StatusShape::Warn, Tone::Warning, label)
-        }
-        AgentRunStatus::Completed => (StatusShape::Ok, Tone::Success, ch.run_status_completed()),
-        AgentRunStatus::Failed => (StatusShape::Bad, Tone::Danger, ch.run_status_failed()),
-        AgentRunStatus::Cancelled => (StatusShape::Idle, Tone::Neutral, ch.run_status_cancelled()),
-        AgentRunStatus::Interrupted => (
-            StatusShape::Warn,
-            Tone::Warning,
-            ch.run_status_interrupted(),
-        ),
-    }
-}
-
-/// Maps a normalized [`TopologyToolStep::status`] string to indicator shape + tone.
-#[must_use]
-pub fn tool_status_meta(status: &str) -> (StatusShape, Tone) {
-    match status {
-        "ok" => (StatusShape::Ok, Tone::Success),
-        "running" => (StatusShape::Run, Tone::Accent),
-        "waiting_approval" | "denied" | "timed_out" => (StatusShape::Warn, Tone::Warning),
-        "error" => (StatusShape::Bad, Tone::Danger),
-        _ => (StatusShape::Idle, Tone::Neutral),
-    }
-}
-
-/// Maps a [`GraphNodeStatus`] to accessible geometric shape + semantic tone.
-#[must_use]
-pub const fn graph_status_visual(status: GraphNodeStatus) -> (StatusShape, Tone) {
-    match status {
-        GraphNodeStatus::Completed => (StatusShape::Ok, Tone::Success),
-        GraphNodeStatus::Running => (StatusShape::Run, Tone::Accent),
-        GraphNodeStatus::Waiting | GraphNodeStatus::Interrupted => {
-            (StatusShape::Warn, Tone::Warning)
-        }
-        GraphNodeStatus::Failed => (StatusShape::Bad, Tone::Danger),
-        GraphNodeStatus::Pending
-        | GraphNodeStatus::Queued
-        | GraphNodeStatus::Cancelled
-        | GraphNodeStatus::Skipped => (StatusShape::Idle, Tone::Neutral),
-    }
-}
-
-/// Localized status label for a [`GraphNodeStatus`].
-#[must_use]
-pub fn graph_status_label(status: GraphNodeStatus, cx: &App) -> &'static str {
-    let ch = crate::ui::tr(cx).chat();
-    match status {
-        GraphNodeStatus::Pending | GraphNodeStatus::Queued => ch.run_status_queued(),
-        GraphNodeStatus::Running => ch.run_status_running(),
-        GraphNodeStatus::Waiting => ch.run_status_waiting_approval(),
-        GraphNodeStatus::Completed => ch.run_status_completed(),
-        GraphNodeStatus::Failed => ch.run_status_failed(),
-        GraphNodeStatus::Cancelled | GraphNodeStatus::Skipped => ch.run_status_cancelled(),
-        GraphNodeStatus::Interrupted => ch.run_status_interrupted(),
-    }
-}
+use crate::ui::{StatusShape, exit_code_badge, palette, status_row, to_hsla, v_col};
 
 /// Localized label for a [`GraphNodeKind`].
 #[must_use]
@@ -126,6 +46,31 @@ pub fn subagent_kind_label(kind: &str, cx: &App) -> &'static str {
         ch.monitor_kind_explore()
     } else {
         ch.monitor_kind_general()
+    }
+}
+
+/// Localized label for a [`FileChangeStatus`].
+#[must_use]
+pub fn file_change_status_label(status: FileChangeStatus, cx: &App) -> &'static str {
+    let cm = crate::ui::tr(cx).common();
+    match status {
+        FileChangeStatus::Pending => cm.change_pending(),
+        FileChangeStatus::Kept => cm.change_kept(),
+        FileChangeStatus::Undone => cm.change_undone(),
+        FileChangeStatus::Conflict => cm.change_conflict(),
+        FileChangeStatus::Applying => cm.change_applying(),
+    }
+}
+
+/// Localized label for a [`ProcessState`].
+#[must_use]
+pub fn process_state_label(state: ProcessState, cx: &App) -> &'static str {
+    let tr = crate::ui::tr(cx);
+    match state {
+        ProcessState::Running => tr.chat().run_status_running(),
+        ProcessState::Exited => tr.common().process_exited(),
+        ProcessState::Killed => tr.common().process_killed(),
+        ProcessState::Expired => tr.chat().run_status_expired(),
     }
 }
 
@@ -193,14 +138,20 @@ pub fn compute_bar_span(
 
 /// Renders a precision horizontal waterfall timing bar on a subtle grid track.
 #[must_use]
-pub fn waterfall_bar(left_frac: f32, width_frac: f32, track_w: f32, tone: Tone, cx: &App) -> Div {
+pub fn waterfall_bar(
+    left_frac: f32,
+    width_frac: f32,
+    track_w: f32,
+    shape: StatusShape,
+    cx: &App,
+) -> Div {
     let p = palette(cx);
-    let fill = match tone {
-        Tone::Accent => to_hsla(p.accent),
-        Tone::Success => to_hsla(p.ok),
-        Tone::Warning => to_hsla(p.warn),
-        Tone::Danger => to_hsla(p.bad),
-        Tone::Neutral => to_hsla(p.faint),
+    let fill = match shape {
+        StatusShape::Run => to_hsla(p.accent),
+        StatusShape::Ok | StatusShape::Live => to_hsla(p.ok),
+        StatusShape::Warn => to_hsla(p.warn),
+        StatusShape::Bad => to_hsla(p.bad),
+        StatusShape::Idle | StatusShape::Stopped => to_hsla(p.faint),
     };
     let track_bg = to_hsla(p.sunken);
     let tick_col = to_hsla(p.line.composite_over(p.sunken));
@@ -264,7 +215,7 @@ pub fn count_24h_outcomes(board: &AgentBoard) -> (usize, usize) {
     {
         match r.run.status {
             AgentRunStatus::Completed => ok += 1,
-            AgentRunStatus::Failed | AgentRunStatus::Interrupted => failed += 1,
+            AgentRunStatus::Failed => failed += 1,
             _ => {}
         }
     }
@@ -289,49 +240,33 @@ pub fn format_cost_today(board: &AgentBoard) -> String {
 /// Compact read-only tool step card reused by `Node Inspector`.
 pub fn compact_tool_row(step: &TopologyToolStep, cx: &App) -> AnyElement {
     let p = palette(cx);
-    let (shape, _) = tool_status_meta(&step.status);
+    let meta = step
+        .duration_ms
+        .map(|ms| SharedString::from(format_elapsed_short(ms)));
+    let exit = step
+        .exit_code
+        .filter(|c| *c != 0)
+        .map(|c| exit_code_badge(c, cx).into_any_element());
     v_col()
         .w_full()
         .gap(px(2.0))
-        .px(px(8.0))
-        .py(px(6.0))
+        .py(px(2.0))
         .rounded(px(6.0))
         .bg(to_hsla(p.surface))
         .border_1()
         .border_color(to_hsla(p.line.composite_over(p.surface)))
-        .child(
-            h_row()
-                .w_full()
-                .justify_between()
-                .gap(px(6.0))
-                .child(
-                    h_row()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(6.0))
-                        .child(status_indicator(shape, cx))
-                        .child(
-                            div()
-                                .text_xs()
-                                .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                .text_color(to_hsla(p.ink))
-                                .child(SharedString::from(step.name.clone())),
-                        )
-                        .children(
-                            step.exit_code
-                                .filter(|c| *c != 0)
-                                .map(|c| badge(format!("exit {c}"), Tone::Danger, cx)),
-                        ),
-                )
-                .children(step.duration_ms.map(|ms| {
-                    div()
-                        .text_size(px(10.5))
-                        .text_color(to_hsla(p.faint))
-                        .child(SharedString::from(format_elapsed_short(ms)))
-                })),
-        )
+        .child(status_row(
+            SharedString::from(format!("tool-row-{}", step.call_id)),
+            map_tool_status(&step.status),
+            step.name.clone(),
+            meta,
+            exit,
+            cx,
+        ))
         .children((!step.summary.is_empty()).then(|| {
             div()
+                .px(px(8.0))
+                .pb(px(4.0))
                 .text_size(px(11.0))
                 .text_color(to_hsla(p.muted))
                 .truncate()

@@ -21,7 +21,10 @@ use serde_json::Value;
 use crate::agent::model::{
     AgentEvent, FileChange, FileChangeKind as JournalKind, FileChangeStatus,
 };
-use crate::agent::tools::fs::{FileChangeRecord, UndoOutcome, apply_write, undo_file_change};
+use crate::agent::tools::fs::{
+    FileChangeRecord, RevertHunkOutcome, UndoOutcome, apply_write, revert_file_hunk,
+    undo_file_change,
+};
 use crate::agent::tools::{FileChangeKind, ToolContext, ToolOutput};
 use crate::error::AppError;
 
@@ -406,4 +409,130 @@ fn undo_one(state: &AppState, row: &FileChange, force: bool) -> Result<FileChang
         UndoOutcome::Restored | UndoOutcome::Deleted => FileChangeStatus::Undone,
         UndoOutcome::Conflict => FileChangeStatus::Conflict,
     })
+}
+
+/// Reverts a single diff hunk (`hunk_index`, 0-based) of `change_id` on disk and updates the
+/// journal row's `after_sha256`, `added`, `removed`, and `status`. Refuses if the chat has an
+/// active run, the path escapes the recorded workspace folder, or the file on disk was modified
+/// since `change_id` was recorded (marking the row [`FileChangeStatus::Conflict`] and returning
+/// [`AppError::Conflict`]).
+///
+/// # Errors
+/// [`AppError::NotFound`] for an unknown change or missing blob, [`AppError::Conflict`] while a
+/// run is active or when the file on disk changed since the diff was computed,
+/// [`AppError::Validation`] for an unsafe path, missing folder, binary file, or out-of-range hunk.
+pub fn agent_change_revert_hunk_impl(
+    state: &AppState,
+    change_id: &str,
+    hunk_index: usize,
+) -> Result<FileChange, AppError> {
+    let row = state
+        .store()
+        .get_file_changes(&[change_id.to_owned()])
+        .map_err(command_error)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::not_found(format!("change {change_id} not found")))?;
+    if is_request_change(&row) {
+        return Err(AppError::validation(
+            "Saved request changes can only be undone as a whole",
+        ));
+    }
+    let chat = chat_of(state, &row.session_id)?;
+    if state.agent.runs.active_for_session(&chat).is_some() {
+        return Err(AppError::conflict(
+            "Stop this chat's run before reverting its changes",
+        ));
+    }
+    if !matches!(
+        row.status,
+        FileChangeStatus::Pending | FileChangeStatus::Conflict
+    ) {
+        return Err(AppError::conflict("This change is no longer pending"));
+    }
+    if row.after_sha256.is_none() {
+        return Err(AppError::validation(
+            "Deleted files can only be restored as a whole",
+        ));
+    }
+    let workspace = row
+        .folder
+        .as_deref()
+        .ok_or_else(|| unknown_folder(&row.path))?;
+    let folder_lock = state.agent.write_locks.lock_for(Path::new(workspace));
+    let _write_guard = folder_lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let before = row
+        .before_sha256
+        .as_deref()
+        .map(|sha256| agent_blob_read_impl(state, sha256))
+        .transpose()?;
+    let outcome = revert_file_hunk(
+        Path::new(workspace),
+        &row.path,
+        before.as_deref(),
+        row.after_sha256.as_deref(),
+        hunk_index,
+    )?;
+    match outcome {
+        RevertHunkOutcome::Updated {
+            after_sha256,
+            added,
+            removed,
+        } => {
+            state
+                .store()
+                .update_file_change_after_revert(
+                    &row.session_id,
+                    &row.id,
+                    Some(&after_sha256),
+                    added,
+                    removed,
+                    FileChangeStatus::Pending,
+                )
+                .map_err(command_error)?;
+            Ok(FileChange {
+                after_sha256: Some(after_sha256),
+                added,
+                removed,
+                status: FileChangeStatus::Pending,
+                ..row
+            })
+        }
+        RevertHunkOutcome::Undone { after_sha256 } => {
+            state
+                .store()
+                .update_file_change_after_revert(
+                    &row.session_id,
+                    &row.id,
+                    after_sha256.as_deref(),
+                    0,
+                    0,
+                    FileChangeStatus::Undone,
+                )
+                .map_err(command_error)?;
+            Ok(FileChange {
+                after_sha256,
+                added: 0,
+                removed: 0,
+                status: FileChangeStatus::Undone,
+                ..row
+            })
+        }
+        RevertHunkOutcome::Conflict => {
+            state
+                .store()
+                .set_file_change_status(
+                    &row.session_id,
+                    std::slice::from_ref(&row.id),
+                    FileChangeStatus::Conflict,
+                )
+                .map_err(command_error)?;
+            Err(AppError::conflict(format!(
+                "{}: the file changed after this edit, so the hunk cannot be reverted",
+                row.path
+            )))
+        }
+    }
 }

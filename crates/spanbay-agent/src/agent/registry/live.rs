@@ -8,8 +8,8 @@
 use spanbay_llm::llm::hub::{HubCitation, HubPart};
 
 use super::super::model::{
-    AgentEvent, AgentRole, HumanGateDto, LiveCostLimit, LiveRunSnapshot, LiveToolCall,
-    LiveToolResult, LiveToolState, LiveUsage,
+    AgentEvent, AgentRole, HumanGateDto, LiveApprovalRequest, LiveCostLimit, LiveRunSnapshot,
+    LiveToolCall, LiveToolResult, LiveToolState, LiveUsage,
 };
 
 /// Text, reasoning and tool-call arguments kept per run; later fragments are dropped and
@@ -48,6 +48,27 @@ impl LiveAcc {
                 | AgentEvent::ToolCallStarted { .. }
                 | AgentEvent::Usage { .. }
         ) {
+            self.cost_limit = None;
+        } else if let AgentEvent::SubagentEvent {
+            child_run_id,
+            event: child_ev,
+            ..
+        } = event
+            && self
+                .cost_limit
+                .as_ref()
+                .is_some_and(|limit| limit.run_id == *child_run_id)
+            && matches!(
+                child_ev.as_ref(),
+                AgentEvent::TextDelta { .. }
+                    | AgentEvent::ReasoningDelta { .. }
+                    | AgentEvent::CitationAdded { .. }
+                    | AgentEvent::ToolCallStarted { .. }
+                    | AgentEvent::Usage { .. }
+                    | AgentEvent::ToolResult { .. }
+                    | AgentEvent::TodosUpdated { .. }
+            )
+        {
             self.cost_limit = None;
         }
         match event {
@@ -112,10 +133,7 @@ impl LiveAcc {
                 }
             }
             AgentEvent::ToolApprovalRequired {
-                call_id,
-                arguments,
-                card,
-                ..
+                call_id, arguments, ..
             } => {
                 // The complete arguments replace whatever fragments arrived (or were dropped).
                 let old = match self.call_part(call_id) {
@@ -129,7 +147,7 @@ impl LiveAcc {
                 }
                 self.set_state(call_id, LiveToolState::WaitingApproval);
                 if let Some(tool) = self.tool(call_id) {
-                    tool.approval.clone_from(card);
+                    tool.approval = approval_request(event);
                 }
             }
             AgentEvent::ToolApprovalResolved { call_id, .. } => {
@@ -159,6 +177,7 @@ impl LiveAcc {
                 status,
                 parts,
                 duration_ms,
+                exit_code,
                 ..
             } => {
                 if let Some(tool) = self.tool(call_id) {
@@ -167,6 +186,7 @@ impl LiveAcc {
                         status: *status,
                         summary: summary(parts),
                         duration_ms: *duration_ms,
+                        exit_code: *exit_code,
                     });
                 }
             }
@@ -184,15 +204,12 @@ impl LiveAcc {
                 event,
                 ..
             } => match event.as_ref() {
-                AgentEvent::ToolApprovalRequired {
-                    call_id,
-                    name,
-                    card,
-                    ..
-                } => {
+                child @ AgentEvent::ToolApprovalRequired { call_id, name, .. } => {
+                    let approval = approval_request(child);
                     if let Some(tool) = self.tool(call_id) {
                         tool.state = LiveToolState::WaitingApproval;
-                        tool.approval.clone_from(card);
+                        tool.approval = approval;
+                        tool.child_run_id = Some(child_run_id.clone());
                     } else {
                         self.tools.push(LiveToolCall {
                             call_id: call_id.clone(),
@@ -201,7 +218,7 @@ impl LiveAcc {
                             state: LiveToolState::WaitingApproval,
                             child_run_id: Some(child_run_id.clone()),
                             result: None,
-                            approval: card.clone(),
+                            approval,
                         });
                     }
                 }
@@ -372,6 +389,10 @@ fn text_part(text: String, citations: Vec<HubCitation>) -> HubPart {
         origin: None,
         citations,
     }
+}
+
+fn approval_request(event: &AgentEvent) -> Option<Box<LiveApprovalRequest>> {
+    LiveApprovalRequest::from_event(event, spanbay_base::time::now_ms()).map(Box::new)
 }
 
 /// The first [`SUMMARY_CHARS`] characters of the text parts of a tool result.

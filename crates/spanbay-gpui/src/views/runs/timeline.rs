@@ -12,15 +12,14 @@ use spanbay_desktop::core::agent::dto::{AgentRunTopology, ExecutionWave};
 use spanbay_desktop::core::agent::model::AgentRunStatus;
 
 use crate::ui::{
-    StatusShape, Tone, UiIcon, badge, h_row, icon_xs, palette, section_heading, status_indicator,
-    to_hsla, v_col,
+    UiIcon, badge, h_row, icon_xs, palette, section_heading, status_indicator, to_hsla, v_col,
 };
 
 use super::modal::WorkflowMonitorModal;
-use super::status::{
-    compute_bar_span, format_elapsed_short, format_model_short, run_status_meta, waterfall_bar,
-};
+use super::status::{compute_bar_span, format_elapsed_short, format_model_short, waterfall_bar};
 use super::timeline_rows::{TimelineAxis, render_subagent_lane, render_tool_row};
+use crate::ui::{run_status_meta, status_visual};
+use spanbay_desktop::state::{GraphNodeStatus, aggregate_statuses, map_tool_status};
 
 pub fn render_timeline_view(
     view: &WorkflowMonitorModal,
@@ -141,7 +140,7 @@ pub fn render_timeline_view(
             h_row()
                 .flex_shrink_0()
                 .gap(px(8.0))
-                .child(waterfall_bar(0.0, 1.0, axis.track_w, root_tone, cx))
+                .child(waterfall_bar(0.0, 1.0, axis.track_w, root_shape, cx))
                 .child(
                     div()
                         .w(px(52.0))
@@ -219,25 +218,31 @@ fn render_wave(
             ..
         } => {
             let any_active = subagents.iter().any(|s| s.run.status.is_active());
-            let any_failed = subagents.iter().any(|s| {
-                matches!(
-                    s.run.status,
-                    AgentRunStatus::Failed | AgentRunStatus::Interrupted
-                )
-            });
+            let any_failed = subagents
+                .iter()
+                .any(|s| s.run.status == AgentRunStatus::Failed);
+            let any_interrupted = subagents
+                .iter()
+                .any(|s| s.run.status == AgentRunStatus::Interrupted);
             let any_wait = subagents
                 .iter()
                 .any(|s| s.run.status == AgentRunStatus::WaitingApproval);
+            let any_completed = subagents
+                .iter()
+                .any(|s| s.run.status == AgentRunStatus::Completed);
             let rail_color = if any_wait {
                 to_hsla(p.warn)
             } else if any_failed {
                 to_hsla(p.bad)
+            } else if any_interrupted {
+                to_hsla(p.warn)
             } else if any_active {
                 to_hsla(p.accent)
-            } else {
+            } else if any_completed {
                 to_hsla(p.ok)
+            } else {
+                to_hsla(p.faint)
             };
-
             let mut lanes = v_col()
                 .w_full()
                 .pl(px(8.0))
@@ -312,19 +317,11 @@ fn render_wave(
         } => {
             let key = format!("tl-pt-{parent_run_id}-{wave_index}");
             let open = view.expanded_rounds.contains(&key);
-            let any_err = tools
-                .iter()
-                .any(|t| matches!(t.status.as_str(), "error" | "denied" | "timed_out"));
-            let any_run = tools
-                .iter()
-                .any(|t| matches!(t.status.as_str(), "running" | "waiting_approval"));
-            let (shape, tone) = if any_run {
-                (StatusShape::Run, Tone::Accent)
-            } else if any_err {
-                (StatusShape::Bad, Tone::Danger)
-            } else {
-                (StatusShape::Ok, Tone::Success)
-            };
+            // The wave shows its most urgent step: running, then failed, then any warning.
+            let statuses: Vec<GraphNodeStatus> =
+                tools.iter().map(|t| map_tool_status(&t.status)).collect();
+            let wave_status = aggregate_statuses(&statuses);
+            let (shape, _) = status_visual(wave_status);
             let (left, width) = compute_bar_span(
                 axis.run_start_ms,
                 axis.run_total_ms,
@@ -381,7 +378,7 @@ fn render_wave(
                             h_row()
                                 .flex_shrink_0()
                                 .gap(px(8.0))
-                                .child(waterfall_bar(left, width, axis.track_w, tone, cx))
+                                .child(waterfall_bar(left, width, axis.track_w, shape, cx))
                                 .child(
                                     div()
                                         .w(px(52.0))

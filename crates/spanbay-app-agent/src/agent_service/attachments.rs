@@ -300,6 +300,9 @@ pub fn agent_blob_read_impl(state: &AppState, sha256: &str) -> Result<Vec<u8>, A
 /// [`AppError::Unsupported`] without a data directory, [`AppError::Io`] when deleting fails.
 pub fn agent_attachment_gc_impl(state: &AppState) -> Result<usize, AppError> {
     let store = store_for(state)?;
+    if let Some(dirs) = state.data_dirs() {
+        let _ = fs::remove_dir_all(dirs.tmp.join("open"));
+    }
     let _guard = blobs_lock();
     let orphan_ids: Vec<String> = state
         .store()

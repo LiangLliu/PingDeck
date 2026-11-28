@@ -20,7 +20,9 @@ use crate::ui::{
 };
 
 use super::feed_cards::{render_board_row_card, render_history_item_card};
-use super::status::{count_24h_outcomes, format_cost_today, format_tokens_compact};
+use super::status::{
+    count_24h_outcomes, format_cost_today, format_tokens_compact, process_state_label,
+};
 use super::types::{RunsFilter, RunsScope};
 use super::{RunsView, all_board_rows};
 
@@ -261,8 +263,8 @@ fn render_processes_drawer(view: &RunsView, cx: &mut Context<RunsView>) -> AnyEl
                                     .text_size(px(10.5))
                                     .text_color(to_hsla(p.muted))
                                     .child(format!(
-                                        "{:?}{}",
-                                        proc_item.state,
+                                        "{}{}",
+                                        process_state_label(proc_item.state, cx),
                                         proc_item
                                             .pid
                                             .map(|pid| format!(" · PID {pid}"))
@@ -306,12 +308,7 @@ fn render_filter_toolbar(
     let waiting_n = board.needs_you.len();
     let running_n = board.running.len();
     let failed_n = all_board_rows(board)
-        .filter(|r| {
-            matches!(
-                r.run.status,
-                AgentRunStatus::Failed | AgentRunStatus::Interrupted
-            )
-        })
+        .filter(|r| r.run.status == AgentRunStatus::Failed)
         .count();
 
     h_row()
@@ -442,12 +439,7 @@ fn render_board_groups(
                     AgentRunStatus::Queued | AgentRunStatus::Running
                 )
             }
-            RunsFilter::Failed => {
-                matches!(
-                    row.run.status,
-                    AgentRunStatus::Failed | AgentRunStatus::Interrupted
-                )
-            }
+            RunsFilter::Failed => row.run.status == AgentRunStatus::Failed,
             RunsFilter::Done => !row.run.status.is_active(),
         };
         if !status_ok {
@@ -554,12 +546,7 @@ fn render_all_history_list(view: &RunsView, cx: &mut Context<RunsView>) -> AnyEl
                         AgentRunStatus::Queued | AgentRunStatus::Running
                     )
                 }
-                RunsFilter::Failed => {
-                    matches!(
-                        item.run.status,
-                        AgentRunStatus::Failed | AgentRunStatus::Interrupted
-                    )
-                }
+                RunsFilter::Failed => item.run.status == AgentRunStatus::Failed,
                 RunsFilter::Done => !item.run.status.is_active(),
             };
             if !status_ok {

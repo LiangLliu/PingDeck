@@ -1,235 +1,195 @@
-//! Floating top-accented Approval, AskUser Question, Plan Approval, Cost Pause, and Queued
-//! Turns cards docked above the Chat composer.
+//! Floating top-accented AskUser Question and Plan Approval cards docked above the Chat
+//! composer.
 
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString, Styled as _,
-    div, px,
+    AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
+    KeyDownEvent, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
-use spanbay_desktop::core::agent::model::{
-    ApprovalDecision, ApprovalScope, HumanGateBody, HumanGateDto,
-};
+use spanbay_desktop::core::agent::model::{HumanGateBody, HumanGateDto};
+use spanbay_desktop::core::app::agent_plan_approve_impl;
 use spanbay_desktop::core::model::settings::ToolApproval;
-use spanbay_desktop::state::LiveApproval;
+use spanbay_desktop::state::GraphNodeStatus;
 
+use crate::bridge::spawn_async_into;
 use crate::ui::{
-    ScrollableElement as _, StatusShape, Tone, badge, btn_danger, btn_ghost, btn_primary,
-    btn_secondary, choice_chip, h_row, markdown_view, palette, status_indicator, text_input,
-    to_hsla, top_accent_card, v_col,
+    InputEvent, InputState, ScrollableElement as _, Tone, WaitKind, badge, btn_ghost, btn_primary,
+    btn_secondary, choice_chip, h_row, markdown_view, palette, status_badge, text_input, to_hsla,
+    v_col,
 };
 
 use crate::views::runs::graph::render_plan_preview_graph;
 
 use super::ChatView;
-use super::types::ChatModal;
 
-pub fn render_approval_gate(appr: &LiveApproval, cx: &mut Context<ChatView>) -> impl IntoElement {
-    let p = palette(cx);
-    let tone = if appr.destructive {
-        Tone::Danger
-    } else {
-        Tone::Warning
-    };
-    let run_once = appr.run_id.clone();
-    let call_once = appr.call_id.clone();
-    let run_net = appr.run_id.clone();
-    let call_net = appr.call_id.clone();
-    let run_sess = appr.run_id.clone();
-    let call_sess = appr.call_id.clone();
-    let run_deny = appr.run_id.clone();
-    let call_deny = appr.call_id.clone();
-    let appr_modal = appr.clone();
+impl ChatView {
+    pub fn approve_plan(
+        &mut self,
+        mode: Option<ToolApproval>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let sid = self.thread.session_id.clone();
+        if sid.is_empty() {
+            return;
+        }
+        // The approval goes to the model in the interface language, followed by any composer note.
+        let note = self.composer.read(cx).value().trim().to_owned();
+        let mut text = crate::ui::tr(cx).chat().plan_approved_text().to_owned();
+        if !note.is_empty() {
+            text.push_str("\n\n");
+            text.push_str(&note);
+        }
+        self.plan_revising = false;
+        self.composer
+            .update(cx, |c, cx| c.set_value("", window, cx));
+        self.reset_composer_placeholder(window, cx);
+        let sid_check = sid.clone();
+        let task = spawn_async_into(
+            cx,
+            move |state| async move { agent_plan_approve_impl(&state, &sid, Some(text), mode).await },
+            move |this, res, cx| {
+                if this.thread.session_id != sid_check {
+                    return;
+                }
+                match res {
+                    Ok(_) => {
+                        this.plan_mode = false;
+                        this.plan_revising = false;
+                        if let Some(m) = mode
+                            && let Some(session) = &mut this.session
+                        {
+                            session.permission_mode = m;
+                        }
+                        this.thread.open_gates.clear();
+                        this.turn_inputs_version = this.turn_inputs_version.wrapping_add(1);
+                        this.status_msg = Some((
+                            Tone::Success,
+                            crate::ui::tr(cx).chat().act_plan_approved().into(),
+                        ));
+                    }
+                    Err(e) => {
+                        this.pending_draft_sync = Some(note);
+                        this.status_msg = Some((Tone::Danger, e.message().to_owned()));
+                    }
+                }
+                cx.notify();
+            },
+        );
+        self._tasks.push(task);
+    }
 
-    let can_session =
-        appr.offered_scopes.is_empty() || appr.offered_scopes.contains(&ApprovalScope::Session);
-    let has_more_scopes = appr.offered_scopes.len() > 2
-        || appr
-            .offered_scopes
-            .contains(&ApprovalScope::WorkspacePattern)
-        || appr.offered_scopes.contains(&ApprovalScope::Tool);
+    /// "Keep planning": the next composer text revises the plan (sent by ↵ while the gate waits).
+    pub fn keep_planning(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.plan_revising = true;
+        let hint = crate::ui::tr(cx).chat().gates_keep_planning_hint();
+        self.composer.update(cx, |c, cx| {
+            c.set_placeholder(hint, window, cx);
+            c.focus(window, cx);
+        });
+        cx.notify();
+    }
 
-    let preview = appr
-        .full_text
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or(appr.arguments.as_str());
-    let reason_line = appr
-        .why
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or(appr.reason.as_str());
+    /// Selects or toggles option `idx` (1-based) on the question gate of `call_id`.
+    pub fn toggle_question_choice(
+        &mut self,
+        call_id: &str,
+        idx: u8,
+        multi: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let entry = self
+            .question_draft_choices
+            .entry(call_id.to_owned())
+            .or_default();
+        if multi {
+            if let Some(pos) = entry.iter().position(|&v| v == idx) {
+                entry.remove(pos);
+            } else {
+                entry.push(idx);
+            }
+        } else if entry.contains(&idx) {
+            entry.clear();
+        } else {
+            entry.clear();
+            entry.push(idx);
+        }
+        cx.notify();
+    }
 
-    top_accent_card(tone, cx).child(
-        v_col()
-            .p(px(12.0))
-            .gap(px(8.0))
-            .child(
-                h_row()
-                    .justify_between()
-                    .gap(px(8.0))
-                    .child(
-                        h_row()
-                            .gap(px(7.0))
-                            .child(status_indicator(
-                                if appr.destructive {
-                                    StatusShape::Bad
-                                } else {
-                                    StatusShape::Warn
-                                },
-                                cx,
-                            ))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                    .text_color(to_hsla(p.ink))
-                                    .child(SharedString::from(appr.summary.clone())),
-                            ),
-                    )
-                    .child(
-                        h_row()
-                            .gap(px(4.0))
-                            .child(badge(appr.name.clone(), Tone::Neutral, cx))
-                            .child(badge(appr.risk.clone(), tone, cx))
-                            .children(
-                                appr.sandbox_label
-                                    .as_ref()
-                                    .map(|sb| badge(sb.clone(), Tone::Neutral, cx)),
-                            ),
-                    ),
-            )
-            .children((!preview.trim().is_empty()).then(|| {
-                div()
-                    .px(px(9.0))
-                    .py(px(6.0))
-                    .rounded(px(6.0))
-                    .bg(to_hsla(p.sunken))
-                    .text_xs()
-                    .text_color(to_hsla(p.ink_2))
-                    .child(SharedString::from(preview.trim().to_owned()))
-            }))
-            .children(appr.scope_disabled_reason.as_ref().map(|msg| {
-                div()
-                    .text_xs()
-                    .text_color(to_hsla(p.warn))
-                    .child(SharedString::from(msg.clone()))
-            }))
-            .child(
-                h_row()
-                    .justify_between()
-                    .gap(px(8.0))
-                    .flex_wrap()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(120.0))
-                            .text_xs()
-                            .text_color(to_hsla(p.muted))
-                            .truncate()
-                            .child(SharedString::from(reason_line.to_owned())),
-                    )
-                    .child(
-                        h_row()
-                            .gap(px(6.0))
-                            .flex_wrap()
-                            .child(
-                                btn_danger(
-                                    SharedString::from(format!("appr-deny-{call_deny}")),
-                                    crate::ui::tr(cx).chat().approval_deny(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.answer_approval_ext(
-                                            run_deny.clone(),
-                                            call_deny.clone(),
-                                            ApprovalDecision::Deny,
-                                            ApprovalScope::Once,
-                                            false,
-                                            cx,
-                                        );
-                                    },
-                                )),
-                            )
-                            .children(can_session.then(|| {
-                                btn_secondary(
-                                    SharedString::from(format!("appr-sess-{call_sess}")),
-                                    crate::ui::tr(cx).chat().gates_allow_in_chat(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.answer_approval_ext(
-                                            run_sess.clone(),
-                                            call_sess.clone(),
-                                            ApprovalDecision::Allow,
-                                            ApprovalScope::Session,
-                                            false,
-                                            cx,
-                                        );
-                                    },
-                                ))
-                            }))
-                            .children(has_more_scopes.then(|| {
-                                let cid_m = appr_modal.call_id.clone();
-                                btn_ghost(
-                                    SharedString::from(format!("appr-scope-{cid_m}")),
-                                    crate::ui::tr(cx).chat().gates_scope(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.active_modal = Some(ChatModal::ScopeApproval {
-                                            appr: Box::new(appr_modal.clone()),
-                                        });
-                                        cx.notify();
-                                    },
-                                ))
-                            }))
-                            .children(appr.network.then(|| {
-                                btn_secondary(
-                                    SharedString::from(format!("appr-net-{call_net}")),
-                                    crate::ui::tr(cx).chat().gates_allow_net(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.answer_approval_ext(
-                                            run_net.clone(),
-                                            call_net.clone(),
-                                            ApprovalDecision::Allow,
-                                            ApprovalScope::Once,
-                                            true,
-                                            cx,
-                                        );
-                                    },
-                                ))
-                            }))
-                            .child(
-                                btn_primary(
-                                    SharedString::from(format!("appr-once-{call_once}")),
-                                    crate::ui::tr(cx).chat().approval_allow_once(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.answer_approval_ext(
-                                            run_once.clone(),
-                                            call_once.clone(),
-                                            ApprovalDecision::Allow,
-                                            ApprovalScope::Once,
-                                            false,
-                                            cx,
-                                        );
-                                    },
-                                )),
-                            ),
-                    ),
-            ),
-    )
+    /// Ensures secondary question cards (`ix > 0`) each have their own [`InputState`] entity and
+    /// `PressEnter` / `Change` subscription so multiple open question cards never share one input.
+    pub(super) fn sync_question_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let active_secondary: std::collections::HashSet<String> = self
+            .thread
+            .open_gates
+            .iter()
+            .enumerate()
+            .filter(|&(ix, (_, g))| ix > 0 && matches!(g.body, HumanGateBody::Question { .. }))
+            .map(|(_, (_, g))| g.call_id.clone())
+            .collect();
+        self.question_other_inputs
+            .retain(|cid, _| active_secondary.contains(cid));
+        for (ix, (run_id, gate)) in self.thread.open_gates.clone().into_iter().enumerate() {
+            if ix == 0 {
+                continue;
+            }
+            let HumanGateBody::Question { multi, .. } = gate.body else {
+                continue;
+            };
+            let cid = gate.call_id;
+            if self.question_other_inputs.contains_key(&cid) {
+                continue;
+            }
+            let ph = crate::ui::tr(cx).chat().ph_custom_answer();
+            let input: Entity<InputState> =
+                cx.new(|cx| InputState::new(window, cx).placeholder(ph));
+            let cid_sub = cid.clone();
+            let rid_sub = run_id.clone();
+            let sub =
+                cx.subscribe_in(
+                    &input,
+                    window,
+                    move |this, inp, ev: &InputEvent, w, cx| match ev {
+                        InputEvent::PressEnter { .. } => {
+                            this.answer_question(rid_sub.clone(), cid_sub.clone(), false, w, cx);
+                        }
+                        InputEvent::Change if !multi => {
+                            if !inp.read(cx).value().trim().is_empty()
+                                && let Some(choices) = this.question_draft_choices.get_mut(&cid_sub)
+                                && !choices.is_empty()
+                            {
+                                choices.clear();
+                                cx.notify();
+                            }
+                        }
+                        _ => {}
+                    },
+                );
+            self._subscriptions.push(sub);
+            self.question_other_inputs.insert(cid, input);
+        }
+    }
+
+    pub(super) fn reset_composer_placeholder(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ph = crate::ui::tr(cx).chat().ph_composer();
+        self.composer
+            .update(cx, |c, cx| c.set_placeholder(ph, window, cx));
+    }
 }
 
 pub fn render_human_gate(
     view: &ChatView,
     run_id: &str,
     gate: &HumanGateDto,
+    first: bool,
     cx: &mut Context<ChatView>,
 ) -> impl IntoElement {
     let p = palette(cx);
+    let ch = crate::ui::tr(cx).chat();
     match &gate.body {
         HumanGateBody::Question {
             question,
@@ -259,19 +219,7 @@ pub fn render_human_gate(
                             )
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
-                                    let entry =
-                                        this.question_draft_choices.entry(cid.clone()).or_default();
-                                    if is_multi {
-                                        if let Some(pos) = entry.iter().position(|&v| v == idx) {
-                                            entry.remove(pos);
-                                        } else {
-                                            entry.push(idx);
-                                        }
-                                    } else {
-                                        entry.clear();
-                                        entry.push(idx);
-                                    }
-                                    cx.notify();
+                                    this.toggle_question_choice(&cid, idx, is_multi, cx);
                                 },
                             )),
                         )
@@ -288,67 +236,145 @@ pub fn render_human_gate(
             let c_sub = gate.call_id.clone();
             let r_skip = run_id.to_owned();
             let c_skip = gate.call_id.clone();
-
-            top_accent_card(Tone::Accent, cx).child(
+            let mut card = v_col().w_full();
+            if first {
+                let r_key = run_id.to_owned();
+                let c_key = gate.call_id.clone();
+                let opt_len = options.len();
+                let is_multi = *multi;
+                card = card.track_focus(&view.gate_focus).on_key_down(cx.listener(
+                    move |this, ev: &KeyDownEvent, window, cx| {
+                        if this.active_modal.is_some() {
+                            if ev.keystroke.key == "escape" {
+                                cx.stop_propagation();
+                                this.dismiss_modal_if_open(cx);
+                            }
+                            return;
+                        }
+                        let in_other = this
+                            .question_other_input
+                            .read(cx)
+                            .focus_handle(cx)
+                            .is_focused(window);
+                        if !in_other
+                            && !ev.keystroke.modifiers.platform
+                            && !ev.keystroke.modifiers.control
+                            && !ev.keystroke.modifiers.alt
+                            && let [b @ b'1'..=b'9'] = ev.keystroke.key.as_bytes()
+                        {
+                            let idx = b - b'0';
+                            if usize::from(idx) <= opt_len {
+                                cx.stop_propagation();
+                                this.toggle_question_choice(&c_key, idx, is_multi, cx);
+                                return;
+                            }
+                        }
+                        if !in_other && ev.keystroke.key == "enter" {
+                            cx.stop_propagation();
+                            this.answer_question(r_key.clone(), c_key.clone(), false, window, cx);
+                        } else if ev.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            if in_other {
+                                window.focus(&this.gate_focus, cx);
+                                cx.notify();
+                            } else {
+                                this.answer_question(
+                                    r_key.clone(),
+                                    c_key.clone(),
+                                    true,
+                                    window,
+                                    cx,
+                                );
+                            }
+                        }
+                    },
+                ));
+            }
+            card.child(
                 v_col()
                     .p(px(12.0))
                     .gap(px(8.0))
                     .child(
                         h_row()
                             .gap(px(6.0))
-                            .child(badge(
-                                crate::ui::tr(cx).chat().gates_agent_question(),
-                                Tone::Accent,
+                            .child(status_badge(
+                                GraphNodeStatus::Waiting,
+                                Some(WaitKind::Question),
                                 cx,
                             ))
                             .child(
                                 div()
-                                    .flex_1()
                                     .text_xs()
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                     .text_color(to_hsla(p.ink))
-                                    .child(SharedString::from(question.clone())),
+                                    .child(ch.gates_agent_question()),
                             ),
                     )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(to_hsla(p.ink))
+                            .child(SharedString::from(question.clone())),
+                    )
                     .child(opts_row)
-                    .child(text_input(&view.question_other_input))
+                    .child(text_input(if first {
+                        &view.question_other_input
+                    } else {
+                        view.question_other_inputs
+                            .get(&gate.call_id)
+                            .unwrap_or(&view.question_other_input)
+                    }))
                     .child(
                         h_row()
-                            .justify_end()
-                            .gap(px(6.0))
+                            .w_full()
+                            .justify_between()
+                            .gap(px(8.0))
                             .child(
-                                btn_ghost(
-                                    SharedString::from(format!("q-skip-{}", gate.call_id)),
-                                    crate::ui::tr(cx).chat().gate_question_skip(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, window, cx| {
-                                        this.answer_question(
-                                            r_skip.clone(),
-                                            c_skip.clone(),
-                                            true,
-                                            window,
-                                            cx,
-                                        );
-                                    },
-                                )),
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(to_hsla(p.faint))
+                                    .child(ch.gates_question_keys()),
                             )
                             .child(
-                                btn_primary(
-                                    SharedString::from(format!("q-submit-{}", gate.call_id)),
-                                    crate::ui::tr(cx).chat().gates_submit_answer(),
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, window, cx| {
-                                        this.answer_question(
-                                            r_sub.clone(),
-                                            c_sub.clone(),
-                                            false,
-                                            window,
-                                            cx,
-                                        );
-                                    },
-                                )),
+                                h_row()
+                                    .gap(px(6.0))
+                                    .child(
+                                        btn_secondary(
+                                            SharedString::from(format!("q-skip-{}", gate.call_id)),
+                                            ch.gate_question_skip(),
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, window, cx| {
+                                                this.answer_question(
+                                                    r_skip.clone(),
+                                                    c_skip.clone(),
+                                                    true,
+                                                    window,
+                                                    cx,
+                                                );
+                                            }),
+                                        ),
+                                    )
+                                    .child(
+                                        btn_primary(
+                                            SharedString::from(format!(
+                                                "q-submit-{}",
+                                                gate.call_id
+                                            )),
+                                            ch.gates_submit_answer(),
+                                        )
+                                        .on_click(
+                                            cx.listener(move |this, _, window, cx| {
+                                                this.answer_question(
+                                                    r_sub.clone(),
+                                                    c_sub.clone(),
+                                                    false,
+                                                    window,
+                                                    cx,
+                                                );
+                                            }),
+                                        ),
+                                    ),
                             ),
                     ),
             )
@@ -359,13 +385,6 @@ pub fn render_human_gate(
             steps,
             tasks,
         } => {
-            let hdr_title = title.clone().unwrap_or_else(|| {
-                crate::ui::tr(cx)
-                    .chat()
-                    .gates_plan_ready_for_approval()
-                    .to_owned()
-            });
-            let ch = crate::ui::tr(cx).chat();
             let has_graph = tasks.len() >= 2;
             let show_md = !has_graph || view.plan_gate_show_markdown.contains(&gate.id);
             let empty_groups = std::collections::HashSet::new();
@@ -395,7 +414,25 @@ pub fn render_human_gate(
                     .into_any_element()
             };
 
-            top_accent_card(Tone::Accent, cx).child(
+            let mut card = v_col().w_full();
+            if first {
+                card = card.track_focus(&view.gate_focus).on_key_down(cx.listener(
+                    |this, ev: &KeyDownEvent, window, cx| {
+                        if this.active_modal.is_some() {
+                            if ev.keystroke.key == "escape" {
+                                cx.stop_propagation();
+                                this.dismiss_modal_if_open(cx);
+                            }
+                            return;
+                        }
+                        if ev.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            this.keep_planning(window, cx);
+                        }
+                    },
+                ));
+            }
+            card.child(
                 v_col()
                     .p(px(12.0))
                     .gap(px(8.0))
@@ -406,13 +443,17 @@ pub fn render_human_gate(
                             .child(
                                 h_row()
                                     .gap(px(6.0))
-                                    .child(badge(ch.composer_plan(), Tone::Accent, cx))
+                                    .child(status_badge(
+                                        GraphNodeStatus::Waiting,
+                                        Some(WaitKind::Plan),
+                                        cx,
+                                    ))
                                     .child(
                                         div()
                                             .text_xs()
                                             .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                             .text_color(to_hsla(p.ink))
-                                            .child(hdr_title),
+                                            .child(ch.gates_plan_submitted()),
                                     ),
                             )
                             .child(
@@ -461,51 +502,76 @@ pub fn render_human_gate(
                                     .child(badge(count_badge, Tone::Neutral, cx)),
                             ),
                     )
+                    .children(title.as_ref().map(|t| {
+                        div()
+                            .text_xs()
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(to_hsla(p.ink))
+                            .child(SharedString::from(t.clone()))
+                    }))
                     .child(body_el)
+                    .children(view.plan_revising.then(|| {
+                        div()
+                            .text_xs()
+                            .text_color(to_hsla(p.accent_ink))
+                            .child(ch.gates_revise_waiting())
+                    }))
                     .child(
                         h_row()
-                            .justify_end()
-                            .gap(px(6.0))
-                            .flex_wrap()
+                            .w_full()
+                            .justify_between()
+                            .gap(px(8.0))
                             .child(
-                                btn_ghost(
-                                    SharedString::from(format!("plan-keep-{}", gate.id)),
-                                    crate::ui::tr(cx).chat().gates_keep_planning(),
-                                )
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.status_msg = Some((
-                                            Tone::Accent,
-                                            crate::ui::tr(cx)
-                                                .chat()
-                                                .gates_keep_planning_hint()
-                                                .into(),
-                                        ));
-                                        cx.notify();
-                                    },
-                                )),
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(to_hsla(p.faint))
+                                    .child(ch.gates_plan_keys()),
                             )
                             .child(
-                                btn_secondary(
-                                    SharedString::from(format!("plan-ask-{}", gate.id)),
-                                    crate::ui::tr(cx).chat().gates_approve_ask(),
-                                )
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.approve_plan(Some(ToolApproval::Ask), cx);
-                                    },
-                                )),
-                            )
-                            .child(
-                                btn_primary(
-                                    SharedString::from(format!("plan-go-{}", gate.id)),
-                                    crate::ui::tr(cx).chat().gates_approve_execute(),
-                                )
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.approve_plan(Some(ToolApproval::AutoReadOnly), cx);
-                                    },
-                                )),
+                                h_row()
+                                    .gap(px(6.0))
+                                    .flex_wrap()
+                                    .child(
+                                        btn_ghost(
+                                            SharedString::from(format!("plan-keep-{}", gate.id)),
+                                            ch.gates_keep_planning(),
+                                        )
+                                        .on_click(
+                                            cx.listener(|this, _, window, cx| {
+                                                this.keep_planning(window, cx)
+                                            }),
+                                        ),
+                                    )
+                                    .child(
+                                        btn_secondary(
+                                            SharedString::from(format!("plan-ask-{}", gate.id)),
+                                            ch.gates_approve_ask(),
+                                        )
+                                        .on_click(
+                                            cx.listener(|this, _, window, cx| {
+                                                this.approve_plan(
+                                                    Some(ToolApproval::Ask),
+                                                    window,
+                                                    cx,
+                                                );
+                                            }),
+                                        ),
+                                    )
+                                    .child(
+                                        btn_primary(
+                                            SharedString::from(format!("plan-go-{}", gate.id)),
+                                            ch.gates_approve_execute(),
+                                        )
+                                        .on_click(
+                                            cx.listener(|this, _, window, cx| {
+                                                this.approve_plan(
+                                                    Some(ToolApproval::AutoReadOnly),
+                                                    window,
+                                                    cx,
+                                                );
+                                            }),
+                                        ),
+                                    ),
                             ),
                     ),
             )

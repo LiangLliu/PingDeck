@@ -1433,24 +1433,12 @@ mod gpui_integration {
             });
             window.refresh();
 
-            // Exercise FullAccessConfirm, ChatInstructions, DiffPreview, and ToolOutput modals + Esc.
+            // Exercise FullAccessConfirm and ChatInstructions modals + Esc.
             for modal in [
                 ChatModal::FullAccessConfirm {
                     acknowledged: false,
                 },
                 ChatModal::ChatInstructions,
-                ChatModal::DiffPreview {
-                    path: "src/main.rs".into(),
-                    diff: "+fn ok() {}\n".into(),
-                    binary: false,
-                },
-                ChatModal::ToolOutput {
-                    call_id: "call_1".into(),
-                    name: "read_file".into(),
-                    content: "line 1\nline 2".into(),
-                    has_more: false,
-                    next_offset: 0,
-                },
             ] {
                 view.update(cx, |v, cx| {
                     v.active_modal = Some(modal);
@@ -1477,7 +1465,6 @@ mod gpui_integration {
                 use spanbay_desktop::core::model::hub::{HubPart, HubUsage};
                 v.thread.title = "修复网关 429 熔断与退避".into();
                 v.thread.context_limit_tokens = Some(128_000);
-                v.thread.cost_currency = Some("USD".into());
                 let mut msg = AgentMessage {
                     id: "m-assist-stats".into(),
                     session_id: "s-1".into(),
@@ -1508,13 +1495,9 @@ mod gpui_integration {
                 msg.meta.ttft_ms = Some(620);
                 msg.meta.stream_ms = Some(3_680);
                 v.thread.messages.push(msg);
-                assert!(v.stick_to_bottom);
-                v.stick_to_bottom = false;
+                v.turn_inputs_version += 1;
                 cx.notify();
             });
-            window.refresh();
-            assert!(!view.read(cx).stick_to_bottom);
-
             view.update(cx, |v, cx| {
                 v.pending_handoff.set(Some(ChatHandoff::OpenProviders));
                 cx.notify();
@@ -1523,6 +1506,681 @@ mod gpui_integration {
                 view.read(cx).take_pending_handoff(),
                 Some(ChatHandoff::OpenProviders)
             ));
+        });
+
+        // The thread is a virtual list: it tails new output, leaving the tail keeps the
+        // viewport, and Jump to latest follows again.
+        visual.run_until_parked();
+        visual.update(|_, cx| {
+            view.update(cx, |v, cx| {
+                assert!(v.list_state.item_count() >= 1);
+                assert!(v.list_state.is_following_tail());
+                v.list_state.set_follow_mode(gpui_kit::FollowMode::Normal);
+                cx.notify();
+            });
+        });
+        visual.run_until_parked();
+        assert!(!visual.read(|cx| view.read(cx).list_state.is_following_tail()));
+        visual.update(|_, cx| view.update(cx, |v, cx| v.jump_to_latest(cx)));
+        visual.run_until_parked();
+        assert!(visual.read(|cx| view.read(cx).list_state.is_following_tail()));
+
+        rt.shutdown_blocking();
+    }
+
+    /// B2 chat surfaces: structured approval card, cancelled run marker (no error banner), todo
+    /// panel with a failed task, search hits, and Esc on the focused approval card denying it.
+    #[gpui_kit::test]
+    fn chat_approval_preview_cancel_marker_todos_and_search(cx: &mut TestAppContext) {
+        use crate::views::chat::ChatView;
+        use spanbay_desktop::core::agent::model::permissions::OperatorHit;
+        use spanbay_desktop::core::agent::model::{
+            AgentMessage, AgentRole, AgentRunKind, AgentRunStatus, AgentRunSummary, AgentTodoItem,
+            AgentTodoStatus, ApprovalCard, ApprovalScope, LiveApprovalRequest, RiskLevel, RiskTag,
+            SandboxKind, SandboxState, SandboxStatus, SessionSearchHit, ToolApprovalPreview,
+            ToolClass,
+        };
+        use spanbay_desktop::core::model::hub::{HubPart, HubUsage};
+        use spanbay_desktop::state::LiveApproval;
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        let cmd = "echo 你好\n\nrm -rf build && echo 完成\n";
+        let request = LiveApprovalRequest {
+            arguments: serde_json::json!({ "command": cmd }).to_string(),
+            class: ToolClass::Exec,
+            read_only: false,
+            destructive: true,
+            sandbox: SandboxKind::None,
+            reason: "deletes files".to_owned(),
+            preview: Some(ToolApprovalPreview::Command {
+                cmd: cmd.to_owned(),
+                cwd: "/tmp/work".to_owned(),
+            }),
+            network: true,
+            risk: RiskLevel::High,
+            summary: "Run rm -rf build".to_owned(),
+            full_text: None,
+            card: Some(Box::new(ApprovalCard {
+                risk: RiskLevel::High,
+                risk_reason: Some("deletes files".to_owned()),
+                tags: vec![RiskTag::ChainedCommand, RiskTag::NoSandbox],
+                operators: vec![
+                    OperatorHit {
+                        op: "\\n".to_owned(),
+                        start: 7,
+                    },
+                    OperatorHit {
+                        op: "\\n".to_owned(),
+                        start: 8,
+                    },
+                    OperatorHit {
+                        op: "&&".to_owned(),
+                        start: 22,
+                    },
+                    OperatorHit {
+                        op: "\\n".to_owned(),
+                        start: 32,
+                    },
+                ],
+                why: None,
+                rule_not_used: Some("cargo test *".to_owned()),
+                sandbox: SandboxStatus {
+                    state: SandboxState::Missing,
+                    tier: SandboxKind::None,
+                },
+                summary: "Run rm -rf build".to_owned(),
+                offered_scopes: vec![ApprovalScope::Once, ApprovalScope::Session],
+                rule_label: None,
+                scope_disabled_reason: None,
+                layer: Some("forced_ask".to_owned()),
+                why_code: Some("no_sandbox".to_owned()),
+            })),
+            requested_at_ms: 1_000,
+        };
+        let run = AgentRunSummary {
+            run_id: "r-cancel".to_owned(),
+            session_id: "s-b2".to_owned(),
+            kind: AgentRunKind::Main,
+            parent_run_id: None,
+            parent_call_id: None,
+            status: AgentRunStatus::Cancelled,
+            model_label: "deepseek/reasoner".to_owned(),
+            target: None,
+            iterations: 2,
+            usage: HubUsage::default(),
+            cost_micro_usd: 0,
+            started_at_ms: 1_000,
+            finished_at_ms: Some(2_000),
+            last_event_ms: Some(2_000),
+            last_step: None,
+            stop_reason: None,
+            error_kind: None,
+            error: None,
+            last_seq: 0,
+            role: None,
+            status_detail: None,
+            cost_currency: None,
+            failure: None,
+            cap_inapplicable: None,
+        };
+
+        visual.update(|_, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.session_id = "s-b2".to_owned();
+                v.thread.messages = vec![AgentMessage {
+                    id: "m-u1".to_owned(),
+                    session_id: "s-b2".to_owned(),
+                    run_id: Some("r-cancel".to_owned()),
+                    seq: 1,
+                    role: AgentRole::User,
+                    parts: vec![HubPart::text("clean the build folder")],
+                    attachments: Vec::new(),
+                    model: None,
+                    usage: None,
+                    parent_id: None,
+                    branch_index: 0,
+                    partial: false,
+                    cost_micro_usd: 0,
+                    cost_currency: None,
+                    meta: Default::default(),
+                    branch_siblings: Vec::new(),
+                    error: None,
+                    created_at_ms: 1_000,
+                }];
+                v.thread.active_run = Some(run.clone());
+                v.thread.pending_approvals = vec![LiveApproval::new(
+                    "r-live".to_owned(),
+                    "call-rm".to_owned(),
+                    "shell".to_owned(),
+                    request.clone(),
+                )];
+                v.turn_inputs_version += 1;
+                v.thread.todos = vec![
+                    AgentTodoItem {
+                        id: "t1".to_owned(),
+                        content: "Find build outputs".to_owned(),
+                        status: AgentTodoStatus::Completed,
+                        ..AgentTodoItem::default()
+                    },
+                    AgentTodoItem {
+                        id: "t2".to_owned(),
+                        content: "Delete them".to_owned(),
+                        status: AgentTodoStatus::Failed,
+                        error: Some("permission denied".to_owned()),
+                        ..AgentTodoItem::default()
+                    },
+                ];
+                v.todos_open = true;
+                v.search_hits = vec![SessionSearchHit {
+                    session_id: "s-b2".to_owned(),
+                    message_id: "m-u1".to_owned(),
+                    title: "Build cleanup".to_owned(),
+                    snippet: "clean the [build] folder".to_owned(),
+                    ts_ms: 1_000,
+                    updated_at_ms: 1_000,
+                    in_tool_output: false,
+                }];
+                cx.notify();
+            });
+        });
+        visual.run_until_parked();
+
+        // A cancelled run ends with a marker row and never with an error banner: the user
+        // message plus the marker.
+        visual.read(|cx| {
+            let v = view.read(cx);
+            assert!(v.thread.last_error.is_none());
+            assert!(v.list_state.item_count() >= 2);
+        });
+
+        // Esc on the focused first approval card denies it without a reason and hands focus back
+        // to the composer; the card stays until the core reports the resolution.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                window.focus(&v.approval_focus, cx);
+            });
+        });
+        visual.simulate_keystrokes("escape");
+        visual.run_until_parked();
+        visual.update(|window, cx| {
+            assert!(!view.read(cx).approval_focus.is_focused(window));
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    /// Prototype interaction contracts: scope modal radio + save, approval result line,
+    /// viewer actual-size toggle, Esc on plan card = keep planning, digit keys on question gate.
+    #[gpui_kit::test]
+    fn chat_prototype_interactions_scope_viewer_and_gate_keys(cx: &mut TestAppContext) {
+        use crate::views::chat::{ChatModal, ChatView, ImageViewerSource};
+        use gpui_kit::Focusable as _;
+        use spanbay_desktop::core::agent::approvals::RuleContext;
+        use spanbay_desktop::core::agent::attention::PendingApprovalSummary;
+        use spanbay_desktop::core::agent::model::{
+            AgentSessionInput, ApprovalCard, ApprovalDecision, ApprovalScope, HumanGateBody,
+            HumanGateDto, HumanGateKind, LiveApprovalRequest, QuestionOption, RiskLevel,
+            SandboxKind, SandboxState, SandboxStatus, ToolClass,
+        };
+        use spanbay_desktop::core::app::agent_session_create_impl;
+        use spanbay_desktop::state::LiveApproval;
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        // 1. Scope modal: radio ignores unoffered scope, selects offered scope, confirm records
+        //    the approval result banner and closes the modal.
+        let appr = LiveApproval::new(
+            "r-scope".to_owned(),
+            "call-scope".to_owned(),
+            "shell".to_owned(),
+            LiveApprovalRequest {
+                arguments: r#"{"command":"cargo test"}"#.to_owned(),
+                class: ToolClass::Exec,
+                read_only: false,
+                destructive: false,
+                sandbox: SandboxKind::Seatbelt,
+                reason: "mode".to_owned(),
+                preview: None,
+                network: false,
+                risk: RiskLevel::Medium,
+                summary: "Run cargo test".to_owned(),
+                full_text: None,
+                card: Some(Box::new(ApprovalCard {
+                    risk: RiskLevel::Medium,
+                    risk_reason: None,
+                    tags: Vec::new(),
+                    operators: Vec::new(),
+                    why: None,
+                    rule_not_used: None,
+                    sandbox: SandboxStatus {
+                        state: SandboxState::Available,
+                        tier: SandboxKind::Seatbelt,
+                    },
+                    summary: "Run cargo test".to_owned(),
+                    offered_scopes: vec![ApprovalScope::Once, ApprovalScope::Session],
+                    rule_label: Some("cargo test *".to_owned()),
+                    scope_disabled_reason: Some("folder rule unavailable".to_owned()),
+                    layer: Some("mode_default".to_owned()),
+                    why_code: None,
+                })),
+                requested_at_ms: 1_000,
+            },
+        );
+        // 1a. P1-10a: When ScopeApproval modal is open and focus is still on the approval card,
+        //     Esc dismisses the modal without denying the approval.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.pending_approvals = vec![appr.clone()];
+                v.active_modal = Some(ChatModal::ScopeApproval {
+                    appr: Box::new(appr.clone()),
+                    selected: ApprovalScope::Once,
+                });
+                window.focus(&v.approval_focus, cx);
+                cx.notify();
+            });
+            window.refresh();
+        });
+        visual.simulate_keystrokes("escape");
+        visual.run_until_parked();
+        visual.read(|cx| {
+            let v = view.read(cx);
+            assert!(
+                v.active_modal.is_none(),
+                "Esc with modal open must close the modal"
+            );
+            assert!(
+                v.last_approval_notice.is_none(),
+                "Esc with modal open must not deny the underlying approval card"
+            );
+            assert_eq!(v.thread.pending_approvals.len(), 1);
+        });
+
+        // Register a live approval ticket in the core so `agent_approval_answer_impl` returns
+        // `Ok(true)` (P1-10: `last_approval_notice` is only recorded on an accepted answer).
+        let scope_session =
+            agent_session_create_impl(rt.state(), AgentSessionInput::default()).expect("session");
+        let _scope_ticket = rt
+            .state()
+            .agent
+            .approvals
+            .register(
+                PendingApprovalSummary {
+                    run_id: "r-scope".to_owned(),
+                    session_id: scope_session.id.clone(),
+                    call_id: "call-scope".to_owned(),
+                    tool: "shell".to_owned(),
+                    reason: "mode".to_owned(),
+                    preview: None,
+                    requested_ms: 1_000,
+                    risk: "medium".to_owned(),
+                    summary: "Run cargo test".to_owned(),
+                    full_text: None,
+                    card: appr.request.card.as_deref().cloned(),
+                },
+                RuleContext {
+                    session_id: scope_session.id.clone(),
+                    workspace_dir: None,
+                    tool: "shell".to_owned(),
+                    pattern: Some("cargo test *".to_owned()),
+                    offered: vec![ApprovalScope::Once, ApprovalScope::Session],
+                },
+            )
+            .expect("approval ticket");
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.session_id = scope_session.id.clone();
+                v.active_modal = Some(ChatModal::ScopeApproval {
+                    appr: Box::new(appr.clone()),
+                    selected: ApprovalScope::Once,
+                });
+                cx.notify();
+            });
+            window.refresh();
+            view.update(cx, |v, cx| {
+                // Unoffered scope must stay rejected.
+                v.select_scope_approval(ApprovalScope::WorkspacePattern, cx);
+                assert!(matches!(
+                    v.active_modal,
+                    Some(ChatModal::ScopeApproval {
+                        selected: ApprovalScope::Once,
+                        ..
+                    })
+                ));
+                // Offered scope updates selection; Save & allow submits and leaves result line.
+                v.select_scope_approval(ApprovalScope::Session, cx);
+                assert!(matches!(
+                    v.active_modal,
+                    Some(ChatModal::ScopeApproval {
+                        selected: ApprovalScope::Session,
+                        ..
+                    })
+                ));
+                v.confirm_scope_approval(cx);
+            });
+            window.refresh();
+        });
+        for _ in 0..50 {
+            visual.run_until_parked();
+            if visual.read(|cx| view.read(cx).last_approval_notice.is_some()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        visual.read(|cx| {
+            let v = view.read(cx);
+            assert!(v.active_modal.is_none());
+            let notice = v
+                .last_approval_notice
+                .as_ref()
+                .expect("approval result banner should be recorded");
+            assert_eq!(notice.call_id, "call-scope");
+            assert_eq!(notice.decision, ApprovalDecision::Allow);
+            assert_eq!(notice.scope, ApprovalScope::Session);
+        });
+        // 2. Image viewer actual-size toggle renders cleanly in both Fit and Actual modes.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.active_modal = Some(ChatModal::ImageViewer {
+                    key: "img-test".to_owned(),
+                    title: "shot.png".to_owned(),
+                    meta: "1440×900 · 179 KB".to_owned(),
+                    dims: Some((1440, 900)),
+                    actual: false,
+                    source: Some(ImageViewerSource::Attachment("att-1".to_owned())),
+                });
+                cx.notify();
+            });
+            window.refresh();
+            view.update(cx, |v, cx| v.set_image_viewer_actual(true, cx));
+            assert!(matches!(
+                view.read(cx).active_modal,
+                Some(ChatModal::ImageViewer { actual: true, .. })
+            ));
+            window.refresh();
+            view.update(cx, |v, cx| v.set_image_viewer_actual(false, cx));
+            assert!(matches!(
+                view.read(cx).active_modal,
+                Some(ChatModal::ImageViewer { actual: false, .. })
+            ));
+            view.update(cx, |v, cx| {
+                v.active_modal = None;
+                cx.notify();
+            });
+        });
+
+        // 3. Esc on focused plan gate triggers Keep planning (sets plan_revising + focuses composer).
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.open_gates = vec![(
+                    "r-plan".to_owned(),
+                    HumanGateDto {
+                        id: "g-plan-1".to_owned(),
+                        run_id: "r-plan".to_owned(),
+                        call_id: "c-plan-1".to_owned(),
+                        kind: HumanGateKind::Plan,
+                        created_at_ms: 1_000,
+                        body: HumanGateBody::Plan {
+                            markdown: "## Plan\n1. Fix router".to_owned(),
+                            title: Some("Fix 429 backoff".to_owned()),
+                            steps: 1,
+                            tasks: Vec::new(),
+                        },
+                    },
+                )];
+                cx.notify();
+            });
+            window.refresh();
+            view.update(cx, |v, cx| window.focus(&v.gate_focus, cx));
+        });
+        visual.simulate_keystrokes("escape");
+        visual.run_until_parked();
+        visual.update(|window, cx| {
+            let v = view.read(cx);
+            assert!(v.plan_revising, "Esc on plan card must enter Keep planning");
+            assert!(!v.gate_focus.is_focused(window));
+        });
+
+        // 4. Number keys on focused question gate toggle options (1..=N; out-of-range ignored).
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.plan_revising = false;
+                v.thread.open_gates = vec![(
+                    "r-q".to_owned(),
+                    HumanGateDto {
+                        id: "g-q-1".to_owned(),
+                        run_id: "r-q".to_owned(),
+                        call_id: "c-q-1".to_owned(),
+                        kind: HumanGateKind::Question,
+                        created_at_ms: 1_000,
+                        body: HumanGateBody::Question {
+                            question: "Switch to fallback?".to_owned(),
+                            options: vec![
+                                QuestionOption {
+                                    label: "Switch".to_owned(),
+                                    detail: None,
+                                },
+                                QuestionOption {
+                                    label: "Retry only".to_owned(),
+                                    detail: None,
+                                },
+                            ],
+                            multi: false,
+                        },
+                    },
+                )];
+                cx.notify();
+            });
+            window.refresh();
+            view.update(cx, |v, cx| window.focus(&v.gate_focus, cx));
+        });
+        visual.simulate_keystrokes("2");
+        visual.run_until_parked();
+        visual.read(|cx| {
+            assert_eq!(
+                view.read(cx).question_draft_choices.get("c-q-1"),
+                Some(&vec![2])
+            );
+        });
+        visual.simulate_keystrokes("9");
+        visual.run_until_parked();
+        visual.read(|cx| {
+            assert_eq!(
+                view.read(cx).question_draft_choices.get("c-q-1"),
+                Some(&vec![2]),
+                "out-of-range digit must not alter choices"
+            );
+        });
+        // Pressing the selected single-choice digit again deselects it; pressing it again reselects.
+        visual.simulate_keystrokes("2");
+        visual.run_until_parked();
+        visual.read(|cx| {
+            assert_eq!(
+                view.read(cx).question_draft_choices.get("c-q-1"),
+                Some(&Vec::<u8>::new()),
+                "clicking/pressing active single-choice option must deselect it"
+            );
+        });
+        visual.simulate_keystrokes("2");
+        visual.run_until_parked();
+        // 4b. Esc inside the question's "Other" input leaves the field and focuses `gate_focus`
+        //     without skipping the question; a second Esc on the card skips the question.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.question_other_input
+                    .update(cx, |inp, cx| inp.focus(window, cx));
+                assert!(
+                    v.question_other_input
+                        .read(cx)
+                        .focus_handle(cx)
+                        .is_focused(window)
+                );
+            });
+        });
+        visual.simulate_keystrokes("escape");
+        visual.run_until_parked();
+        visual.update(|window, cx| {
+            let v = view.read(cx);
+            assert!(
+                !v.question_other_input
+                    .read(cx)
+                    .focus_handle(cx)
+                    .is_focused(window),
+                "Esc inside question other input must leave the field"
+            );
+            assert!(
+                v.gate_focus.is_focused(window),
+                "Esc inside question other input must return focus to the gate card"
+            );
+            assert_eq!(
+                v.thread.open_gates.len(),
+                1,
+                "Esc inside question other input must not skip the question"
+            );
+        });
+
+        // 5. Search scroll (3a): a hit pointing at a Tool message maps to the nearest preceding
+        //    rendered message, and a missing target id still clears `pending_scroll_message_id`.
+        visual.update(|window, cx| {
+            use spanbay_desktop::core::agent::model::{AgentMessage, AgentRole};
+            use spanbay_desktop::core::model::hub::HubPart;
+            view.update(cx, |v, cx| {
+                v.thread.open_gates.clear();
+                v.thread.messages = vec![
+                    AgentMessage {
+                        id: "m-u-hit".to_owned(),
+                        session_id: "s-hit".to_owned(),
+                        run_id: None,
+                        seq: 1,
+                        role: AgentRole::User,
+                        parts: vec![HubPart::text("check logs")],
+                        attachments: Vec::new(),
+                        model: None,
+                        usage: None,
+                        parent_id: None,
+                        branch_index: 0,
+                        partial: false,
+                        cost_micro_usd: 0,
+                        cost_currency: None,
+                        meta: Default::default(),
+                        branch_siblings: Vec::new(),
+                        error: None,
+                        created_at_ms: 1,
+                    },
+                    AgentMessage {
+                        id: "m-a-hit".to_owned(),
+                        session_id: "s-hit".to_owned(),
+                        run_id: None,
+                        seq: 2,
+                        role: AgentRole::Assistant,
+                        parts: vec![HubPart::ToolCall {
+                            id: "call-1".to_owned(),
+                            name: "grep".to_owned(),
+                            arguments: r#"{"pattern":"429"}"#.to_owned(),
+                            signature: None,
+                            origin: None,
+                        }],
+                        attachments: Vec::new(),
+                        model: None,
+                        usage: None,
+                        parent_id: None,
+                        branch_index: 0,
+                        partial: false,
+                        cost_micro_usd: 0,
+                        cost_currency: None,
+                        meta: Default::default(),
+                        branch_siblings: Vec::new(),
+                        error: None,
+                        created_at_ms: 2,
+                    },
+                    AgentMessage {
+                        id: "m-tool-hit".to_owned(),
+                        session_id: "s-hit".to_owned(),
+                        run_id: None,
+                        seq: 3,
+                        role: AgentRole::Tool,
+                        parts: vec![HubPart::ToolResult {
+                            call_id: "call-1".to_owned(),
+                            name: Some("grep".to_owned()),
+                            content: vec![HubPart::text("retry-after: 2")],
+                            is_error: false,
+                        }],
+                        attachments: Vec::new(),
+                        model: None,
+                        usage: None,
+                        parent_id: None,
+                        branch_index: 0,
+                        partial: false,
+                        cost_micro_usd: 0,
+                        cost_currency: None,
+                        meta: Default::default(),
+                        branch_siblings: Vec::new(),
+                        error: None,
+                        created_at_ms: 3,
+                    },
+                ];
+                // Pad with enough later turns so `m-tool-hit` sits above the viewport bottom
+                // and jumping to it genuinely pauses tail-following.
+                for seq in 4..=30 {
+                    v.thread.messages.push(AgentMessage {
+                        id: format!("m-pad-{seq}"),
+                        session_id: "s-hit".to_owned(),
+                        run_id: None,
+                        seq,
+                        role: AgentRole::User,
+                        parts: vec![HubPart::text(format!("follow-up message {seq}"))],
+                        attachments: Vec::new(),
+                        model: None,
+                        usage: None,
+                        parent_id: None,
+                        branch_index: 0,
+                        partial: false,
+                        cost_micro_usd: 0,
+                        cost_currency: None,
+                        meta: Default::default(),
+                        branch_siblings: Vec::new(),
+                        error: None,
+                        created_at_ms: seq,
+                    });
+                }
+                v.turn_inputs_version += 1;
+                v.list_state.set_follow_mode(gpui_kit::FollowMode::Tail);
+                v.pending_scroll_message_id = Some("m-tool-hit".to_owned());
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert!(view.read(cx).pending_scroll_message_id.is_none());
+            assert!(
+                !view.read(cx).list_state.is_following_tail(),
+                "scrolling to a tool-message hit must switch out of tail-follow and reveal its parent assistant row"
+            );
+
+            // Missing target id must still clear `pending_scroll_message_id`.
+            view.update(cx, |v, cx| {
+                v.pending_scroll_message_id = Some("m-nonexistent".to_owned());
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+            assert!(view.read(cx).pending_scroll_message_id.is_none());
         });
 
         rt.shutdown_blocking();
@@ -2658,7 +3316,7 @@ mod gpui_integration {
                 "tool:tc_2",
                 "grp-tools-run_dag-2",
                 "main-start-run_dag",
-                "main-summary-run_dag",
+                "main-end-run_dag",
             ] {
                 modal.update(cx, |m, cx| m.select_node(Some(nid.to_owned()), cx));
                 window.refresh();
@@ -3285,13 +3943,17 @@ mod gpui_integration {
     fn chat_tool_trace_enveloped_read_file_and_inline_preview_modal(
         cx: &mut gpui_kit::TestAppContext,
     ) {
-        use crate::views::chat::{ChatModal, ChatView};
+        use crate::views::chat::ChatView;
         use spanbay_desktop::core::agent::model::{AgentMessage, AgentRole, AgentSessionInput};
         use spanbay_desktop::core::agent::untrusted::envelope_tags;
         use spanbay_desktop::core::app::agent_session_create_impl;
         use spanbay_desktop::core::model::hub::HubPart;
         use spanbay_desktop::state::format_tool_trace;
 
+        // `ChatView::new` starts `reload_sessions` on the real `spanbay-core` Tokio runtime, whose
+        // completion wakes a GPUI foreground future from a Tokio thread: opt into the parking
+        // mode every other real-runtime test here uses, or the scheduler flags that wake.
+        cx.background_executor.allow_parking();
         let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
         let settings = rt.state().settings();
         let folder = std::env::temp_dir().join(format!(
@@ -3403,6 +4065,7 @@ mod gpui_integration {
                         created_at_ms: 2,
                     },
                 ];
+                chat.turn_inputs_version += 1;
                 cx.notify();
             });
         });
@@ -3441,20 +4104,17 @@ mod gpui_integration {
                     cx,
                 );
             });
-            match view.read(cx).active_modal.as_ref() {
-                Some(ChatModal::ToolOutput {
-                    call_id,
-                    content,
-                    has_more,
-                    ..
-                }) => {
-                    assert_eq!(call_id, "call_read_1");
-                    assert!(!has_more);
-                    assert!(!content.contains("<external_data"));
-                    assert!(content.contains("field_1 = \"val_1\""));
-                    assert!(content.contains("field_22 = \"val_22\""));
+            assert!(view.read(cx).review_open);
+            assert!(view.read(cx).sidebar_collapsed);
+            match view.read(cx).review_tool_output.as_ref() {
+                Some(out) => {
+                    assert_eq!(out.call_id, "call_read_1");
+                    assert!(!out.has_more);
+                    assert!(!out.content.contains("<external_data"));
+                    assert!(out.content.contains("field_1 = \"val_1\""));
+                    assert!(out.content.contains("field_22 = \"val_22\""));
                 }
-                other => panic!("expected ChatModal::ToolOutput, got {other:?}"),
+                other => panic!("expected review_tool_output, got {other:?}"),
             }
             assert!(view.read(cx).status_msg.is_none());
             window.refresh();
@@ -3464,13 +4124,977 @@ mod gpui_integration {
             view.update(cx, |chat, cx| {
                 chat.open_workspace_file_external("../escape.txt".to_owned(), cx);
             });
+        });
+        for _ in 0..50 {
+            visual.run_until_parked();
+            if visual.read(|cx| view.read(cx).status_msg.is_some()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        visual.update(|_window, cx| {
             assert!(matches!(
                 view.read(cx).status_msg.as_ref(),
                 Some((crate::ui::Tone::Danger, _))
             ));
         });
+        let _ = std::fs::remove_dir_all(&folder);
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn chat_review_panel_hunk_revert_running_composer_and_density_cycling(cx: &mut TestAppContext) {
+        use crate::views::chat::{ChatView, TranscriptDensity};
+        use spanbay_desktop::core::agent::model::{
+            AgentRunStatus, AgentSessionInput, FileChange, FileChangeKind, FileChangeStatus,
+            QueuedContent,
+        };
+        use spanbay_desktop::core::app::{agent_blob_put_impl, agent_session_create_impl};
+        use spanbay_desktop::core::model::hub::HubPart;
+        use spanbay_desktop::state::provisional_run_summary;
+
+        cx.background_executor.allow_parking();
+        let folder =
+            std::env::temp_dir().join(format!("spanbay-rv-ui-test-{}", std::process::id(),));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("temp workspace dir");
+        let canonical_ws = folder.canonicalize().unwrap_or_else(|_| folder.clone());
+        let before = "line1\nold_top\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nold_bot\nline12\n";
+        let after = "line1\nnew_top\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nnew_bot\nline12\n";
+        std::fs::write(canonical_ws.join("router.rs"), after).expect("write router.rs");
+        let data_dir = folder.join("data");
+        std::fs::create_dir_all(&data_dir).expect("create temp data dir");
+        let rt = Arc::new(
+            DesktopRuntime::open_at(&data_dir.join("spanbay.sqlite3")).expect("on-disk runtime"),
+        );
+        let settings = settings_get_impl(rt.state());
+        let created = agent_session_create_impl(
+            rt.state(),
+            AgentSessionInput {
+                title: Some("Review & Shell Test".into()),
+                workspace_dir: Some(canonical_ws.to_string_lossy().into_owned()),
+                ..AgentSessionInput::default()
+            },
+        )
+        .expect("create session");
+        let before_sha =
+            agent_blob_put_impl(rt.state(), before.as_bytes()).expect("store before blob");
+        let after_sha =
+            agent_blob_put_impl(rt.state(), after.as_bytes()).expect("compute after sha256");
+        let fc = FileChange {
+            id: "fc-rv-1".into(),
+            session_id: created.id.clone(),
+            run_id: "run-rv-1".into(),
+            call_id: "call-rv-1".into(),
+            path: "router.rs".into(),
+            folder: Some(canonical_ws.to_string_lossy().into_owned()),
+            kind: FileChangeKind::Edit,
+            before_sha256: Some(before_sha),
+            after_sha256: Some(after_sha),
+            added: 2,
+            removed: 2,
+            status: FileChangeStatus::Pending,
+            created_at_ms: 1000,
+        };
+        rt.state()
+            .store()
+            .insert_file_change(&fc)
+            .expect("insert file change");
+        let queued = rt
+            .state()
+            .store()
+            .add_queued_turn(
+                &created.id,
+                &QueuedContent {
+                    parts: vec![HubPart::text("initial queued prompt")],
+                    skills: Vec::new(),
+                    contexts: Vec::new(),
+                },
+            )
+            .expect("add queued turn")
+            .expect("queue not full");
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        visual.run_until_parked();
+
+        let listed =
+            spanbay_desktop::core::app::agent_session_list_impl(rt.state(), None, None, None)
+                .expect("list sessions");
+        let summary = listed
+            .sessions
+            .iter()
+            .find(|s| s.id == created.id)
+            .expect("created session in list");
+        assert_eq!((summary.pending_added, summary.pending_removed), (2, 2));
+        // 1. Density cycling: Normal -> Verbose -> Compact -> Normal.
+        visual.update(|window, cx| {
+            assert_eq!(view.read(cx).density, TranscriptDensity::Normal);
+            view.update(cx, |v, cx| v.cycle_density(cx));
+            assert_eq!(view.read(cx).density, TranscriptDensity::Verbose);
+            view.update(cx, |v, cx| v.cycle_density(cx));
+            assert_eq!(view.read(cx).density, TranscriptDensity::Compact);
+            view.update(cx, |v, cx| v.cycle_density(cx));
+            assert_eq!(view.read(cx).density, TranscriptDensity::Normal);
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 2. Review panel open auto-collapses session list and restores on close; width persists.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.session_id = created.id.clone();
+                v.session = Some(created.clone());
+                v.persisted_changes = vec![fc.clone()];
+                v.turn_inputs_version += 1;
+                v.open_review(Some("router.rs".into()), cx);
+            });
+            assert!(view.read(cx).review_open);
+            assert!(view.read(cx).sidebar_collapsed);
+            assert_eq!(
+                view.read(cx).review_selected_path.as_deref(),
+                Some("router.rs")
+            );
+            view.update(cx, |v, cx| v.set_review_panel_width(500.0, cx));
+            assert_eq!(view.read(cx).review_panel_width, 500.0);
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        for _ in 0..30 {
+            visual.run_until_parked();
+            if visual.read(|cx| view.read(cx).review_diff_cache.is_some()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        // 3. Per-hunk revert action reverts hunk 0 while preserving hunk 1.
+        visual.update(|_, cx| {
+            view.update(cx, |v, cx| {
+                v.revert_change_hunk("fc-rv-1".into(), 0, cx);
+            });
+        });
+        for _ in 0..40 {
+            visual.run_until_parked();
+            if visual.read(|cx| {
+                view.read(cx)
+                    .persisted_changes
+                    .first()
+                    .is_some_and(|c| c.added == 1 && c.removed == 1)
+            }) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let disk_after_hunk =
+            std::fs::read_to_string(canonical_ws.join("router.rs")).expect("read router.rs");
+        assert!(disk_after_hunk.contains("old_top\n") && disk_after_hunk.contains("new_bot\n"));
+
+        // 3b. Two changes on one file in the same turn: Net diff hides per-hunk revert while
+        //     PerEdit enables it for the latest change; deleted files never show per-hunk revert.
+        let fc_second = FileChange {
+            id: "fc-rv-2".into(),
+            created_at_ms: 1001,
+            ..fc.clone()
+        };
+        let fc_deleted = FileChange {
+            id: "fc-rv-del".into(),
+            path: "removed.rs".into(),
+            after_sha256: None,
+            added: 0,
+            removed: 5,
+            created_at_ms: 1002,
+            ..fc.clone()
+        };
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.persisted_changes = vec![fc_deleted.clone(), fc_second.clone(), fc.clone()];
+                v.turn_inputs_version += 1;
+                v.set_review_diff_mode(crate::views::chat::ReviewDiffMode::Net, cx);
+            });
+            assert!(!view.read(cx).can_revert_hunk_in_current_view("router.rs"));
+            assert!(!view.read(cx).can_revert_hunk_in_current_view("removed.rs"));
+            view.update(cx, |v, cx| {
+                v.set_review_diff_mode(crate::views::chat::ReviewDiffMode::PerEdit, cx);
+            });
+            assert!(view.read(cx).can_revert_hunk_in_current_view("router.rs"));
+            assert!(!view.read(cx).can_revert_hunk_in_current_view("removed.rs"));
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| v.close_review(cx));
+            assert!(!view.read(cx).review_open);
+            assert!(!view.read(cx).sidebar_collapsed);
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 4. Running composer shows Stop and queue/steer + editable queue item.
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.active_run = Some(provisional_run_summary(
+                    "run-rv-1".into(),
+                    created.id.clone(),
+                    AgentRunStatus::Running,
+                    None,
+                    None,
+                    2,
+                ));
+                v.thread.queued_turns = vec![queued.clone()];
+                v.begin_edit_queued_turn(queued.id.clone(), window, cx);
+            });
+            assert!(view.read(cx).is_run_active());
+            assert_eq!(
+                view.read(cx).editing_queue_id.as_deref(),
+                Some(queued.id.as_str())
+            );
+            window.refresh();
+            window.draw(cx).clear(cx);
+            view.update(cx, |v, cx| {
+                v.composer
+                    .update(cx, |c, cx| c.set_value("updated queued prompt", window, cx));
+                v.save_edited_queued_turn(window, cx);
+            });
+        });
+        for _ in 0..30 {
+            visual.run_until_parked();
+            if visual.read(|cx| {
+                view.read(cx).thread.queued_turns.first().is_some_and(|q| {
+                    q.parts.iter().any(|p| {
+                        matches!(p, HubPart::Text { text, .. } if text == "updated queued prompt")
+                    })
+                })
+            }) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(visual.read(|cx| view.read(cx).editing_queue_id.is_none()));
 
         let _ = std::fs::remove_dir_all(&folder);
+        rt.shutdown_blocking();
+    }
+
+    /// W1 headless verification:
+    /// 1. Finished older turns auto-collapse while the latest turn stays expanded, and
+    ///    `toggle_turn_fold` toggles collapsed/expanded state cleanly.
+    /// 2. Consecutive read-only calls (`read_file` + `grep`) merge into one `ExploreGroup`,
+    ///    while `todo_write` is silenced from the stream.
+    /// 3. Non-zero exit code / failed tool calls auto-expand (`is_tool_call_expanded`) and
+    ///    prevent turn auto-collapse even in `Compact` mode.
+    /// 4. Deny-with-feedback on the inline approval card (`Tab` -> type feedback -> `submit_deny`)
+    ///    sends `ApprovalDecision::Deny` with the user's feedback reason to the model.
+    #[gpui_kit::test]
+    fn chat_turn_fold_explore_merge_failure_auto_expand_and_deny_with_feedback(
+        cx: &mut TestAppContext,
+    ) {
+        use crate::views::chat::thread::is_turn_collapsed;
+        use crate::views::chat::trace::is_tool_call_expanded;
+        use crate::views::chat::{ChatView, TranscriptDensity as Density};
+        use spanbay_desktop::core::agent::approvals::RuleContext;
+        use spanbay_desktop::core::agent::attention::PendingApprovalSummary;
+        use spanbay_desktop::core::agent::model::{
+            AgentMessage, AgentRole, AgentSessionInput, ApprovalDecision, ApprovalScope,
+            LiveApprovalRequest, RiskLevel, SandboxKind, ToolCallStatus, ToolClass,
+        };
+        use spanbay_desktop::core::app::agent_session_create_impl;
+        use spanbay_desktop::core::model::hub::HubPart;
+        use spanbay_desktop::state::{
+            LiveApproval, LiveToolMeta, ThreadTurnEntry, TurnActivityItem,
+        };
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(ChatView::new);
+        for _ in 0..20 {
+            visual.run_until_parked();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let session =
+            agent_session_create_impl(rt.state(), AgentSessionInput::default()).expect("session");
+        let sid = session.id.clone();
+
+        let mk_msg = |id: &str, seq: i64, role: AgentRole, parts: Vec<HubPart>| AgentMessage {
+            id: id.to_owned(),
+            session_id: sid.clone(),
+            run_id: Some("r-w1".to_owned()),
+            seq,
+            role,
+            parts,
+            attachments: Vec::new(),
+            model: Some("deepseek/deepseek-v4-pro".to_owned()),
+            usage: None,
+            parent_id: None,
+            branch_index: 0,
+            partial: false,
+            cost_micro_usd: 0,
+            cost_currency: Some("USD".to_owned()),
+            meta: Default::default(),
+            branch_siblings: Vec::new(),
+            error: None,
+            created_at_ms: seq * 1_000,
+        };
+
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.session_id = sid.clone();
+                v.session = Some(session.clone());
+                // Turn 1 (older finished turn): 2 consecutive read-only calls + 1 todo_write + answer.
+                // Turn 2 (latest turn): 1 successful shell + 1 failed shell (exit 101) + answer.
+                v.thread.messages = vec![
+                    mk_msg("u-1", 1, AgentRole::User, vec![HubPart::text("Explore repo")]),
+                    mk_msg(
+                        "a-1",
+                        2,
+                        AgentRole::Assistant,
+                        vec![
+                            HubPart::ToolCall {
+                                id: "c-todo-1".to_owned(),
+                                name: "todo_write".to_owned(),
+                                arguments: r#"{"todos":[{"id":"1","content":"Read","status":"completed"}]}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::ToolCall {
+                                id: "c-read-1".to_owned(),
+                                name: "read_file".to_owned(),
+                                arguments: r#"{"path":"src/router.rs"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::ToolCall {
+                                id: "c-read-1-dup".to_owned(),
+                                name: "read_file".to_owned(),
+                                arguments: r#"{"path":"src/router.rs"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::ToolCall {
+                                id: "c-read-2".to_owned(),
+                                name: "read_file".to_owned(),
+                                arguments: r#"{"path":"src/limits.rs"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::ToolCall {
+                                id: "c-grep-1".to_owned(),
+                                name: "grep".to_owned(),
+                                arguments: r#"{"pattern":"429"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::text("Explored router.rs."),
+                        ],
+                    ),
+                    mk_msg(
+                        "t-1",
+                        3,
+                        AgentRole::Tool,
+                        vec![
+                            HubPart::ToolResult {
+                                call_id: "c-todo-1".to_owned(),
+                                name: Some("todo_write".to_owned()),
+                                content: vec![HubPart::text("ok")],
+                                is_error: false,
+                            },
+                            HubPart::ToolResult {
+                                call_id: "c-read-1".to_owned(),
+                                name: Some("read_file".to_owned()),
+                                content: vec![HubPart::text("1\tfn router() {}")],
+                                is_error: false,
+                            },
+                            HubPart::ToolResult {
+                                call_id: "c-read-1-dup".to_owned(),
+                                name: Some("read_file".to_owned()),
+                                content: vec![HubPart::text("1\tfn router() {}")],
+                                is_error: false,
+                            },
+                            HubPart::ToolResult {
+                                call_id: "c-read-2".to_owned(),
+                                name: Some("read_file".to_owned()),
+                                content: vec![HubPart::text("1\tconst MAX: u32 = 15;")],
+                                is_error: false,
+                            },
+                            HubPart::ToolResult {
+                                call_id: "c-grep-1".to_owned(),
+                                name: Some("grep".to_owned()),
+                                content: vec![HubPart::text("src/router.rs:1: 429")],
+                                is_error: false,
+                            },
+                        ],
+                    ),
+                    mk_msg("u-2", 4, AgentRole::User, vec![HubPart::text("Run tests")]),
+                    mk_msg(
+                        "a-2",
+                        5,
+                        AgentRole::Assistant,
+                        vec![
+                            HubPart::ToolCall {
+                                id: "c-sh-ok".to_owned(),
+                                name: "shell".to_owned(),
+                                arguments: r#"{"command":"cargo test router"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::ToolCall {
+                                id: "c-sh-fail".to_owned(),
+                                name: "shell".to_owned(),
+                                arguments: r#"{"command":"cargo build --offline"}"#.to_owned(),
+                                signature: None,
+                                origin: None,
+                            },
+                            HubPart::text("Offline build failed."),
+                        ],
+                    ),
+                    mk_msg(
+                        "t-2",
+                        6,
+                        AgentRole::Tool,
+                        vec![
+                            HubPart::ToolResult {
+                                call_id: "c-sh-ok".to_owned(),
+                                name: Some("shell".to_owned()),
+                                content: vec![HubPart::text("test result: ok.")],
+                                is_error: false,
+                            },
+                            HubPart::ToolResult {
+                                call_id: "c-sh-fail".to_owned(),
+                                name: Some("shell".to_owned()),
+                                content: vec![HubPart::text("error: offline")],
+                                is_error: true,
+                            },
+                        ],
+                    ),
+                ];
+                v.thread.live_tool_meta.insert(
+                    "c-sh-ok".to_owned(),
+                    LiveToolMeta {
+                        status: ToolCallStatus::Ok,
+                        duration_ms: 800,
+                        exit_code: Some(0),
+                        link: None,
+                    },
+                );
+                v.thread.live_tool_meta.insert(
+                    "c-sh-fail".to_owned(),
+                    LiveToolMeta {
+                        status: ToolCallStatus::Error,
+                        duration_ms: 3400,
+                        exit_code: Some(101),
+                        link: None,
+                    },
+                );
+                v.turn_inputs_version += 1;
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // Verify Turn 1 (older turn) auto-collapsed, ExploreGroup merged, and todo_write hidden.
+            let entries = view.read(cx).cached_turn_entries();
+            assert_eq!(entries.len(), 4);
+            let ThreadTurnEntry::AssistantTurn(turn1) = &entries[1] else {
+                panic!("expected AssistantTurn 1");
+            };
+            assert!(is_turn_collapsed(view.read(cx), turn1));
+            assert_eq!(turn1.totals.hidden_todo_count, 1);
+            assert_eq!(turn1.spine.len(), 1, "read_file + grep merged into 1 ExploreGroup and todo_write hidden");
+            match &turn1.spine[0] {
+                TurnActivityItem::ExploreGroup(eg) => {
+                    assert_eq!(eg.files_read, 2, "duplicate read of src/router.rs deduplicated");
+                    assert_eq!(eg.searches_run, 1);
+                    assert_eq!(eg.items.len(), 2, "consecutive reads merged into 1 sub-row");
+                    assert_eq!(eg.items[0].pres.target, "router.rs, limits.rs");
+                }
+                other => panic!("expected ExploreGroup, got {other:?}"),
+            }
+
+            // Toggle Turn 1 expanded -> collapsed.
+            let t1_id = turn1.turn_id.clone();
+            view.update(cx, |v, cx| v.toggle_turn_fold(t1_id.clone(), cx));
+            assert!(!is_turn_collapsed(view.read(cx), turn1));
+            window.refresh();
+            window.draw(cx).clear(cx);
+            view.update(cx, |v, cx| v.toggle_turn_fold(t1_id, cx));
+            assert!(is_turn_collapsed(view.read(cx), turn1));
+
+            // Verify Turn 2 (failure auto-expand): exit 0 shell is collapsed, exit 101 shell is auto-expanded,
+            // and even in Compact density mode a turn with a failure does not auto-collapse.
+            view.update(cx, |v, cx| v.set_density(Density::Compact, cx));
+            let entries_compact = view.read(cx).cached_turn_entries();
+            let ThreadTurnEntry::AssistantTurn(turn2) = &entries_compact[3] else {
+                panic!("expected AssistantTurn 2");
+            };
+            assert!(!is_turn_collapsed(view.read(cx), turn2));
+            match (&turn2.spine[0], &turn2.spine[1]) {
+                (TurnActivityItem::ToolCall(sh_ok), TurnActivityItem::ToolCall(sh_fail)) => {
+                    assert!(!is_tool_call_expanded(view.read(cx), sh_ok));
+                    assert!(is_tool_call_expanded(view.read(cx), sh_fail));
+                }
+                other => panic!("expected two shell ToolCalls, got {other:?}"),
+            }
+        });
+
+        // 4. Deny with feedback: Tab on focused approval card opens deny_reason_input, typing
+        //    feedback and submitting records ApprovalDecision::Deny with the feedback message.
+        let _ticket = rt
+            .state()
+            .agent
+            .approvals
+            .register(
+                PendingApprovalSummary {
+                    run_id: "r-deny-fb".to_owned(),
+                    session_id: sid.clone(),
+                    call_id: "call-deny-fb".to_owned(),
+                    tool: "shell".to_owned(),
+                    reason: "mode".to_owned(),
+                    preview: None,
+                    requested_ms: 1_000,
+                    risk: "medium".to_owned(),
+                    summary: "Run cargo test".to_owned(),
+                    full_text: None,
+                    card: None,
+                },
+                RuleContext {
+                    session_id: sid.clone(),
+                    workspace_dir: None,
+                    tool: "shell".to_owned(),
+                    pattern: Some("cargo test *".to_owned()),
+                    offered: vec![ApprovalScope::Once, ApprovalScope::Session],
+                },
+            )
+            .expect("register approval ticket");
+
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                v.thread.pending_approvals = vec![LiveApproval::new(
+                    "r-deny-fb".to_owned(),
+                    "call-deny-fb".to_owned(),
+                    "shell".to_owned(),
+                    LiveApprovalRequest {
+                        arguments: r#"{"command":"cargo test"}"#.to_owned(),
+                        class: ToolClass::Exec,
+                        read_only: false,
+                        destructive: false,
+                        sandbox: SandboxKind::Seatbelt,
+                        reason: "mode".to_owned(),
+                        preview: None,
+                        network: false,
+                        risk: RiskLevel::Medium,
+                        summary: "Run cargo test".to_owned(),
+                        full_text: None,
+                        card: None,
+                        requested_at_ms: 1_000,
+                    },
+                )];
+                window.focus(&v.approval_focus, cx);
+                cx.notify();
+            });
+            window.refresh();
+        });
+        visual.simulate_keystrokes("tab");
+        visual.run_until_parked();
+        visual.update(|window, cx| {
+            assert_eq!(
+                view.read(cx).active_deny_reason_call(),
+                Some("call-deny-fb"),
+                "Tab on approval card must open the deny feedback input"
+            );
+            view.update(cx, |v, cx| {
+                v.set_deny_reason_text("Only run router unit tests first", window, cx);
+                v.submit_deny(cx);
+            });
+        });
+        for _ in 0..40 {
+            visual.run_until_parked();
+            if visual.read(|cx| view.read(cx).last_approval_notice.is_some()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        visual.read(|cx| {
+            let notice = view
+                .read(cx)
+                .last_approval_notice
+                .as_ref()
+                .expect("deny-with-feedback notice recorded");
+            assert_eq!(notice.decision, ApprovalDecision::Deny);
+            assert_eq!(
+                notice.reason.as_deref(),
+                Some("Only run router unit tests first")
+            );
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn execution_graph_node_click_and_drag_discrimination(cx: &mut TestAppContext) {
+        use crate::views::runs::graph::build_modal_graph_layout;
+        use crate::views::runs::{WorkflowMonitorModal, WorkflowTab};
+        use gpui_kit::{Modifiers, MouseButton, point, px};
+        use spanbay_desktop::core::agent::dto::{
+            AgentRunTopology, BoardChanges, BoardSubagentCounts, ExecutionWave, TopologySubagent,
+        };
+        use spanbay_desktop::core::agent::model::{
+            AgentRunKind, AgentRunStatus, AgentRunSummary, SubagentRole,
+        };
+        use spanbay_desktop::core::llm::hub::HubUsage;
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let make_run = |id: &str, kind: AgentRunKind, status: AgentRunStatus| AgentRunSummary {
+            run_id: id.to_owned(),
+            session_id: "as_drag".to_owned(),
+            kind,
+            parent_run_id: None,
+            parent_call_id: None,
+            status,
+            model_label: "deepseek/reasoner".to_owned(),
+            target: None,
+            iterations: 2,
+            usage: HubUsage::default(),
+            cost_micro_usd: 0,
+            started_at_ms: 1_000,
+            finished_at_ms: Some(5_000),
+            last_event_ms: Some(5_000),
+            last_step: None,
+            stop_reason: None,
+            error_kind: None,
+            error: None,
+            last_seq: 0,
+            role: Some(SubagentRole::Fast),
+            status_detail: None,
+            cost_currency: Some("USD".to_owned()),
+            failure: None,
+            cap_inapplicable: None,
+        };
+
+        let topo = AgentRunTopology {
+            title: "Drag test run".to_owned(),
+            folder: None,
+            run: make_run("run_drag", AgentRunKind::Main, AgentRunStatus::Completed),
+            awake_ms: 4_000,
+            snapshot_ms: 5_000,
+            waiting_for_slot: false,
+            wait: None,
+            pending_approval: None,
+            pending_changes: BoardChanges::default(),
+            plan_done: 0,
+            plan_total: 0,
+            cost_currency: Some("USD".to_owned()),
+            last_answer: Some("Done.".to_owned()),
+            queued_turns: 0,
+            queue_paused: false,
+            waves: vec![ExecutionWave::ParallelSubagents {
+                wave_index: 1,
+                started_ms: Some(1_500),
+                ended_ms: Some(4_500),
+                subagents: vec![
+                    TopologySubagent {
+                        run: make_run("sub_a", AgentRunKind::Subagent, AgentRunStatus::Completed),
+                        parent_call_id: "c_a".to_owned(),
+                        child_session_id: "cs_a".to_owned(),
+                        description: "Explore A".to_owned(),
+                        subagent_kind: "explore".to_owned(),
+                        resumed: false,
+                        awake_ms: 2_000,
+                        pending_approval: None,
+                        last_answer: Some("A done".to_owned()),
+                        brief: None,
+                        full_report: None,
+                        tool_calls: Vec::new(),
+                    },
+                    TopologySubagent {
+                        run: make_run("sub_b", AgentRunKind::Subagent, AgentRunStatus::Completed),
+                        parent_call_id: "c_b".to_owned(),
+                        child_session_id: "cs_b".to_owned(),
+                        description: "Explore B".to_owned(),
+                        subagent_kind: "explore".to_owned(),
+                        resumed: false,
+                        awake_ms: 2_000,
+                        pending_approval: None,
+                        last_answer: Some("B done".to_owned()),
+                        brief: None,
+                        full_report: None,
+                        tool_calls: Vec::new(),
+                    },
+                ],
+            }],
+            subagent_counts: BoardSubagentCounts {
+                total: 2,
+                completed: 2,
+                ..BoardSubagentCounts::default()
+            },
+            task_graph: Vec::new(),
+            user_prompt: Some("Test drag".to_owned()),
+            reasoning_preview: None,
+            full_answer: Some("Done.".to_owned()),
+        };
+
+        let (modal, visual) = cx.add_window_view(WorkflowMonitorModal::new);
+        visual.run_until_parked();
+
+        let initial_sub_a_pos = visual.update(|window, cx| {
+            modal.update(cx, |m, cx| {
+                m.open = true;
+                m.session_id = "as_drag".to_owned();
+                m.run_id = Some("run_drag".to_owned());
+                m.topology = Some(topo.clone());
+                m.selected_node_id = None;
+                m.user_cleared_selection = true;
+                assert_eq!(m.effective_tab(&topo), (WorkflowTab::Graph, true));
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            let layout = build_modal_graph_layout(modal.read(cx), &topo, cx);
+            let node_a = layout
+                .nodes
+                .iter()
+                .find(|n| n.node.id == "sub:sub_a")
+                .expect("sub:sub_a node in graph");
+            (node_a.x, node_a.y)
+        });
+
+        // 1. Plain click (mouse down + up without moving) on `sub:sub_a`:
+        //    selects node & opens inspector, then moving mouse with no button pressed
+        //    must NOT move or pin the node.
+        let sub_a_center = visual
+            .debug_bounds("wf-gnode-sub:sub_a")
+            .expect("wf-gnode-sub:sub_a bounds")
+            .center();
+        visual.simulate_mouse_down(sub_a_center, MouseButton::Left, Modifiers::none());
+        visual.simulate_mouse_up(sub_a_center, MouseButton::Left, Modifiers::none());
+
+        visual.update(|window, cx| {
+            let m = modal.read(cx);
+            assert_eq!(m.selected_node_id.as_deref(), Some("sub:sub_a"));
+            assert!(
+                m.drag_state.is_none(),
+                "drag_state must be cleared on mouse_up"
+            );
+            assert!(m.pinned_positions.is_empty());
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        visual.simulate_mouse_move(
+            sub_a_center + point(px(72.0), px(48.0)),
+            None,
+            Modifiers::none(),
+        );
+        visual.update(|window, cx| {
+            let m = modal.read(cx);
+            assert!(
+                m.pinned_positions.is_empty(),
+                "unpressed mouse move after click must not reposition the node"
+            );
+            assert!(m.drag_state.is_none());
+            let layout = build_modal_graph_layout(m, &topo, cx);
+            let node_a = layout
+                .nodes
+                .iter()
+                .find(|n| n.node.id == "sub:sub_a")
+                .expect("sub:sub_a node in graph");
+            assert_eq!((node_a.x, node_a.y), initial_sub_a_pos);
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 2. Active drag (mouse down + move > 4px threshold + mouse up) on `sub:sub_b`:
+        //    moves `sub:sub_b` and keeps selection on `sub:sub_a` unchanged.
+        let initial_sub_b_pos = visual.update(|_window, cx| {
+            let layout = build_modal_graph_layout(modal.read(cx), &topo, cx);
+            let node_b = layout
+                .nodes
+                .iter()
+                .find(|n| n.node.id == "sub:sub_b")
+                .expect("sub:sub_b node in graph");
+            (node_b.x, node_b.y)
+        });
+        let sub_b_center = visual
+            .debug_bounds("wf-gnode-sub:sub_b")
+            .expect("wf-gnode-sub:sub_b bounds")
+            .center();
+        let drag_target = sub_b_center + point(px(56.0), px(36.0));
+
+        visual.simulate_mouse_down(sub_b_center, MouseButton::Left, Modifiers::none());
+        visual.simulate_mouse_move(drag_target, MouseButton::Left, Modifiers::none());
+        visual.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        visual.simulate_mouse_up(drag_target, MouseButton::Left, Modifiers::none());
+
+        let pinned_sub_b = visual.update(|window, cx| {
+            let m = modal.read(cx);
+            assert!(
+                m.drag_state.is_none(),
+                "drag_state must be cleared after drag mouse_up"
+            );
+            assert_eq!(
+                m.selected_node_id.as_deref(),
+                Some("sub:sub_a"),
+                "dragging sub:sub_b must not change node selection"
+            );
+            let pinned = *m
+                .pinned_positions
+                .get("sub:sub_b")
+                .expect("sub:sub_b must be pinned at dragged position");
+            assert_ne!(pinned, initial_sub_b_pos);
+            window.refresh();
+            window.draw(cx).clear(cx);
+            pinned
+        });
+
+        // Moving the mouse with no button after drag release must not move `sub:sub_b` further.
+        visual.simulate_mouse_move(
+            drag_target + point(px(64.0), px(40.0)),
+            None,
+            Modifiers::none(),
+        );
+        visual.read(|cx| {
+            let m = modal.read(cx);
+            assert_eq!(
+                m.pinned_positions.get("sub:sub_b").copied(),
+                Some(pinned_sub_b)
+            );
+            assert_eq!(m.selected_node_id.as_deref(), Some("sub:sub_a"));
+        });
+
+        rt.shutdown_blocking();
+    }
+
+    #[gpui_kit::test]
+    fn flow_graph_step_click_and_drag_discrimination(cx: &mut TestAppContext) {
+        use crate::views::flows::FlowsView;
+        use gpui_kit::{Modifiers, MouseButton, point, px};
+        use spanbay_desktop::core::app::factory_service::{flow_new, flow_step_new};
+        use spanbay_desktop::state::FlowViewMode;
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let settings = settings_get_impl(rt.state());
+        workspace_create_impl(rt.state(), "ws-flow-drag".into(), "Flow Drag WS".into())
+            .expect("create workspace");
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+        });
+
+        let (view, visual) = cx.add_window_view(|window, cx| FlowsView::new(None, window, cx));
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            view.update(cx, |v, cx| {
+                let mut flow = flow_new(rt.state(), "ws-flow-drag").expect("create flow");
+                let mut s1 = flow_step_new(&flow);
+                s1.id = "s1".to_owned();
+                s1.name = "Auth".to_owned();
+                s1.position = 0;
+                let mut s2 = flow_step_new(&flow);
+                s2.id = "s2".to_owned();
+                s2.name = "Verify".to_owned();
+                s2.position = 1;
+                flow.steps = vec![s1, s2];
+                v.draft = Some(flow);
+                v.view_mode = FlowViewMode::Graph;
+                v.selected_step_id = None;
+                v.inspector_open = false;
+                cx.notify();
+            });
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 1. Plain click on `s1`: selects step, clears drag_state; subsequent unpressed move
+        //    does not pin or reposition `s1`.
+        let s1_center = visual
+            .debug_bounds("flow-gnode-s1")
+            .expect("flow-gnode-s1 bounds")
+            .center();
+        visual.simulate_mouse_down(s1_center, MouseButton::Left, Modifiers::none());
+        visual.simulate_mouse_up(s1_center, MouseButton::Left, Modifiers::none());
+
+        visual.update(|window, cx| {
+            let v = view.read(cx);
+            assert_eq!(v.selected_step_id.as_deref(), Some("s1"));
+            assert!(v.drag_state.is_none());
+            assert!(
+                v.draft
+                    .as_ref()
+                    .is_some_and(|f| f.options.pinned_positions.is_empty())
+            );
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        visual.simulate_mouse_move(
+            s1_center + point(px(64.0), px(40.0)),
+            None,
+            Modifiers::none(),
+        );
+        visual.update(|window, cx| {
+            let v = view.read(cx);
+            assert!(
+                v.draft
+                    .as_ref()
+                    .is_some_and(|f| f.options.pinned_positions.is_empty())
+            );
+            assert!(v.drag_state.is_none());
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+
+        // 2. Drag `s2` beyond threshold: pins `s2` without changing selection from `s1`.
+        let s2_center = visual
+            .debug_bounds("flow-gnode-s2")
+            .expect("flow-gnode-s2 bounds")
+            .center();
+        let drag_target = s2_center + point(px(52.0), px(36.0));
+        visual.simulate_mouse_down(s2_center, MouseButton::Left, Modifiers::none());
+        visual.simulate_mouse_move(drag_target, MouseButton::Left, Modifiers::none());
+        visual.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        visual.simulate_mouse_up(drag_target, MouseButton::Left, Modifiers::none());
+
+        visual.read(|cx| {
+            let v = view.read(cx);
+            assert!(v.drag_state.is_none());
+            assert_eq!(v.selected_step_id.as_deref(), Some("s1"));
+            assert!(
+                v.draft
+                    .as_ref()
+                    .is_some_and(|f| f.options.pinned_positions.contains_key("s2"))
+            );
+        });
+
         rt.shutdown_blocking();
     }
 }

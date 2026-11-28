@@ -16,6 +16,7 @@ pub mod pagination;
 pub mod payload_viewer;
 pub mod primitives;
 pub mod process_chrome;
+pub mod status;
 pub mod syntax_theme;
 pub mod theme;
 pub mod widgets;
@@ -24,7 +25,7 @@ pub mod widgets;
 // never reference `gpui_kit::component` directly.
 pub use gpui_kit::Anchor;
 pub use gpui_kit::component::{
-    Disableable, Root, Sizable, Size, StyledExt, WindowExt,
+    Disableable, Root, Selectable, Sizable, Size, StyledExt, WindowExt,
     button::{ButtonRounded, ButtonVariants},
     chart::{AreaChart, BarChart, LineChart},
     checkbox::Checkbox,
@@ -80,14 +81,19 @@ pub use primitives::{
 pub use process_chrome::{
     lane_draw_spec, process_edge_label_pill, process_lane_header, process_segmented_waterfall_bar,
 };
+pub use status::{
+    WaitKind, run_status_meta, status_badge, status_label, status_row, status_row_wait,
+    status_visual, status_word_color, wait_kind,
+};
 pub use theme::{
     SpanBayPalette, apply_palette, apply_theme, is_compact, mono_font_family, mono_font_size,
     palette, resolve_is_dark, sync_window_scale, syntax_palette, theme_prefs, to_hsla,
 };
 pub use widgets::{
     StatusShape, borderless_multiline, checkbox, code_lines_preview, collapsible_box,
-    diff_lines_preview, filter_chip, kv_chip, metric_datum, pill_btn, popover,
-    popover_full_trigger, popover_trigger_btn, progress_bar, round_icon_btn, search_input,
-    select_pill, slider, spinner_xs, status_indicator, tab_bar_segmented, tab_bar_underline,
-    tab_item, text_tooltip, titlebar_icon_btn, top_accent_card, wrap_root,
+    diff_lines_preview, exit_code_badge, filter_chip, image_actual, image_fit, image_thumb,
+    kv_chip, labeled_divider, metric_datum, pill_btn, popover, popover_full_trigger,
+    popover_trigger_btn, progress_bar, round_icon_btn, search_input, select_pill, slider,
+    spinner_xs, status_indicator, tab_bar_segmented, tab_bar_underline, tab_item, text_tooltip,
+    titlebar_icon_btn, top_accent_card, wrap_root,
 };

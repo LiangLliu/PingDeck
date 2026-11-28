@@ -748,7 +748,7 @@ fn a_tool_call_shows_its_arguments_approval_wait_and_result() {
         parts: vec![HubPart::text("é".repeat(300))],
         duration_ms: 7,
         meta: None,
-        exit_code: None,
+        exit_code: Some(0),
     });
     let (tool, _) = call(&active);
     assert_eq!(tool.state, LiveToolState::Done);
@@ -756,6 +756,7 @@ fn a_tool_call_shows_its_arguments_approval_wait_and_result() {
     assert_eq!(result.status, ToolCallStatus::Ok);
     assert_eq!(result.summary, "é".repeat(200));
     assert_eq!(result.duration_ms, 7);
+    assert_eq!(result.exit_code, Some(0));
 
     // The next model step starts clean.
     active.emit(AgentEvent::TextDelta {
@@ -768,7 +769,7 @@ fn a_tool_call_shows_its_arguments_approval_wait_and_result() {
 
 #[test]
 fn the_live_view_keeps_the_waiting_calls_card_and_the_runs_last_usage_across_steps() {
-    use crate::agent::model::{LiveToolCall, ToolCallStatus};
+    use crate::agent::model::{LiveApprovalRequest, LiveToolCall, ToolCallStatus};
     use crate::agent::permissions::{ApprovalCard, RiskLevel};
     use crate::agent::sandbox::{SandboxState, SandboxStatus};
 
@@ -818,18 +819,42 @@ fn the_live_view_keeps_the_waiting_calls_card_and_the_runs_last_usage_across_ste
         arguments: "{}".into(),
         class: ToolClass::Edit,
         read_only: false,
-        destructive: false,
+        destructive: true,
         sandbox: SandboxKind::None,
         reason: "edits".into(),
         preview: None,
-        network: false,
-        risk: "low".into(),
+        network: true,
+        risk: "high".into(),
         summary: "Write a.txt".into(),
-        full_text: None,
+        full_text: Some("a.txt".into()),
         card: Some(Box::new(card.clone())),
     });
     let waiting = |active: &ActiveRun| -> LiveToolCall { active.live_snapshot().tools.remove(0) };
-    assert_eq!(waiting(&active).approval.as_deref(), Some(&card));
+    let waiting_call = waiting(&active);
+    let requested_at_ms = waiting_call
+        .approval
+        .as_ref()
+        .map_or(0, |req| req.requested_at_ms);
+    assert!(requested_at_ms > 0);
+    // The whole request survives, not only the card; the risk string parses to its level.
+    assert_eq!(
+        waiting_call.approval.as_deref(),
+        Some(&LiveApprovalRequest {
+            arguments: "{}".into(),
+            class: ToolClass::Edit,
+            read_only: false,
+            destructive: true,
+            sandbox: SandboxKind::None,
+            reason: "edits".into(),
+            preview: None,
+            network: true,
+            risk: RiskLevel::High,
+            summary: "Write a.txt".into(),
+            full_text: Some("a.txt".into()),
+            card: Some(Box::new(card)),
+            requested_at_ms,
+        })
+    );
 
     active.emit(AgentEvent::ToolApprovalResolved {
         call_id: "c1".into(),
@@ -925,6 +950,28 @@ fn a_task_call_names_the_child_run_it_started() {
             text: "child".into(),
         }),
     });
+    // The child's approval keeps its arguments, which no parent part holds.
+    active.emit(AgentEvent::SubagentEvent {
+        parent_call_id: "c1".into(),
+        child_run_id: "child".into(),
+        event: Box::new(AgentEvent::ToolApprovalRequired {
+            run_id: "child".into(),
+            call_id: "k1".into(),
+            name: "shell".into(),
+            arguments: "{\"cmd\":\"ls\"}".into(),
+            class: ToolClass::Exec,
+            read_only: true,
+            destructive: false,
+            sandbox: SandboxKind::None,
+            reason: "runs".into(),
+            preview: None,
+            network: false,
+            risk: "low".into(),
+            summary: "ls".into(),
+            full_text: None,
+            card: None,
+        }),
+    });
     let snapshot = active.live_snapshot();
     assert_eq!(snapshot.tools[0].child_run_id.as_deref(), Some("child"));
     assert_eq!(
@@ -932,6 +979,25 @@ fn a_task_call_names_the_child_run_it_started() {
         "",
         "the child's text is not the parent's"
     );
+    let child = &snapshot.tools[1];
+    assert_eq!(child.state, LiveToolState::WaitingApproval);
+    // The reloaded card is answered under the child run's id.
+    assert_eq!(child.child_run_id.as_deref(), Some("child"));
+    assert_eq!(
+        child.approval.as_ref().map(|a| a.arguments.as_str()),
+        Some("{\"cmd\":\"ls\"}")
+    );
+    active.emit(AgentEvent::SubagentEvent {
+        parent_call_id: "c1".into(),
+        child_run_id: "child".into(),
+        event: Box::new(AgentEvent::ToolApprovalResolved {
+            call_id: "k1".into(),
+            decision: ApprovalDecision::Allow,
+            scope: ApprovalScope::Once,
+            timed_out: false,
+        }),
+    });
+    assert_eq!(active.live_snapshot().tools.len(), 1);
 }
 
 #[test]
@@ -1032,4 +1098,56 @@ fn folding_command_output_keeps_only_its_tail_so_the_ring_frees_room() {
         text: "x".into(),
     };
     assert!(!merge_events(&mut folded, &other));
+}
+
+#[test]
+fn session_subscribe_from_zero_skips_finished_latest_run_but_follows_next_run() {
+    let registry = RunRegistry::new();
+    let finished = run("r1", "s");
+    registry.register(&finished).unwrap();
+    finished.emit(notice(7));
+    registry.finish("r1");
+
+    let (seen, sink) = collector();
+    registry.subscribe(&by_session("s"), Some(0), sink).unwrap();
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "idle snapshot subscription must not replay an already-finished run"
+    );
+
+    let next = run("r2", "s");
+    registry.register(&next).unwrap();
+    next.emit(notice(8));
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    assert_eq!(seen.lock().unwrap()[0].run_id, "r2");
+}
+
+#[test]
+fn live_acc_clears_subagent_cost_limit_when_subagent_resumes() {
+    let active = run("r_parent", "s");
+    active.emit(AgentEvent::SubagentEvent {
+        parent_call_id: "tc_task".into(),
+        child_run_id: "r_child".into(),
+        event: Box::new(AgentEvent::CostLimitReached {
+            run_id: "r_child".into(),
+            cost_micro: 2_000_000,
+            cap_micro: 1_000_000,
+            currency: "USD".into(),
+            breakdown: None,
+            next_cap_micro: None,
+            unpriced_models: None,
+            tokens: None,
+        }),
+    });
+    assert!(active.live_snapshot().cost_limit.is_some());
+    active.emit(AgentEvent::SubagentEvent {
+        parent_call_id: "tc_task".into(),
+        child_run_id: "r_child".into(),
+        event: Box::new(AgentEvent::ToolCallStarted {
+            call_id: "c_next".into(),
+            name: "grep".into(),
+            source: ToolSource::Builtin,
+        }),
+    });
+    assert!(active.live_snapshot().cost_limit.is_none());
 }

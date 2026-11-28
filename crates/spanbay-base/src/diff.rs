@@ -104,3 +104,57 @@ pub fn changed_lines(before: &str, after: &str) -> usize {
     let (added, removed) = change_counts(Some(before), after);
     (added.max(removed)) as usize
 }
+
+/// Reverts the `hunk_index`-th unified-diff hunk (0-based, with 3 lines of context) between `old`
+/// (`None` for a file that did not exist before) and `new`, returning the updated `new` text.
+/// Returns `None` when `hunk_index` is out of bounds or `old` and `new` do not differ.
+#[must_use]
+pub fn revert_diff_hunk(old: Option<&str>, new: &str, hunk_index: usize) -> Option<String> {
+    let old_text = old.unwrap_or("");
+    if old.is_some() && old_text == new {
+        return None;
+    }
+    let diff = similar::TextDiff::from_lines(old_text, new);
+    let groups = diff.grouped_ops(CONTEXT);
+    let group = groups.get(hunk_index)?;
+    let (first, last) = (group.first()?, group.last()?);
+    let old_range = first.old_range().start..last.old_range().end;
+    let new_range = first.new_range().start..last.new_range().end;
+    let mut out = String::with_capacity(new.len());
+    let mut i = 0;
+    while let Some(s) = diff.new_slice(i) {
+        if i >= new_range.start {
+            break;
+        }
+        out.push_str(s);
+        i += 1;
+    }
+    for idx in old_range {
+        if let Some(s) = diff.old_slice(idx) {
+            out.push_str(s);
+        }
+    }
+    let mut j = new_range.end;
+    while let Some(s) = diff.new_slice(j) {
+        out.push_str(s);
+        j += 1;
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reverts_single_hunk_of_multi_hunk_diff_and_rejects_out_of_bounds() {
+        let old = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\n";
+        let new = "a\nB\nc\nd\ne\nf\ng\nh\ni\nj\nK\nl\n";
+        let after_first = revert_diff_hunk(Some(old), new, 0).expect("revert hunk 0");
+        assert!(after_first.contains("a\nb\nc\n") && after_first.contains("j\nK\nl\n"));
+        let after_second = revert_diff_hunk(Some(old), &after_first, 0).expect("revert hunk 1");
+        assert_eq!(after_second, old);
+        assert!(revert_diff_hunk(Some(old), &after_second, 0).is_none());
+        assert!(revert_diff_hunk(Some(old), new, 5).is_none());
+    }
+}
