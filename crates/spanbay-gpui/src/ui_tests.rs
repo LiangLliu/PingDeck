@@ -5097,4 +5097,142 @@ mod gpui_integration {
 
         rt.shutdown_blocking();
     }
+
+    #[gpui_kit::test]
+    fn window_close_guard_checks_unsaved_edits_and_running_services_before_quitting(
+        cx: &mut TestAppContext,
+    ) {
+        use std::sync::atomic::Ordering;
+
+        use spanbay_desktop::core::app::factory_service::mock_server_new;
+        use spanbay_desktop::core::app::{mock_server_save_impl, mock_server_start_impl};
+        use spanbay_desktop::core::model::settings::Language;
+
+        use crate::ui::apply_language;
+
+        cx.background_executor.allow_parking();
+        let rt = Arc::new(DesktopRuntime::open_in_memory().expect("in-memory runtime"));
+        let _ = workspace_create_impl(
+            rt.state(),
+            "ws-quit-guard".into(),
+            "Quit Guard Workspace".into(),
+        );
+        let settings = settings_get_impl(rt.state());
+        let (host, rx) = GpuiHostWindow::pair();
+
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_global(CoreBridge::new(Arc::clone(&rt)));
+            apply_palette(PaletteId::Slate, false, false, &settings.appearance, cx);
+            apply_language(Language::ZhCn, cx);
+        });
+
+        let mut shell_slot = None;
+        let (_root, visual) = cx.add_window_view(|window, cx| {
+            let s = cx.new(|cx| AppShell::new(rx, host, window, cx));
+            shell_slot = Some(s.clone());
+            Root::new(s, window, cx)
+        });
+        let shell = shell_slot.expect("mounted AppShell");
+        visual.run_until_parked();
+
+        // 1. Idle & clean: close check passes immediately and arms allow_close.
+        visual.update(|window, cx| {
+            let allowed = shell.update(cx, |s, cx| s.handle_window_close_request(window, cx));
+            assert!(allowed, "idle close should proceed without confirmation");
+            assert!(!shell.read(cx).is_quit_confirm_open());
+            assert!(shell.read(cx).allow_close_flag().load(Ordering::SeqCst));
+            // Reset allow_close for subsequent blocker scenarios in this same window.
+            shell
+                .read(cx)
+                .allow_close_flag()
+                .store(false, Ordering::SeqCst);
+        });
+
+        // 2. Unsaved environment edits: close check blocks with destructive modal, Esc/cancel
+        //    dismisses without quitting, and rendering succeeds in both zh-CN and en.
+        visual.update(|window, cx| {
+            shell.update(cx, |s, cx| s.navigate(NavModule::Environments, cx));
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        visual.run_until_parked();
+
+        visual.update(|window, cx| {
+            shell.update(cx, |s, cx| {
+                let env = s
+                    .modules
+                    .environments
+                    .as_ref()
+                    .expect("mounted EnvironmentsView");
+                env.update(cx, |e, _| {
+                    e.env_dirty = true;
+                    e.env_draft_name = "Production".to_owned();
+                });
+            });
+            let allowed = shell.update(cx, |s, cx| s.handle_window_close_request(window, cx));
+            assert!(!allowed, "unsaved environment must block silent close");
+            assert!(shell.read(cx).is_quit_confirm_open());
+            assert!(
+                shell
+                    .read(cx)
+                    .quit_confirm
+                    .as_ref()
+                    .expect("quit_confirm state")
+                    .is_destructive()
+            );
+            assert!(!shell.read(cx).allow_close_flag().load(Ordering::SeqCst));
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            apply_language(Language::En, cx);
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            // Canceling dismisses modal and leaves allow_close unarmed.
+            assert!(shell.update(cx, |s, cx| s.dismiss_quit_confirm(cx)));
+            assert!(!shell.read(cx).is_quit_confirm_open());
+            assert!(!shell.read(cx).allow_close_flag().load(Ordering::SeqCst));
+
+            // Clear dirty flag so the next case tests resident services only.
+            shell.update(cx, |s, cx| {
+                let env = s
+                    .modules
+                    .environments
+                    .as_ref()
+                    .expect("mounted EnvironmentsView");
+                env.update(cx, |e, _| {
+                    e.env_dirty = false;
+                });
+            });
+        });
+
+        // 3. Resident service only (running Mock server): close check blocks with non-destructive
+        //    service confirmation; confirming arms allow_close and clears the modal.
+        let srv = mock_server_new(rt.state(), "ws-quit-guard").expect("new mock server");
+        let srv_id = srv.id.clone();
+        mock_server_save_impl(rt.state(), srv).expect("save mock server");
+        mock_server_start_impl(rt.state(), "ws-quit-guard".into(), srv_id)
+            .expect("start mock server");
+
+        visual.update(|window, cx| {
+            let allowed = shell.update(cx, |s, cx| s.handle_window_close_request(window, cx));
+            assert!(!allowed, "running mock server must prompt before quitting");
+            let state = shell
+                .read(cx)
+                .quit_confirm
+                .as_ref()
+                .expect("quit_confirm for running mock");
+            assert!(!state.is_destructive());
+            assert_eq!(state.running_work.mock_servers, 1);
+            window.refresh();
+            window.draw(cx).clear(cx);
+
+            shell.update(cx, |s, cx| s.confirm_quit(cx));
+            assert!(!shell.read(cx).is_quit_confirm_open());
+            assert!(shell.read(cx).allow_close_flag().load(Ordering::SeqCst));
+        });
+
+        rt.shutdown_blocking();
+    }
 }

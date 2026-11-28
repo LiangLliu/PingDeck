@@ -129,7 +129,17 @@ pub fn render_title_bar(shell: &AppShell, cx: &mut Context<AppShell>) -> impl In
         );
     }
 
-    app_title_bar(cx).child(left_cluster).child(right_cluster)
+    let shell_close = cx.entity().clone();
+    app_title_bar(cx)
+        .on_close_window(move |_, window, cx| {
+            let should_close =
+                shell_close.update(cx, |this, cx| this.handle_window_close_request(window, cx));
+            if should_close {
+                window.remove_window();
+            }
+        })
+        .child(left_cluster)
+        .child(right_cluster)
 }
 
 fn render_proxy_popover(shell: &AppShell, cx: &mut Context<AppShell>) -> Popover {

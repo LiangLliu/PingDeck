@@ -2,11 +2,13 @@
 
 pub mod actions;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::{
-    App, AppContext as _, Bounds, Menu, MenuItem, SystemMenuType, WindowBounds, WindowOptions, px,
-    size,
+    AnyWindowHandle, App, AppContext as _, Bounds, Menu, MenuItem, QuitMode, SystemMenuType,
+    WeakEntity, WindowBounds, WindowOptions, px, size,
 };
 use spanbay_desktop::core::app::settings_get_impl;
 use spanbay_desktop::core::logging::{LogLevel, log_line};
@@ -62,11 +64,11 @@ pub fn run() {
     let (host_window, host_cmd_rx) = GpuiHostWindow::pair();
     let app_runtime = Arc::clone(&runtime);
     let quit_runtime = Arc::clone(&runtime);
-    let quit_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let quit_flag_close = Arc::clone(&quit_flag);
 
     let reopen_host = Arc::clone(&host_window);
-    let app = gpui_kit::application().with_assets(SpanBayAssets);
+    let app = gpui_kit::application()
+        .with_assets(SpanBayAssets)
+        .with_quit_mode(QuitMode::LastWindowClosed);
     app.on_reopen(move |cx| {
         cx.activate(true);
         reopen_host.send(HostCommand::ShowAndFocus);
@@ -91,8 +93,8 @@ pub fn run() {
 
         bind_keys_and_menus(&initial_settings.shortcuts.overrides, cx);
 
-        // Graceful core shutdown whenever the GPUI app exits (Cmd+Q, NSRunningApplication.terminate,
-        // Linux window close, or tray Quit).
+        // Graceful core shutdown whenever the GPUI app exits (window close button, Cmd+Q / Ctrl+Q,
+        // NSRunningApplication.terminate, or tray Quit).
         let shutdown_rt = Arc::clone(&quit_runtime);
         cx.on_app_quit(move |_cx| {
             let rt = Arc::clone(&shutdown_rt);
@@ -105,11 +107,34 @@ pub fn run() {
         })
         .detach();
 
+        type MainWindowSlot = Rc<RefCell<Option<(AnyWindowHandle, WeakEntity<AppShell>)>>>;
+        let main_window_ref: MainWindowSlot = Rc::new(RefCell::new(None));
+
         cx.on_action::<QuitApp>({
-            let flag = Arc::clone(&quit_flag);
+            let win_ref = Rc::clone(&main_window_ref);
             move |_, cx| {
-                flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                cx.quit();
+                let target = win_ref.borrow().clone();
+                if let Some((win_handle, weak_shell)) = target {
+                    cx.activate(true);
+                    let handled = win_handle
+                        .update(cx, |_, window, cx| {
+                            window.activate_window();
+                            if let Some(shell) = weak_shell.upgrade() {
+                                shell.update(cx, |this, cx| {
+                                    this.request_quit_with_window(window, cx)
+                                });
+                                true
+                            } else {
+                                false
+                            }
+                        })
+                        .unwrap_or(false);
+                    if !handled {
+                        cx.quit();
+                    }
+                } else {
+                    cx.quit();
+                }
             }
         });
 
@@ -124,7 +149,7 @@ pub fn run() {
         };
 
         let host_for_window = Arc::clone(&host_window);
-        let close_flag = Arc::clone(&quit_flag_close);
+        let win_ref_for_open = Rc::clone(&main_window_ref);
 
         let open_res = gpui_kit::open_window(options, cx, move |window, cx| {
             // Sync system dark-mode appearance once the window exists.
@@ -142,22 +167,25 @@ pub fn run() {
             );
             sync_window_scale(&initial_settings.appearance, window);
 
-            // macOS red-button hides the main window while gateway/mock/MCP/agent services
-            // keep serving; Cmd+Q / terminate quits cleanly.
-            #[cfg(target_os = "macos")]
-            window.on_window_should_close(cx, move |_window, cx| {
-                if close_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                    true
-                } else {
-                    cx.hide();
-                    false
-                }
-            });
-            #[cfg(not(target_os = "macos"))]
-            let _ = close_flag;
-
             let shell =
                 cx.new(|cx| AppShell::new(host_cmd_rx, Arc::clone(&host_for_window), window, cx));
+            let weak_shell = shell.downgrade();
+            let close_flag = shell.read(cx).allow_close_flag();
+            *win_ref_for_open.borrow_mut() = Some((window.window_handle(), weak_shell.clone()));
+
+            // Cross-platform close guard (Windows, macOS, Linux): closing the main window runs
+            // the unified close check and terminates the app once approved (QuitMode::LastWindowClosed).
+            window.on_window_should_close(cx, move |window, cx| {
+                if close_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                    return true;
+                }
+                if let Some(shell) = weak_shell.upgrade() {
+                    shell.update(cx, |this, cx| this.handle_window_close_request(window, cx))
+                } else {
+                    true
+                }
+            });
+
             wrap_root(shell, window, cx)
         });
 

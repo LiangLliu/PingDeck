@@ -172,7 +172,7 @@ cargo xtask bundle
 | 启动拒绝打开数据库 | 旧库改名失败（权限或文件被占用）；手动把库和同名 `.secrets` 移出数据目录，或用 `SPANBAY_DATA_DIR` 换目录 |
 | 冒烟拒绝启动 | 已有 `spanbay` 进程；先退出它，不杀别人的进程 |
 | 启动提示“SpanBay is already running” | 同一数据目录已有一个 SpanBay 进程持有 `spanbay.lock`；切到它，或用 `SPANBAY_DATA_DIR` 指向别的目录再启动第二份 |
-| macOS 关窗后网关还在 | 红灯只隐藏窗口；用 ⌘Q 或菜单栏图标的“退出”结束进程 |
+| 关窗时弹出退出确认框 | 有未保存的编辑或正在运行的智能体/流程/网关/Mock/MCP 服务；确认停止后关窗退出，点取消保持运行 |
 | 冒烟第一步失败或超时 | 看脚本打印的 `app.log`，查隔离 HOME 是否可写、二进制是否比源码旧 |
 | 网关或 Mock 端口被占 | 换端口或停掉占用进程；Mock 改端口、前缀后要重启 |
 | `cargo xtask check-arch` 失败 | 检查是否打破了 4 层依赖边界、视图是否直接引入了 `gpui_kit::component`，或单文件是否超过 600 行 |

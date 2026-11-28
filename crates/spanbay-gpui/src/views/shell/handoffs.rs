@@ -257,6 +257,9 @@ impl AppShell {
         }
         self.running_mock_summary = mocks_live;
         self.workspace_counts = counts;
+        if self.quit_confirm.is_some() {
+            self.sync_open_quit_confirm(cx);
+        }
     }
 
     pub fn execute_palette_action(

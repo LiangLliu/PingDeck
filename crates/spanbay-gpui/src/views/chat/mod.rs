@@ -434,6 +434,20 @@ impl ChatView {
         self.pending_handoff.take()
     }
 
+    /// Persists the currently open chat session's composer draft before application exit.
+    pub fn flush_active_draft(&mut self, cx: &gpui_kit::App) {
+        let sid = self.thread.session_id.clone();
+        if sid.is_empty() {
+            return;
+        }
+        let text = self
+            .pending_draft_sync
+            .clone()
+            .unwrap_or_else(|| self.composer.read(cx).value().to_string());
+        self.drafts.set(&sid, text);
+        runtime(cx).save_chat_drafts(&self.drafts);
+    }
+
     pub fn dismiss_modal_if_open(&mut self, cx: &mut Context<Self>) -> bool {
         if self.active_modal.take().is_some() {
             cx.notify();

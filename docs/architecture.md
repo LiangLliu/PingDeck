@@ -464,9 +464,9 @@ MCP 客户端是自研的（`agent::mcp`），实现 `tools/list` 与 `tools/cal
 
 系统通知由 `spanbay-desktop` 的通知服务经 `notify-rust` 发出。它订阅核心的注意力快照，窗口不在前台且 `general.notify_when_away` 允许时才发；文案只写工具类别与风险，不写命令、路径和参数。点通知聚焦窗口并打开对应对话。Dock 角标与弹跳由同层的 Dock 服务按同一快照驱动，`notify_when_away = off` 时一并静音。
 
-退出没有协议或守卫：⌘Q、应用菜单的“退出”（`QuitApp`）与菜单栏图标的“退出”（`HostCommand::Quit`）都直接调用 `cx.quit()`，不询问未保存的文档、运行中的工作或冲刷失败。GPUI 应用退出时的 `on_app_quit` 钩子另起 `spanbay-shutdown` 线程执行 `DesktopRuntime::shutdown_blocking()`，即核心的有序停止。窗口创建失败时先调用同一个阻塞停止再以状态 1 退出进程。
+关闭与退出走统一守卫。三平台关窗按钮（`on_window_should_close` 与 Linux 标题栏 `TitleBar::on_close_window`）、`QuitApp`（⌘Q / 应用菜单）和托盘“退出”（`HostCommand::Quit`）都汇聚到 `AppShell::handle_window_close_request`。空闲且无未保存修改时，同步写出草稿与本地界面状态并放行。有阻塞项时保持窗口在前台，弹出退出确认列出未保存项和运行中任务/服务；取消不改动任何状态，确认后写出草稿并退出。
 
-macOS 上红灯（`on_window_should_close`）只隐藏应用，网关、Mock、MCP 与智能体运行继续服务，只有 `QuitApp` 置位退出标志后关窗才放行；点 Dock 图标（`on_reopen`）或菜单栏的“显示 SpanBay”带回窗口。菜单栏图标列出网关端口与在跑的服务，每 3 秒按界面语言刷新。Linux 与 Windows 没有菜单栏图标，也不拦截关窗，不做隐藏。应用菜单由 `spanbay-gpui` 的 `app/mod.rs` 构造。
+GPUI 启用 `QuitMode::LastWindowClosed`，主窗口关闭即退出进程；最小化与放大保持各平台原生行为。应用退出时的 `on_app_quit` 另起 `spanbay-shutdown` 线程运行 `DesktopRuntime::shutdown_blocking()`；建窗失败先停核心再以 1 退出。macOS 菜单栏图标每 3 秒刷新网关端口与在跑服务，点“显示 SpanBay”或 Dock 图标聚焦窗口。应用菜单由 `app/mod.rs` 构造。
 
 诊断出口只有一个：`spanbay-base` 的诊断日志。后台持久化失败（历史、Cookie、Flow 与集合运行摘要、AI 运行历史、审计行、Mock 监听）和启动提示都写进日志；生产代码禁用 `eprintln!`（clippy `print_stderr`），没有日志文件时或在调试构建里，同一行脱敏文本也写到 stderr。
 

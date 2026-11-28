@@ -16,6 +16,33 @@ use crate::views::utility::{ImportExportOutcome, IoTab};
 use super::AppShell;
 
 impl AppShell {
+    /// Toggles the `⌘K` Command Palette overlay and refreshes its dynamic index when opening.
+    pub fn toggle_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.palette_open = !self.state.palette_open;
+        if self.state.palette_open {
+            let lang = self.language();
+            let workspaces = self
+                .state
+                .workspaces
+                .iter()
+                .map(|w| (w.id.as_str().to_owned(), w.name.clone()))
+                .collect();
+            let attention = self
+                .state
+                .attention
+                .approvals
+                .iter()
+                .map(|a| (a.session_id.clone(), a.summary.clone()))
+                .collect();
+            let dynamic = self.collect_palette_dynamic_items(cx);
+            let frecency = self.local_ui.palette_frecency.clone();
+            self.palette_view.update(cx, |view, cx| {
+                view.open(lang, workspaces, attention, dynamic, frecency, window, cx);
+            });
+        }
+        cx.notify();
+    }
+
     /// Opens the unified workspace Import / Export modal dialog.
     pub fn open_import_export(
         &mut self,

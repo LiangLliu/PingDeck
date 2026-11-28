@@ -6,6 +6,7 @@ pub mod chrome;
 pub mod handoffs;
 pub mod module_host;
 pub mod palette;
+pub mod quit_guard;
 pub mod sidebar;
 pub mod sidebar_popovers;
 pub mod theme_popover;
@@ -13,11 +14,12 @@ pub mod titlebar;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, ExternalPaths, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Subscription,
-    Task, Window, div, px,
+    AnyElement, AnyWindowHandle, App, AppContext as _, Context, Entity, ExternalPaths, FocusHandle,
+    Focusable, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _,
+    Subscription, Task, Window, div, px,
 };
 use spanbay_desktop::core::app::{
     ProxyTestDto, agent_attention_subscribe_impl, llm_subscribe_impl, set_window_focused,
@@ -73,6 +75,9 @@ pub struct AppShell {
     pub(crate) provider_attention_count: usize,
     pub(crate) running_mock_summary: Vec<(String, String, u16)>,
     pub(crate) workspace_counts: HashMap<String, (usize, usize)>,
+    pub(crate) window_handle: AnyWindowHandle,
+    pub(crate) allow_close: Arc<AtomicBool>,
+    pub(crate) quit_confirm: Option<quit_guard::QuitConfirmState>,
     _subscriptions: Vec<Subscription>,
     pub(crate) _tasks: Vec<Task<()>>,
 }
@@ -139,14 +144,14 @@ impl AppShell {
             |this, cmds, cx| {
                 for cmd in cmds {
                     match cmd {
-                        HostCommand::ShowAndFocus => cx.activate(true),
+                        HostCommand::ShowAndFocus => this.show_and_focus_from_host(cx),
                         HostCommand::Hide => cx.hide(),
                         HostCommand::OpenChat(session_id) => {
-                            cx.activate(true);
+                            this.show_and_focus_from_host(cx);
                             this.navigate(NavModule::Chat, cx);
                             this.modules.open_chat_session(session_id, cx);
                         }
-                        HostCommand::Quit => cx.quit(),
+                        HostCommand::Quit => this.request_quit_from_host(cx),
                     }
                 }
                 cx.notify();
@@ -298,6 +303,9 @@ impl AppShell {
             provider_attention_count: 0,
             running_mock_summary: Vec::new(),
             workspace_counts: HashMap::new(),
+            window_handle: window.window_handle(),
+            allow_close: Arc::new(AtomicBool::new(false)),
+            quit_confirm: None,
             _subscriptions: vec![act_sub, app_sub, pal_sub, io_sub, diag_sub, wf_sub],
             _tasks: tasks,
         };
@@ -356,32 +364,6 @@ impl AppShell {
         self.new_workspace_sub = None;
         if self.workflow_modal.read(cx).is_open() {
             self.workflow_modal.update(cx, |m, cx| m.close(cx));
-        }
-        cx.notify();
-    }
-
-    pub fn toggle_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.state.palette_open = !self.state.palette_open;
-        if self.state.palette_open {
-            let lang = self.language();
-            let workspaces = self
-                .state
-                .workspaces
-                .iter()
-                .map(|w| (w.id.as_str().to_owned(), w.name.clone()))
-                .collect();
-            let attention = self
-                .state
-                .attention
-                .approvals
-                .iter()
-                .map(|a| (a.session_id.clone(), a.summary.clone()))
-                .collect();
-            let dynamic = self.collect_palette_dynamic_items(cx);
-            let frecency = self.local_ui.palette_frecency.clone();
-            self.palette_view.update(cx, |view, cx| {
-                view.open(lang, workspaces, attention, dynamic, frecency, window, cx);
-            });
         }
         cx.notify();
     }
@@ -501,6 +483,9 @@ impl Render for AppShell {
                 this.navigate(NavModule::Settings, cx);
             }))
             .on_action(cx.listener(|this, _: &CloseOverlay, window, cx| {
+                if this.dismiss_quit_confirm(cx) {
+                    return;
+                }
                 if this
                     .workflow_modal
                     .update(cx, |m, cx| m.dismiss_inner_or_close(cx))
@@ -546,7 +531,9 @@ impl Render for AppShell {
                 }
             }))
             .on_action(cx.listener(|_, _: &HideWindow, _, cx| cx.hide()))
-            .on_action(cx.listener(|_, _: &QuitApp, _, cx| cx.quit()))
+            .on_action(cx.listener(|this, _: &QuitApp, window, cx| {
+                this.request_quit_with_window(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &Nav1, _, cx| this.navigate(NavModule::Requests, cx)))
             .on_action(cx.listener(|this, _: &Nav2, _, cx| this.navigate(NavModule::Mock, cx)))
             .on_action(cx.listener(|this, _: &Nav3, _, cx| this.navigate(NavModule::Flows, cx)))
@@ -577,6 +564,9 @@ impl Render for AppShell {
         }
         if self.workflow_modal.read(cx).is_open() {
             root = root.child(self.workflow_modal.clone());
+        }
+        if let Some(quit_modal) = quit_guard::render_quit_confirm_modal(self, window, cx) {
+            root = root.child(quit_modal);
         }
         if let Some(toasts) = render_toast_stack(self, cx) {
             root = root.child(toasts);

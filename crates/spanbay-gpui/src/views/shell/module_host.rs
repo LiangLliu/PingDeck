@@ -25,7 +25,7 @@ pub struct ModuleHost {
     pub(super) mock: Option<Entity<MockView>>,
     pub(super) flows: Option<Entity<FlowsView>>,
     pub(super) history: Option<Entity<HistoryView>>,
-    pub(super) environments: Option<Entity<EnvironmentsView>>,
+    pub(crate) environments: Option<Entity<EnvironmentsView>>,
     pub(super) chat: Option<Entity<ChatView>>,
     pub(super) runs: Option<Entity<RunsView>>,
     pub(super) providers: Option<Entity<ProvidersView>>,

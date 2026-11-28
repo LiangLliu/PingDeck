@@ -209,12 +209,8 @@ impl RequestsView {
         }
     }
 
-    /// Persists open request tabs per workspace via `tab_session_save`.
-    pub fn persist_tab_session(&mut self, cx: &mut Context<Self>) {
-        let Some(ws_id) = self.workspace_id.clone() else {
-            return;
-        };
-        let session = TabSession {
+    fn build_tab_session(&self) -> TabSession {
+        TabSession {
             version: TAB_SESSION_VERSION,
             active_tab_id: self.active_tab_id.clone(),
             tabs: self
@@ -234,13 +230,31 @@ impl RequestsView {
                     _ => None,
                 })
                 .collect(),
+        }
+    }
+
+    /// Persists open request tabs per workspace via `tab_session_save`.
+    pub fn persist_tab_session(&mut self, cx: &mut Context<Self>) {
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
         };
+        let session = self.build_tab_session();
         let task = spawn_blocking_into(
             cx,
             move |state| tab_session_save(state, &ws_id, &session),
             |_, _, _| {},
         );
         self._tasks.push(task);
+    }
+
+    /// Snapshots active editor widgets and flushes the workspace tab session synchronously before exit.
+    pub fn flush_tab_session_sync(&mut self, cx: &mut Context<Self>) {
+        self.snapshot_active_tab(cx);
+        let Some(ws_id) = self.workspace_id.clone() else {
+            return;
+        };
+        let session = self.build_tab_session();
+        let _ = tab_session_save(crate::bridge::runtime(cx).state(), &ws_id, &session);
     }
 
     /// Returns unresolved `{{var}}` names referenced by the active request.
